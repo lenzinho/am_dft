@@ -39,31 +39,4 @@ clean:
 	$(FC) $(FFLAGS) $(DEBUG) -c $<
 
 
-# .SUFFIXES: $(SUFFIXES) .f90
-
-# .f90.o:
-# 	$(FC) $(FFLAGS) $(DEBUG) -c $< $(LIBS)
-
-# main.o: main.f
-# 	$(CPP) $(CPFLAGS) $< -o main.f90
-# 	$(FC) $(FFLAGS) $(DEBUG) -c main.f90
-
-# am_symmetry_operator.o: am_symmetry_operator.f
-# 	$(CPP) $(CPFLAGS) $< -o am_symmetry_operator.f90
-# 	$(FC) $(FFLAGS) $(DEBUG) -c am_symmetry_operator.f90
-
-# am_symmetry_group.o: am_symmetry_group.f
-# 	$(CPP) $(CPFLAGS) $< -o am_symmetry_group.f90
-# 	$(FC) $(FFLAGS) $(DEBUG) -c am_symmetry_group.f90
-
-# helpers.o: helpers.f
-# 	$(CPP) $(CPFLAGS) $< -o helpers.f90
-# 	$(FC) $(FFLAGS) $(DEBUG) -c helpers.f90
-
-# am_unit_cell.o: am_unit_cell.f
-# 	$(CPP) $(CPFLAGS) $< -o am_unit_cell.f90
-	# $(FC) $(FFLAGS) $(DEBUG) -c am_unit_cell.f90
-
-
-
 
