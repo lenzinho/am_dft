@@ -994,7 +994,6 @@
         real(dp) :: sym_prec
         integer, intent(in), optional :: iopt_verbosity
         integer :: verbosity
-        !
         if ( present(iopt_verbosity) ) then
             verbosity = iopt_verbosity
         else
@@ -1006,8 +1005,6 @@
         else
             sym_prec = tiny
         endif
-        !
-        !
         !
         ! get number of atoms
         natoms = size(tau_frac,2)

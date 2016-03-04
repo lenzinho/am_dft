@@ -11,15 +11,12 @@ DEBUG = -g -traceback  -warn all -traceback -check all -gen-interfaces -warn int
 # and will only cause problems when "-check all" or "-check pointer" is included in 
 # the flag.
 
-FFLAGS = -implicitnone -assume realloc_lhs -mkl
-CPP = icc -E 
+FFLAGS =  -fpp -implicitnone -assume realloc_lhs -mkl
 CPFLAGS = -Difortprogressbar -Ddebug 
 
 PROG = am_sym
 SRCS = am_constants.f90 am_helpers.f90 am_rank_and_sort.f90 am_options.f90 am_vasp_io.f90 am_tet_mesh.f90 am_unit_cell.f90 am_brillouin_zone.f90 am_toy_models.f90 main.f90
 OBJS = am_constants.o   am_helpers.o   am_rank_and_sort.o   am_options.o   am_vasp_io.o   am_tet_mesh.o   am_unit_cell.o   am_brillouin_zone.o   am_toy_models.o   main.o  
-
-
 
 all: $(PROG)
 
