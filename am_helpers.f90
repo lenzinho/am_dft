@@ -478,12 +478,12 @@
     real(dp), intent(in) :: A(:,:)
     real(dp), intent(in) :: B(:)
     logical :: issubset
-    integer :: i1,i2,k
+    integer :: i
     !
     issubset = .false.
     !
-    do i1 = 1,size(A,2)
-        if ( all(abs(A(:,i1)-B).lt.tiny) ) then
+    do i = 1,size(A,2)
+        if ( all(abs(A(:,i)-B).lt.tiny) ) then
             issubset = .true.
             exit
         endif

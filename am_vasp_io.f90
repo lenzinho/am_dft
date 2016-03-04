@@ -160,7 +160,6 @@ module am_vasp_io
     character(len=:), allocatable, intent(out) :: orbitals(:) !> orbitals(norbitals) names of orbitals
     real(dp), allocatable, intent(out) :: lmproj(:,:,:,:,:)   !> lmproj(nspins,norbitals,nions,nbands,nkpts)
     !
-    integer :: iostat
     integer :: fid ! file id
     character(500) :: buffer ! read buffer
     character(len=:), allocatable :: word(:) ! read buffer
@@ -300,12 +299,13 @@ module am_vasp_io
     real(dp), allocatable, intent(out) :: w(:)        !> w(nkpts) weights (POSCAR, normalized)
     real(dp), allocatable, intent(out) :: E(:,:)      !> E(nbands,nkpts) energies
     real(dp), allocatable, intent(out) :: kproj(:,:,:,:) !> kproj(nspin,nkpts_prim,nbands,nkpts)
+    integer :: n !> spin index
     ! i/o
     integer :: fid, iostat
     character(500) :: buffer
     character(len=:), allocatable :: word(:)
     ! loop variables
-    integer :: i, ii, j, l, m, n
+    integer :: i, j
     !
     fname = "PRJCAR"; if (present(iopt_filename)) fname = iopt_filename
     verbosity = 1; if (present(iopt_verbosity)) verbosity = iopt_verbosity
