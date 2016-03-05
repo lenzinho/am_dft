@@ -540,12 +540,12 @@ module am_vasp_io
                 ! 
                 j_and_m = 0
                 do j = 1, nbands_without_spin
-                    ! (LINE 9)    1       -6.196687
+                    ! (LINE 9)    1      -52.220889   1.000000
                     read(unit=fid,fmt='(a)') buffer
                     word = strsplit(buffer,delimiter=' ')
                     if ( (i .eq. 1) .and. (j .eq. 1) ) then
                         !> nspins number of spins
-                        nspins = size(word)-1
+                        nspins = size(word)-2
                         nbands = nbands_without_spin*nspins
                         if (verbosity .ge. 1) call am_print('number of bands',nbands,' ... ')
                         if (verbosity .ge. 1) call am_print('number of spins',nspins,' ... ')

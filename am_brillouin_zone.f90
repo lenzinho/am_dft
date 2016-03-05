@@ -1,5 +1,7 @@
 module am_brillouin_zone
     !
+    use am_unit_cell
+    use am_symmetry
     use am_constants
     use am_helpers
     use am_vasp_io
@@ -90,7 +92,7 @@ module am_brillouin_zone
                 enddo
             enddo
         enddo
-    end function generate_lattice_grid
+    end function  generate_lattice_grid
     pure function generate_monkhorstpack_mesh(n,s) result(kpoints)
         !> returns kpoints in fractional coordinates for monkhorst pack mesh dimensions
         !> n(1:3)=[n1,n2,n3] and shift s(1:3)=[s1,s2,s3]
@@ -114,7 +116,7 @@ module am_brillouin_zone
                 enddo
             enddo
         enddo
-    end function generate_monkhorstpack_mesh
+    end function  generate_monkhorstpack_mesh
     pure function locate_kpoint_in_fbz(kpoint,grid_points) result(position_in_fbz)
         !> Given a kpoint in cartesian coordinates, determine if ...
         !> k is inside  ( 1) of FBZ, i.e. 2KG < G^2 for ALL Bragg planes
@@ -154,7 +156,7 @@ module am_brillouin_zone
                 position_in_fbz = -1
             endif
         enddo
-    end function locate_kpoint_in_fbz
+    end function  locate_kpoint_in_fbz
     pure function reduce_kpoint_to_fbz(bas,grid_points,kpoint) result(kpoint_in_fbz)
         !> reduces kpoint (in cartesian) to the first Brillouin zone, as defined by the Wigner-Seitz cell
         implicit none
@@ -190,7 +192,7 @@ module am_brillouin_zone
             enddo
         end do
         kpoint_in_fbz = kwrk
-    end function reduce_kpoint_to_fbz
+    end function  reduce_kpoint_to_fbz
     pure function get_kpoint_orbit(R,kpoint) result(kpoint_orbit)
         !> Given a kpoint in cartesian coordinates, return its orbit (star)
         !> A quick check to make sure that R(:,:,i) are in the correct cartesian units is to see
@@ -211,7 +213,7 @@ module am_brillouin_zone
         do i = 1,npntsym
             kpoint_orbit(:,i)=matmul(R(:,:,i),kpoint)
         enddo
-    end function get_kpoint_orbit
+    end function  get_kpoint_orbit
     pure function reduce_kpoint_to_ibz(bas,grid_points,R,kpoint) result(kpoint_in_ibz)
         !
         implicit none
@@ -269,9 +271,9 @@ module am_brillouin_zone
                 endif
             endif
         enddo
-    end function reduce_kpoint_to_ibz
+    end function  reduce_kpoint_to_ibz
   
-    subroutine load_procar(bz,iopt_filename,iopts)
+    subroutine     load_procar(bz,iopt_filename,iopts)
         ! 
         ! Reads the PROCAR file, look below: code is short and self explanatory.
         !
@@ -309,7 +311,7 @@ module am_brillouin_zone
             iopt_verbosity=opts%verbosity)
         !
     end subroutine load_procar
-    subroutine load_eigenval(bz,iopt_filename,iopts)
+    subroutine     load_eigenval(bz,iopt_filename,iopts)
         ! 
         ! Reads the eigenval file, look below: code is short and self explanatory.
         !
@@ -351,7 +353,7 @@ module am_brillouin_zone
         !
     end subroutine load_eigenval
     
-    subroutine reduce_to_ibz(bz,uc,ss,ibz,iopts)
+    subroutine     reduce_to_ibz(ibz,bz,uc,ss,iopts)
         !
         use am_helpers
         use am_unit_cell
@@ -359,10 +361,10 @@ module am_brillouin_zone
         !
         implicit none
         !
-        class(am_class_bz) , intent(in) :: bz
-        type(am_class_symmetry), intent(in) :: ss
+        class(am_class_bz)      , intent(inout) :: ibz
+        type(am_class_bz)       , intent(in) :: bz
+        type(am_class_symmetry) , intent(in) :: ss
         type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_bz), intent(out) :: ibz
         !
         real(dp), allocatable :: grid_points(:,:)
         integer :: i, j
@@ -376,7 +378,7 @@ module am_brillouin_zone
         endif
         !
         ! generate voronoi points (cartesian)
-        grid_points = matmul( uc%recbas, real(generate_lattice_grid([1,1,1]),dp) )
+        grid_points = matmul( reciprocal_basis(uc%bas), real(generate_lattice_grid([1,1,1]),dp) )
         ! allocate workspace
         allocate(ibz%kpt(3,bz%nkpts))
         ! reduce kpoints to ibz
@@ -406,7 +408,7 @@ module am_brillouin_zone
         enddo map_bz_point_properties_to_ibz
         !
     end subroutine reduce_to_ibz
-    subroutine expand_to_fbz(bz,ss,fbz,iopts)
+    subroutine     expand_to_fbz(fbz,bz,ss,iopts)
         !
         use am_unit_cell
         use am_options
@@ -414,9 +416,9 @@ module am_brillouin_zone
         !
         implicit none
         !
-        class(am_class_bz), intent(in) :: bz
+        class(am_class_bz)     , intent(inout) :: fbz
+        type(am_class_bz)      , intent(in) :: bz
         type(am_class_symmetry), intent(in) :: ss
-        type(am_class_bz), intent(out) :: fbz
         !
         real(dp), allocatable :: kpoint_orbit(:,:)
         real(dp), allocatable :: kpoints_fbz(:,:) ! workspace
@@ -433,10 +435,10 @@ module am_brillouin_zone
         !
         if (opts%verbosity .ge. 1) write(*,*)
         if (opts%verbosity .ge. 1) write(*,'(a)' ) 'Expand kpoints to FBZ'
-        if (opts%verbosity .ge. 1) call am_print('number of point symmetries',ss%nptsym,' ... ')
+        if (opts%verbosity .ge. 1) call am_print('number of point symmetries',ss%nsyms,' ... ')
         if (opts%verbosity .ge. 1) call am_print('number of kpoints in the original bz',bz%nkpts,' ... ')
         if (opts%verbosity .ge. 1) call am_print('kpoints in the original bz (only first 10 are shown)',transpose(bz%kpt(1:3,1:(minval([bz%nkpts,10])))),' ... ')
-        allocate(kpoints_fbz(3,bz%nkpts*ss%nptsym))
+        allocate(kpoints_fbz(3,bz%nkpts*ss%nsyms))
         allocate(w(bz%nkpts))
         m = 0
         for_each_kpoint_in_the_bz : do i = 1, bz%nkpts
@@ -446,11 +448,11 @@ module am_brillouin_zone
             ! get its weight
             w(i) = size(kpoint_orbit,2)
             ! check that weight is a factor of the number of symmetry operations
-            if ( modulo(ss%nptsym,w(i)) .ne. 0 ) then
+            if ( modulo(ss%nsyms,w(i)) .ne. 0 ) then
                 call am_print('ERROR','Weight is not a factor of the number of symmetry operation',' >>> ')
                 call am_print('kpoint',bz%kpt(:,i))
                 call am_print('weight',w(i))
-                call am_print('number of symmetry operations',ss%nptsym)
+                call am_print('number of symmetry operations',ss%nsyms)
                 call am_print('kpoint orbit',transpose(kpoint_orbit))
                 stop
             endif
@@ -490,7 +492,7 @@ module am_brillouin_zone
         enddo
     end subroutine expand_to_fbz
     
-    subroutine outfile_bandcharacter(bz,bas,recbas,R,iopts)
+    subroutine     outfile_bandcharacter(bz,uc,ss,iopts)
         ! 
         ! Creates outfile.bandcharacter, which contains the energy and character of the bands read either from EIGENVAL using bz%load_eigenval() or PROCAR using bz%load_procar()
         !
@@ -498,12 +500,12 @@ module am_brillouin_zone
         !
         implicit none
         !
-        class(am_class_bz), intent(inout) :: bz !> brillouin zone class
-        real(dp), intent(in) :: bas(3,3) !> primitive basis
-        real(dp), intent(in) :: recbas(3,3) !> reciprocal basis
-        real(dp), intent(in) :: R(:,:,:) !> point symmetries in cartesian
+        class(am_class_bz)      , intent(in) :: bz !> brillouin zone class
+        type(am_class_unit_cell), intent(in) :: uc
+        type(am_class_symmetry) , intent(in) :: ss
         real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
-        real(dp) :: k1(3), k2(3) ! point for kdiff
+        real(dp) :: k1(3) ! point for kdiff
+        real(dp) :: k2(3) ! point for kdiff
         real(dp) :: kdiff ! for dispersion plot
         integer :: fid
         integer :: i, j, l, m, n ! loop variables
@@ -520,9 +522,9 @@ module am_brillouin_zone
         if (opts%verbosity .ge. 1) write(*,*)
         if (opts%verbosity .ge. 1) write(*,'(a)' ) 'Writing bandcharacter file'
         !
+        !
         ! generate voronoi points (cartesian), used to reduce points to wigner-seitz brillouin zone
-        grid_points = matmul( recbas, real(generate_lattice_grid([1,1,1]),dp) )
-        call am_print('grid_points',transpose(grid_points))
+        grid_points = matmul( reciprocal_basis(uc%bas) , real(generate_lattice_grid([1,1,1]),dp) )
         !
         fid = 1
         open(unit=fid,file="outfile.bandcharacter",status="replace",action='write')
@@ -531,7 +533,6 @@ module am_brillouin_zone
             !
             if (opts%verbosity .ge. 1) call am_print('number of kpoints', bz%nkpts,' ... ')
             if (opts%verbosity .ge. 1) call am_print('number of bands', bz%nbands ,' ... ')
-            if (opts%verbosity .ge. 1) write(*,*) ' ... Projection information'
             if (opts%verbosity .ge. 1) call am_print('number of ions', bz%nions ,' ... ')
             if (opts%verbosity .ge. 1) call am_print('number of orbitals', bz%norbitals ,' ... ')
             if (opts%verbosity .ge. 1) call am_print('number of spins', bz%nspins ,' ... ')
@@ -577,8 +578,8 @@ module am_brillouin_zone
                     if (i .eq. 1) then
                         kdiff = 0
                     else
-                        k1 = reduce_kpoint_to_ibz(bas,grid_points,R,bz%kpt(:,i-1))
-                        k2 = reduce_kpoint_to_ibz(bas,grid_points,R,bz%kpt(:,i))
+                        k1 = reduce_kpoint_to_ibz(uc%bas,grid_points,ss%R,bz%kpt(:,i-1))
+                        k2 = reduce_kpoint_to_ibz(uc%bas,grid_points,ss%R,bz%kpt(:,i))
                         kdiff = kdiff + norm2( abs(k1-k2) )
                     endif
                     !
@@ -599,7 +600,7 @@ module am_brillouin_zone
         close(fid)
         !
     end subroutine outfile_bandcharacter
-    subroutine outfile_dosprojected(bz,iopts)
+    subroutine     outfile_dosprojected(bz,iopts)
         ! 
         ! Creates outfile.dosprojected
         !
@@ -694,7 +695,7 @@ module am_brillouin_zone
     ! Tetrahedra
     !
 
-    subroutine load_ibzkpt(tet,iopt_bz,iopt_filename,iopts)
+    subroutine     load_ibzkpt(tet,iopt_bz,iopt_filename,iopts)
         ! 
         ! Reads the IBZKPT file, look below: code is short and self explanatory.
         !
@@ -755,7 +756,7 @@ module am_brillouin_zone
         endif
         !
     end subroutine load_ibzkpt    
-    subroutine determine_tetrahedron_weights(x,xc,integration_type,apply_blochl_corrections,w)
+    subroutine     determine_tetrahedron_weights(x,xc,integration_type,apply_blochl_corrections,w)
 	    !
         use am_rank_and_sort
         !
@@ -885,7 +886,7 @@ module am_brillouin_zone
         endif
         w=w*0.25_dp
     end subroutine determine_tetrahedron_weights
-    subroutine tetrahedra_pdos(bz,tet,iopts)
+    subroutine     tetrahedra_pdos(bz,tet,iopts)
         !
         use am_options
         !

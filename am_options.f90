@@ -10,16 +10,16 @@ module am_options
     end type am_class_options    
     !
     contains
-    !
-    subroutine defaults(opts)
-    !
-    implicit none
-    !
-    class(am_class_options), intent(inout) :: opts
-    !
-    opts%verbosity = 1
-    opts%sym_prec = tiny
-    !
+    
+    pure subroutine defaults(opts)
+        !
+        implicit none
+        !
+        class(am_class_options), intent(inout) :: opts
+        !
+        opts%verbosity = 1
+        opts%sym_prec = tiny
+        !
     end subroutine defaults
 end module
     

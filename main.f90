@@ -14,9 +14,10 @@
     program main
 	!
 	use am_helpers
+    use am_options
 	use am_unit_cell
     use am_brillouin_zone
-    use am_options
+    use am_symmetry
 	!
 	implicit none
 	!
@@ -37,12 +38,12 @@
     !
     call uc%load_poscar('POSCAR')
     !
-    call ss%determine_symmetry(uc=uc,iopts=opts)
+    call ss%determine(uc=uc,iopts=opts)
     !
-    call bz%load_eigenval
-    ! call bz%load_procar
+    ! call bz%load_eigenval
+    call bz%load_procar
     !
-    call bz%outfile_bandcharacter(bas=uc%bas,recbas=uc%recbas,R=ss%R,iopts=opts)
+    call bz%outfile_bandcharacter(uc=uc,ss=ss,iopts=opts)
     !
     ! <HAS IBZKPT>
     call tet%load_ibzkpt(iopt_bz=bz,iopts=opts)

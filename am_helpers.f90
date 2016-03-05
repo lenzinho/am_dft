@@ -4,8 +4,6 @@
     !
     implicit none
     !
-    type(timing_data) :: clocks(nmax)
-    !
     interface unique
         module procedure unique_integer, unique_columns_integer, unique_columns_double
     end interface
@@ -108,6 +106,10 @@
         endif
     end function
 
+    !
+    ! progress bar
+    !
+
     subroutine progressbar(message,j,totn)
         !> Borrowed from Olle; original from: https://software.intel.com/en-us/forums/intel-fortran-compiler-for-linux-and-mac-os-x/topic/270155
         integer, intent(in) :: j !> current index
@@ -183,92 +185,7 @@
 
     ! generic math functions
 
-
-    pure function unique_columns_double(A,iopt_tiny) result(B)
-        !> returns unique columns of double matrix A(:,i) within numerical precision
-        implicit none
-        !
-        real(dp), intent(in) :: A(:,:)
-        real(dp) :: wrkspace(size(A,1),size(A,2))
-        real(dp), allocatable :: B(:,:)
-        integer :: i1,i2,k
-        real(dp), intent(in), optional :: iopt_tiny
-        real(dp) :: tiny_prec
-        !
-        if ( present(iopt_tiny) ) then
-            tiny_prec = iopt_tiny
-        else
-            tiny_prec = tiny
-        endif
-        !
-        k=1
-        wrkspace(:,1) = A(:,1)
-        !
-        try_loop : do i1 = 1,size(A,2)
-            do i2 = 1,k
-                if ( all(abs(A(:,i1)-wrkspace(:,i2)).lt.tiny_prec) ) cycle try_loop
-            enddo
-            k = k + 1
-            wrkspace(:,k) = A(:,i1)
-        enddo try_loop
-        !
-        allocate(B(size(A,1),k))
-        !
-        do i1 = 1,k
-            B(:,i1) = wrkspace(:,i1)
-        enddo
-    end function unique_columns_double
-    pure function unique_columns_integer(A) result(B)
-        !> returns unique columns of double matrix A(:,i) within numerical precision
-        implicit none
-        !
-        integer, intent(in) :: A(:,:)
-        integer :: wrkspace(size(A,1),size(A,2))
-        integer, allocatable :: B(:,:)
-        integer :: i1,i2,k
-        !
-        k=1
-        wrkspace(:,1) = A(:,1)
-        !
-        try_loop : do i1 = 1,size(A,2)
-            do i2 = 1,k
-                if ( all(abs(A(:,i1)-wrkspace(:,i2)).eq.0) ) cycle try_loop
-            enddo
-            k = k + 1
-            wrkspace(:,k) = A(:,i1)
-        enddo try_loop
-        !
-        allocate(B(size(A,1),k))
-        !
-        do i1 = 1,k
-            B(:,i1) = wrkspace(:,i1)
-        enddo
-    end function unique_columns_integer
-    pure function unique_integer(A) result(B)
-        !> returns unique values of integer array A(:)
-        implicit none
-        !
-        integer, intent(in) :: A(:)
-        integer :: wrkspace(size(A))
-        integer, allocatable :: B(:)
-        integer :: i1, k
-        !
-        k=1
-        wrkspace(1) = A(1)
-        !
-        try_loop : do i1 = 1, size(A)
-            if (.not.any(A(i1).eq.wrkspace(:))) then
-                k = k + 1
-                wrkspace(k) = A(i1)
-            endif
-        enddo try_loop
-        !
-        allocate(B(k))
-        !
-        do i1 = 1, k
-            B(i1) = wrkspace(i1)
-        enddo
-    end function unique_integer
+#include "am_helpers_unique.f90"
 
     pure function issubset(A,B)
         !> returns true if true if B(:) is a subset of A(:,i) within numerical precision for any i
@@ -288,7 +205,7 @@
             endif
         enddo
         !
-    end function issubset
+    end function  issubset
     pure function linspace(d1,d2,n) result(y)
         !
         implicit none
@@ -305,7 +222,7 @@
             y(i) = d1 + (i-1.0_dp)*d;
         enddo
         !
-    end function linspace
+    end function  linspace
     pure function cross_product(a,b) result(c)
         !
         implicit none
@@ -317,7 +234,7 @@
         c(2) = a(3) * b(1) - a(1) * b(3)
         c(3) = a(1) * b(2) - a(2) * b(1)
         !
-    END FUNCTION cross_product
+    end function  cross_product
     pure function rotation_from_vectors(a,b) result(R)
         ! based on Rodrigues' Rotation Formula
         ! "A Mathematical Introduction to Robotic Manipulation", Richard M. Murray, Zexiang Li, S. Shankar Sastry, pp. 26-28
@@ -340,7 +257,7 @@
         !
         R = eye(3) + vx + matmul(vx,vx)*(1.0_dp - c)/(s**2)
         !
-    end function
+    end function  rotation_from_vectors
     
     !
     ! helper functions
@@ -381,7 +298,7 @@
             endif
         enddo
         !
-    end function strsplit
+    end function  strsplit
     
 
     end module

@@ -3,6 +3,7 @@ module am_symmetry
 	use am_constants
 	use am_helpers
 	use am_unit_cell
+	use am_options
 	!
 	implicit none
 	!
@@ -13,15 +14,18 @@ module am_symmetry
       integer :: nsyms                  !> number of point symmetries
       real(dp), allocatable :: R(:,:,:) !> symmetry elements (operate on cartesian atomic basis)
       real(dp), allocatable :: T(:,:)   !> symmetry elements (operate on cartesian atomic basis)
+      !
       real(dp), allocatable :: det(:)   !> determinants of point symmetry in fractional coordinates
       real(dp), allocatable :: trace(:) !> traces of point symmetry in fractional coordinates
       integer , allocatable :: schoenflies_code(:) ! look at schoenflies_decode to understand what each integer corresponds to
+      character(string_length_schoenflies) , allocatable :: schoenflies(:) ! decoded string
       !
       integer :: pg_schoenflies_code
       character(string_length_schoenflies) :: pg_schoenflies
       !
   contains
-      procedure :: determine_basic_point_symmetry_properties
+      procedure :: determine
+      procedure :: stdout
   end type
 
 contains
@@ -30,15 +34,15 @@ contains
 
     pure function  point_symmetry_convert_to_fractional(R,bas) result(R_frac)
         !
+        use am_unit_cell, only : reciprocal_basis
+        !
         implicit none
         !
         real(dp), intent(in) :: R(3,3)
         real(dp), intent(in) :: bas(3,3)
         real(dp) :: R_frac(3,3)
-        real(dp) :: recbas
         !
-        recbas = reciprocal_basis(bas)
-        R_frac = matmul(recbas,matmul(R,bas))
+        R_frac = matmul(reciprocal_basis(bas),matmul(R,bas))
         !
     end function   point_symmetry_convert_to_fractional
 
@@ -108,11 +112,11 @@ contains
         elseif ( (abs(tr + 2).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; schoenflies_code = 10 ! 's_3'
         endif
         !
-        if (schoenflies .eq. 0) then
+        if (schoenflies_code .eq. 0) then
             call am_print('ERROR','Unable to identify point symmetry.',' >>> ')
             call am_print('R (cart)',R)
             call am_print('R (frac)',R_frac)
-            call am_print('tr (frac)',trace)
+            call am_print('tr (frac)',tr)
             call am_print('det (frac)',det)
             stop
         endif
@@ -121,7 +125,7 @@ contains
 
     ! schoenflies decode
 
-    function       schoenflies_decode(schoeflies_code) result(schoenflies)
+    function       schoenflies_decode(schoenflies_code) result(schoenflies)
     	!
     	implicit none
     	!
@@ -150,7 +154,7 @@ contains
     	implicit none
     	!
     	integer, intent(in) :: pg_schoenflies_code
-  		character(string_length_schoenflies) :: schoenflies_database(32)
+  		character(string_length_schoenflies) :: pg_schoenflies
   		!
   		select case (pg_schoenflies_code)
 				case(1); pg_schoenflies = 'c_1'
@@ -231,17 +235,14 @@ contains
         !
         ! trivial cases first
         !
-        nsyms = size(R,3)
+        nsyms = size(schoenflies_code)
         if     (nsyms .eq. 1 ) then; pg_schoenflies_code=1;  return
         elseif (nsyms .eq. 48) then; pg_schoenflies_code=32; return
         elseif (nsyms .eq. 16) then; pg_schoenflies_code=20; return
         elseif (nsyms .eq. 3 ) then; pg_schoenflies_code=9;  return
         endif
         !
-        ! 
-        !
         ni=0; nc2=0; nc3=0; nc4=0; nc6=0; ns2=0; ns6=0; ns4=0; ns3=0
-        !
     	  ne  = count(schoenflies_code.eq.1)  ! 'e'   - there better just be one identity!
   	    nc2 = count(schoenflies_code.eq.2)  ! 'c_2'
   	    nc3 = count(schoenflies_code.eq.3)  ! 'c_3'
@@ -260,7 +261,7 @@ contains
   	    !
   	    if (ne.gt.1) then
   		    	call am_print('ERROR','More than one identity operator found.',' >>> ')
-				elseif (ne.eq.0)
+				elseif (ne.eq.0) then
 						call am_print('ERROR','No identity operator found.',' >>> ')
 						stop
   	    endif
@@ -309,25 +310,36 @@ contains
 
     ! functions which operate on ss
 
-    subroutine     determine_basic_point_symmetry_properties(ss,uc,iopt)
+    subroutine     determine_basic_point_symmetry_properties(ss,uc,iopts)
         !
         ! requires only ss%R
         !
         implicit none
         !
-        class(am_type_symmetry) :: ss
+        class(am_class_symmetry), intent(inout) :: ss
+        type(am_class_unit_cell), intent(in) :: uc
+        type(am_class_options), intent(in), optional :: iopts
+        type(am_class_options) :: opts
         !
         integer :: i
         !
+        if (present(iopts)) then 
+            opts = iopts
+        else
+            call opts%defaults
+        endif
+        !
         ss%nsyms = size(ss%R,3)
-        allocate(ss%det(nsyms))
-        allocate(ss%trace(nsyms))
-        allocate(ss%schoenflies(nsyms))
+        allocate(ss%det(ss%nsyms))
+        allocate(ss%trace(ss%nsyms))
+        allocate(ss%schoenflies_code(ss%nsyms))
+        allocate(ss%schoenflies(ss%nsyms))
         !
         do i = 1, ss%nsyms
-            ss%trace(i)            = point_symmetry_trace(R(:,:,i))
-            ss%det(i)              = point_symmetry_determinant(R(:,:,i))
-            ss%schoenflies_code(i) = point_symmetry_schoenflies(R(:,:,i),uc%bas)
+            ss%trace(i)            = point_symmetry_trace(ss%R(:,:,i))
+            ss%det(i)              = point_symmetry_determinant(ss%R(:,:,i))
+            ss%schoenflies_code(i) = point_symmetry_schoenflies(unique(ss%R(:,:,i)),uc%bas)
+            ss%schoenflies(i)      = schoenflies_decode(ss%schoenflies_code(i))
         enddo
         !
         ss%pg_schoenflies_code = point_group_schoenflies(ss%schoenflies_code)
@@ -344,12 +356,65 @@ contains
         !
         write(*,'(a5,a)') ' ... ','point symmetry properties'
         write(*,'(5x,a3,a5,a6,a6)') '#', 'sch.', 'det', 'trace'
-        do i = 1, ss%nptsym
+        do i = 1, ss%nsyms
             write(*,'(5x,i3,a5,f6.2,f6.2)') i, trim(ss%schoenflies(i)), ss%det(i), ss%trace(i)
         enddo
         !
     end subroutine stdout
 
+    subroutine     determine(ss,uc,iopts)
+    	!
+    	implicit none
+    	!
+    	class(am_class_symmetry), intent(inout) :: ss
+    	type(am_class_unit_cell), intent(in) :: uc
+    	real(dp), allocatable :: seitz(:,:,:)
+    	!
+      type(am_class_options), intent(in), optional :: iopts
+      type(am_class_options) :: opts
+      if (present(iopts)) then 
+          opts = iopts
+      else
+          call opts%defaults
+      endif
+    	!
+    	seitz = space_symmetries_from_basis(uc=uc,iopts=opts)
+    	!
+    	ss%nsyms=size(seitz,3)
+    	allocate(ss%R(3,3,ss%nsyms))
+    	allocate(ss%T(3,ss%nsyms))
+    	ss%R(1:3,1:3,1:ss%nsyms) = seitz(1:3,1:3,1:ss%nsyms)
+    	ss%T(1:3,1:ss%nsyms)     = seitz(1:3,4,1:ss%nsyms)
+    	!
+    end subroutine determine
+
+
+
+!     subroutine sort_point_symmetries_based_on_determinant_and_trace(R,det,trace,schoenflies)
+!         !
+!         use am_rank_and_sort
+!         !
+!         implicit none
+!         !
+!         real(dp), intent(inout) :: R(:,:,:)
+!         real(dp), intent(inout) :: det(:)
+!         real(dp), intent(inout) :: trace(:)
+!         character(*), intent(inout), optional :: schoenflies(:)
+!         integer :: nptsym
+!         integer, allocatable :: indices(:)
+!         !
+!         nptsym = size(R,3)
+!         allocate(indices(nptsym))
+!         !
+!         call rank(det,indices);   indices = indices(nptsym:1:-1)
+!         R=R(:,:,indices); det=det(indices); trace=trace(indices); 
+!         if (present(schoenflies)) schoenflies=schoenflies(indices)
+!         !
+!         call rank(trace,indices); indices = indices(nptsym:1:-1)
+!         R=R(:,:,indices); det=det(indices); trace=trace(indices); 
+!         if (present(schoenflies)) schoenflies=schoenflies(indices)
+!         !
+!     end subroutine sort_point_symmetries_based_on_determinant_and_trace
 
 
 
