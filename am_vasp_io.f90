@@ -574,7 +574,7 @@ module am_vasp_io
         close(fid)
         !
     end subroutine read_eigenval
-    subroutine read_poscar(bas,natoms,nspecies,natoms_per_species,symbs,tau,atype,iopt_filename,iopt_verbosity)
+    subroutine read_poscar(bas,natoms,nspecies,symbs,tau,atype,iopt_filename,iopt_verbosity)
         ! Reads poscar into variables performing basic checks on the way. Call it like this:
         !
         !    bas(3,3) column vectors a(1:3,i), a(1:3,j), a(1:3,kpt)
@@ -593,7 +593,8 @@ module am_vasp_io
         integer,intent(out) :: natoms
         integer,intent(out) :: nspecies
         character(len=:), allocatable, intent(out) :: symbs(:) ! 1 symb per species
-        integer,allocatable, intent(out) :: natoms_per_species(:) ! number of atoms per species
+        ! integer, allocatable, intent(out) :: natoms_per_species(:) ! number of atoms per species - REMOVED THIS AS AN OUTPUT
+        integer , allocatable :: natoms_per_species(:) ! number of atoms per species
         real(dp), allocatable, intent(out) :: tau(:,:) ! atomic coordinates tau_read(3,natoms) in cartesian
         integer,allocatable, intent(out) :: atype(:) ! type of atom tau_read(natoms)
         ! subroutine internal parameters

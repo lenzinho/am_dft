@@ -28,6 +28,20 @@ contains
 
 		! functions which operate on R(3,3) in cartesian coordinates
 
+    pure function  point_symmetry_convert_to_fractional(R,bas) result(R_frac)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: R(3,3)
+        real(dp), intent(in) :: bas(3,3)
+        real(dp) :: R_frac(3,3)
+        real(dp) :: recbas
+        !
+        recbas = reciprocal_basis(bas)
+        R_frac = matmul(recbas,matmul(R,bas))
+        !
+    end function   point_symmetry_convert_to_fractional
+
     pure function  point_symmetry_trace(R) result(trace)
         !
         implicit none
@@ -66,39 +80,40 @@ contains
         !
         real(dp), intent(in) :: R(3,3)
         real(dp), intent(in) :: bas(3,3)
-        real(dp) :: trace
+        real(dp) :: R_frac(3,3)
+        real(dp) :: tr
         real(dp) :: det
         integer :: schoenflies_code
         !
         ! transform point symmetry to fractional coordinates
-        recbas = reciprocal_basis(bas)
-        R = matmul(recbas,matmul(R,bas))
+        R_frac = point_symmetry_convert_to_fractional(R,bas)
         ! get trace and determinant
-        trace = point_symmetry_trace(R)
-        det   = point_symmetry_determinant(R)
+        tr  = point_symmetry_trace(R_frac)
+        det = point_symmetry_determinant(R_frac)
         !
         ! The Mathematical Theory of Symmetry in Solids: Representation Theory for
         ! Point Groups and Space Groups. 1 edition. Oxford?: New York: Oxford University
         ! Press, 2010. page 138, table 3.8.
         !
         schoenflies_code = 0
-        if     ( (abs(trace - 3).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; schoenflies_code = 1  ! 'e'
-        elseif ( (abs(trace + 1).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; schoenflies_code = 2  ! 'c_2'
-        elseif ( (abs(trace - 0).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; schoenflies_code = 3  ! 'c_3'
-        elseif ( (abs(trace - 1).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; schoenflies_code = 4  ! 'c_4'
-        elseif ( (abs(trace - 2).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; schoenflies_code = 5  ! 'c_6'
-        elseif ( (abs(trace + 3).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; schoenflies_code = 6  ! 'i'
-        elseif ( (abs(trace - 1).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; schoenflies_code = 7  ! 's_2'
-        elseif ( (abs(trace - 0).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; schoenflies_code = 8  ! 's_6'
-        elseif ( (abs(trace + 1).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; schoenflies_code = 9  ! 's_4'
-        elseif ( (abs(trace + 2).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; schoenflies_code = 10 ! 's_3'
+        if     ( (abs(tr - 3).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; schoenflies_code = 1  ! 'e'
+        elseif ( (abs(tr + 1).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; schoenflies_code = 2  ! 'c_2'
+        elseif ( (abs(tr - 0).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; schoenflies_code = 3  ! 'c_3'
+        elseif ( (abs(tr - 1).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; schoenflies_code = 4  ! 'c_4'
+        elseif ( (abs(tr - 2).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; schoenflies_code = 5  ! 'c_6'
+        elseif ( (abs(tr + 3).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; schoenflies_code = 6  ! 'i'
+        elseif ( (abs(tr - 1).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; schoenflies_code = 7  ! 's_2'
+        elseif ( (abs(tr - 0).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; schoenflies_code = 8  ! 's_6'
+        elseif ( (abs(tr + 1).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; schoenflies_code = 9  ! 's_4'
+        elseif ( (abs(tr + 2).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; schoenflies_code = 10 ! 's_3'
         endif
         !
         if (schoenflies .eq. 0) then
             call am_print('ERROR','Unable to identify point symmetry.',' >>> ')
-            call am_print('R',R)
-            call am_print('trace',trace)
-            call am_print('det',det)
+            call am_print('R (cart)',R)
+            call am_print('R (frac)',R_frac)
+            call am_print('tr (frac)',trace)
+            call am_print('det (frac)',det)
             stop
         endif
         !
@@ -320,8 +335,20 @@ contains
         !
     end subroutine determine_basic_point_symmetry_properties
 
-
-
+    subroutine     stdout(ss)
+        !
+        implicit none
+        !
+        class(am_class_symmetry), intent(in) ::  ss
+        integer :: i
+        !
+        write(*,'(a5,a)') ' ... ','point symmetry properties'
+        write(*,'(5x,a3,a5,a6,a6)') '#', 'sch.', 'det', 'trace'
+        do i = 1, ss%nptsym
+            write(*,'(5x,i3,a5,f6.2,f6.2)') i, trim(ss%schoenflies(i)), ss%det(i), ss%trace(i)
+        enddo
+        !
+    end subroutine stdout
 
 
 

@@ -7,21 +7,16 @@
     implicit none
     !
     private
+    !
     public :: am_class_unit_cell
     
     type am_class_unit_cell
-        ! produced by load_poscar:
         real(dp) :: bas(3,3) !> column vectors a(1:3,i), a(1:3,j), a(1:3,k)
-        integer :: natoms !> number of atoms
-        integer :: nspecies !> number of unique atomic species
-        character(len=:), allocatable :: symbs(:) !> symbols of unique atomic species
-        integer,allocatable :: natoms_per_species(:) !> number of atoms per species
+        integer  :: natoms   !> number of atoms
+        integer  :: nspecies !> number of unique atomic species
+        character(len=:), allocatable :: symbs(:) !> symbs(nspecies) symbols of unique atomic species
         real(dp), allocatable :: tau(:,:) !> tau(3,natoms) cartesian atomic coordinates 
-        integer,allocatable :: atype(:) !> index indentifying the atomic species for each atom
-        ! produced by compute_basic_properties
-        real(dp) :: recbas(3,3) !> reciprocal basis vectors,column vectors a(1:3,i), a(1:3,j), a(1:3,k)
-        real(dp) :: metric(3,3) !> metric tensor of real space basis
-        real(dp) :: vol !> cell volume
+        integer , allocatable :: atype(:) !> index indentifying the atomic species for each atom
     contains
         procedure :: load_poscar
         procedure :: reduce_to_primitive
@@ -31,6 +26,35 @@
     contains
 
     ! functions which operate on bas(3,3)
+
+    function      primitive_volume(bas,iopt_do_not_check_volume) result(vol)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: bas(3,3)
+        logical , intent(in), optional :: iopt_do_not_check_volume
+        real(dp) :: vol
+        !
+        vol=abs(bas(1,1)*(bas(2,2)*bas(3,3)-bas(3,2)*bas(2,3)) &
+             & +bas(2,1)*(bas(3,2)*bas(1,3)-bas(1,2)*bas(3,3)) &
+             & +bas(3,1)*(bas(1,2)*bas(2,3)-bas(1,3)*bas(2,2)))
+
+        #ifdef AM_CHECKS
+        if (.not.present(iopt_do_not_check_volume))
+        if ( abs(vol) .lt. tiny ) then
+            call am_print("ERROR","Basis vectors are not coplanar!"," >>> ")
+            stop
+        endif
+        endif
+        #endif
+
+        #ifdef AM_WARNINGS
+        if (vol .lt. 0.0_dp) then
+            call am_print("WARNING","Primitive cell volume is negative!"," >>> ")
+        endif
+        #endif 
+        !
+    end function  primitive_volume
 
     pure function reciprocal_basis(bas) result(recbas)
         !
@@ -52,7 +76,7 @@
         recbas = recbas/(recbas(1,1)*bas(1,1)+recbas(1,2)*bas(2,1)+recbas(1,3)*bas(3,1))
     end function  reciprocal_basis
 
-    pure function real_space_metric(bas) result(metric)
+    pure function metric_from_basis(bas) result(metric)
         !
         implicit none
         !
@@ -61,282 +85,7 @@
         !
         metric = matmul(transpose(bas),bas)
         !
-    end function  real_space_metric
-
-
-
-    ! wrappers
-    !
-
-    subroutine load_poscar(uc,iopt_filename,iopts)
-        ! 
-        ! Reads the poscar file, look below: code is short and self explanatory.
-        !
-        use am_vasp_io
-        !
-        implicit none
-        !
-        class(am_class_unit_cell), intent(inout) :: uc
-        ! optional i/o
-        character(len=*), intent(in), optional :: iopt_filename
-        character(1000) :: filename
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
-        filename = "POSCAR"; if ( present(iopt_filename) ) filename = trim(iopt_filename)
-        !
-        call read_poscar(&
-            bas=uc%bas,&
-            natoms=uc%natoms,&
-            nspecies=uc%nspecies,&
-            natoms_per_species=uc%natoms_per_species,&
-            symbs=uc%symbs,&
-            tau=uc%tau,&
-            atype=uc%atype,&
-            iopt_filename=filename,&
-            iopt_verbosity=opts%verbosity)
-        !
-    end subroutine load_poscar
-
-!     subroutine determine_symmetry(ss,uc,iopts)
-!         !
-!         ! 1) uses atomic positions to identify possible symmetry translations which could serve as primitive lattice vectors
-!         ! 2) selects the shortest of these vectors as the basis for the primitive cell
-!         ! 3) determines the point symmetries compatbile with the metric tensor corresponding to this primitive basis
-!         !       Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. Cambridge,
-!         !       UK; New York: Cambridge University Press, 2008. p 282, table 10.3; p 388, table 10.4
-!         ! 4) determines the type of lattice from the number of point symmetries identified in the step above
-!         !       Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition.
-!         !       Cambridge, UK; New York: Cambridge University Press, 2008. p 282, table 10.3
-!         !       p 388, table 10.4
-!         ! 5) of the point symmeties found, identify which ones are compatible with the atoms (position and type)
-!         ! 6) determine basic point symmetry property properties 
-!         ! 7) Sort point symmetries based on det and trace (first point symmetry is identity; last point symmetry is inversion, if present)s
-!         !
-!         implicit none
-!         ! intput/outputs
-!         class(am_class_symmetry), intent(inout) :: ss
-!         type(am_class_unit_cell), intent(in) :: uc
-!         type(am_class_unit_cell) :: prim
-!         type(am_class_symmetry) :: ls ! symmetries compatbile with the lattice (not necessarily atomic basis)
-!         ! generic point group properties
-!         integer, allocatable :: indx(:) ! pairs with mask, see below.
-!         logical, allocatable :: mask(:) ! mask which specifies which lattiec-compatible point symmetries are also compatbile with atomic positions
-!         character(12) :: crystal_system
-!         ! loop variables
-!         integer :: i
-!         ! options
-!         type(am_class_options), intent(in), optional :: iopts
-!         type(am_class_options) :: opts
-!         if (present(iopts)) then 
-!             opts = iopts
-!         else
-!             call opts%defaults
-!         endif
-!         !
-!         ! write opening lines
-!         if ( opts%verbosity .ge. 1 ) write(*,*)
-!         if ( opts%verbosity .ge. 1 ) call am_print_title('Analyzing unit cell symmetry')
-    
-!         !
-!         ! check that bas is not empty
-!         if ( all( abs(uc%bas).lt.tiny) ) then
-!             call am_print('ERROR','Primitive basis is empty! Most likely POSCAR was not loaded.',' >>> ')
-!             call am_print('basis (column vectors)',uc%bas)
-!             stop
-!         endif
-!         !
-!         ! 1) uses atomic positions to identify possible symmetry translations which could serve as primitive lattice vectors
-!         ! 2) selects the shortest of these vectors as the basis for the primitive cell
-!         !
-!         call uc%reduce_to_primitive(prim=prim,iopts=opts)
-!         !
-!         ! 3) determines the point symmetries compatbile with this primitive basis
-!         !
-!         call determine_lattice_point_symmetries(metric=prim%metric,R=ls%R)
-!         ls%nptsym = size(ls%R,3)
-!         if ( opts%verbosity .ge. 1 ) call am_print("point symmetries compatible with the metric tensor",ls%nptsym," ... ")
-!         !
-!         ! 4) determines the type of lattice from the number of point symmetries identified in the step above
-!         ! 
-!         lattice_type : select case (ls%nptsym)
-!         case(2);  crystal_system='triclinic   '
-!         case(4);  crystal_system='monoclinic  '
-!         case(8);  crystal_system='orthorhombic'
-!         case(12); crystal_system='trigonal    '
-!         case(16); crystal_system='tetragonal  '
-!         case(24); crystal_system='hexagonal   '
-!         case(48); crystal_system='cubic       '
-!         end select lattice_type
-!         if ( opts%verbosity .ge. 1 ) call am_print('crystal system',trim(crystal_system)," ... ")
-!         !
-!         ! 5) Of the point symmeties found, identify which ones are compatible with the atoms (position and type)
-!         !
-!         allocate(mask(ls%nptsym))
-!         allocate(indx(ls%nptsym))
-!         mask = .false.
-!         do i = 1,ls%nptsym
-!             if (is_symmetry_valid(iopt_R=ls%R(:,:,i),tau_frac=uc%tau_cart,iopt_atype=uc%atype,iopt_sym_prec=opts%sym_prec)) then
-!                 mask(i) = .true.
-!             endif
-!             indx(i) = i
-!         enddo
-!         ss%nptsym = count(mask)
-!         if ( opts%verbosity .ge. 1 ) call am_print('point symmetries compatbile with atoms',ss%nptsym," ... ")
-!         allocate(ss%R(3,3,ss%nptsym))
-!         ss%R = ls%R(:,:,pack(indx,mask))
-!         !
-!         ! 6) Determine basic point symmetry property properties 
-!         !
-!         call determine_basic_point_symmetry_properties(R=ss%R,det=ss%det,trace=ss%trace,schoenflies=ss%schoenflies)
-!         !
-!         ! 7) Sort point symmetries based on det and trace (first point symmetry is identity; last point symmetry is inversion, if present)
-!         !
-!         call sort_point_symmetries_based_on_determinant_and_trace(R=ss%R,det=ss%det,trace=ss%trace,schoenflies=ss%schoenflies)
-!         !
-!         if ( .not. all(abs(ss%R(:,:,1)-eye(3)).lt.tiny) ) then
-!             call am_print('ERROR','Something is wrong. Identity is not the first point symmetry.')
-!             call am_print('R(:,:,1)',ss%R(:,:,i),'     ')
-!             stop
-!         endif
-!         if ( all(abs(ss%R(:,:,ss%nptsym)+eye(3)).lt.tiny) ) then
-!             ss%is_centrosymmetric = .true.
-!         else
-!             ss%is_centrosymmetric = .false.
-!         endif
-!         !
-!         if ( opts%verbosity .ge. 1 ) call am_print('centrosymmetric?',ss%is_centrosymmetric,' ... ')
-!         if ( opts%verbosity .ge. 1 ) call ss%write_stdout
-!         !
-!     end subroutine determine_symmetry
-!     subroutine reduce_to_primitive(uc,prim,iopts)
-!         ! 
-!         ! 1) uses atomic positions to identify possible symmetry translations which could serve as primitive lattice vectors
-!         ! 2) selects the shortest of these vectors as the basis for the primitive cell
-!         ! 
-!         ! essentially a wrapper for determine_primitive_basis, look below: code is short and self explanatory.
-!         !
-!         class(am_class_unit_cell), intent(in) :: uc
-!         type(am_class_unit_cell), intent(out) :: prim
-!         type(am_class_options), intent(in), optional :: iopts
-!         type(am_class_options) :: opts
-!         if (present(iopts)) then 
-!             opts = iopts
-!         else
-!             call opts%defaults
-!         endif
-!         !
-!         call determine_primitive_basis(&
-!             bas=uc%bas,&
-!             natoms=uc%natoms,&
-!             atype=uc%atype,&
-!             symbs=uc%symbs,&
-!             tau_frac=uc%tau_frac,&
-!             oopt_bas_prim=prim%bas,&
-!             oopt_natoms_prim=prim%natoms,&
-!             oopt_atype_prim=prim%atype,&
-!             oopt_tau_prim_cart=prim%tau_cart,&
-!             oopt_tau_prim_frac=prim%tau_frac,&
-!             natoms_per_species_prim=prim%natoms_per_species,&
-!             symbs_prim=prim%symbs,&
-!             iopt_verbosity=opts%verbosity)
-!         !
-!         call prim%compute_basic_properties(iopts=opts)
-!         !
-!     end subroutine reduce_to_primitive
-!     subroutine expand_to_supercell(uc,nTs,sc,iopts)
-!         !
-!         ! Creates a super cell with dimensions nTs(1),nTs(2),nTs(3) by adding all integer combinations of the vectors  [1...nTs(1),1...nTs(2),1...nTs(3)] to each atomic position. 
-!         ! 
-!         ! essentially a wrapper for determine_supercell, look below: code is short and self explanatory.
-!         !
-!         integer, intent(in) :: nTs(3) ! supercell dimensions
-!         class(am_class_unit_cell), intent(in) :: uc
-!         type(am_class_unit_cell), intent(out) :: sc
-!         type(am_class_options), intent(in), optional :: iopts
-!         type(am_class_options) :: opts
-!         if (present(iopts)) then 
-!             opts = iopts
-!         else
-!             call opts%defaults
-!         endif
-!         !
-!         call determine_supercell(&
-!             nTs=nTs,&
-!             bas=uc%bas,&
-!             natoms=uc%natoms,&
-!             atype=uc%atype,&
-!             tau_frac=uc%tau_frac,&
-!             bas_sc=sc%bas,&
-!             natoms_sc=sc%natoms,&
-!             atype_sc=sc%atype,&
-!             tau_frac_sc=sc%tau_frac,&
-!             iopt_verbosity=opts%verbosity)
-!         !
-!         call sc%compute_basic_properties(iopts=opts)
-!         !
-!     end subroutine expand_to_supercell
-!     subroutine compute_basic_properties(uc,iopts)
-!         !
-!         ! inputs:
-!         ! bas : lattice basis
-!         ! tau_frac : atomic coordinates (fractional)
-!         ! 
-!         ! calculates basic lattice properties
-!         ! reciprocal basis, metric tensor, cell volume, atomic coordinates (cartesian)
-!         !
-!         !
-!         class(am_class_unit_cell), intent(inout) :: uc
-!         type(am_class_options), intent(in), optional :: iopts
-!         type(am_class_options) :: opts
-!         if (present(iopts)) then 
-!             opts = iopts
-!         else
-!             call opts%defaults
-!         endif
-!         !
-!         call determine_basic_lattice_properties(&
-!             bas=uc%bas,&
-!             tau_frac=uc%tau_frac,&
-!             recbas=uc%recbas,&
-!             metric=uc%metric,&
-!             vol=uc%vol,&
-!             tau_cart=uc%tau_cart,&
-!             iopt_nspecies=uc%nspecies,&
-!             iopt_natoms_per_species=uc%natoms_per_species,&
-!             iopt_atype=uc%atype,&
-!             iopt_symbs=uc%symbs,&
-!             iopt_verbosity=opts%verbosity)
-!         !
-!     end subroutine compute_basic_properties
-! 
-!     subroutine write_stdout(ss)
-!         !
-!         implicit none
-!         !
-!         class(am_class_symmetry), intent(in) ::  ss
-!         integer :: i
-!         !
-!         write(*,'(a5,a)') ' ... ','point symmetry properties'
-!         write(*,'(5x,a3,a5,a6,a6)') '#', 'sch.', 'det', 'trace'
-!         do i = 1, ss%nptsym
-!             write(*,'(5x,i3,a5,f6.2,f6.2)') i, trim(ss%schoenflies(i)), ss%det(i), ss%trace(i)
-!         enddo
-!         !
-!     end subroutine write_stdout
-
-    !
-    ! internal
-    !
-
-
-    ! GOAL : WRITE A FUCTION HERE WHICH OUTPUTS R AND T SPACE GROUPS. US IT IN AM_SYMMETRY MODULE.
-    ! GOAL : WRITE A FUCTION HERE WHICH OUTPUTS R AND T SPACE GROUPS. US IT IN AM_SYMMETRY MODULE.
-    ! GOAL : WRITE A FUCTION HERE WHICH OUTPUTS R AND T SPACE GROUPS. US IT IN AM_SYMMETRY MODULE.
+    end function  metric_from_basis
 
     pure function determine_lattice_point_symmetries(bas) result(R)
         !>
@@ -427,7 +176,7 @@
         !
         recbas = reciprocal_basis(bas)
         !
-        metric = real_space_metric(bas)
+        metric = metric_from_basis(bas)
         !
         buffer = 0.0_dp
         !
@@ -470,233 +219,22 @@
         !
     end function  determine_lattice_point_symmetries
 
+    !
+    ! functions which operate on atomic basis
+    !
 
-    subroutine determine_basic_point_symmetry_properties(R,det,trace,schoenflies)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: R(:,:,:)  !> point symmetries (fractional)
-        real(dp), allocatable, intent(out) :: det(:)    !> point symmetry determinants
-        real(dp), allocatable, intent(out) :: trace(:)  !> point symmetry traces
-        character(4), allocatable, intent(out) :: schoenflies(:)
-        integer :: nptsym
-        integer :: ierror
-        !
-        integer :: i
-        !
-        nptsym = size(R,3)
-        !
-        allocate(det(nptsym))
-        allocate(trace(nptsym))
-        allocate(schoenflies(nptsym))
-        !
-        ! determine fold, trace, and determinant of point symmetries
-        det=0.0_dp
-        trace=0.0_dp
-        do i = 1, nptsym
-            ! determine point symmetry trace
-            trace(i) = R(1,1,i)+R(2,2,i)+R(3,3,i)
-            ! determine point symmetry determinant
-            det(i) = -R(1,3,i)*R(2,2,i)*R(3,1,i)+R(1,2,i)*R(2,3,i)*R(3,1,i) &
-                   & +R(1,3,i)*R(2,1,i)*R(3,2,i)-R(1,1,i)*R(2,3,i)*R(3,2,i) &
-                   & -R(1,2,i)*R(2,1,i)*R(3,3,i)+R(1,1,i)*R(2,2,i)*R(3,3,i)
-            ! determine schoenflies notation
-            call identify_point_symmetry( trace(i),det(i),schoenflies(i),ierror )
-            if ( ierror .ne. 0 ) then
-                write(*,'(a5,a)') ' >>> ', 'ERROR: unable to indetify point symmetry'
-                call am_print('index',i)
-                call am_print('trace',trace(i))
-                call am_print('determinant',det(i))
-                stop
-            endif
-        enddo
-        !
-    end subroutine determine_basic_point_symmetry_properties
-
-    subroutine determine_basic_lattice_properties(bas,tau_frac,recbas,metric,vol,tau_cart,iopt_nspecies,iopt_natoms_per_species,iopt_atype,iopt_symbs,iopt_verbosity)
+    pure function translations_from_basis(bas,tau,atype,iopt_include,iopt_sym_prec) result(T)
         !
         implicit none
         ! subroutine i/o
-        real(dp), intent(in) :: bas(3,3) ! column vectors a(1:3,i), a(1:3,j), a(1:3,k)
-        real(dp), allocatable, intent(in) :: tau_frac(:,:) ! atomic coordinates tau(3,natoms) in fractional
-        real(dp), intent(out) :: recbas(3,3)
-        real(dp), intent(out) :: metric(3,3)
-        real(dp), intent(out) :: vol
-        real(dp), allocatable, intent(out) :: tau_cart(:,:) ! atomic coordinates tau(3,natoms) in cartesian
-        ! subroutine internal parameters
-        integer :: natoms
-        ! loop variables
-        integer :: i, j, m
-        ! optional i/o, just to display on stdout nicely (doesn't make sense to set these if verbosity isn't .ge. 1):
-        integer , intent(in), optional :: iopt_nspecies
-        integer , intent(in), optional :: iopt_natoms_per_species(:)
-        integer , intent(in), optional :: iopt_atype(:)
-        character, intent(in), optional :: iopt_symbs(:)
-        ! optional i/o
-        integer, intent(in), optional :: iopt_verbosity
-        integer :: verbosity
-        if ( present(iopt_verbosity) ) then
-            verbosity = iopt_verbosity
-        else
-            verbosity = 1
-        endif
-        !
-        if (verbosity .ge. 1) call am_print_title('Determining basic lattice properties')
-        ! get cell volume
-        vol=abs(bas(1,1)*(bas(2,2)*bas(3,3)-bas(3,2)*bas(2,3)) &
-               +bas(2,1)*(bas(3,2)*bas(1,3)-bas(1,2)*bas(3,3)) &
-               +bas(3,1)*(bas(1,2)*bas(2,3)-bas(1,3)*bas(2,2)))
-        if ( verbosity .ge. 1 ) call am_print( "volume", vol, " ... " )
-        ! check that unit cell volume is non-zero
-        if ( abs(vol) .lt. tiny ) then
-            call am_print("ERROR","Basis vectors are not coplanar!"," >>> ")
-            stop
-        endif
-        if ( verbosity .ge. 1 ) call am_print( "basis (column vectors)", bas, " ... " )
-        ! get reciprocal basis as column vectors b
-        recbas(1,1)=bas(2,2)*bas(3,3)-bas(3,2)*bas(2,3)
-        recbas(1,2)=bas(3,2)*bas(1,3)-bas(1,2)*bas(3,3)
-        recbas(1,3)=bas(1,2)*bas(2,3)-bas(1,3)*bas(2,2)
-        recbas(2,1)=bas(2,3)*bas(3,1)-bas(2,1)*bas(3,3)
-        recbas(2,2)=bas(1,1)*bas(3,3)-bas(3,1)*bas(1,3)
-        recbas(2,3)=bas(2,1)*bas(1,3)-bas(1,1)*bas(2,3)
-        recbas(3,1)=bas(2,1)*bas(3,2)-bas(2,2)*bas(3,1)
-        recbas(3,2)=bas(3,1)*bas(1,2)-bas(1,1)*bas(3,2)
-        recbas(3,3)=bas(1,1)*bas(2,2)-bas(1,2)*bas(2,1)
-        recbas = recbas/vol
-        ! write reciprocal basis
-        if ( verbosity .ge. 1 ) call am_print( "rec. basis (column vectors)", recbas, " ... " )
-        ! get metrix tensor
-        metric = matmul(transpose(bas),bas)
-        if ( verbosity .ge. 1 ) call am_print( "metric tensor", metric, " ... " )
-        ! convert fractional to cartesian atomic positions
-        natoms = size(tau_frac,2)
-        allocate(tau_cart(3,natoms))
-        do i = 1, natoms
-            tau_cart(1:3,i) = matmul( bas ,tau_frac(1:3,i) )
-        enddo
-        !
-        if ( verbosity .ge. 1 ) then
-            if ( present(iopt_atype) .and. present(iopt_symbs) .and. present(iopt_natoms_per_species) .and. present(iopt_nspecies) ) then
-                !
-                write(*,'(" ... ",a)') "atomic positions (fractional)"
-                m = 0
-                do i = 1, iopt_nspecies
-                    do j = 1, iopt_natoms_per_species(i)
-                        m = m + 1
-                        write(*,'(5x,a5,a3,3f13.8)') int2char(m), iopt_symbs(iopt_atype(m)), tau_frac(1:3,m)
-                    enddo
-                enddo
-                !
-                write(*,'(" ... ",a)') "atomic positions (cartesian)"
-                m = 0
-                do i = 1, iopt_nspecies
-                    do j = 1, iopt_natoms_per_species(i)
-                        m = m + 1
-                        write(*,'(5x,a5,a3,3f13.8)') int2char(m), iopt_symbs(iopt_atype(m)), tau_cart(1:3,m)
-                    enddo
-                enddo
-            else
-                write(*,'(" ... ",a)') "atomic positions (fractional)"
-                m = 0
-                do i = 1, natoms
-                    write(*,'(5x,a5,3f13.8)') int2char(i), tau_frac(1:3,i)
-                enddo
-                write(*,'(" ... ",a)') "atomic positions (cartesian)"
-                m = 0
-                do i = 1, natoms
-                    write(*,'(5x,a5,3f13.8)') int2char(i), tau_cart(1:3,i)
-                enddo
-            endif
-        endif
-        !
-    end subroutine determine_basic_lattice_properties
-
-    subroutine determine_supercell(nTs,bas,natoms,atype,tau_frac,bas_sc,natoms_sc,atype_sc,tau_frac_sc,iopt_verbosity)
-        !
-        ! expands fractional atomic coordinates onto an nTs(1) x nTs(2) x nTs(3) supercell
-        ! also maps the type of atom from atype (in the primitive cell) to atype_sc (in the supercell).
-        !
-        implicit none
-        !
-        integer,intent(in) :: nTs(3) ! supercell dimensions
-        real(dp), intent(in) :: bas(3,3) !> primitive basis vectors
-        integer,intent(in) :: atype(:) !> list identify type of atom
-        real(dp), intent(in) :: tau_frac(:,:) !> atomic coordinates tau_frac(1:3,natoms)
-        real(dp), intent(out) :: bas_sc(3,3) !> supercell basis vectors
-        real(dp), allocatable, intent(out) :: tau_frac_sc(:,:) !> atomic coordinates tau_frac_sc(1:3,natoms) in the supercell
-        integer,allocatable, intent(out) :: atype_sc(:) !> list identify type of atom in the supercell
-        integer, intent(in) :: natoms
-        integer, intent(out) :: natoms_sc
-        integer :: i1,i2,i3
-        integer :: i, j, m
-        !
-        integer, intent(in), optional :: iopt_verbosity
-        integer :: verbosity
-        if ( present(iopt_verbosity) ) then
-            verbosity = iopt_verbosity
-        else
-            verbosity = 1
-        endif
-        !
-        !
-        if (verbosity .ge. 1) write(*,*)
-        if (verbosity .ge. 1) write(*,'(a)') 'Constructing supercell'
-        !
-        if ( size(tau_frac,2) .ne. natoms ) then
-            call am_print('ERROR','size(tau_frac,2) .ne. natoms',' >>> ')
-            stop
-        endif
-        !
-        if (verbosity .ge. 1) call am_print('dimensions',nTs,' ... ')
-        !
-        bas_sc = matmul(bas,1.0_dp*reshape([nTs(1),0,0,0,nTs(2),0,0,0,nTs(3)],[3,3]))
-        !
-        if (verbosity .ge. 1)call am_print('supercell basis',bas_sc,' ... ')
-        !
-        natoms_sc = nTs(1)*nTs(2)*nTs(3)*natoms
-        allocate(tau_frac_sc(3,natoms_sc))
-        allocate(atype_sc(natoms_sc))
-        !
-        if (verbosity .ge. 1)call am_print('number of atoms in supercell',natoms_sc,' ... ')
-        !
-        tau_frac_sc = 0.0_dp
-        m=0
-        do i1 = 1, nTs(1)
-            do i2 = 1, nTs(2)
-                do i3 = 1, nTs(3)
-                    do j = 1,natoms
-                        m=m+1
-                        tau_frac_sc(1:3,m) = ( tau_frac(1:3,j) + ([i1,i2,i3]-1)*1.0_dp ) / ( nTs(1:3) *1.0_dp )
-                        atype_sc(m) = atype(j)
-                    enddo
-                enddo
-            enddo
-        enddo
-        !
-        if (verbosity .ge. 1) then
-            write(*,'(" ... ",a)') "supercell atomic positions (fractional)"
-            do i = 1,natoms_sc
-                write(*,'(5x,a5,3f13.8)') int2char(i), tau_frac_sc(1:3,i)
-            enddo
-            write(*,'(" ... ",a)') "supercell atomic positions (cartesian)"
-            do i = 1,natoms_sc
-                write(*,'(5x,a5,3f13.8)') int2char(i), matmul(bas_sc,tau_frac_sc(1:3,i))
-            enddo
-        endif
-    end subroutine determine_supercell
-
-    pure function determine_translations_from_atomic_basis(atype,tau_frac,iopt_sym_prec,iopt_verbosity) result(T_frac)
-        !
-        implicit none
-        ! subroutine i/o
-        integer , intent(in)  :: atype(:) !> list identify type of atom
-        real(dp), intent(in)  :: tau_frac(:,:) ! atomic coordinates tau_frac(1:3,natoms)
-        real(dp), allocatable :: T_frac(:,:)
+        integer , intent(in)  :: atype(:) !> atype(natoms) list identifing type of atom
+        real(dp), intent(in)  :: tau(:,:) !> tau(3,natoms) cartesian atomic coordinates
+        character(len=8), intent(in) :: iopt_include !> iopt_include can be 'primzero', 'prim', 'zero'; if present it adds [0,0,0] and the primitive basis to the T vectors returned. 
+        real(dp), allocatable :: T(:,:)   !> T(3,nTs) translation which leaves basis invariant
         ! internal
-        integer  :: natoms ! number of atoms
-        integer  :: nTs ! number of primitive lattice vector candidates
-        real(dp) :: tau_ref_frac(3) ! fractional coordinates of reference atom
+        integer  :: natoms ! natoms number of atoms
+        integer  :: nTs ! nTs number of primitive lattice vector candidates
+        real(dp) :: tau_ref(3) ! tau_ref(3) cartesian coordinates of reference atom
         real(dp), allocatable :: wrk(:,:) ! wrk(1:3,nTs) list of possible lattice vectors that are symmetry-compatible volume
         real(dp) :: wrkr(3)
         ! loop variables
@@ -704,36 +242,29 @@
         ! optionals
         real(dp), intent(in), optional :: iopt_sym_prec
         real(dp) :: sym_prec
-        integer, intent(in), optional :: iopt_verbosity
-        integer :: verbosity
-        if ( present(iopt_verbosity) ) then
-            verbosity = iopt_verbosity
-        else
-            verbosity = 1
-        endif
-        !
         if ( present(iopt_sym_prec) ) then
             sym_prec = iopt_sym_prec
         else
             sym_prec = tiny
         endif
         !
-        ! get number of atoms
-        natoms = size(tau_frac,2)
-        ! setup workspace
-        allocate(wrk(3,natoms-1+3))
+        !
+        !
+        natoms = size(tau,2)
+        allocate(wrk(3,natoms-1+3)) 
         wrk = 0.0_dp
         ! choose one atom (ideally choose an atom corresponding to the species with the fewest number of atoms in unit cell)
         i = 1
-        tau_ref_frac(1:3) =  tau_frac(1:3,i)
+        tau_ref(1:3) =  tau(1:3,i)
         ! search for lattice vectors using, as translational components, vectors connecting the choosen atom to other atoms of the same species
         nTs = 0
         do j = 1,natoms
             if ( i .ne. j) then
             if ( atype(i) .eq. atype(j) ) then
                 ! shift to put reference atom at zero.
-                wrkr(1:3) = tau_frac(1:3,j) - tau_ref_frac
-                if ( is_symmetry_valid(iopt_T=wrkr,iopt_atype=atype, tau_frac=tau_frac, iopt_sym_prec=sym_prec) ) then
+                wrkr(1:3) = tau(1:3,j) - tau_ref
+                !
+                if ( is_symmetry_valid(iopt_T=wrkr, iopt_atype=atype, tau=tau, iopt_sym_prec=sym_prec) ) then
                     ! lattice vector found
                     nTs = nTs + 1
                     wrk(1:3,nTs) = wrkr
@@ -741,34 +272,101 @@
             endif
             endif
         enddo
-        ! add the original lattice vectors
-        nTs = nTs+1
-        wrk(1:3,nTs) = real([1,0,0],dp)
-        nTs = nTs+1
-        wrk(1:3,nTs) = real([0,1,0],dp)
-        nTs = nTs+1
-        wrk(1:3,nTs) = real([0,0,1],dp)
+        if (present(iopt_include)) then
+            if (index(iopt_include,'prim').ne.0) then
+                ! add native basis to vectors
+                nTs = nTs+1; wrk(1:3,nTs) = bas(:,1)
+                nTs = nTs+1; wrk(1:3,nTs) = bas(:,2)
+                nTs = nTs+1; wrk(1:3,nTs) = bas(:,3)
+            endif
+            if (index(iopt_include,'zero').ne.0) then
+                ! add origin as a possibletranslation
+                nTs = nTs+1; wrk(1:3,nTs) = real([0,0,0],dp)
+            endif
+        endif
         ! allocate output
-        allocate(T_frac(3,nTs))
-        T_frac(1:3,1:nTs) = wrk(1:3,1:nTs)
-    end function determine_translations_from_atomic_basis
+        allocate(T(3,nTs))
+        T = wrk(1:3,1:nTs)
+    end function  translations_from_basis
 
+    pure function is_symmetry_valid(bas,tau,atype,iopt_R,iopt_T,iopt_sym_prec)
+        !
+        ! check whether symmetry operation is valid
+        !
+        implicit none
+        ! function i/o
+        real(dp), intent(in)           :: tau(:,:) !> tau_frac(3,natoms) cartesian atomic basis
+        integer , intent(in), optional :: atype(:) !> atype(natoms) list identify type of atom
+        real(dp), intent(in), optional :: iopt_R(3,3)
+        real(dp), intent(in), optional :: iopt_T(3)
+        real(dp), intent(in), optional :: iopt_sym_prec
+        !
+        real(dp) :: recbas(3,3)
+        real(dp), allocatable :: tau_frac(:,:) !> tau_frac_frac(3,natoms) fractional atomic basis
+        real(dp) :: R(3,3)
+        real(dp) :: T(3)
+        real(dp) :: sym_prec
+        real(dp) :: tau_frac_rot(3) ! rotated 
+        logical :: is_symmetry_valid
+        integer :: natoms
+        integer :: i, j, m
+        logical :: overlap_found
+        !
+        natoms = size(tau_frac,2)
+        !
+        if ( present(iopt_sym_prec) ) then
+            sym_prec = iopt_sym_prec
+        else
+            sym_prec = tiny
+        endif
+        !
+        if ( present(iopt_R) ) then
+            R = iopt_R
+        else
+            R(1:3,1) = real([1,0,0],dp)
+            R(1:3,2) = real([0,1,0],dp)
+            R(1:3,3) = real([0,0,1],dp)
+        endif
+        !
+        if ( present(iopt_T) ) then
+            T = iopt_T
+        else
+            T = real([0,0,0],dp)
+        endif
+        !
+        ! convert to fractional coordinates (easier to apply modulo)
+        allocate(tau_frac(3,natoms))
+        recbas = reciprocal_basis(bas)
+        tau_frac = matmul(recbas,tau)
+        !
+        m = 0
+        do i = 1, natoms
+            ! apply symmetry operation
+            tau_frac_rot(1:3) = matmul(R,tau_frac(1:3,i)) + T(1:3)
+            ! reduce rotated+translated point to unit cell
+            tau_frac_rot(1:3) = modulo(tau_frac_rot(1:3)+sym_prec,1.0_dp)-sym_prec
+            ! check that newly created point matches something already present
+            overlap_found = .false.
+            check_overlap : do j = 1,natoms
+                if (atype(i) .eq. atype(j)) then
+                    if ( all(abs(tau_frac_rot(1:3)-tau_frac(1:3,j)).lt.sym_prec) ) then
+                        m = m + 1
+                        overlap_found = .true.
+                        exit check_overlap
+                    endif
+                endif
+            enddo check_overlap
+            if ( .not. overlap_found ) then
+                is_symmetry_valid = .false.
+                return
+            endif
+        enddo
+        if (m .eq. natoms) then
+            is_symmetry_valid = .true.
+        endif
+    end function  is_symmetry_valid
 
-
-
-
-
-    subroutine determine_primitive_basis(bas,natoms,atype,tau_frac, &
-        symbs,&
-        oopt_bas_prim, &
-        oopt_natoms_prim, &
-        oopt_tau_prim_frac, &
-        oopt_tau_prim_cart, &
-        oopt_atype_prim, &
-        symbs_prim,&
-        natoms_per_species_prim, &
-        iopt_sym_prec, &
-        iopt_verbosity)
+    pure function space_symmetries_from_basis(bas,tau,atype,seitz,iopt_sym_prec,iopt_verbosity) result(seitz)
         !
         !The program first finds the primitive unit cell by looking for
         !additional lattice vectors within the unit cell given in the input.
@@ -790,40 +388,25 @@
         implicit none
         ! subroutine i/o
         real(dp), intent(in) :: bas(3,3) !> basis
-        integer , intent(in) :: natoms
         integer , intent(in) :: atype(:) !> list identify type of atom
         real(dp), intent(in) :: tau_frac(:,:) ! atomic coordinates tau_frac(1:3,natoms)
-        character(*), intent(in) :: symbs(*)
-        character(:), intent(out), allocatable :: symbs_prim(:)
-        real(dp), intent(out), optional :: oopt_bas_prim(3,3) !> basis of primitive cell
-        integer , intent(out), optional :: oopt_natoms_prim
-        real(dp), intent(out), optional, allocatable :: oopt_tau_prim_frac(:,:)
-        real(dp), intent(out), optional, allocatable :: oopt_tau_prim_cart(:,:)
-        integer , intent(out), optional, allocatable :: oopt_atype_prim(:)
-        integer , allocatable, intent(out) :: natoms_per_species_prim(:)
-        ! internal
-        real(dp) :: bas_prim(3,3) !> basis of primitive cell
-        integer  :: natoms_prim
-        real(dp) :: tau_ref_frac(3) ! fractional coordinates of reference atom
-        real(dp), allocatable :: tau_cart(:,:)
-        real(dp), allocatable :: tau_prim_frac(:,:)
-        real(dp), allocatable :: tau_prim_cart(:,:)
-        integer , allocatable :: atype_prim(:)
-        real(dp), allocatable :: T_frac(:,:) ! rlist(1:3,nTs) list of possible lattice vectors that are symmetry-compatible volume
-        real(dp), allocatable :: T_norm(:) ! magnitude of possible lattice vectors
-        integer , allocatable :: indices(:) ! used to sort based on magnitude
-        real(dp) :: bpscf(3,3) ! primitive basis (fractional, in terms of the supercell basis)
-        real(dp) :: bscpf(3,3) ! supercell basis (fractional, in terms of the primitive basis)
-        real(dp) :: wrkbas(3,3)! workspace for determining lattice vectors corresponding to the smallest primitive cell volume
-        real(dp) :: wrkvol     ! workspace for determining lattice vectors corresponding to the smallest primitive cell volume
-        integer :: nTs ! number of primitive lattice vector candidates
-        real(dp) :: vol ! volume of primitive cell
-        integer :: i, j, k ! loop variables
-        ! optionals
+        real(dp), intent(out), allocatable :: seitz(:,:,:)
+        !
+        integer :: natoms
+        integer :: nTs
+        integer :: nRs
+        real(dp), allocatable :: T(:,:)
+        real(dp), allocatable :: R(:,:,:)
+        real(dp), allocatable :: wrkspace(:,:,:)
+        integer :: i, j, m
+        !
         real(dp), intent(in), optional :: iopt_sym_prec
         real(dp) :: sym_prec
         integer, intent(in), optional :: iopt_verbosity
         integer :: verbosity
+        !
+        natoms = size(tau,2)
+        !
         if ( present(iopt_verbosity) ) then
             verbosity = iopt_verbosity
         else
@@ -835,244 +418,239 @@
             sym_prec = tiny
         endif
         !
-        if ( natoms .ne. size(tau_frac,2) ) then
-            call am_print('ERROR','natoms .ne. size(tau_frac,2)',' >>> ')
+        !
+        !
+        R = determine_lattice_point_symmetries(bas)
+        nRs = size(R,3)
+        !
+        T = translations_from_basis(bas=bas,tau=tau,atype=atype,iopt_sym_prec=sym_prec,iopt_include='zero')
+        nTs = size(T,2)
+        !
+        allocate(wrkspace(4,4,nTs*nRs))
+        wrkspace = 0.0_dp
+        m=0
+        do i = 1, nRs
+        do j = 1, nRs
+            if ( is_symmetry_valid(bas=bas,tau=tau,atype=atype,&
+                & iopt_R=R(1:3,1:3,i),iopt_T=T(1:3,j),iopt_sym_prec=sym_prec)) then
+                m = m + 1
+                wrkspace(1:3,1:3,m)=R(1:3,1:3,i)
+                wrkspace(1:3,4,m)=T(1:3,j)
+                wrkspace(4,4,m)=1.0_dp
+            endif
+        enddo
+        enddo
+        !
+        allocate(seitz(4,4,m))
+        seitz = wrkspace(1:4,1:4,1:m)
+        !
+    end function  space_symmetries_from_basis
+
+    !
+    ! functions which operate on uc or similar derived types
+    !
+
+    subroutine     load_poscar(uc,iopt_filename,iopts)
+        ! 
+        ! Reads the poscar file, look below: code is short and self explanatory.
+        !
+        use am_vasp_io
+        !
+        implicit none
+        !
+        class(am_class_unit_cell), intent(inout) :: uc
+        ! optional i/o
+        character(len=*), intent(in), optional :: iopt_filename
+        character(1000) :: filename
+        type(am_class_options), intent(in), optional :: iopts
+        type(am_class_options) :: opts
+        if (present(iopts)) then 
+            opts = iopts
+        else
+            call opts%defaults
+        endif
+        filename = "POSCAR"; if ( present(iopt_filename) ) filename = trim(iopt_filename)
+        !
+        call read_poscar(&
+            bas=uc%bas,&
+            natoms=uc%natoms,&
+            nspecies=uc%nspecies,&
+            symbs=uc%symbs,&
+            tau=uc%tau,&
+            atype=uc%atype,&
+            iopt_filename=filename,&
+            iopt_verbosity=opts%verbosity)
+        !
+    end subroutine load_poscar
+
+    subroutine     reduce_to_primtive(prim,uc,iopts)
+        !
+        implicit none
+        !
+        class(am_class_unit_cell), intent(inout) :: prim
+        type(am_class_unit_cell), intent(in) :: uc
+        type(am_class_options), intent(in), optional :: iopts
+        type(am_class_options) :: opts
+        !
+        integer , allocatable :: indices(:)
+        real(dp), allocatable :: T(:,:)
+        integer :: nTs
+        real(dp), allocatable :: tau_prim_frac(:,:)
+        real(dp) :: tau_ref(3)
+        integer :: i, j, k 
+        !
+        if (present(iopts)) then 
+            opts = iopts
+        else
+            call opts%defaults
+        endif
+        !
+        if ( opts%verbosity .ge. 1) call am_print_title('Reducing to primitive cell')
+        !
+        !
+        ! 1) get basis translations which could serve as primitive cell vectors
+        !
+        T = translations_from_basis(bas=uc%bas,tau=uc%tau,atype=uc%atype,iopt_include='prim',iopt_opts%sym_prec=opts%sym_prec)
+        nTs = size(T,2)
+        if (opts%verbosity .ge. 1) call am_print("possible primitive lattice translations found",nTs," ... ")
+        ! 2) sort them based on magnitude (smallest last)
+        allocate(indices(nTs))
+        call rank(norm2(T,1),indices)
+        T=T(1:3, indices(nTs:1:-1) )
+        if (opts%verbosity .ge. 1) call am_print("possible primitive lattice vectors (cart)",transpose(T)," ... ")
+        if (opts%verbosity .ge. 1) call am_print("possible primitive lattice vectors (frac)",transpose(matmul(reciprocal_basis(uc%bas),T))," ... ")
+        ! 3) select three primitive vectors which yield the smallest cell volume
+        ! a) first vector: smallest vector
+        i = nTs
+        ! b) second vector: smallest pritimive vector which is noncollinear to the first (non-zero cross product)
+        do j = nTs,1,-1
+            if ( any(cross_product(T(1:3,i),T(1:3,j)) .gt. tiny) ) exit
+        enddo
+        if (any([i,j].eq.0)) then
+            call am_print('ERROR','No pair of non-collinear lattice vectors found',' >>> ')
+            stop
+        endif
+        ! c) third vector: smallest primitive vector which produces a non-zero cell volume
+        do k = nTs,1,-1
+            if ( abs(primitive_volume(bas=T(1:3,[i,j,k]),iopt_do_not_check_volume=.true.)) .gt. tiny ) exit
+        enddo
+        if (any([i,j,k].eq.0)) then
+            call am_print('ERROR','No primitive basis found',' >>> ')
             stop
         endif
         !
+        prim%bas = T(1:3,[i,j,k]
+        if (opts%verbosity .ge. 1) call am_print("volume",primitive_volume(prim%bas)," ... ")
+        if (opts%verbosity .ge. 1) call am_print("primitive basis (cart)",bas_prim," ... ")
+        if (opts%verbosity .ge. 1) call am_print("primitive basis (frac, in terms of original basis)",matmul(reciprocal_basis(uc%bas),prim%bas)," ... ")
+        if (opts%verbosity .ge. 1) call am_print("supercell basis (frac, in terms of primitive basis)",matmul(reciprocal_basis(prim%bas),uc%bas)," ... ")
         !
+        ! 4) reduce atoms to primitive cell
         !
-        T_frac = determine_translations_from_atomic_basis(atype,tau_frac,iopt_sym_prec,iopt_verbosity)
-        nTs = size(T_frac,2)
-        ! get norm of each translation
-        allocate(T_norm(nTs))
-        allocate(indices(nTs))
-        T_norm(1:nTs) = norm2(T_frac,1)
-        ! sort based on magnitude (smallest last)
-        call rank(T_norm,indices)
-        indices = indices(nTs:1:-1)
-        T_frac = T_frac(:,indices)
-        ! writ to stdout
-        if (verbosity .ge. 1) call am_print("possible primitive lattice translations found",nTs," ... ")
-        if (verbosity .ge. 1) call am_print("possible primitive lattice vectors (fractional; column vectors, tranposed for clarity)",transpose(T_frac)," ... ")
-        if (verbosity .ge. 1) call am_print("possible primitive lattice vectors (cartesian; column vectors, tranposed for clarity)",transpose(matmul(bas,T_frac))," ... ")
-        !
-        !
-        ! select as primitive basis the lattice vectors with the smallest vector magnitude (i.e. the last three vectors from the sort above)
-        !
-        ! Notice that this procedure, for Si, rather than giving the standard fcc basis:
-        !	0.50000        0.50000        0.00000
-        !	0.50000        0.00000        0.50000
-        !	0.00000        0.50000        0.50000
-        ! produces this instead, which is the vectors with the smallest magnitude and the smallest cell volume.
-        !	0.00000        0.00000        0.50000
-        !	0.00000        0.50000        0.00000
-        !   0.50000        0.00000        0.00000
-        !
-        if ( present(oopt_bas_prim) .or. present(oopt_tau_prim_frac) .or. present(oopt_natoms_prim) .or. present(oopt_atype_prim) ) then
-            vol = 10000.0_dp
-            ! set first lattice vector as the last vector candidate
-            i = nTs
-            ! loop until a second non-collinear lattice vector is found (non-zero cross product)
-            do j = nTs,1,-1
-                if ( any(cross_product(T_frac(1:3,i),T_frac(1:3,j)) .gt. tiny) ) exit
-            enddo
-            if (any([i,j].eq.0)) then
-                call am_print('ERROR','No pair of non-collinear lattice vectors found',' >>> ')
-                stop
-            endif
-            ! loop until third lattice vector is found which yields a non-zero cell volume
-            do k = nTs,1,-1
-                wrkbas = T_frac(1:3,[i,j,k])
-                wrkvol = abs(wrkbas(1,1)*(wrkbas(2,2)*wrkbas(3,3)-wrkbas(3,2)*wrkbas(2,3)) &
-                            +wrkbas(2,1)*(wrkbas(3,2)*wrkbas(1,3)-wrkbas(1,2)*wrkbas(3,3)) &
-                            +wrkbas(3,1)*(wrkbas(1,2)*wrkbas(2,3)-wrkbas(1,3)*wrkbas(2,2)))
-                if ( wrkvol .gt. tiny ) exit
-            enddo
-            if (any([i,j,k].eq.0)) then
-                call am_print('ERROR','No primitive basis found',' >>> ')
-                stop
-            endif
-            ! remember bpscf, primitive basis (fractional, in terms of the supercell basis)
-            bpscf = T_frac(1:3,[i,j,k])
-            !
-            if (verbosity .ge. 1) call am_print("primitive basis (fractional, in terms of supercell basis)",bpscf," ... ")
-            ! get the inverse of bpscf, corresponding to the supercell basis (fractional, in terms of the primitive basis)
-            bscpf(1,1)=bpscf(2,2)*bpscf(3,3)-bpscf(3,2)*bpscf(2,3)
-            bscpf(1,2)=bpscf(3,2)*bpscf(1,3)-bpscf(1,2)*bpscf(3,3)
-            bscpf(1,3)=bpscf(1,2)*bpscf(2,3)-bpscf(1,3)*bpscf(2,2)
-            bscpf(2,1)=bpscf(2,3)*bpscf(3,1)-bpscf(2,1)*bpscf(3,3)
-            bscpf(2,2)=bpscf(1,1)*bpscf(3,3)-bpscf(3,1)*bpscf(1,3)
-            bscpf(2,3)=bpscf(2,1)*bpscf(1,3)-bpscf(1,1)*bpscf(2,3)
-            bscpf(3,1)=bpscf(2,1)*bpscf(3,2)-bpscf(2,2)*bpscf(3,1)
-            bscpf(3,2)=bpscf(3,1)*bpscf(1,2)-bpscf(1,1)*bpscf(3,2)
-            bscpf(3,3)=bpscf(1,1)*bpscf(2,2)-bpscf(1,2)*bpscf(2,1)
-            bscpf = bscpf/(bpscf(1,1)*(bpscf(2,2)*bpscf(3,3)-bpscf(3,2)*bpscf(2,3)) &
-                          +bpscf(2,1)*(bpscf(3,2)*bpscf(1,3)-bpscf(1,2)*bpscf(3,3)) &
-                          +bpscf(3,1)*(bpscf(1,2)*bpscf(2,3)-bpscf(1,3)*bpscf(2,2)))
-            if (verbosity .ge. 1) call am_print("supercell basis (fractional, in terms of primitive basis)",bscpf," ... ")
-            ! compute the primitive basis for the primitive cell
-            bas_prim = matmul(bas,bpscf)
-            if (verbosity .ge. 1) call am_print("primitive basis (cartesian)",bas_prim," ... ")
-            ! get primitive cell volume 
-            vol = abs(bas_prim(1,1)*(bas_prim(2,2)*bas_prim(3,3)-bas_prim(3,2)*bas_prim(2,3)) &
-                     +bas_prim(2,1)*(bas_prim(3,2)*bas_prim(1,3)-bas_prim(1,2)*bas_prim(3,3)) &
-                     +bas_prim(3,1)*(bas_prim(1,2)*bas_prim(2,3)-bas_prim(1,3)*bas_prim(2,2)))
-            if (verbosity .ge. 1) call am_print("primitive cell volume",vol," ... ")
-            ! write to stdout
-            if (present(oopt_bas_prim)) oopt_bas_prim = bas_prim
-        endif
-        ! 
-        ! get atoms which are within the boundaries of bas_prim
-        !
-        if (present(oopt_tau_prim_frac) .or. present(oopt_natoms_prim) .or. present(oopt_tau_prim_cart) .or. present(oopt_atype_prim) ) then
-            allocate(tau_prim_frac(3,natoms))
-            do i = 1,natoms
-                ! shift all atomic position based on reference atom tau_ref_frac
-                tau_prim_frac(1:3,i) = tau_frac(1:3,i) - tau_ref_frac
-                ! convert to primitive fractional coordinates
-                tau_prim_frac(1:3,i) = matmul(bscpf,tau_prim_frac(1:3,i))
-            enddo
-            if (verbosity .ge. 1) call am_print('number of atoms in supercell',natoms,' ... ')
-            if (verbosity .ge. 1) call am_print('atomic coordinates in supercell (fractional, in terms of primitive basis)',transpose(tau_prim_frac),' ... ')
-            ! reduce to primitive cell
-            do i = 1,natoms
-                tau_prim_frac(1:3,i) = modulo(tau_prim_frac(1:3,i)+sym_prec,1.0_dp)-sym_prec
-            enddo
-            tau_prim_frac=unique(tau_prim_frac,sym_prec)
-            natoms_prim = size(tau_prim_frac,2)
-            !
-            if (verbosity .ge. 1) call am_print('number of atoms in primitive cell',natoms_prim,' ... ')
-            if (present(oopt_natoms_prim))   oopt_natoms_prim   = natoms_prim
-            if (present(oopt_tau_prim_frac)) then
-                oopt_tau_prim_frac = tau_prim_frac
-                if (verbosity .ge. 1) call am_print('positions of atoms in primitive cell (fractional)',transpose(oopt_tau_prim_frac),' ... ')
-            endif
-            ! get atomic primitive atomic coordinates in cartesian
-            tau_prim_cart = matmul(bas_prim,tau_prim_frac)
-            if (present(oopt_tau_prim_cart)) then
-                allocate(oopt_tau_prim_cart(3,natoms_prim))
-                oopt_tau_prim_cart = tau_prim_cart
-                if (verbosity .ge. 1) call am_print('positions of atoms in primitive cell (cartesian)',transpose(oopt_tau_prim_cart),' ... ')
-            endif
-            ! determine which atoms are of what type by comparing cartesian coordinates
-            if (present(oopt_atype_prim)) then
-                !
-                allocate(tau_cart(3,natoms))
-                tau_cart = matmul(bas,tau_frac)
-                !
-                allocate(atype_prim(natoms_prim))
-                allocate(character(500) :: symbs_prim(natoms_prim))
-                do i = 1,natoms_prim
-                    atype_prim(i) = 0
-                    search_for_similar_atom : do j = 1,natoms
-                        if ( all(abs(tau_prim_cart(1:3,i)-tau_cart(1:3,j)).lt.sym_prec) ) then
-                            atype_prim(i) = atype(j)
-                            symbs_prim(i)  = symbs(j)
-                            exit search_for_similar_atom
-                        endif
-                    enddo search_for_similar_atom
-                    if (atype_prim(i) .eq. 0) then
-                        call am_print('ERROR','Unable to identify type of atom in the primitive cell',' >>> ')
-                        call am_print('atomic coordinates in original cell (cartesian)',tau_cart)
-                        call am_print('atomic coordinates in reduced cell (cartesian)',tau_prim_cart)
-                        stop
-                    endif
-                enddo
-                allocate(oopt_atype_prim(natoms_prim))
-                oopt_atype_prim = atype_prim
-                !
-                allocate(natoms_per_species_prim(size(unique(atype_prim))))
-                do i = 1,maxval(atype_prim)
-                    natoms_per_species_prim(i) = count(atype_prim.eq.i)
-                enddo
-            endif
-        endif
-    end subroutine determine_primitive_basis
-    pure function is_symmetry_valid(iopt_R,iopt_T,iopt_atype,tau_frac,iopt_sym_prec)
-        !
-        ! check whether symmetry operation is valid
-        !
-        implicit none
-        ! function i/o
-        integer , intent(in), optional :: iopt_atype(:) !> list identify type of atom
-        real(dp), intent(in) :: tau_frac(:,:) ! atomic coordinates tau_frac(1:3,natoms)
-        real(dp), intent(in), optional :: iopt_R(3,3)
-        real(dp), intent(in), optional :: iopt_T(3)
-        real(dp), intent(in), optional :: iopt_sym_prec
-        ! required for optional i/o
-        integer , allocatable :: atype(:)
-        real(dp) :: R(3,3)
-        real(dp) :: T(3)
-        real(dp) :: sym_prec
-        ! internal
-        real(dp) :: tau_rot_frac(3) ! rotated 
-        logical :: point_symmetry
-        logical :: translational_symmetry
-        logical :: is_symmetry_valid
-        integer :: natoms
-        integer :: i, j, m
-        logical :: overlap_found
-        !
-        if ( present(iopt_sym_prec) ) then
-            sym_prec = iopt_sym_prec
-        else
-            sym_prec = tiny
-        endif
-        !
-        if ( present(iopt_R) ) then
-            point_symmetry = .true.
-            R = iopt_R
-        else
-            point_symmetry = .false.
-            R = reshape([1,0,0,0,1,0,0,0,1],[3,3])
-        endif
-        !
-        !
-        if ( present(iopt_T) ) then
-            translational_symmetry = .true.
-            T = iopt_T
-        else
-            translational_symmetry = .false.
-            T = [0,0,0]*0.0_dp
-        endif
-        !
-        if ( present(iopt_atype) ) then
-            allocate(atype(size(iopt_atype)))
-            atype = iopt_atype
-        else
-            allocate(atype(size(tau_frac)))
-            atype = 1
-        endif
-        !
-        natoms = size(tau_frac,2)
-        !
-        m = 0
+        if (opts%verbosity .ge. 1) call am_print('number of atoms in original cell',uc%natoms,' ... ')
+        ! a) set first atom at the origin and convert everything to fractional coordinates (easier for modulo)
+        allocate(tau_prim_frac(3,natoms))
+        tau_ref = tau(1:3,1)
         do i = 1, natoms
-            ! apply symmetry operation
-            tau_rot_frac(1:3) = matmul(R,tau_frac(1:3,i)) + T(1:3)
-            ! reduce rotated+translated point to reciprocal unit cell
-            tau_rot_frac(1:3) = modulo(tau_rot_frac(1:3)+sym_prec,1.0_dp)-sym_prec
-            ! check that newly created point matches something already present
-            overlap_found = .false.
-            check_overlap : do j = 1,natoms
-                if (atype(i) .eq. atype(j)) then
-                    if ( all(abs(tau_rot_frac(1:3)-tau_frac(1:3,j)).lt.sym_prec) ) then
-                        m = m + 1
-                        overlap_found = .true.
-                        exit check_overlap
-                    endif
+            tau_prim_frac(1:3,i) = tau(1:3,i) - tau_ref
+        enddo
+        ! b) convert to cartesian atomic basis into fractional primitive cell units
+        tau_prim_frac = matmul(reciprocal_basis(prim%bas),tau_prim_frac)
+        if (opts%verbosity .ge. 1) call am_print('original atomic basis (frac, in terms of primitive)',transpose(tau_prim_frac),' ... ')
+        ! c) reduce to primitive cell
+        do i = 1,natoms
+            tau_prim_frac(1:3,i) = modulo(tau_prim_frac(1:3,i)+opts%sym_prec,1.0_dp)-opts%sym_prec
+        enddo
+        ! d) get unique values
+        tau_prim_frac = unique(tau_prim_frac,opts%sym_prec)
+        prim%natoms = size(tau_prim_frac,2)
+        if (opts%verbosity .ge. 1) call am_print('number of atoms in reduced cell',prim%natoms,' ... ')
+        if (opts%verbosity .ge. 1) call am_print('reduced atomic basis (frac, in terms of primitive)',transpose(tau_prim_frac),' ... ')
+        prim%tau = matmul(prim%bas,tau_prim_frac)
+        if (opts%verbosity .ge. 1) call am_print('reduced atomic basis (cart)',transpose(prim%tau),' ... ')
+        !
+        ! 5) transfer atomic species by comparing atomic coordinates
+        !
+        allocate(prim%atype(prim%natoms))
+        do i = 1, prim%natoms
+            atype_prim(i) = 0
+            search_for_atom : do j = 1, uc%natoms
+                if ( all(abs(prim%tau(1:3,i)-uc%tau(1:3,j)).lt.opts%sym_prec) ) then
+                    prim%atype(i) = uc%atype(j)
+                    exit search_for_atom
                 endif
-            enddo check_overlap
-            if ( .not. overlap_found ) then
-                is_symmetry_valid = .false.
-                return
+            enddo search_for_atom
+            if (atype_prim(i) .eq. 0) then
+                call am_print('ERROR','Unable to identify atom in reduced cell',' >>> ')
+                stop
             endif
         enddo
-        if (m .eq. natoms) then
-            is_symmetry_valid = .true.
+        !
+        ! 6) transfer other stuff
+        !
+        allocate(character(500)::prim%symbs(uc%nspecies))
+        prim%symbs = uc%symbs
+        prim%nspecies = uc%nspecies
+    end subroutine reduce_to_primtive
+
+    subroutine     expand_to_supercell(sc,uc,n,iopts)
+        !
+        ! expands unit cell into supercell coordinates onto an n(1) x n(2) x n(3) supercell
+        !
+        implicit none
+        !
+        class(am_class_unit_cell), intent(inout) :: sc
+        type(am_class_unit_cell) , intent(in) :: uc
+        integer, intent(in) :: n(3)
+        integer :: i1, i2, i3, m
+        type(am_class_options), intent(in), optional :: iopts
+        type(am_class_options) :: opts
+        if (present(iopts)) then 
+            opts = iopts
+        else
+            call opts%defaults
         endif
-    end function is_symmetry_valid
+        !
+        if (opts%verbosity .ge. 1) call am_print_title('Expanding to supercell')
+        if (opts%verbosity .ge. 1) call am_print('supercell dimensions',n,' ... ')
+        !
+        sc%bas = matmul(uc%bas,real(reshape([n(1),0,0,0,n(2),0,0,0,n(3)],[3,3]),dp))
+        if (opts%verbosity .ge. 1) call am_print('supercell basis',bas_sc,' ... ')
+        !
+        sc%natoms = n(1)*n(2)*n(3)*uc%natoms
+        if (opts%verbosity .ge. 1) call am_print('number of atoms in supercell',sc%natoms,' ... ')
+        allocate(sc%tau(3,sc%natoms))
+        allocate(sc%atype(sc%natoms))
+        !
+        sc%tau = 0.0_dp
+        m=0
+        do i1 = 1, n(1)
+        do i2 = 1, n(2)
+        do i3 = 1, n(3)
+            do j = 1, uc%natoms
+                m = m+1
+                sc%tau(1:3,m) = uc%tau(1:3,j)+real(i1,dp)*uc%bas(1:3,1)
+                sc%tau(1:3,m) = uc%tau(1:3,j)+real(i2,dp)*uc%bas(1:3,2)
+                sc%tau(1:3,m) = uc%tau(1:3,j)+real(i3,dp)*uc%bas(1:3,3)
+                sc%atype(m)   = uc%atype(j)
+            enddo
+        enddo
+        enddo
+        enddo
+        !
+        if (opts%verbosity .ge. 1) call am_print("supercell atomic basis (cart)", transpose(sc%tau),' ... ')
+        if (opts%verbosity .ge. 1) call am_print("supercell atomic basis (frac)", transpose(matmul(reciprocal_basis(sc%bas),sc%tau)),' ... ')
+        !
+    end subroutine expand_to_supercell
+
+
+
+
+    ! GOAL : WRITE A FUCTION HERE WHICH OUTPUTS R AND T SPACE GROUPS. USE IT IN AM_SYMMETRY MODULE.
+    ! GOAL : WRITE A FUCTION HERE WHICH OUTPUTS R AND T SPACE GROUPS. USE IT IN AM_SYMMETRY MODULE.
+    ! GOAL : WRITE A FUCTION HERE WHICH OUTPUTS R AND T SPACE GROUPS. USE IT IN AM_SYMMETRY MODULE.
+
+
 
     subroutine apply_elastic_deformation(bas,deformation_code,strain_max,nstrains,bas_def,iopt_verbosity)
         !
