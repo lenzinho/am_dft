@@ -76,8 +76,10 @@ module am_brillouin_zone
         implicit none
         !
         integer , intent(in) :: n(3)
-        real(dp) :: grid_points(3,product(2*n+1)) !> voronoi points (27=3^3)
+        real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
         integer :: i1,i2,i3,j
+        !
+        allocate(grid_points(3,product(2*n+1)))
         !
         j=0
         do i1 = -n(1),n(1)
@@ -85,9 +87,9 @@ module am_brillouin_zone
                 do i3 = -n(3),n(3)
                     j=j+1
                     grid_points(1:3,j)=[i1,i2,i3]
-                end do
-            end do
-        end do
+                enddo
+            enddo
+        enddo
     end function generate_lattice_grid
     pure function generate_monkhorstpack_mesh(n,s) result(kpoints)
         !> returns kpoints in fractional coordinates for monkhorst pack mesh dimensions
@@ -362,7 +364,7 @@ module am_brillouin_zone
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_bz), intent(out) :: ibz
         !
-        real(dp) :: grid_points(3,27)
+        real(dp), allocatable :: grid_points(:,:)
         integer :: i, j
         !
         type(am_class_options), intent(in), optional :: iopts
@@ -374,7 +376,7 @@ module am_brillouin_zone
         endif
         !
         ! generate voronoi points (cartesian)
-        grid_points = matmul( uc%recbas, generate_lattice_grid([1,1,1]) )
+        grid_points = matmul( uc%recbas, real(generate_lattice_grid([1,1,1]),dp) )
         ! allocate workspace
         allocate(ibz%kpt(3,bz%nkpts))
         ! reduce kpoints to ibz
@@ -500,7 +502,7 @@ module am_brillouin_zone
         real(dp), intent(in) :: bas(3,3) !> primitive basis
         real(dp), intent(in) :: recbas(3,3) !> reciprocal basis
         real(dp), intent(in) :: R(:,:,:) !> point symmetries in cartesian
-        real(dp) :: grid_points(3,27) !> voronoi points (27=3^3)
+        real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
         real(dp) :: k1(3), k2(3) ! point for kdiff
         real(dp) :: kdiff ! for dispersion plot
         integer :: fid
@@ -519,7 +521,8 @@ module am_brillouin_zone
         if (opts%verbosity .ge. 1) write(*,'(a)' ) 'Writing bandcharacter file'
         !
         ! generate voronoi points (cartesian), used to reduce points to wigner-seitz brillouin zone
-        grid_points = matmul( recbas, generate_lattice_grid([1,1,1]) )
+        grid_points = matmul( recbas, real(generate_lattice_grid([1,1,1]),dp) )
+        call am_print('grid_points',transpose(grid_points))
         !
         fid = 1
         open(unit=fid,file="outfile.bandcharacter",status="replace",action='write')

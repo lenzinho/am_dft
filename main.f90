@@ -29,7 +29,10 @@
     opts%verbosity = 1
     opts%sym_prec  = tiny
     !
-    !
+    ! DO EVERYTHING IN CARTESIAN COORDINATES!
+    ! DO EVERYTHING IN CARTESIAN COORDINATES!
+    ! DO EVERYTHING IN CARTESIAN COORDINATES!
+    ! creat ss in a seperate file.
     !
     !
     call uc%load_poscar('POSCAR')

@@ -14,8 +14,6 @@ module am_vasp_io
     public :: read_poscar
     !
     contains
-    ! low level vasp i/o
-    ! everything reads in normalized weights except ibzkpt
     subroutine read_ibzkpt(nkpts,kpt,w,ntets,vtet,tet,wtet,iopt_filename,iopt_verbosity) 
         !>
         !> Reads IBZKPT into variables.
@@ -576,18 +574,18 @@ module am_vasp_io
         close(fid)
         !
     end subroutine read_eigenval
-    subroutine read_poscar(bas,natoms,nspecies,natoms_per_species,symbs,tau_frac,atype,iopt_filename,iopt_verbosity)
+    subroutine read_poscar(bas,natoms,nspecies,natoms_per_species,symbs,tau,atype,iopt_filename,iopt_verbosity)
         ! Reads poscar into variables performing basic checks on the way. Call it like this:
         !
-        !    real(dp) :: bas(3,3) ! column vectors a(1:3,i), a(1:3,j), a(1:3,kpt)
-        !    integer  :: natoms
-        !    integer  :: nspecies
-        !    character(len=:), allocatable :: symbs(:) ! 1 symb per species
-        !    integer,allocatable :: natoms_per_species(:) ! number of atoms per species
-        !    real(dp), allocatable :: tau_frac(:,:) ! atomic coordinates tau(3,natoms) in fractional
-        !    integer,allocatable :: atype(:) ! type of atom tau(natoms)
+        !    bas(3,3) column vectors a(1:3,i), a(1:3,j), a(1:3,kpt)
+        !    natoms number of atoms
+        !    nspecies number of unique atomic species
+        !    symbs(nspecies) list of atomic symbols
+        !    natoms_per_species(natoms) number of atoms per species
+        !    tau(3,natoms) cartesian atomic coordinates
+        !    atype(natoms) type atom
         !
-        !    call read_poscar( bas,natoms,nspecies,natoms_per_species,symbs,tau_frac,atype )
+        !    call read_poscar( bas,natoms,nspecies,natoms_per_species,symbs,tau,atype )
         !
         implicit none
         ! subroutine i/o
@@ -596,13 +594,12 @@ module am_vasp_io
         integer,intent(out) :: nspecies
         character(len=:), allocatable, intent(out) :: symbs(:) ! 1 symb per species
         integer,allocatable, intent(out) :: natoms_per_species(:) ! number of atoms per species
-        real(dp), allocatable, intent(out) :: tau_frac(:,:) ! atomic coordinates tau(3,natoms) in fractional
-        integer,allocatable, intent(out) :: atype(:) ! type of atom tau(natoms)
+        real(dp), allocatable, intent(out) :: tau(:,:) ! atomic coordinates tau_read(3,natoms) in cartesian
+        integer,allocatable, intent(out) :: atype(:) ! type of atom tau_read(natoms)
         ! subroutine internal parameters
         real(dp) :: recbas(3,3)
         real(dp) :: vol
-        real(dp), allocatable :: tau(:,:) ! atomic coordinates tau(3,natoms) read in
-        real(dp), allocatable :: tau_cart(:,:) ! atomic coordinates tau(3,natoms) in cartesian
+        real(dp), allocatable :: tau_read(:,:) ! atomic coordinates tau_read(3,natoms) read in
         logical :: direct
         logical :: cartesian
         logical :: selective_dynamics
@@ -669,6 +666,7 @@ module am_vasp_io
             recbas = recbas/vol
             ! (LINE 6) V  N
             read(unit=fid,fmt='(a)') buffer
+            ! strslplit => allocate internally, character(500)::symbs(j)
             symbs = strsplit(buffer,delimiter=' ')
             nspecies = size(symbs)
             if ( verbosity .ge. 1 ) call am_print( "number of unique atomic species", nspecies, " ... ")
@@ -709,16 +707,15 @@ module am_vasp_io
                 if ( verbosity .ge. 1 ) write(*,'(a5,a)') ' ... ', 'selective dynamics'
             endif
             if ( direct ) then
-                if ( verbosity .ge. 1 ) write(*,'(a5,a)') ' ... ', 'atomic coordinates read in with fractional units'
+                if ( verbosity .ge. 1 ) write(*,'(a5,a)') ' ... ', 'atomic coordinates read in with fractional units and converted to cartesian coordinates'
             endif
             if ( cartesian ) then
-                if ( verbosity .ge. 1 ) write(*,'(a5,a)') ' ... ', 'atomic coordinates read in with cartesian units and converted to fractional units'
+                if ( verbosity .ge. 1 ) write(*,'(a5,a)') ' ... ', 'atomic coordinates read in with cartesian coordinates'
             endif
             ! (LINE 9-10)   0.1250000000000000  0.1250000000000000  0.1250000000000000
             ! read atomic positions
-            allocate(tau(3,natoms))      ! coordinates of atoms read in
-            allocate(tau_frac(3,natoms)) ! coordinates of atoms in fractional coordinates
-            allocate(tau_cart(3,natoms)) ! coordinates of atoms in cartesian  coordinates
+            allocate(tau_read(3,natoms))      ! coordinates of atoms read in
+            allocate(tau(3,natoms)) ! coordinates of atoms in cartesian  coordinates
             allocate(atype(natoms)) ! type of atom, integer 
             m = 0
             do i = 1, nspecies
@@ -730,29 +727,26 @@ module am_vasp_io
                     read(unit=fid,fmt='(a)') buffer
                     word = strsplit(buffer,delimiter=' ')
                     do n = 1,3
-                        read(word(n),*) tau(n,m)
+                        read(word(n),*) tau_read(n,m)
                     enddo
-                    ! first make sure everything is in cartesian then convert to fractional
+                    ! make sure everything is in cartesian
                     if ( direct ) then
-                        tau_cart(1:3,m) = matmul( bas,tau(1:3,m) )
+                        tau(1:3,m) = matmul( bas,tau_read(1:3,m) )
                     endif
                     if ( cartesian ) then
-                        tau_cart(1:3,m) = scale * tau(1:3,m)
+                        tau(1:3,m) = scale * tau_read(1:3,m)
                     endif
-                    ! convert to fractional
-                    tau_frac(1:3,m) = matmul( recbas ,tau_cart(1:3,m) )
-                    !
                 enddo
             enddo
             !
             if ( verbosity .ge. 1 ) then
-                write(*,'(" ... ",a)') "atomic positions (fractional)"
+                write(*,'(" ... ",a)') "atomic positions (cartesian)"
                 m = 0
                 do i = 1, nspecies
                     do j = 1, natoms_per_species(i)
                         !
                         m = m + 1
-                        write(*,'(5x,a5,a3,3f13.8)') int2char(m), symbs(atype(m)), tau_frac(1:3,m)
+                        write(*,'(5x,a5,a3,3f13.8)') int2char(m), symbs(atype(m)), tau(1:3,m)
                         !
                     enddo
                 enddo
@@ -760,6 +754,5 @@ module am_vasp_io
             !
         close(fid)
     end subroutine read_poscar
-    
 end module
     

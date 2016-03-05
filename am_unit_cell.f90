@@ -8,28 +8,7 @@
     !
     private
     public :: am_class_unit_cell
-    public :: am_class_symmetry
-
-    !
-    ! symmetry
-    !
-
-    type am_class_symmetry 
-        integer :: nptsym !> number of point symmetries
-        real(dp), allocatable :: R(:,:,:) !> point symmetries
-        real(dp), allocatable :: det(:) !> point symmetry determinants
-        real(dp), allocatable :: trace(:) !> point symmetry traces
-        character(4), allocatable :: schoenflies(:) !> point symmetry schoenflies notation
-        logical :: is_centrosymmetric !> T/F if cell is centrosymmetric    
-    contains
-        procedure :: determine_symmetry
-        procedure :: write_stdout
-    end type
-
-    !
-    ! unit cell
-    !
-
+    
     type am_class_unit_cell
         ! produced by load_poscar:
         real(dp) :: bas(3,3) !> column vectors a(1:3,i), a(1:3,j), a(1:3,k)
@@ -37,13 +16,12 @@
         integer :: nspecies !> number of unique atomic species
         character(len=:), allocatable :: symbs(:) !> symbols of unique atomic species
         integer,allocatable :: natoms_per_species(:) !> number of atoms per species
-        real(dp), allocatable :: tau_frac(:,:)!> atomic coordinates tau(3,natoms) in fractional
+        real(dp), allocatable :: tau(:,:) !> tau(3,natoms) cartesian atomic coordinates 
         integer,allocatable :: atype(:) !> index indentifying the atomic species for each atom
         ! produced by compute_basic_properties
         real(dp) :: recbas(3,3) !> reciprocal basis vectors,column vectors a(1:3,i), a(1:3,j), a(1:3,k)
         real(dp) :: metric(3,3) !> metric tensor of real space basis
         real(dp) :: vol !> cell volume
-        real(dp), allocatable :: tau_cart(:,:) !> atomic coordinates tau(3,natoms) in cartesian
     contains
         procedure :: load_poscar
         procedure :: reduce_to_primitive
@@ -52,7 +30,41 @@
 
     contains
 
-    !
+    ! functions which operate on bas(3,3)
+
+    pure function reciprocal_basis(bas) result(recbas)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: bas(3,3)
+        real(dp) :: recbas(3,3)
+        !
+        recbas = 0.0_dp
+        recbas(1,1)=bas(2,2)*bas(3,3)-bas(3,2)*bas(2,3)
+        recbas(1,2)=bas(3,2)*bas(1,3)-bas(1,2)*bas(3,3)
+        recbas(1,3)=bas(1,2)*bas(2,3)-bas(1,3)*bas(2,2)
+        recbas(2,1)=bas(2,3)*bas(3,1)-bas(2,1)*bas(3,3)
+        recbas(2,2)=bas(1,1)*bas(3,3)-bas(3,1)*bas(1,3)
+        recbas(2,3)=bas(2,1)*bas(1,3)-bas(1,1)*bas(2,3)
+        recbas(3,1)=bas(2,1)*bas(3,2)-bas(2,2)*bas(3,1)
+        recbas(3,2)=bas(3,1)*bas(1,2)-bas(1,1)*bas(3,2)
+        recbas(3,3)=bas(1,1)*bas(2,2)-bas(1,2)*bas(2,1)
+        recbas = recbas/(recbas(1,1)*bas(1,1)+recbas(1,2)*bas(2,1)+recbas(1,3)*bas(3,1))
+    end function  reciprocal_basis
+
+    pure function real_space_metric(bas) result(metric)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: bas(3,3)
+        real(dp) :: metric(3,3)
+        !
+        metric = matmul(transpose(bas),bas)
+        !
+    end function  real_space_metric
+
+
+
     ! wrappers
     !
 
@@ -83,241 +95,250 @@
             nspecies=uc%nspecies,&
             natoms_per_species=uc%natoms_per_species,&
             symbs=uc%symbs,&
-            tau_frac=uc%tau_frac,&
+            tau=uc%tau,&
             atype=uc%atype,&
             iopt_filename=filename,&
             iopt_verbosity=opts%verbosity)
         !
     end subroutine load_poscar
-    subroutine determine_symmetry(ss,uc,iopts)
-        !
-        ! 1) uses atomic positions to identify possible symmetry translations which could serve as primitive lattice vectors
-        ! 2) selects the shortest of these vectors as the basis for the primitive cell
-        ! 3) determines the point symmetries compatbile with the metric tensor corresponding to this primitive basis
-        !       Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. Cambridge,
-        !       UK; New York: Cambridge University Press, 2008. p 282, table 10.3; p 388, table 10.4
-        ! 4) determines the type of lattice from the number of point symmetries identified in the step above
-        !       Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition.
-        !       Cambridge, UK; New York: Cambridge University Press, 2008. p 282, table 10.3
-        !       p 388, table 10.4
-        ! 5) of the point symmeties found, identify which ones are compatible with the atoms (position and type)
-        ! 6) determine basic point symmetry property properties 
-        ! 7) Sort point symmetries based on det and trace (first point symmetry is identity; last point symmetry is inversion, if present)s
-        !
-        implicit none
-        ! intput/outputs
-        class(am_class_symmetry), intent(inout) :: ss
-        type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_unit_cell) :: prim
-        type(am_class_symmetry) :: ls ! symmetries compatbile with the lattice (not necessarily atomic basis)
-        ! generic point group properties
-        integer, allocatable :: indx(:) ! pairs with mask, see below.
-        logical, allocatable :: mask(:) ! mask which specifies which lattiec-compatible point symmetries are also compatbile with atomic positions
-        character(12) :: crystal_system
-        ! loop variables
-        integer :: i
-        ! options
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
-        !
-        ! write opening lines
-        if ( opts%verbosity .ge. 1 ) write(*,*)
-        if ( opts%verbosity .ge. 1 ) call am_print_title('Analyzing unit cell symmetry')
+
+!     subroutine determine_symmetry(ss,uc,iopts)
+!         !
+!         ! 1) uses atomic positions to identify possible symmetry translations which could serve as primitive lattice vectors
+!         ! 2) selects the shortest of these vectors as the basis for the primitive cell
+!         ! 3) determines the point symmetries compatbile with the metric tensor corresponding to this primitive basis
+!         !       Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. Cambridge,
+!         !       UK; New York: Cambridge University Press, 2008. p 282, table 10.3; p 388, table 10.4
+!         ! 4) determines the type of lattice from the number of point symmetries identified in the step above
+!         !       Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition.
+!         !       Cambridge, UK; New York: Cambridge University Press, 2008. p 282, table 10.3
+!         !       p 388, table 10.4
+!         ! 5) of the point symmeties found, identify which ones are compatible with the atoms (position and type)
+!         ! 6) determine basic point symmetry property properties 
+!         ! 7) Sort point symmetries based on det and trace (first point symmetry is identity; last point symmetry is inversion, if present)s
+!         !
+!         implicit none
+!         ! intput/outputs
+!         class(am_class_symmetry), intent(inout) :: ss
+!         type(am_class_unit_cell), intent(in) :: uc
+!         type(am_class_unit_cell) :: prim
+!         type(am_class_symmetry) :: ls ! symmetries compatbile with the lattice (not necessarily atomic basis)
+!         ! generic point group properties
+!         integer, allocatable :: indx(:) ! pairs with mask, see below.
+!         logical, allocatable :: mask(:) ! mask which specifies which lattiec-compatible point symmetries are also compatbile with atomic positions
+!         character(12) :: crystal_system
+!         ! loop variables
+!         integer :: i
+!         ! options
+!         type(am_class_options), intent(in), optional :: iopts
+!         type(am_class_options) :: opts
+!         if (present(iopts)) then 
+!             opts = iopts
+!         else
+!             call opts%defaults
+!         endif
+!         !
+!         ! write opening lines
+!         if ( opts%verbosity .ge. 1 ) write(*,*)
+!         if ( opts%verbosity .ge. 1 ) call am_print_title('Analyzing unit cell symmetry')
     
-        !
-        ! check that bas is not empty
-        if ( all( abs(uc%bas).lt.tiny) ) then
-            call am_print('ERROR','Primitive basis is empty! Most likely POSCAR was not loaded.',' >>> ')
-            call am_print('basis (column vectors)',uc%bas)
-            stop
-        endif
-        !
-        ! 1) uses atomic positions to identify possible symmetry translations which could serve as primitive lattice vectors
-        ! 2) selects the shortest of these vectors as the basis for the primitive cell
-        !
-        call uc%reduce_to_primitive(prim=prim,iopts=opts)
-        !
-        ! 3) determines the point symmetries compatbile with this primitive basis
-        !
-        call analyze_metric_tensor_symmetry(metric=prim%metric,R=ls%R)
-        ls%nptsym = size(ls%R,3)
-        if ( opts%verbosity .ge. 1 ) call am_print("point symmetries compatible with the metric tensor",ls%nptsym," ... ")
-        !
-        ! 4) determines the type of lattice from the number of point symmetries identified in the step above
-        ! 
-        lattice_type : select case (ls%nptsym)
-        case(2);  crystal_system='triclinic   '
-        case(4);  crystal_system='monoclinic  '
-        case(8);  crystal_system='orthorhombic'
-        case(12); crystal_system='trigonal    '
-        case(16); crystal_system='tetragonal  '
-        case(24); crystal_system='hexagonal   '
-        case(48); crystal_system='cubic       '
-        end select lattice_type
-        if ( opts%verbosity .ge. 1 ) call am_print('crystal system',trim(crystal_system)," ... ")
-        !
-        ! 5) Of the point symmeties found, identify which ones are compatible with the atoms (position and type)
-        !
-        allocate(mask(ls%nptsym))
-        allocate(indx(ls%nptsym))
-        mask = .false.
-        do i = 1,ls%nptsym
-            if (is_symmetry_valid(iopt_R=ls%R(:,:,i),tau_frac=uc%tau_cart,iopt_atype=uc%atype,iopt_sym_prec=opts%sym_prec)) then
-                mask(i) = .true.
-            endif
-            indx(i) = i
-        enddo
-        ss%nptsym = count(mask)
-        if ( opts%verbosity .ge. 1 ) call am_print('point symmetries compatbile with atoms',ss%nptsym," ... ")
-        allocate(ss%R(3,3,ss%nptsym))
-        ss%R = ls%R(:,:,pack(indx,mask))
-        !
-        ! 6) Determine basic point symmetry property properties 
-        !
-        call determine_basic_point_symmetry_properties(R=ss%R,det=ss%det,trace=ss%trace,schoenflies=ss%schoenflies)
-        !
-        ! 7) Sort point symmetries based on det and trace (first point symmetry is identity; last point symmetry is inversion, if present)
-        !
-        call sort_point_symmetries_based_on_determinant_and_trace(R=ss%R,det=ss%det,trace=ss%trace,schoenflies=ss%schoenflies)
-        !
-        if ( .not. all(abs(ss%R(:,:,1)-eye(3)).lt.tiny) ) then
-            call am_print('ERROR','Something is wrong. Identity is not the first point symmetry.')
-            call am_print('R(:,:,1)',ss%R(:,:,i),'     ')
-            stop
-        endif
-        if ( all(abs(ss%R(:,:,ss%nptsym)+eye(3)).lt.tiny) ) then
-            ss%is_centrosymmetric = .true.
-        else
-            ss%is_centrosymmetric = .false.
-        endif
-        !
-        if ( opts%verbosity .ge. 1 ) call am_print('centrosymmetric?',ss%is_centrosymmetric,' ... ')
-        if ( opts%verbosity .ge. 1 ) call ss%write_stdout
-        !
-    end subroutine determine_symmetry
-    subroutine reduce_to_primitive(uc,prim,iopts)
-        ! 
-        ! 1) uses atomic positions to identify possible symmetry translations which could serve as primitive lattice vectors
-        ! 2) selects the shortest of these vectors as the basis for the primitive cell
-        ! 
-        ! essentially a wrapper for determine_primitive_basis, look below: code is short and self explanatory.
-        !
-        class(am_class_unit_cell), intent(in) :: uc
-        type(am_class_unit_cell), intent(out) :: prim
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
-        !
-        call determine_primitive_basis(&
-            bas=uc%bas,&
-            natoms=uc%natoms,&
-            atype=uc%atype,&
-            tau_frac=uc%tau_frac,&
-            oopt_bas_prim=prim%bas,&
-            oopt_natoms_prim=prim%natoms,&
-            oopt_atype_prim=prim%atype,&
-            oopt_tau_prim_cart=prim%tau_cart,&
-            oopt_tau_prim_frac=prim%tau_frac,&
-            iopt_verbosity=opts%verbosity)
-        !
-        call prim%compute_basic_properties(iopts=opts)
-        !
-    end subroutine reduce_to_primitive
-    subroutine expand_to_supercell(uc,nTs,sc,iopts)
-        !
-        ! Creates a super cell with dimensions nTs(1),nTs(2),nTs(3) by adding all integer combinations of the vectors  [1...nTs(1),1...nTs(2),1...nTs(3)] to each atomic position. 
-        ! 
-        ! essentially a wrapper for determine_supercell, look below: code is short and self explanatory.
-        !
-        integer, intent(in) :: nTs(3) ! supercell dimensions
-        class(am_class_unit_cell), intent(in) :: uc
-        type(am_class_unit_cell), intent(out) :: sc
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
-        !
-        call determine_supercell(&
-            nTs=nTs,&
-            bas=uc%bas,&
-            natoms=uc%natoms,&
-            atype=uc%atype,&
-            tau_frac=uc%tau_frac,&
-            bas_sc=sc%bas,&
-            natoms_sc=sc%natoms,&
-            atype_sc=sc%atype,&
-            tau_frac_sc=sc%tau_frac,&
-            iopt_verbosity=opts%verbosity)
-        !
-        call sc%compute_basic_properties(iopts=opts)
-        !
-    end subroutine expand_to_supercell
-    subroutine compute_basic_properties(uc,iopts)
-        !
-        ! inputs:
-        ! bas : lattice basis
-        ! tau_frac : atomic coordinates (fractional)
-        ! 
-        ! calculates basic lattice properties
-        ! reciprocal basis, metric tensor, cell volume, atomic coordinates (cartesian)
-        !
-        !
-        class(am_class_unit_cell), intent(inout) :: uc
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
-        !
-        call determine_basic_lattice_properties(&
-            bas=uc%bas,&
-            tau_frac=uc%tau_frac,&
-            recbas=uc%recbas,&
-            metric=uc%metric,&
-            vol=uc%vol,&
-            tau_cart=uc%tau_cart,&
-            iopt_nspecies=uc%nspecies,&
-            iopt_natoms_per_species=uc%natoms_per_species,&
-            iopt_atype=uc%atype,&
-            iopt_symbs=uc%symbs,&
-            iopt_verbosity=opts%verbosity)
-        !
-        end subroutine compute_basic_properties
-        
-        subroutine write_stdout(ss)
-        !
-        implicit none
-        !
-        class(am_class_symmetry), intent(in) ::  ss
-        integer :: i
-        !
-        write(*,'(a5,a)') ' ... ','point symmetry properties'
-        write(*,'(5x,a3,a5,a6,a6)') '#', 'sch.', 'det', 'trace'
-        do i = 1, ss%nptsym
-            write(*,'(5x,i3,a5,f6.2,f6.2)') i, trim(ss%schoenflies(i)), ss%det(i), ss%trace(i)
-        enddo
-        !
-    end subroutine write_stdout
+!         !
+!         ! check that bas is not empty
+!         if ( all( abs(uc%bas).lt.tiny) ) then
+!             call am_print('ERROR','Primitive basis is empty! Most likely POSCAR was not loaded.',' >>> ')
+!             call am_print('basis (column vectors)',uc%bas)
+!             stop
+!         endif
+!         !
+!         ! 1) uses atomic positions to identify possible symmetry translations which could serve as primitive lattice vectors
+!         ! 2) selects the shortest of these vectors as the basis for the primitive cell
+!         !
+!         call uc%reduce_to_primitive(prim=prim,iopts=opts)
+!         !
+!         ! 3) determines the point symmetries compatbile with this primitive basis
+!         !
+!         call determine_lattice_point_symmetries(metric=prim%metric,R=ls%R)
+!         ls%nptsym = size(ls%R,3)
+!         if ( opts%verbosity .ge. 1 ) call am_print("point symmetries compatible with the metric tensor",ls%nptsym," ... ")
+!         !
+!         ! 4) determines the type of lattice from the number of point symmetries identified in the step above
+!         ! 
+!         lattice_type : select case (ls%nptsym)
+!         case(2);  crystal_system='triclinic   '
+!         case(4);  crystal_system='monoclinic  '
+!         case(8);  crystal_system='orthorhombic'
+!         case(12); crystal_system='trigonal    '
+!         case(16); crystal_system='tetragonal  '
+!         case(24); crystal_system='hexagonal   '
+!         case(48); crystal_system='cubic       '
+!         end select lattice_type
+!         if ( opts%verbosity .ge. 1 ) call am_print('crystal system',trim(crystal_system)," ... ")
+!         !
+!         ! 5) Of the point symmeties found, identify which ones are compatible with the atoms (position and type)
+!         !
+!         allocate(mask(ls%nptsym))
+!         allocate(indx(ls%nptsym))
+!         mask = .false.
+!         do i = 1,ls%nptsym
+!             if (is_symmetry_valid(iopt_R=ls%R(:,:,i),tau_frac=uc%tau_cart,iopt_atype=uc%atype,iopt_sym_prec=opts%sym_prec)) then
+!                 mask(i) = .true.
+!             endif
+!             indx(i) = i
+!         enddo
+!         ss%nptsym = count(mask)
+!         if ( opts%verbosity .ge. 1 ) call am_print('point symmetries compatbile with atoms',ss%nptsym," ... ")
+!         allocate(ss%R(3,3,ss%nptsym))
+!         ss%R = ls%R(:,:,pack(indx,mask))
+!         !
+!         ! 6) Determine basic point symmetry property properties 
+!         !
+!         call determine_basic_point_symmetry_properties(R=ss%R,det=ss%det,trace=ss%trace,schoenflies=ss%schoenflies)
+!         !
+!         ! 7) Sort point symmetries based on det and trace (first point symmetry is identity; last point symmetry is inversion, if present)
+!         !
+!         call sort_point_symmetries_based_on_determinant_and_trace(R=ss%R,det=ss%det,trace=ss%trace,schoenflies=ss%schoenflies)
+!         !
+!         if ( .not. all(abs(ss%R(:,:,1)-eye(3)).lt.tiny) ) then
+!             call am_print('ERROR','Something is wrong. Identity is not the first point symmetry.')
+!             call am_print('R(:,:,1)',ss%R(:,:,i),'     ')
+!             stop
+!         endif
+!         if ( all(abs(ss%R(:,:,ss%nptsym)+eye(3)).lt.tiny) ) then
+!             ss%is_centrosymmetric = .true.
+!         else
+!             ss%is_centrosymmetric = .false.
+!         endif
+!         !
+!         if ( opts%verbosity .ge. 1 ) call am_print('centrosymmetric?',ss%is_centrosymmetric,' ... ')
+!         if ( opts%verbosity .ge. 1 ) call ss%write_stdout
+!         !
+!     end subroutine determine_symmetry
+!     subroutine reduce_to_primitive(uc,prim,iopts)
+!         ! 
+!         ! 1) uses atomic positions to identify possible symmetry translations which could serve as primitive lattice vectors
+!         ! 2) selects the shortest of these vectors as the basis for the primitive cell
+!         ! 
+!         ! essentially a wrapper for determine_primitive_basis, look below: code is short and self explanatory.
+!         !
+!         class(am_class_unit_cell), intent(in) :: uc
+!         type(am_class_unit_cell), intent(out) :: prim
+!         type(am_class_options), intent(in), optional :: iopts
+!         type(am_class_options) :: opts
+!         if (present(iopts)) then 
+!             opts = iopts
+!         else
+!             call opts%defaults
+!         endif
+!         !
+!         call determine_primitive_basis(&
+!             bas=uc%bas,&
+!             natoms=uc%natoms,&
+!             atype=uc%atype,&
+!             symbs=uc%symbs,&
+!             tau_frac=uc%tau_frac,&
+!             oopt_bas_prim=prim%bas,&
+!             oopt_natoms_prim=prim%natoms,&
+!             oopt_atype_prim=prim%atype,&
+!             oopt_tau_prim_cart=prim%tau_cart,&
+!             oopt_tau_prim_frac=prim%tau_frac,&
+!             natoms_per_species_prim=prim%natoms_per_species,&
+!             symbs_prim=prim%symbs,&
+!             iopt_verbosity=opts%verbosity)
+!         !
+!         call prim%compute_basic_properties(iopts=opts)
+!         !
+!     end subroutine reduce_to_primitive
+!     subroutine expand_to_supercell(uc,nTs,sc,iopts)
+!         !
+!         ! Creates a super cell with dimensions nTs(1),nTs(2),nTs(3) by adding all integer combinations of the vectors  [1...nTs(1),1...nTs(2),1...nTs(3)] to each atomic position. 
+!         ! 
+!         ! essentially a wrapper for determine_supercell, look below: code is short and self explanatory.
+!         !
+!         integer, intent(in) :: nTs(3) ! supercell dimensions
+!         class(am_class_unit_cell), intent(in) :: uc
+!         type(am_class_unit_cell), intent(out) :: sc
+!         type(am_class_options), intent(in), optional :: iopts
+!         type(am_class_options) :: opts
+!         if (present(iopts)) then 
+!             opts = iopts
+!         else
+!             call opts%defaults
+!         endif
+!         !
+!         call determine_supercell(&
+!             nTs=nTs,&
+!             bas=uc%bas,&
+!             natoms=uc%natoms,&
+!             atype=uc%atype,&
+!             tau_frac=uc%tau_frac,&
+!             bas_sc=sc%bas,&
+!             natoms_sc=sc%natoms,&
+!             atype_sc=sc%atype,&
+!             tau_frac_sc=sc%tau_frac,&
+!             iopt_verbosity=opts%verbosity)
+!         !
+!         call sc%compute_basic_properties(iopts=opts)
+!         !
+!     end subroutine expand_to_supercell
+!     subroutine compute_basic_properties(uc,iopts)
+!         !
+!         ! inputs:
+!         ! bas : lattice basis
+!         ! tau_frac : atomic coordinates (fractional)
+!         ! 
+!         ! calculates basic lattice properties
+!         ! reciprocal basis, metric tensor, cell volume, atomic coordinates (cartesian)
+!         !
+!         !
+!         class(am_class_unit_cell), intent(inout) :: uc
+!         type(am_class_options), intent(in), optional :: iopts
+!         type(am_class_options) :: opts
+!         if (present(iopts)) then 
+!             opts = iopts
+!         else
+!             call opts%defaults
+!         endif
+!         !
+!         call determine_basic_lattice_properties(&
+!             bas=uc%bas,&
+!             tau_frac=uc%tau_frac,&
+!             recbas=uc%recbas,&
+!             metric=uc%metric,&
+!             vol=uc%vol,&
+!             tau_cart=uc%tau_cart,&
+!             iopt_nspecies=uc%nspecies,&
+!             iopt_natoms_per_species=uc%natoms_per_species,&
+!             iopt_atype=uc%atype,&
+!             iopt_symbs=uc%symbs,&
+!             iopt_verbosity=opts%verbosity)
+!         !
+!     end subroutine compute_basic_properties
+! 
+!     subroutine write_stdout(ss)
+!         !
+!         implicit none
+!         !
+!         class(am_class_symmetry), intent(in) ::  ss
+!         integer :: i
+!         !
+!         write(*,'(a5,a)') ' ... ','point symmetry properties'
+!         write(*,'(5x,a3,a5,a6,a6)') '#', 'sch.', 'det', 'trace'
+!         do i = 1, ss%nptsym
+!             write(*,'(5x,i3,a5,f6.2,f6.2)') i, trim(ss%schoenflies(i)), ss%det(i), ss%trace(i)
+!         enddo
+!         !
+!     end subroutine write_stdout
 
     !
     ! internal
     !
 
-    pure subroutine analyze_metric_tensor_symmetry(metric,R)
+
+    ! GOAL : WRITE A FUCTION HERE WHICH OUTPUTS R AND T SPACE GROUPS. US IT IN AM_SYMMETRY MODULE.
+    ! GOAL : WRITE A FUCTION HERE WHICH OUTPUTS R AND T SPACE GROUPS. US IT IN AM_SYMMETRY MODULE.
+    ! GOAL : WRITE A FUCTION HERE WHICH OUTPUTS R AND T SPACE GROUPS. US IT IN AM_SYMMETRY MODULE.
+
+    pure function determine_lattice_point_symmetries(bas) result(R)
         !>
         !> Given a metric tensor, this function returns the (arthimetic) a-holohodry:
         !> the group of point symmetries R (fractional) that are compatible with the
@@ -393,44 +414,53 @@
         !>
         implicit none
         ! subroutine i/o
-        real(dp), intent(in)  :: metric(3,3) !> lattice metric tensor
-        real(dp), allocatable, intent(out) :: R(:,:,:) !> point symmetries (fractional coordinates)
-        ! internal:
-        real(dp) :: buffer(3,3,48) ! buffer for point symmetries
-        integer  :: k       !> point symmetry counter
-        real(dp) :: o(3,3)  !> point symmetry in fractional
-        integer  :: i, i11, i12, i13, i21, i22, i23, i31, i32, i33 !> used to generate unitary rotational matrices
+        real(dp), intent(in) :: bas(3,3)
+        real(dp), allocatable :: R(:,:,:) !> point symmetries (cartesian coordinates)
         !
-        buffer=0
-        k=0
+        real(dp) :: bas(3,3) 
+        real(dp) :: recbas(3,3)
+        real(dp) :: metric(3,3)
+        real(dp) :: buffer(3,3,48) ! buffer for point symmetries
+        integer  :: k ! point symmetry counter
+        real(dp) :: o(3,3) ! point symmetry in fractional (converted to cartesian before output)
+        integer  :: i, i11, i12, i13, i21, i22, i23, i31, i32, i33 ! used to generate unitary rotational matrices
+        !
+        recbas = reciprocal_basis(bas)
+        !
+        metric = real_space_metric(bas)
+        !
+        buffer = 0.0_dp
+        !
+        k = 0
         !
         do i11 = 1,3
-            do i12 = 1,3
-                do i13 = 1,3
-                    do i21 = 1,3
-                        do i22 = 1,3
-                            do i23 = 1,3
-                                do i31 = 1,3
-                                    do i32 = 1,3
-                                        do i33 = 1,3
-                                            ! can be either [-1,0,1] = [1:3]-2
-                                            o(1,1:3)=[i11-2.0_dp,i12-2.0_dp,i13-2.0_dp]
-                                            o(2,1:3)=[i21-2.0_dp,i22-2.0_dp,i23-2.0_dp]
-                                            o(3,1:3)=[i31-2.0_dp,i32-2.0_dp,i33-2.0_dp]
-                                            ! check that metric is left unchanged (relaxed tiny bounds here; prone to rounding errors)
-                                            if ( all( abs(matmul(transpose(o),matmul(metric,o))-metric) .lt. 1E-4 ) ) then
-                                                k = k + 1
-                                                buffer(1:3,1:3,k) = o
-                                            endif
-                                            !
-                                        enddo
-                                    enddo
-                                enddo
-                            enddo
-                        enddo
-                    enddo
+        do i12 = 1,3
+        do i13 = 1,3
+            do i21 = 1,3
+            do i22 = 1,3
+            do i23 = 1,3
+                do i31 = 1,3
+                do i32 = 1,3
+                do i33 = 1,3
+                    ! can be either [-1,0,1] = [1:3]-2
+                    o(1,1:3)=real([i11-2,i12-2,i13-2],dp)
+                    o(2,1:3)=real([i21-2,i22-2,i23-2],dp)
+                    o(3,1:3)=real([i31-2,i32-2,i33-2],dp)
+                    ! check that metric is left unchanged (relaxed tiny bounds here; prone to rounding errors)
+                    if ( all( abs(matmul(transpose(o),matmul(metric,o))-metric) .lt. 1E-4 ) ) then
+                        k = k + 1
+                        ! store point symmetry in cartesian coordinates
+                        buffer(1:3,1:3,k) = matmul(bas,matmul(o,recbas))
+                    endif
+                    !
+                enddo
+                enddo
                 enddo
             enddo
+            enddo
+            enddo
+        enddo
+        enddo
         enddo
         !
         allocate(R(3,3,k))
@@ -438,329 +468,9 @@
             R(:,:,i)= buffer(:,:,i)
         enddo
         !
-    end subroutine analyze_metric_tensor_symmetry
-    pure subroutine identify_point_symmetry(trace,det,schoenflies,ierror)
-        !
-        ! identify the point symmetry (schoenflies notation) given it's trace and determinant.
-        ! if it is unable to identify the point symmetry ierror = 1 is returned.
-        ! if it exists cleanly ierror = 0
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: trace
-        real(dp), intent(in) :: det
-        character(4), intent(out) :: schoenflies
-        integer, intent(out) :: ierror
-        !
-        ! The Mathematical Theory of Symmetry in Solids: Representation Theory for
-        ! Point Groups and Space Groups. 1 edition. Oxford?: New York: Oxford University
-        ! Press, 2010. page 138, table 3.8.
-        !
-        schoenflies = 'NL  '
-        if     ( (abs(trace - 3).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; schoenflies = 'I   '
-        elseif ( (abs(trace + 1).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; schoenflies = 'C2  '
-        elseif ( (abs(trace - 0).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; schoenflies = 'C3  '
-        elseif ( (abs(trace - 1).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; schoenflies = 'C4  '
-        elseif ( (abs(trace - 2).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; schoenflies = 'C6  '
-        elseif ( (abs(trace + 3).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; schoenflies = 'i   '
-        elseif ( (abs(trace - 1).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; schoenflies = 's   '
-        elseif ( (abs(trace - 0).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; schoenflies = 'S6  '
-        elseif ( (abs(trace + 1).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; schoenflies = 'S4  '
-        elseif ( (abs(trace + 2).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; schoenflies = 'S3  '
-        endif
-        !
-        ierror = 0
-        if (schoenflies .eq. 'NL  ' ) ierror = 1
-        !
-    end subroutine identify_point_symmetry
-    pure subroutine identify_point_group(R,schoenflies)
-        !>
-        !> Refs:
-        !>
-        !> Applied Group Theory: For Physicists and Chemists. Reissue edition.
-        !> Mineola, New York: Dover Publications, 2015. page 20.
-        !>
-        !> Casas, Ignasi, and Juan J. Pérez. “Modification to Flow Chart to
-        !> Determine Point Groups.” Journal of Chemical Education 69, no. 1
-        !> (January 1, 1992): 83. doi:10.1021/ed069p83.2.
-        !>
-        !> Breneman, G. L. “Crystallographic Symmetry Point Group Notation
-        !> Flow Chart.” Journal of Chemical Education 64, no. 3 (March 1, 1987):
-        !> 216. doi:10.1021/ed064p216.
-        !>
-        !> Adapted from VASP
-        !>
-        !>   pgind -->sfnames (Schoenflies)
-        !>     1 --> c_1       9 --> c_3      17 --> d_4      25 --> c_6v
-        !>     2 --> s_2      10 --> s_6      18 --> c_4v     26 --> d_3h
-        !>     3 --> c_2      11 --> d_3      19 --> d_2d     27 --> d_6h
-        !>     4 --> c_1h     12 --> c_3v     20 --> d_4h     28 --> t
-        !>     5 --> c_2h     13 --> d_3d     21 --> c_6      29 --> t_h
-        !>     6 --> d_2      14 --> c_4      22 --> c_3h     30 --> o
-        !>     7 --> c_2v     15 --> s_4      23 --> c_6h     31 --> t_d
-        !>     8 --> d_2h     16 --> c_4h     24 --> d_6      32 --> o_h
-        !>
-        implicit none
-        !
-        real(dp), intent(in) :: R(:,:,:)
-        character(4), intent(out) :: schoenflies
-        integer :: pgind
-        integer :: trace, det, nrot
-        integer :: invers, nc2, nc3, nc4, nc6, ns2, ns6, ns4, ns3, ir
-        character(4), parameter :: schoenflies_database(32) = (/           &
-            'c_1 ','s_2 ','c_2 ','c_1h','c_2h','d_2 ','c_2v',&
-            'd_2h','c_3 ','s_6 ','d_3 ','c_3v','d_3d','c_4 ',&
-            's_4 ','c_4h','d_4 ','c_4v','d_2d','d_4h','c_6 ',&
-            'c_3h','c_6h','d_6 ','c_6v','d_3h','d_6h','t   ',&
-            't_h ','o   ','t_d ','o_h ' /)
-        !
-        pgind = 0
-        schoenflies='NL'
-        !
-        ! trivial cases which have unique numbers of rotation operations
-        ! c_1 (pgind=1), o_h (pgind=32), d_4h (pgind=20), and c_3 (pgind=9)
-        !
-        nrot = size(R,3)
-        if (nrot .eq. 1) then
-            pgind=1
-            schoenflies=schoenflies_database(pgind)
-            return
-        elseif (nrot .eq. 48) then
-            pgind=32
-            schoenflies=schoenflies_database(pgind)
-            return
-        elseif (nrot .eq. 16) then
-            pgind=20
-            schoenflies=schoenflies_database(pgind)
-            return
-        elseif (nrot .eq. 3) then
-            pgind=9
-            schoenflies=schoenflies_database(pgind)
-            return
-        endif
-        !
-        ! all other groups need further investigations and detailed analysis ...
-        ! first determine the type of elements and count them. possible elements
-        ! are e, i, c_2,3,4,6 and s_2,3,4,6 (s_2 = m), e is trivial and always
-        ! present. the type of a symmetry operation can be identified simply by
-        ! calculating the trace and the determinant of the rotation matrix. the
-        ! combination of these two quantities is specific for specific elements:
-        !
-        ! element:         e    i  c_2  c_3  c_4  c_6  s_2  s_6  s_4  s_3
-        ! trace:          +3   -3   -1    0   +1   +2   +1    0   -1   -2
-        ! determinant:    +1   -1   +1   +1   +1   +1   -1   -1   -1   -1
-        !
-        invers=0; nc2=0; nc3=0; nc4=0; nc6=0; ns2=0; ns6=0; ns4=0; ns3=0
-        !
-        do ir = 1, nrot
-            trace = R(1,1,ir)+R(2,2,ir)+R(3,3,ir)
-            if (abs(trace-3).lt.tiny) then
-                ! found unity operator (trivial).
-            elseif (abs(trace+3).lt.tiny) then
-                ! found inversion
-                invers=1
-            else
-                det=R(1,1,ir)*(R(2,2,ir)*R(3,3,ir)-R(2,3,ir)*R(3,2,ir))+ &
-                    &   R(1,2,ir)*(R(2,3,ir)*R(3,1,ir)-R(2,1,ir)*R(3,3,ir))+ &
-                    &   R(1,3,ir)*(R(2,1,ir)*R(3,2,ir)-R(2,2,ir)*R(3,1,ir))
-                if ( (abs(trace - -1) .lt. tiny) .and. (abs(det -  1) .lt. tiny) ) nc2=nc2+1 ! found c_2
-                if ( (abs(trace -  1) .lt. tiny) .and. (abs(det - -1) .lt. tiny) ) ns2=ns2+1 ! found s_2
-                if ( (abs(trace -  0) .lt. tiny) .and. (abs(det -  1) .lt. tiny) ) nc3=nc3+1 ! found c_3
-                if ( (abs(trace -  0) .lt. tiny) .and. (abs(det - -1) .lt. tiny) ) ns6=ns6+1 ! found s_6
-                if ( (abs(trace -  1) .lt. tiny) .and. (abs(det -  1) .lt. tiny) ) nc4=nc4+1 ! found c_4
-                if ( (abs(trace - -1) .lt. tiny) .and. (abs(det - -1) .lt. tiny) ) ns4=ns4+1 ! found s_4
-                if ( (abs(trace -  2) .lt. tiny) .and. (abs(det -  1) .lt. tiny) ) nc6=nc6+1 ! found c_6
-                if ( (abs(trace - -2) .lt. tiny) .and. (abs(det - -1) .lt. tiny) ) ns3=ns3+1 ! found s_3
-            endif
-        enddo
-        ! now we know which elements we have and so we know the group ... :
-        if (nrot.eq.2) then
-            ! groups with 2 elements:
-            if (invers.eq.1) then
-                ! contains inversion --> s_2 (pgind=2):
-                pgind=2
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (nc2.eq.1) then
-                ! contains twofold rotation --> c_2 (pgind=3):
-                pgind=3
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (ns2.eq.1) then
-                ! contains mirror plane --> c_1h (pgind=4):
-                pgind=4
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-        end if
-        if (nrot.eq.4) then
-            ! groups with 4 elements:
-            if (invers.eq.1) then
-                ! contains inversion --> c_2h (pgind=5):
-                pgind=5
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (nc2.eq.3) then
-                ! contains three twofold rotations --> d_2 (pgind=6):
-                pgind=6
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (ns2.eq.2) then
-                ! contains two mirror planes --> c_2v (pgind=7):
-                pgind=7
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (nc4.eq.1) then
-                ! contains fourfold rotation --> c_4 (pgind=14):
-                pgind=14
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (ns4.eq.2) then
-                ! contains fourfold improper rotation --> s_4 (pgind=15):
-                pgind=15
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-        end if
-        if (nrot.eq.6) then
-            ! groups with 6 elements:
-            if (invers.eq.1) then
-                ! contains inversion --> s_6 (pgind=10):
-                pgind=10
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (nc2.eq.3) then
-                ! contains three twofold rotations --> d_3 (pgind=11):
-                pgind=11
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (ns2.eq.3) then
-                ! contains three mirror planes --> c_3v (pgind=12):
-                pgind=12
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (nc2.eq.1) then
-                ! contains only (1._q,0._q) twofold rotations --> c_6 (pgind=21):
-                pgind=21
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (ns2.eq.1) then
-                ! contains only (1._q,0._q) mirror plane --> c_3h (pgind=22):
-                pgind=22
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-        end if
-        if (nrot.eq.8) then
-            ! groups with 8 elements:
-            if (ns2.eq.3) then
-                ! contains three mirror planes --> d_2h (pgind=8):
-                pgind=8
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (ns2.eq.1) then
-                ! contains (1._q,0._q) mirror planes --> c_4h (pgind=16):
-                pgind=16
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (ns2.eq.0) then
-                ! contains no mirror planes --> d_4 (pgind=17):
-                pgind=17
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (ns2.eq.4) then
-                ! contains four mirror planes --> c_4v (pgind=18):
-                pgind=18
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (ns2.eq.2) then
-                ! contains two mirror planes --> d_2d (pgind=19):
-                pgind=19
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-        end if
-        if (nrot.eq.12) then
-            ! groups with 12 elements:
-            if (ns2.eq.3) then
-                ! contains three mirror planes --> d_3d (pgind=13):
-                pgind=13
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (ns2.eq.1) then
-                ! contains (1._q,0._q) mirror planes --> c_6h (pgind=23):
-                pgind=23
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (nc2.eq.7) then
-                ! contains seven twofold rotations --> d_6 (pgind=24):
-                pgind=24
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (ns2.eq.6) then
-                ! contains six mirror planes --> c_6v (pgind=25):
-                pgind=25
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (ns2.eq.4) then
-                ! contains four mirror planes --> d_3h (pgind=26):
-                pgind=26
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (nc3.eq.8) then
-                ! contains eight threefold rotations --> t (pgind=28):
-                pgind=28
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-        end if
-        if (nrot.eq.24) then
-            ! groups with 24 elements:
-            if (nc6.eq.2) then
-                ! contains two sixfold rotations --> d_6h (pgind=27):
-                pgind=27
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (invers.eq.1) then
-                ! contains inversion --> t_h (pgind=29):
-                pgind=29
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (nc4.eq.6) then
-                ! contains six fourfold rotations --> o (pgind=30):
-                pgind=30
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-            if (ns4.eq.6) then
-                ! contains six fourfold improper rotations --> t_d (pgind=31):
-                pgind=31
-                schoenflies=schoenflies_database(pgind)
-                return
-            end if
-        end if
-    end subroutine identify_point_group
+    end function  determine_lattice_point_symmetries
+
+
     subroutine determine_basic_point_symmetry_properties(R,det,trace,schoenflies)
         !
         implicit none
@@ -802,6 +512,7 @@
         enddo
         !
     end subroutine determine_basic_point_symmetry_properties
+
     subroutine determine_basic_lattice_properties(bas,tau_frac,recbas,metric,vol,tau_cart,iopt_nspecies,iopt_natoms_per_species,iopt_atype,iopt_symbs,iopt_verbosity)
         !
         implicit none
@@ -900,6 +611,7 @@
         endif
         !
     end subroutine determine_basic_lattice_properties
+
     subroutine determine_supercell(nTs,bas,natoms,atype,tau_frac,bas_sc,natoms_sc,atype_sc,tau_frac_sc,iopt_verbosity)
         !
         ! expands fractional atomic coordinates onto an nTs(1) x nTs(2) x nTs(3) supercell
@@ -1047,11 +759,14 @@
 
 
     subroutine determine_primitive_basis(bas,natoms,atype,tau_frac, &
+        symbs,&
         oopt_bas_prim, &
         oopt_natoms_prim, &
         oopt_tau_prim_frac, &
         oopt_tau_prim_cart, &
         oopt_atype_prim, &
+        symbs_prim,&
+        natoms_per_species_prim, &
         iopt_sym_prec, &
         iopt_verbosity)
         !
@@ -1078,11 +793,14 @@
         integer , intent(in) :: natoms
         integer , intent(in) :: atype(:) !> list identify type of atom
         real(dp), intent(in) :: tau_frac(:,:) ! atomic coordinates tau_frac(1:3,natoms)
+        character(*), intent(in) :: symbs(*)
+        character(:), intent(out), allocatable :: symbs_prim(:)
         real(dp), intent(out), optional :: oopt_bas_prim(3,3) !> basis of primitive cell
         integer , intent(out), optional :: oopt_natoms_prim
         real(dp), intent(out), optional, allocatable :: oopt_tau_prim_frac(:,:)
         real(dp), intent(out), optional, allocatable :: oopt_tau_prim_cart(:,:)
         integer , intent(out), optional, allocatable :: oopt_atype_prim(:)
+        integer , allocatable, intent(out) :: natoms_per_species_prim(:)
         ! internal
         real(dp) :: bas_prim(3,3) !> basis of primitive cell
         integer  :: natoms_prim
@@ -1244,11 +962,13 @@
                 tau_cart = matmul(bas,tau_frac)
                 !
                 allocate(atype_prim(natoms_prim))
+                allocate(character(500) :: symbs_prim(natoms_prim))
                 do i = 1,natoms_prim
                     atype_prim(i) = 0
                     search_for_similar_atom : do j = 1,natoms
                         if ( all(abs(tau_prim_cart(1:3,i)-tau_cart(1:3,j)).lt.sym_prec) ) then
                             atype_prim(i) = atype(j)
+                            symbs_prim(i)  = symbs(j)
                             exit search_for_similar_atom
                         endif
                     enddo search_for_similar_atom
@@ -1261,6 +981,11 @@
                 enddo
                 allocate(oopt_atype_prim(natoms_prim))
                 oopt_atype_prim = atype_prim
+                !
+                allocate(natoms_per_species_prim(size(unique(atype_prim))))
+                do i = 1,maxval(atype_prim)
+                    natoms_per_species_prim(i) = count(atype_prim.eq.i)
+                enddo
             endif
         endif
     end subroutine determine_primitive_basis
@@ -1348,6 +1073,7 @@
             is_symmetry_valid = .true.
         endif
     end function is_symmetry_valid
+
     subroutine apply_elastic_deformation(bas,deformation_code,strain_max,nstrains,bas_def,iopt_verbosity)
         !
         ! creates at bas_def(3,3,nTs) matrix containing the nTs deformed primitive basises.
@@ -1528,6 +1254,7 @@
             enddo
         endif
     end subroutine apply_elastic_deformation
+
     subroutine sort_point_symmetries_based_on_determinant_and_trace(R,det,trace,schoenflies)
         !
         use am_rank_and_sort

@@ -9,4 +9,7 @@ module am_constants
     real(dp), parameter :: tiny=1E-6_dp
     integer , parameter :: column_width = 90
     !
+    ! magic numbers
+    integer , parameter :: string_length_schoenflies = 6
+    !
 end module am_constants
