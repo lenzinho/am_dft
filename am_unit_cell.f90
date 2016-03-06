@@ -216,7 +216,7 @@
         !
     end function  determine_lattice_point_symmetries
 
-    function     apply_elastic_deformation(bas,deformation_code,strain_max,nstrains,iopt_verbosity) result(bas_def)
+    function      apply_elastic_deformation(bas,deformation_code,strain_max,nstrains,iopt_verbosity) result(bas_def)
         !
         !
         ! needs editing to conform. make this a "pure function" , push all outputs except errors into its caller.
@@ -398,7 +398,7 @@
                 write(*,'(5x,i2,6f16.10)') i,def_mat(1,1,i),def_mat(2,2,i),def_mat(3,3,i),def_mat(2,3,i),def_mat(1,3,i),def_mat(1,2,i)
             enddo
         endif
-    end function apply_elastic_deformation
+    end function  apply_elastic_deformation
 
     !
     ! functions which operate on atomic basis
@@ -785,8 +785,6 @@
         else
             call opts%defaults
         endif
-        !
-        !
         !
         R = determine_lattice_point_symmetries(bas=uc%bas)
         nRs = size(R,3)

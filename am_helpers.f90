@@ -15,6 +15,10 @@
             am_print_double_vector, am_print_int_vector
     end interface
     !
+    interface linspace
+        module procedure linspace_double, linspace_integer
+    end interface ! linspace
+
     contains
 
     !
@@ -206,7 +210,8 @@
         enddo
         !
     end function  issubset
-    pure function linspace(d1,d2,n) result(y)
+
+    pure function linspace_double(d1,d2,n) result(y)
         !
         implicit none
         !
@@ -217,12 +222,31 @@
         real(dp) :: y(n)
         integer :: i
         !
-        d = (d2-d1)/(n-1)
+        d = (d2-d1)/(n-1.0_dp)
         do i = 1,n
-            y(i) = d1 + (i-1.0_dp)*d;
+            y(i) = real(d1,dp) + (i-1.0_dp)*d;
         enddo
         !
-    end function  linspace
+    end function  linspace_double
+
+    pure function linspace_integer(d1,d2,n) result(y)
+        !
+        implicit none
+        !
+        integer, intent(in) :: d1
+        integer, intent(in) :: d2
+        integer, intent(in)  :: n
+        real(dp) :: d
+        real(dp) :: y(n)
+        integer :: i
+        !
+        d = (d2-d1)/(n-1.0_dp)
+        do i = 1,n
+            y(i) = real(d1,dp) + (i-1.0_dp)*d;
+        enddo
+        !
+    end function  linspace_integer
+
     pure function regspace(d1,d2,d) result(y)
         !
         implicit none
@@ -252,6 +276,7 @@
         c(3) = a(1) * b(2) - a(2) * b(1)
         !
     end function  cross_product
+
     pure function rotation_from_vectors(a,b) result(R)
         ! based on Rodrigues' Rotation Formula
         ! "A Mathematical Introduction to Robotic Manipulation", Richard M. Murray, Zexiang Li, S. Shankar Sastry, pp. 26-28

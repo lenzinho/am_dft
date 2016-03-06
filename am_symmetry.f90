@@ -26,11 +26,14 @@ module am_symmetry
   contains
       procedure :: determine
       procedure :: stdout
+      procedure :: determine_basic_point_symmetry_properties
   end type
 
 contains
 
-		! functions which operate on R(3,3) in cartesian coordinates
+    !
+	! functions which operate on R(3,3) in cartesian coordinates
+    !
 
     pure function  point_symmetry_convert_to_fractional(R,bas) result(R_frac)
         !
@@ -123,7 +126,9 @@ contains
         !
     end function   point_symmetry_schoenflies
 
+    !
     ! schoenflies decode
+    !
 
     function       schoenflies_decode(schoenflies_code) result(schoenflies)
     	!
@@ -132,20 +137,20 @@ contains
     	integer, intent(in) :: schoenflies_code
     	character(len=string_length_schoenflies) :: schoenflies
     	!
-			select case (schoenflies_code)
+		select case (schoenflies_code)
     	case(1);  schoenflies = 'e'
-  	  case(2);  schoenflies = 'c_2'
-  	  case(3);  schoenflies = 'c_3'
-  	  case(4);  schoenflies = 'c_4'
-  	  case(5);  schoenflies = 'c_6'
-  	  case(6);  schoenflies = 'i'
-  	  case(7);  schoenflies = 's_2'
-  	  case(8);  schoenflies = 's_6'
-  	  case(9);  schoenflies = 's_4'
-  	  case(10); schoenflies = 's_3'
-  	  case default
-					call am_print('ERROR','Schoenflies code unknown.',' >>> ')
-					stop
+        case(2);  schoenflies = 'c_2'
+        case(3);  schoenflies = 'c_3'
+        case(4);  schoenflies = 'c_4'
+        case(5);  schoenflies = 'c_6'
+        case(6);  schoenflies = 'i'
+        case(7);  schoenflies = 's_2'
+        case(8);  schoenflies = 's_6'
+        case(9);  schoenflies = 's_4'
+        case(10); schoenflies = 's_3'
+        case default
+            call am_print('ERROR','Schoenflies code unknown.',' >>> ')
+            stop
   		end select
     end function   schoenflies_decode
 
@@ -195,7 +200,9 @@ contains
 			end select
     end function   point_group_schoenflies_decode
 
+    !
     ! functions which operate on R(3,3,:) in cartesian coordinates
+    !
 
     function       point_group_schoenflies(schoenflies_code) result(pg_schoenflies_code)
         !>
@@ -308,7 +315,9 @@ contains
         endif
     end function   point_group_schoenflies
 
+    !
     ! functions which operate on ss
+    !
 
     subroutine     determine_basic_point_symmetry_properties(ss,uc,iopts)
         !
@@ -318,6 +327,7 @@ contains
         !
         class(am_class_symmetry), intent(inout) :: ss
         type(am_class_unit_cell), intent(in) :: uc
+        type(am_class_symmetry) :: ps ! point symmetries
         type(am_class_options), intent(in), optional :: iopts
         type(am_class_options) :: opts
         !
@@ -338,7 +348,7 @@ contains
         do i = 1, ss%nsyms
             ss%trace(i)            = point_symmetry_trace(ss%R(:,:,i))
             ss%det(i)              = point_symmetry_determinant(ss%R(:,:,i))
-            ss%schoenflies_code(i) = point_symmetry_schoenflies(unique(ss%R(:,:,i)),uc%bas)
+            ss%schoenflies_code(i) = point_symmetry_schoenflies(ss%R(:,:,i),uc%bas)
             ss%schoenflies(i)      = schoenflies_decode(ss%schoenflies_code(i))
         enddo
         !
@@ -363,29 +373,45 @@ contains
     end subroutine stdout
 
     subroutine     determine(ss,uc,iopts)
-    	!
-    	implicit none
-    	!
-    	class(am_class_symmetry), intent(inout) :: ss
-    	type(am_class_unit_cell), intent(in) :: uc
-    	real(dp), allocatable :: seitz(:,:,:)
-    	!
-      type(am_class_options), intent(in), optional :: iopts
-      type(am_class_options) :: opts
-      if (present(iopts)) then 
-          opts = iopts
-      else
-          call opts%defaults
-      endif
-    	!
-    	seitz = space_symmetries_from_basis(uc=uc,iopts=opts)
-    	!
-    	ss%nsyms=size(seitz,3)
-    	allocate(ss%R(3,3,ss%nsyms))
-    	allocate(ss%T(3,ss%nsyms))
-    	ss%R(1:3,1:3,1:ss%nsyms) = seitz(1:3,1:3,1:ss%nsyms)
-    	ss%T(1:3,1:ss%nsyms)     = seitz(1:3,4,1:ss%nsyms)
-    	!
+        !
+        use am_histogram
+        !
+        implicit none
+        !
+        class(am_class_symmetry), intent(inout) :: ss
+        type(am_class_unit_cell), intent(in) :: uc
+        real(dp), allocatable :: seitz(:,:,:)
+        type(am_class_unit_cell) :: prim
+        !
+        type(am_class_options), intent(in), optional :: iopts
+        type(am_class_options) :: opts
+        if (present(iopts)) then 
+            opts = iopts
+        else
+            call opts%defaults
+        endif
+        !
+        if ( opts%verbosity .ge. 1) call am_print_title('Analyzing symmetry')
+        !
+        ! call prim%reduce_to_primitive(uc=uc,iopts=opts)
+        call prim%expand_to_supercell(uc=uc,n=[2,2,2],iopts=opts)
+        !
+        if ( opts%verbosity .ge. 1) call am_print_title('Determining space group symmetries')
+        !
+        seitz = space_symmetries_from_basis(uc=prim,iopts=opts)
+        !
+        ss%nsyms=size(seitz,3)
+        allocate(ss%R(3,3,ss%nsyms))
+        allocate(ss%T(3,ss%nsyms))
+        ss%R(1:3,1:3,1:ss%nsyms) = seitz(1:3,1:3,1:ss%nsyms)
+        ss%T(1:3,1:ss%nsyms)     = seitz(1:3,4,1:ss%nsyms)
+        !
+        call ss%determine_basic_point_symmetry_properties(uc=prim,iopts=opts)
+        !
+        if ( opts%verbosity .ge. 1) call plot_histogram( histogram(ss%schoenflies_code ,column_width) )
+        !
+        if ( opts%verbosity .ge. 1) call am_print('number of space group symmetries found',ss%nsyms) 
+        !
     end subroutine determine
 
 
