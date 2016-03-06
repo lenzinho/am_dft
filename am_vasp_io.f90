@@ -89,7 +89,7 @@ module am_vasp_io
             enddo
             !> normalized weights
             allocate(w(nkpts))
-            w = w_int/sum(w)
+            w = w_int/real(sum(w_int),dp)
             ! (LINE 820) Tetrahedra
             read(unit=fid,fmt='(a)',iostat=iostat) buffer
             if ( iostat .eq. 0 ) then

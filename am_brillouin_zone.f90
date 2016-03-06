@@ -68,7 +68,7 @@ module am_brillouin_zone
     ! Brillouin zone
     !
 
-    pure function generate_lattice_grid(n) result(grid_points)
+    pure function mesh_grid(n) result(grid_points)
         !> 
         !> Generates a mesh of lattice vectors (fractional coordinates) around the origin. 
         !> n(1), n(2), n(3) specifies the number of mesh points away from 0, i.e. [-n:1:n]
@@ -92,7 +92,8 @@ module am_brillouin_zone
                 enddo
             enddo
         enddo
-    end function  generate_lattice_grid
+    end function  mesh_grid
+
     pure function generate_monkhorstpack_mesh(n,s) result(kpoints)
         !> returns kpoints in fractional coordinates for monkhorst pack mesh dimensions
         !> n(1:3)=[n1,n2,n3] and shift s(1:3)=[s1,s2,s3]
@@ -193,7 +194,7 @@ module am_brillouin_zone
         end do
         kpoint_in_fbz = kwrk
     end function  reduce_kpoint_to_fbz
-    pure function get_kpoint_orbit(R,kpoint) result(kpoint_orbit)
+    pure function kpoint_orbit(R,kpoint) result(korb)
         !> Given a kpoint in cartesian coordinates, return its orbit (star)
         !> A quick check to make sure that R(:,:,i) are in the correct cartesian units is to see
         !> whether R are unitary transformations, i.e. orthogonal matricies.
@@ -203,7 +204,7 @@ module am_brillouin_zone
         !
         real(dp), intent(in) :: R(:,:,:) !> point symmetries
         real(dp), intent(in) :: kpoint(3) !> cartesian
-        real(dp) :: kpoint_orbit(3,size(R,3)) !> orbit
+        real(dp) :: korb(3,size(R,3)) !> orbit
         integer  :: npntsym ! number of point symmetries
         integer  :: i ! loop variable
         !
@@ -211,9 +212,9 @@ module am_brillouin_zone
         npntsym = size(R,3)
         !
         do i = 1,npntsym
-            kpoint_orbit(:,i)=matmul(R(:,:,i),kpoint)
+            korb(:,i)=matmul(R(:,:,i),kpoint)
         enddo
-    end function  get_kpoint_orbit
+    end function  kpoint_orbit
     pure function reduce_kpoint_to_ibz(bas,grid_points,R,kpoint) result(kpoint_in_ibz)
         !
         implicit none
@@ -226,7 +227,7 @@ module am_brillouin_zone
         real(dp) :: kpoint_in_fbz(3)
         real(dp) :: kpoint_in_ibz(3)
         integer :: nR !> number of symmetry operations
-        real(dp) :: kpoint_orbit(3,size(R,3)) !> orbit
+        real(dp) :: korb(3,size(R,3)) !> orbit
         integer  :: position_in_fbz
         integer  :: i ! loop variable
         !
@@ -240,13 +241,13 @@ module am_brillouin_zone
             kpoint_in_fbz = kpoint
         endif
         ! get kpoint star (orbit)
-        kpoint_orbit = get_kpoint_orbit(R,kpoint_in_fbz)
+        korb = kpoint_orbit(R,kpoint_in_fbz)
         ! get representative point (which is most positive and has kx > ky > kz)
         kpoint_in_ibz = -100.0_dp
         ! loop twice, first to get most positive ...
         ! this first loop guarentees that something will be returned.
         do i = 1,nR
-            try = kpoint_orbit(:,i)
+            try = korb(:,i)
             if (try(1) .gt. kpoint_in_ibz(1) - tiny) then
                 if (try(2) .gt. kpoint_in_ibz(2) - tiny) then
                     if (try(3) .gt. kpoint_in_ibz(3) - tiny) then
@@ -258,7 +259,7 @@ module am_brillouin_zone
         ! ... then to get most positive and one that has kx > ky > kz
         ! this second loop will work for systems with cubic symmetry
         do i = 1,nR
-            try = kpoint_orbit(:,i)
+            try = korb(:,i)
             if (try(1) .gt. try(2) - tiny) then
                 if (try(2) .gt. try(3) - tiny) then
                     if (try(1) .gt. kpoint_in_ibz(1) - tiny) then
@@ -378,7 +379,7 @@ module am_brillouin_zone
         endif
         !
         ! generate voronoi points (cartesian)
-        grid_points = matmul( reciprocal_basis(uc%bas), real(generate_lattice_grid([1,1,1]),dp) )
+        grid_points = matmul( reciprocal_basis(uc%bas), real(mesh_grid([1,1,1]),dp) )
         ! allocate workspace
         allocate(ibz%kpt(3,bz%nkpts))
         ! reduce kpoints to ibz
@@ -420,7 +421,7 @@ module am_brillouin_zone
         type(am_class_bz)      , intent(in) :: bz
         type(am_class_symmetry), intent(in) :: ss
         !
-        real(dp), allocatable :: kpoint_orbit(:,:)
+        real(dp), allocatable :: korb(:,:)
         real(dp), allocatable :: kpoints_fbz(:,:) ! workspace
         integer :: i, j, m
         integer, allocatable :: w(:)
@@ -443,24 +444,24 @@ module am_brillouin_zone
         m = 0
         for_each_kpoint_in_the_bz : do i = 1, bz%nkpts
             ! get its orbit
-            kpoint_orbit = get_kpoint_orbit(ss%R,bz%kpt(:,i))
-            kpoint_orbit = unique(kpoint_orbit)
+            korb = kpoint_orbit(ss%R,bz%kpt(:,i))
+            korb = unique(korb)
             ! get its weight
-            w(i) = size(kpoint_orbit,2)
+            w(i) = size(korb,2)
             ! check that weight is a factor of the number of symmetry operations
             if ( modulo(ss%nsyms,w(i)) .ne. 0 ) then
                 call am_print('ERROR','Weight is not a factor of the number of symmetry operation',' >>> ')
                 call am_print('kpoint',bz%kpt(:,i))
                 call am_print('weight',w(i))
                 call am_print('number of symmetry operations',ss%nsyms)
-                call am_print('kpoint orbit',transpose(kpoint_orbit))
+                call am_print('kpoint orbit',transpose(korb))
                 stop
             endif
             !
             do j = 1 , w(i)
                 m = m + 1
                 ! save the orbit as part of fbz
-                kpoints_fbz(:,m) = kpoint_orbit(:,j)
+                kpoints_fbz(:,m) = korb(:,j)
             enddo
         enddo for_each_kpoint_in_the_bz
         ! make sure there are no repititions in the fbz
@@ -524,7 +525,7 @@ module am_brillouin_zone
         !
         !
         ! generate voronoi points (cartesian), used to reduce points to wigner-seitz brillouin zone
-        grid_points = matmul( reciprocal_basis(uc%bas) , real(generate_lattice_grid([1,1,1]),dp) )
+        grid_points = matmul( reciprocal_basis(uc%bas) , real(mesh_grid([1,1,1]),dp) )
         !
         fid = 1
         open(unit=fid,file="outfile.bandcharacter",status="replace",action='write')
@@ -745,8 +746,7 @@ module am_brillouin_zone
                 call am_print('ERROR','mismatched kpoint coordinates with IBZKPT file',' >>> ')
                 stop
             endif
-            allocate(bz_tmp%w(bz_tmp%nkpts))
-            bz_tmp%w=bz_tmp%w_int/sum(bz_tmp%w_int*1.0_dp)
+            !
             if (any(abs(bz_tmp%w-iopt_bz%w).gt.tiny)) then
                 call am_print('ERROR','mismatched kpoint weight with IBZKPT file',' >>> ')
                 call am_print('bz_tmp%w and iopt_bz%w',reshape([bz_tmp%w,iopt_bz%w],[bz_tmp%nkpts,2]))
@@ -755,44 +755,51 @@ module am_brillouin_zone
             !
         endif
         !
-    end subroutine load_ibzkpt    
-    subroutine     determine_tetrahedron_weights(x,xc,integration_type,apply_blochl_corrections,w)
-	    !
+    end subroutine load_ibzkpt
+
+    function       tetrahedron_weights(x,xc,integration_type,apply_blochl_corrections) result(w)
+        !
+        ! integration_type = heavi/delta
+        !
         use am_rank_and_sort
         !
-	    implicit none
-	    !
-	    real(dp), intent(in) :: xc(4)
-        real(dp), intent(out) :: w(4)
+        implicit none
+        !
+        real(dp), intent(in) :: xc(4)
+        real(dp) :: w(4)
         character(len=5), intent(in) :: integration_type
         logical, intent(in) :: apply_blochl_corrections
         real(dp) :: x,x1,x2,x3,x4,f
-        real(dp) :: xc_copy(4)
+        real(dp) :: xi(4)
         integer :: bracket
         integer :: i
         !
-        ! sort xc
-        xc_copy = xc
-        call sort_using_quicksort(xc_copy)
-        x1=xc_copy(1)
-        x2=xc_copy(2)
-        x3=xc_copy(3)
-        x4=xc_copy(4)
+        ! sort xc into xi
+        xi = xc([4:1:-1])
+        if (xi(1).gt.xi(2)) then; xi([1,2]) = xi([2,1]); endif
+        if (xi(3).gt.xi(4)) then; xi([3,4]) = xi([4,3]); endif
+        if (xi(1).gt.xi(3)) then; xi([1,3]) = xi([3,1]); endif
+        if (xi(2).gt.xi(4)) then; xi([2,4]) = xi([4,2]); endif
+        if (xi(2).gt.xi(3)) then; xi([2,3]) = xi([3,2]); endif
+        x1=xi(1); x2=xi(2); x3=xi(3); x4=xi(4)
         !
-        if (x.le.x1) then
-            bracket = 1
-        elseif (x.le.x2) then
-            bracket = 2
-        elseif (x.le.x3) then
-            bracket = 3
-        elseif (x.le.x4) then
-            bracket = 4
-        elseif (x4.lt.x) then
-            bracket = 5
+        ! if (x1.gt.x2) then; call am_print('ERROR','Sorting failed.',' >>> '); stop; endif
+        ! if (x2.gt.x3) then; call am_print('ERROR','Sorting failed.',' >>> '); stop; endif
+        ! if (x3.gt.x4) then; call am_print('ERROR','Sorting failed.',' >>> '); stop; endif
+        !
+        bracket = 0
+        if     (x.lt.x1) then; bracket = 1 !; call am_print('bracket',xi-x)
+        elseif (x.lt.x2) then; bracket = 2 !; call am_print('bracket',xi-x)
+        elseif (x.lt.x3) then; bracket = 3 !; call am_print('bracket',xi-x)
+        elseif (x.lt.x4) then; bracket = 4 !; call am_print('bracket',xi-x)
+        elseif (x.gt.x4) then; bracket = 5 !; call am_print('bracket',xi-x)
+        else
+            call am_print('ERROR','Unable to bracket.',' >>> ')
+            stop
         endif
         !
         select case(integration_type)
-        case ('heavi')
+        case('heavi')
             select case(bracket)
                 case (1)
                     w(1) = 0.0_dp
@@ -802,30 +809,37 @@ module am_brillouin_zone
                     f    = 0.0_dp
                 case (2)
                     w(1) = -((x-x1)**3*((x-x1)*(1.0_dp/(x1-x2)+1.0_dp/(x1-x3)+1.0_dp/(x1-x4))+4.0_dp))/((x1-x2)*(x1-x3)*(x1-x4))
-                    w(2) = ((x-x1)**4*1.0_dp/(x1-x2)**2)/((x1-x3)*(x1-x4))
-                    w(3) = ((x-x1)**4*1.0_dp/(x1-x3)**2)/((x1-x2)*(x1-x4))
-                    w(4) = ((x-x1)**4*1.0_dp/(x1-x4)**2)/((x1-x2)*(x1-x3))
-                    f    = ((x-x1)**2*(-1.2D1))/((x1-x2)*(x1-x3)*(x1-x4))
+                    w(2) =  ((x-x1)**4*1.0_dp/(x1-x2)**2)/((x1-x3)*(x1-x4))
+                    w(3) =  ((x-x1)**4*1.0_dp/(x1-x3)**2)/((x1-x2)*(x1-x4))
+                    w(4) =  ((x-x1)**4*1.0_dp/(x1-x4)**2)/((x1-x2)*(x1-x3))
+                    f    =  ((x-x1)**2*(-1.2D1))/((x1-x2)*(x1-x3)*(x1-x4))
                 case (3)
-                    w(1) = (x-x1)**2/((x1-x3)*(x1-x4))+(((x-x1)**2/((x1-x3)*(x1-x4))+((x-x1)*(x-x2)*(x-x3))/((x1-x3)*(x1-x4)*(x2-x3)))*(x-x3))/(x1-x3)+((x-x4)*((x-x1)**2/((x1-x3)*(x1-x4))+((x-x2)**2*(x-x4))/((x1-x4)*(x2-x3)*(x2-x4))+((x-x1)*(x-x2)*(x-x3))/((x1-x3)*(x1-x4)*(x2-x3))))/(x1-x4)
-                    w(2) = ((((x-x2)**2*(x-x4))/((x1-x4)*(x2-x3)*(x2-x4))+((x-x1)*(x-x2)*(x-x3))/((x1-x3)*(x1-x4)*(x2-x3)))*(x-x3))/(x2-x3)+(x-x1)**2/((x1-x3)*(x1-x4))+((x-x2)**2*(x-x4))/((x1-x4)*(x2-x3)*(x2-x4))+((x-x2)**2*(x-x4)**2*1.0_dp/(x2-x4)**2)/((x1-x4)*(x2-x3))+((x-x1)*(x-x2)*(x-x3))/((x1-x3)*(x1-x4)*(x2-x3))
+                    w(1) =  (x-x1)**2/((x1-x3)*(x1-x4))+(((x-x1)**2/((x1-x3)*(x1-x4))+((x-x1)*(x-x2)*(x-x3))/((x1-x3)*(x1-x4)*(x2-x3)))*(x-x3))/(x1-x3)+((x-x4)*((x-x1)**2/((x1-x3)*(x1-x4))+((x-x2)**2*(x-x4))/((x1-x4)*(x2-x3)*(x2-x4))+((x-x1)*(x-x2)*(x-x3))/((x1-x3)*(x1-x4)*(x2-x3))))/(x1-x4)
+                    w(2) =  ((((x-x2)**2*(x-x4))/((x1-x4)*(x2-x3)*(x2-x4))+((x-x1)*(x-x2)*(x-x3))/((x1-x3)*(x1-x4)*(x2-x3)))*(x-x3))/(x2-x3)+(x-x1)**2/((x1-x3)*(x1-x4))+((x-x2)**2*(x-x4))/((x1-x4)*(x2-x3)*(x2-x4))+((x-x2)**2*(x-x4)**2*1.0_dp/(x2-x4)**2)/((x1-x4)*(x2-x3))+((x-x1)*(x-x2)*(x-x3))/((x1-x3)*(x1-x4)*(x2-x3))
                     w(3) = -((((x-x2)**2*(x-x4))/((x1-x4)*(x2-x3)*(x2-x4))+((x-x1)*(x-x2)*(x-x3))/((x1-x3)*(x1-x4)*(x2-x3)))*(x-x2))/(x2-x3)-(((x-x1)**2/((x1-x3)*(x1-x4))+((x-x1)*(x-x2)*(x-x3))/((x1-x3)*(x1-x4)*(x2-x3)))*(x-x1))/(x1-x3)
                     w(4) = -((x-x1)*((x-x1)**2/((x1-x3)*(x1-x4))+((x-x2)**2*(x-x4))/((x1-x4)*(x2-x3)*(x2-x4))+((x-x1)*(x-x2)*(x-x3))/((x1-x3)*(x1-x4)*(x2-x3))))/(x1-x4)-((x-x2)**3*(x-x4)*1.0_dp/(x2-x4)**2)/((x1-x4)*(x2-x3))
-                    f    = (x*2.4D1-x1*1.2D1-x2*1.2D1+((x-x2)**2*(x1*3.0_dp+x2*3.0_dp-x3*3.0_dp-x4*3.0_dp)*4.0_dp)/((x2-x3)*(x2-x4)))/((x1-x3)*(x1-x4))
+                    f    =  (x*2.4D1-x1*1.2D1-x2*1.2D1+((x-x2)**2*(x1*3.0_dp+x2*3.0_dp-x3*3.0_dp-x4*3.0_dp)*4.0_dp)/((x2-x3)*(x2-x4)))/((x1-x3)*(x1-x4))
                 case (4)
                     w(1) = -((x-x4)**4*1.0_dp/(x1-x4)**2)/((x2-x4)*(x3-x4))+1.0_dp
                     w(2) = -((x-x4)**4*1.0_dp/(x2-x4)**2)/((x1-x4)*(x3-x4))+1.0_dp
                     w(3) = -((x-x4)**4*1.0_dp/(x3-x4)**2)/((x1-x4)*(x2-x4))+1.0_dp
-                    w(4) = ((x-x4)**3*((x-x4)*(1.0_dp/(x1-x4)+1.0_dp/(x2-x4)+1.0_dp/(x3-x4))-4.0_dp))/((x1-x4)*(x2-x4)*(x3-x4))+1.0_dp
-                    f    = ((x-x4)**2*(-1.2D1))/((x1-x4)*(x2-x4)*(x3-x4))
+                    w(4) =  ((x-x4)**3*((x-x4)*(1.0_dp/(x1-x4)+1.0_dp/(x2-x4)+1.0_dp/(x3-x4))-4.0_dp))/((x1-x4)*(x2-x4)*(x3-x4))+1.0_dp
+                    f    =  ((x-x4)**2*(-1.2D1))/((x1-x4)*(x2-x4)*(x3-x4))
                 case (5)
                     w(1) = 1.0_dp
                     w(2) = 1.0_dp
                     w(3) = 1.0_dp
                     w(4) = 1.0_dp
                     f    = 0.0_dp
-            end select
-        case ('delta')
+                case default
+                    call am_print('ERROR','Error computing tetrahedron weight.',' >>> ')
+                    call am_print('x',x)
+                    call am_print('xc',[x1,x2,x3,x4])
+                    call am_print('w',w)
+                    call am_print('f',f)
+                    stop                        
+                end select
+        case('delta')
             select case(bracket)
                 case (1)
                     w(1) = 0.0_dp
@@ -834,22 +848,22 @@ module am_brillouin_zone
                     w(4) = 0.0_dp
                     f    = 0.0_dp
                 case (2)
-                    w(1) = (x-x1)**2*1.0_dp/(x1-x2)**2*1.0_dp/(x1-x3)**2*1.0_dp/(x1-x4)**2*(x*(x4*(x2+x3)+x2*x3-x1*(x2+x3+x4)*2.0_dp+x1**2*3.0_dp)+x1*(x4*(x2+x3)+x2*x3)*2.0_dp-x1**2*(x2+x3+x4)-x2*x3*x4*3.0_dp)*(-4.0_dp)
-                    w(2) = ((x-x1)**3*1.0_dp/(x1-x2)**2*4.0_dp)/((x1-x3)*(x1-x4))
-                    w(3) = ((x-x1)**3*1.0_dp/(x1-x3)**2*4.0_dp)/((x1-x2)*(x1-x4))
-                    w(4) = ((x-x1)**3*1.0_dp/(x1-x4)**2*4.0_dp)/((x1-x2)*(x1-x3))
+                    w(1) =   (x-x1)**2*1.0_dp/(x1-x2)**2*1.0_dp/(x1-x3)**2*1.0_dp/(x1-x4)**2*(x*(x4*(x2+x3)+x2*x3-x1*(x2+x3+x4)*2.0_dp+x1**2*3.0_dp)+x1*(x4*(x2+x3)+x2*x3)*2.0_dp-x1**2*(x2+x3+x4)-x2*x3*x4*3.0_dp)*(-4.0_dp)
+                    w(2) =  ((x-x1)**3*1.0_dp/(x1-x2)**2*4.0_dp)/((x1-x3)*(x1-x4))
+                    w(3) =  ((x-x1)**3*1.0_dp/(x1-x3)**2*4.0_dp)/((x1-x2)*(x1-x4))
+                    w(4) =  ((x-x1)**3*1.0_dp/(x1-x4)**2*4.0_dp)/((x1-x2)*(x1-x3))
                     f    = -(x*2.4D1-x1*2.4D1)/((x1-x2)*(x1-x3)*(x1-x4))
                 case (3)
                     w(1) = (1.0_dp/(x1-x3)**2*1.0_dp/(x1-x4)**2*(x**2*(x1**2*x2*3.0_dp+x3*x4**2*3.0_dp+x3**2*x4*3.0_dp-x1*x3*x4*6.0_dp-x2*x3*x4*3.0_dp)-x**3*(x1*x2*2.0_dp-x1*x3*2.0_dp-x1*x4*2.0_dp-x2*x3-x2*x4+x3*x4+x1**2+x3**2+x4**2)-x*(x3**2*x4**2*3.0_dp+x1**2*x2*x3*3.0_dp+x1**2*x2*x4*3.0_dp-x1**2*x3*x4*3.0_dp-x1*x2*x3*x4*6.0_dp)+x1**2*x2*x3**2+x1**2*x2*x4**2+x1*x3**2*x4**2*2.0_dp-x1**2*x3*x4**2-x1**2*x3**2*x4+x2*x3**2*x4**2-x1*x2*x3*x4**2*2.0_dp-x1*x2*x3**2*x4*2.0_dp+x1**2*x2*x3*x4)*(-4.0_dp))/((x2-x3)*(x2-x4))
                     w(2) = (1.0_dp/(x2-x3)**2*1.0_dp/(x2-x4)**2*(x**2*(x1*x2**2*3.0_dp+x3*x4**2*3.0_dp+x3**2*x4*3.0_dp-x1*x3*x4*3.0_dp-x2*x3*x4*6.0_dp)-x**3*(x1*x2*2.0_dp-x1*x3-x1*x4-x2*x3*2.0_dp-x2*x4*2.0_dp+x3*x4+x2**2+x3**2+x4**2)-x*(x3**2*x4**2*3.0_dp+x1*x2**2*x3*3.0_dp+x1*x2**2*x4*3.0_dp-x2**2*x3*x4*3.0_dp-x1*x2*x3*x4*6.0_dp)+x1*x2**2*x3**2+x1*x2**2*x4**2+x1*x3**2*x4**2+x2*x3**2*x4**2*2.0_dp-x2**2*x3*x4**2-x2**2*x3**2*x4-x1*x2*x3*x4**2*2.0_dp-x1*x2*x3**2*x4*2.0_dp+x1*x2**2*x3*x4)*(-4.0_dp))/((x1-x3)*(x1-x4))
                     w(3) = (1.0_dp/(x1-x3)**2*1.0_dp/(x2-x3)**2*(x**2*(x1*x2**2*3.0_dp+x1**2*x2*3.0_dp+x3**2*x4*3.0_dp-x1*x2*x3*6.0_dp-x1*x2*x4*3.0_dp)-x**3*(x1*x2-x1*x3*2.0_dp-x1*x4-x2*x3*2.0_dp-x2*x4+x3*x4*2.0_dp+x1**2+x2**2+x3**2)-x*(x1**2*x2**2*3.0_dp-x1*x2*x3**2*3.0_dp+x1*x3**2*x4*3.0_dp+x2*x3**2*x4*3.0_dp-x1*x2*x3*x4*6.0_dp)-x1*x2**2*x3**2-x1**2*x2*x3**2+x1**2*x2**2*x3*2.0_dp+x1**2*x2**2*x4+x1**2*x3**2*x4+x2**2*x3**2*x4+x1*x2*x3**2*x4-x1*x2**2*x3*x4*2.0_dp-x1**2*x2*x3*x4*2.0_dp)*4.0_dp)/((x1-x4)*(x2-x4))
                     w(4) = (1.0_dp/(x1-x4)**2*1.0_dp/(x2-x4)**2*(x**2*(x1*x2**2*3.0_dp+x1**2*x2*3.0_dp+x3*x4**2*3.0_dp-x1*x2*x3*3.0_dp-x1*x2*x4*6.0_dp)-x**3*(x1*x2-x1*x3-x1*x4*2.0_dp-x2*x3-x2*x4*2.0_dp+x3*x4*2.0_dp+x1**2+x2**2+x4**2)-x*(x1**2*x2**2*3.0_dp-x1*x2*x4**2*3.0_dp+x1*x3*x4**2*3.0_dp+x2*x3*x4**2*3.0_dp-x1*x2*x3*x4*6.0_dp)+x1**2*x2**2*x3-x1*x2**2*x4**2-x1**2*x2*x4**2+x1**2*x2**2*x4*2.0_dp+x1**2*x3*x4**2+x2**2*x3*x4**2+x1*x2*x3*x4**2-x1*x2**2*x3*x4*2.0_dp-x1**2*x2*x3*x4*2.0_dp)*4.0_dp)/((x1-x3)*(x2-x3))
-                    f   = (x1*x2*(-2.4D1)+x3*x4*2.4D1+x*(x1+x2-x3-x4)*2.4D1)/((x1-x3)*(x1-x4)*(x2-x3)*(x2-x4))
+                    f    = (x1*x2*(-2.4D1)+x3*x4*2.4D1+x*(x1+x2-x3-x4)*2.4D1)/((x1-x3)*(x1-x4)*(x2-x3)*(x2-x4))
                 case (4)
-                    w(1) = ((x-x4)**3*1.0_dp/(x1-x4)**2*(-4.0_dp))/((x2-x4)*(x3-x4))
-                    w(2) = ((x-x4)**3*1.0_dp/(x2-x4)**2*(-4.0_dp))/((x1-x4)*(x3-x4))
-                    w(3) = ((x-x4)**3*1.0_dp/(x3-x4)**2*(-4.0_dp))/((x1-x4)*(x2-x4))
-                    w(4) = (x-x4)**2*1.0_dp/(x1-x4)**2*1.0_dp/(x2-x4)**2*1.0_dp/(x3-x4)**2*(x*(x1*x2+x1*x3+x2*x3-x4*(x1*2.0_dp+x2*2.0_dp+x3*2.0_dp)+x4**2*3.0_dp)+x4*(x1*(x2+x3)*2.0_dp+x2*x3*2.0_dp)-x4**2*(x1+x2+x3)-x1*x2*x3*3.0_dp)*4.0_dp
+                    w(1) =  ((x-x4)**3*1.0_dp/(x1-x4)**2*(-4.0_dp))/((x2-x4)*(x3-x4))
+                    w(2) =  ((x-x4)**3*1.0_dp/(x2-x4)**2*(-4.0_dp))/((x1-x4)*(x3-x4))
+                    w(3) =  ((x-x4)**3*1.0_dp/(x3-x4)**2*(-4.0_dp))/((x1-x4)*(x2-x4))
+                    w(4) =   (x-x4)**2*1.0_dp/(x1-x4)**2*1.0_dp/(x2-x4)**2*1.0_dp/(x3-x4)**2*(x*(x1*x2+x1*x3+x2*x3-x4*(x1*2.0_dp+x2*2.0_dp+x3*2.0_dp)+x4**2*3.0_dp)+x4*(x1*(x2+x3)*2.0_dp+x2*x3*2.0_dp)-x4**2*(x1+x2+x3)-x1*x2*x3*3.0_dp)*4.0_dp
                     f    = -(x*2.4D1-x4*2.4D1)/((x1-x4)*(x2-x4)*(x3-x4))
                 case (5)
                     w(1) = 0.0_dp
@@ -857,24 +871,27 @@ module am_brillouin_zone
                     w(3) = 0.0_dp
                     w(4) = 0.0_dp
                     f    = 0.0_dp
+                case default
+                    call am_print('ERROR','Error computing tetrahedron weight.',' >>> ')
+                    call am_print('x',x)
+                    call am_print('xc',[x1,x2,x3,x4])
+                    call am_print('w',w)
+                    call am_print('f',f)
+                    stop                        
                 end select
             case default
                 call am_print('ERROR','Integration type not valid',' >>> ')
-            stop
+                stop
         end select
-        !if (any(isnan(w))) then
-        !    call am_print('ERROR','NaN weight returned.',' >>> ')
-        !    call am_print('w',w)
-        !    call am_print('integration_type',integration_type)
-        !    call am_print('bracket',bracket)
-        !    call am_print('1.0_dp/(x1-x2)',1.0_dp/(x1-x2))
-        !    call am_print('1.0_dp/(x1-x3)',1.0_dp/(x1-x3))
-        !    call am_print('1.0_dp/(x1-x4)',1.0_dp/(x1-x4))
-        !    call am_print('1.0_dp/(x2-x3)',1.0_dp/(x2-x3))
-        !    call am_print('1.0_dp/(x2-x4)',1.0_dp/(x2-x4))
-        !    call am_print('1.0_dp/(x3-x4)',1.0_dp/(x3-x4))
-        !    stop
-        !endif
+        if (any(isnan(w))) then
+            call am_print('ERROR','NaN weight returned.',' >>> ')
+            call am_print('integration_type',integration_type)
+            call am_print('bracket',bracket)
+            call am_print('xc',[x1,x2,x3,x4])
+            call am_print('x',x)
+            call am_print('w',w)
+            stop
+        endif
         if ( apply_blochl_corrections ) then
             f = f*0.25_dp
             do i = 1,4
@@ -884,10 +901,14 @@ module am_brillouin_zone
                 w(4)=w(4)+0.025_dp*f*(xc(i)-x4)
             enddo
         endif
+        !
         w=w*0.25_dp
-    end subroutine determine_tetrahedron_weights
+        !
+    end function   tetrahedron_weights
+
     subroutine     tetrahedra_pdos(bz,tet,iopts)
         !
+        use am_histogram
         use am_options
         !
         implicit none
@@ -896,7 +917,9 @@ module am_brillouin_zone
         type(am_class_tetrahedra), intent(in) :: tet
         real(dp) :: maxE ! maximum band energy
         real(dp) :: minE ! minimum band energy
+        real(dp) :: dE   ! energy increment
         real(dp) :: w(4) ! weights on tetrahedron corner
+        real(dp) :: Ec(4) ! corner energies
         integer :: i, j, k, m, n, o
         !
         type(am_class_options), intent(in), optional :: iopts
@@ -907,23 +930,26 @@ module am_brillouin_zone
             call opts%defaults
         endif
         !
-        if (iopts%verbosity .ge. 1) write(*,*)
-        if (iopts%verbosity .ge. 1) write(*,'(a)' ) 'Tetrahedron integration'
+        if (iopts%verbosity .ge. 1) call am_print_title('Tetrahedron integration')
         if (iopts%verbosity .ge. 1) call am_print('number of bands',bz%nbands,' ... ')
         if (iopts%verbosity .ge. 1) call am_print('number of tetrahedra',tet%ntets,' ... ')
         !
-        bz%nEp = 1000
-        if (iopts%verbosity .ge. 1) call am_print('number of probing energies',bz%nEp,' ... ')
         !
+        dE = 0.01_dp
         minE = minval(bz%E(:,:))
         maxE = maxval(bz%E(:,:))
-        allocate(bz%Ep(bz%nEp))
-        bz%Ep = linspace(minE,maxE,bz%nEp)
+        ! bz%Ep = linspace(minE,maxE,100)
+        bz%Ep = regspace(minE,maxE,dE)
+        bz%nEp = size(bz%Ep,1)
         !
-        if (iopts%verbosity .ge. 1) call am_print('min probing energy',bz%Ep(1),' ... ')
-        if (iopts%verbosity .ge. 1) call am_print('max probing energy',bz%Ep(bz%nEp),' ... ')
-        if (iopts%verbosity .ge. 1) call am_print('minimum energy',maxE,' ... ')
-        if (iopts%verbosity .ge. 1) call am_print('maximum energy',minE,' ... ')
+        if (iopts%verbosity .ge. 1) call am_print('minimum band energy',minE,' ... ')
+        if (iopts%verbosity .ge. 1) call am_print('maximum band energy',maxE,' ... ')
+        if (iopts%verbosity .ge. 1) call am_print('energy increments dE',dE,' ... ')
+        if (iopts%verbosity .ge. 1) call am_print('number of probing energies',bz%nEp,' ... ')
+        if (iopts%verbosity .ge. 1) call am_print('minimum probing energy',bz%Ep(1),' ... ')
+        if (iopts%verbosity .ge. 1) call am_print('maximum probing energy',bz%Ep(bz%nEp),' ... ')
+        !
+        call plot_histogram( histogram(pack(bz%E(:,:),(bz%E(:,:).ge.minE).and.(bz%E(:,:).le.maxE)),column_width) )
         !
         allocate(bz%pdos(bz%nspins,bz%norbitals,bz%nions,bz%nEp))
         allocate(bz%dos(bz%nEp))
@@ -931,42 +957,38 @@ module am_brillouin_zone
         bz%pdos = 0.0_dp
         bz%dos = 0.0_dp
         !
+        ! two things
+        ! 1) difference between total dos and sum of JDOS. ONE band is being left out in the JDOS summation. figure out which one.
+        !  0.996425152311378        1.00000000031254
+        ! 2) delta summation produces wild values. the divisions by 1/tiny are numerically unstable. Figure out how to get rid of them.!
+        !
         do i = 1, bz%nEp
             do j = 1, bz%nbands
-                do k = 1, tet%ntets
-                    !
-                    call determine_tetrahedron_weights( bz%Ep(i) , bz%E(j,tet%corner(:,k)) , 'delta' , .true. , w )
-                    !
-                    ! <debug>
-                    !if (any(isnan(w))) then
-                    !    write(*,*) i,j,k
-                    !    write(*,*) bz%Ep(i)
-                    !    call am_print(' bz%E(j,tet%corner(:,k)', bz%E(j,tet%corner(:,k)))
-                    !    call am_print('w',w)
-                    !    call am_print('w',w)
-                    !endif
-                    ! </debug>
-                    !
-                    !
-                    bz%dos(i) = bz%dos(i) + tet%w(k)*tet%volume(k)*sum(w)
-                    !
-                    ! <projections>
-                    !
-                    do m = 1,bz%nspins
-                    do n = 1,bz%norbitals
-                    do o = 1,bz%nions
-                        !> pdos(nspins,norbitals,nions,nEP)
-                        !> lmproj(nspins,norbitals,nions,nbands,nkpts)
-                        bz%pdos(m,n,o,i) = bz%pdos(m,n,o,i) + tet%w(k)*tet%volume(k)*sum(w*bz%lmproj( m,n,o,j,tet%corner(:,k) ))/real(bz%nspins,dp) ! per spin
-                    enddo
-                    enddo
-                    enddo
-                    !
-                    ! </projections>
-                    !
+            do k = 1, tet%ntets
+                !
+                Ec(1:4) = bz%E(j,tet%corner(:,k))
+                !
+                w = tetrahedron_weights(x=bz%Ep(i),xc=Ec,integration_type='heavi',apply_blochl_corrections=.true.)
+                !
+                bz%dos(i) = bz%dos(i) + tet%w(k)*tet%volume(k)*sum(w)
+                !
+                ! <projections>
+                !
+                do m = 1,bz%nspins
+                do n = 1,bz%norbitals
+                do o = 1,bz%nions
+                    !> pdos(nspins,norbitals,nions,nEP)
+                    !> lmproj(nspins,norbitals,nions,nbands,nkpts)
+                    bz%pdos(m,n,o,i) = bz%pdos(m,n,o,i) + tet%w(k)*tet%volume(k)*sum(w*bz%lmproj( m,n,o,j,tet%corner(:,k) ))/real(bz%nspins,dp) ! per spin
                 enddo
+                enddo
+                enddo
+                !
+                ! </projections>
+                !
             enddo
-            write(*,*) bz%Ep(i), sum(bz%pdos(:,:,:,i))
+            enddo
+            write(*,*) bz%Ep(i), sum(bz%pdos(:,:,:,i)), bz%dos(i)
         enddo
         !
     end subroutine tetrahedra_pdos
@@ -1021,7 +1043,7 @@ module am_brillouin_zone
     !real(dp), allocatable :: kpoints(:,:) !> list of kpoints
     !real(dp), allocatable :: kpoints_ibz(:,:) !> list of kpoints in ibz for each kpoint in fbz
     !real(dp), allocatable :: kpoints_ibz_unique(:,:) !> list of unique kpoints in ibz
-    !real(dp) :: kpoint_orbit(3,size(R,3)) !> full orbit, with redudancies if present
+    !real(dp) :: korb(3,size(R,3)) !> full orbit, with redudancies if present
     !integer  :: i, j, k, i1, i2 ! loop variable
     !!
     !! fbz part:
@@ -1033,7 +1055,7 @@ module am_brillouin_zone
     !! detemrine how many kpoints there are
     !bz%nfbz = size(kpoints,2)
     !! generate voronoi points (cartesian)
-    !grid_points = generate_lattice_grid(recbas)
+    !grid_points = mesh_grid(recbas)
     !! reduce kpoints to FBZ using voronoi points
     !do i = 1,bz%nfbz
     !    kpoints(:,i) = reduce_kpoint_to_fbz(bas,grid_points,kpoints(:,i))
@@ -1068,23 +1090,23 @@ module am_brillouin_zone
     !        if ( all(abs(kpoints_ibz(:,j)-bz%k_ibz(i)%k).lt.tiny) ) bz%k_fbz(j)%irr_indx = i
     !    enddo
     !    ! orbit
-    !    kpoint_orbit = get_kpoint_orbit(R,bz%k_ibz(i)%k)
+    !    korb = kpoint_orbit(R,bz%k_ibz(i)%k)
     !    ! get number of stabilizers (number of elements in little group) and allocate space
     !    k = 0
     !    do j = 1, nR
-    !        if ( all(abs(kpoint_orbit(:,j)-bz%k_ibz(i)%k).lt.tiny) ) k=k+1
+    !        if ( all(abs(korb(:,j)-bz%k_ibz(i)%k).lt.tiny) ) k=k+1
     !    enddo
     !    allocate(bz%k_ibz(i)%littlgrp(3,3,k))
     !    ! get little group (stabilizers)
     !    k = 0
     !    do j = 1, nR
-    !        if ( all(abs(kpoint_orbit(:,j)-bz%k_ibz(i)%k).lt.tiny) ) then
+    !        if ( all(abs(korb(:,j)-bz%k_ibz(i)%k).lt.tiny) ) then
     !            k = k + 1
     !            bz%k_ibz(i)%littlgrp(:,:,k) = R(:,:,j)
     !        endif
     !    enddo
     !    ! save orbit
-    !    bz%k_ibz(i)%korbit = unique(kpoint_orbit)
+    !    bz%k_ibz(i)%korbit = unique(korb)
     !    ! save weight
     !    bz%k_ibz(i)%w = size(bz%k_ibz(i)%korbit,2)
     !enddo

@@ -223,6 +223,23 @@
         enddo
         !
     end function  linspace
+    pure function regspace(d1,d2,d) result(y)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: d1
+        real(dp), intent(in) :: d2
+        real(dp), intent(in) :: d
+        real(dp), allocatable :: y(:)
+        integer :: n
+        !
+        n=nint((d2-d1)/d)
+        !
+        allocate(y(n))
+        y = d1+d*[0:n:1]
+        !
+    end function  regspace
+
     pure function cross_product(a,b) result(c)
         !
         implicit none
@@ -262,6 +279,7 @@
     !
     ! helper functions
     !
+
 
     pure function strsplit(str,delimiter) result(word)
         !
