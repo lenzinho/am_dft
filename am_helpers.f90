@@ -13,11 +13,19 @@
         module procedure am_print_double, am_print_integer, am_print_string, am_print_logical, &
             am_print_double_matrix, am_print_int_matrix, am_print_logical_matrix, &
             am_print_double_vector, am_print_int_vector
-    end interface
+    end interface ! am_print
     !
     interface linspace
         module procedure linspace_double, linspace_integer
     end interface ! linspace
+    !
+    interface inv
+        module procedure inv_3x3_dbl
+    end interface ! inv
+    !
+    interface det
+        module procedure det_3x3_dbl
+    end interface ! det
 
     contains
 
@@ -185,13 +193,54 @@
         do i = 1, n
             eye(i,i) = 1.0_dp
         enddo
-    end function eye
+    end  function eye
+
+    pure function det_3x3_dbl(a) result(det)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: a(3,3)
+        real(dp) :: det
+        !
+        det = a(1,1)*a(2,2)*a(3,3) &
+            - a(1,1)*a(2,3)*a(3,2) &
+            - a(1,2)*a(2,1)*a(3,3) &
+            + a(1,2)*a(2,3)*a(3,1) &
+            + a(1,3)*a(2,1)*a(3,2) &
+            - a(1,3)*a(2,2)*a(3,1)
+        !
+    end function  det_3x3_dbl
+    
+    pure function inv_3x3_dbl(a) result(ainv)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: a(3,3)
+        real(dp) :: cofactor(3,3)
+        real(dp) :: determinant
+        real(dp) :: ainv(3,3)
+        !
+        determinant = det(a)
+        !
+        cofactor(1,1) = +(a(2,2)*a(3,3)-a(2,3)*a(3,2))
+        cofactor(1,2) = -(a(2,1)*a(3,3)-a(2,3)*a(3,1))
+        cofactor(1,3) = +(a(2,1)*a(3,2)-a(2,2)*a(3,1))
+        cofactor(2,1) = -(a(1,2)*a(3,3)-a(1,3)*a(3,2))
+        cofactor(2,2) = +(a(1,1)*a(3,3)-a(1,3)*a(3,1))
+        cofactor(2,3) = -(a(1,1)*a(3,2)-a(1,2)*a(3,1))
+        cofactor(3,1) = +(a(1,2)*a(2,3)-a(1,3)*a(2,2))
+        cofactor(3,2) = -(a(1,1)*a(2,3)-a(1,3)*a(2,1))
+        cofactor(3,3) = +(a(1,1)*a(2,2)-a(1,2)*a(2,1))
+        !
+        ainv = transpose(cofactor) / determinant
+        !
+    end function  inv_3x3_dbl
 
     ! generic math functions
 
 #include "am_helpers_unique.f90"
 
-    pure function issubset(A,B)
+    pure function issubset(A,B,iopt_sym_prec)
         !> returns true if true if B(:) is a subset of A(:,i) within numerical precision for any i
         implicit none
         !
@@ -199,13 +248,21 @@
         real(dp), intent(in) :: B(:)
         logical :: issubset
         integer :: i
+        real(dp), intent(in), optional :: iopt_sym_prec
+        real(dp) :: sym_prec
+        !
+        if (present(iopt_sym_prec)) then
+            sym_prec = iopt_sym_prec
+        else
+            sym_prec = tiny
+        endif
         !
         issubset = .false.
         !
         do i = 1,size(A,2)
-            if ( all(abs(A(:,i)-B).lt.tiny) ) then
+            if ( all(abs(A(:,i)-B).lt.sym_prec) ) then
                 issubset = .true.
-                exit
+                return
             endif
         enddo
         !
@@ -301,6 +358,54 @@
         !
     end function  rotation_from_vectors
     
+    pure function are_equal(a)
+        !
+        ! are all elements of a equal to each other
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: a(:)
+        logical :: are_equal
+        !
+        if ( all(abs(a(1)-a).lt.tiny) ) then
+            are_equal = .true.
+        else
+            are_equal = .false.
+        endif
+        !
+    end function  are_equal
+
+    pure function are_different(a)
+        !
+        ! are all elements of a different from each other?
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: a(:)
+        logical :: are_different
+        integer :: i, j, n
+        real(dp) :: tiny
+        !
+        n = size(a)
+        !
+        if (n.eq.1) then
+            are_different = .false.
+            return
+        endif    
+        !
+        are_different = .true.
+        do i = 1, n
+        do j = 1, i
+            if (i.ne.j) then
+            if (abs(a(i)-a(j)).lt.tiny) then
+                are_different = .false.
+                return
+            endif
+            endif
+        enddo
+        enddo        
+    end function  are_different
+
     !
     ! helper functions
     !

@@ -194,9 +194,9 @@ contains
 				case(30); pg_schoenflies = 'o'
 				case(31); pg_schoenflies = 't_d'
 				case(32); pg_schoenflies = 'o_h'
-	  	  case default
-						call am_print('ERROR','Schoenflies code for point-group unknown.',' >>> ')
-						stop
+	  	    case default
+				call am_print('ERROR','Schoenflies code for point-group unknown.',' >>> ')
+				stop
 			end select
     end function   point_group_schoenflies_decode
 
@@ -327,7 +327,6 @@ contains
         !
         class(am_class_symmetry), intent(inout) :: ss
         type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_symmetry) :: ps ! point symmetries
         type(am_class_options), intent(in), optional :: iopts
         type(am_class_options) :: opts
         !
@@ -381,7 +380,7 @@ contains
         class(am_class_symmetry), intent(inout) :: ss
         type(am_class_unit_cell), intent(in) :: uc
         real(dp), allocatable :: seitz(:,:,:)
-        type(am_class_unit_cell) :: prim
+        type(am_class_unit_cell) :: conv, prim
         !
         type(am_class_options), intent(in), optional :: iopts
         type(am_class_options) :: opts
@@ -393,12 +392,13 @@ contains
         !
         if ( opts%verbosity .ge. 1) call am_print_title('Analyzing symmetry')
         !
-        ! call prim%reduce_to_primitive(uc=uc,iopts=opts)
-        call prim%expand_to_supercell(uc=uc,n=[2,2,2],iopts=opts)
+        call prim%reduce_to_primitive(uc=uc,iopts=opts)
+        !
+        call conv%primitive_to_conventional(prim=prim,iopts=opts)
         !
         if ( opts%verbosity .ge. 1) call am_print_title('Determining space group symmetries')
         !
-        seitz = space_symmetries_from_basis(uc=prim,iopts=opts)
+        seitz = space_symmetries_from_basis(uc=conv,iopts=opts)
         !
         ss%nsyms=size(seitz,3)
         allocate(ss%R(3,3,ss%nsyms))
@@ -406,7 +406,7 @@ contains
         ss%R(1:3,1:3,1:ss%nsyms) = seitz(1:3,1:3,1:ss%nsyms)
         ss%T(1:3,1:ss%nsyms)     = seitz(1:3,4,1:ss%nsyms)
         !
-        call ss%determine_basic_point_symmetry_properties(uc=prim,iopts=opts)
+        call ss%determine_basic_point_symmetry_properties(uc=conv,iopts=opts)
         !
         if ( opts%verbosity .ge. 1) call plot_histogram( histogram(ss%schoenflies_code ,column_width) )
         !
