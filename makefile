@@ -11,7 +11,7 @@ DEBUG = -g -traceback  -warn all -traceback -check all -gen-interfaces -warn int
 # and will only cause problems when "-check all" or "-check pointer" is included in 
 # the flag.
 
-FFLAGS =  -fpp -implicitnone -assume realloc_lhs -mkl
+FFLAGS =  -fpp -implicitnone -assume realloc_lhs -mkl -O5
 CPFLAGS = -Difortprogressbar -Ddebug 
 
 PROG = am_sym

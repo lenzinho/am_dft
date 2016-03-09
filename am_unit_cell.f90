@@ -909,7 +909,7 @@
         real(dp), intent(in) :: bscfp(3,3)
         real(dp) :: sc_recbas(3,3)
         real(dp) :: tau_wrk(3)
-        integer :: i1, i2, i3, i, j, m
+        integer :: i1, i2, i3, j, m
         type(am_class_options), intent(in), optional :: iopts
         type(am_class_options) :: opts
         if (present(iopts)) then 
@@ -1026,10 +1026,6 @@
         if (opts%verbosity.ge.1) call am_print('centering matrix',centering)
         !
         call conv%expand_to_supercell(uc=prim,bscfp=inv(centering),iopts=opts)
-        stop
-
-        ! WORKING ON THIS...
-        !
         !
     end subroutine primitive_to_conventional
 

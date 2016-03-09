@@ -5,7 +5,7 @@
     implicit none
     !
     interface unique
-        module procedure unique_integer, unique_columns_integer, unique_columns_double
+        module procedure unique_integer, unique_columns_integer, unique_columns_double, unique_matrices_double
     end interface
     !
     interface am_print
