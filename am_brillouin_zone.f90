@@ -367,7 +367,7 @@ module am_brillouin_zone
         !
     end subroutine load_eigenval
     
-    subroutine     reduce_to_ibz(ibz,bz,uc,ss,iopts)
+    subroutine     reduce_to_ibz(ibz,bz,uc,pg,iopts)
         !
         use am_helpers
         use am_unit_cell
@@ -375,9 +375,9 @@ module am_brillouin_zone
         !
         implicit none
         !
-        class(am_class_bz)      , intent(inout) :: ibz
-        type(am_class_bz)       , intent(in) :: bz
-        type(am_class_symmetry) , intent(in) :: ss
+        class(am_class_bz), intent(inout) :: ibz
+        type(am_class_bz), intent(in) :: bz
+        type(am_class_symmetry), intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
         !
         real(dp), allocatable :: grid_points(:,:)
@@ -397,7 +397,7 @@ module am_brillouin_zone
         allocate(ibz%kpt(3,bz%nkpts))
         ! reduce kpoints to ibz
         do i = 1, bz%nkpts
-            ibz%kpt(:,i) = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i),grid_points=grid_points,bas=uc%bas,R=ss%R)
+            ibz%kpt(:,i) = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i),grid_points=grid_points,bas=uc%bas,R=pg%R)
         enddo
         ! get unique points
         ibz%kpt = unique(ibz%kpt)
@@ -423,7 +423,7 @@ module am_brillouin_zone
         !
     end subroutine reduce_to_ibz
 
-    subroutine     expand_to_fbz(fbz,bz,ss,iopts)
+    subroutine     expand_to_fbz(fbz,bz,pg,iopts)
         !
         use am_unit_cell
         use am_options
@@ -433,7 +433,7 @@ module am_brillouin_zone
         !
         class(am_class_bz)     , intent(inout) :: fbz
         type(am_class_bz)      , intent(in) :: bz
-        type(am_class_symmetry), intent(in) :: ss
+        type(am_class_symmetry), intent(in) :: pg
         !
         real(dp), allocatable :: korb(:,:)
         real(dp), allocatable :: kpoints_fbz(:,:) ! workspace
@@ -450,24 +450,24 @@ module am_brillouin_zone
         !
         if (opts%verbosity .ge. 1) write(*,*)
         if (opts%verbosity .ge. 1) write(*,'(a)' ) 'Expand kpoints to FBZ'
-        if (opts%verbosity .ge. 1) call am_print('number of point symmetries',ss%nsyms,' ... ')
+        if (opts%verbosity .ge. 1) call am_print('number of point symmetries',pg%nsyms,' ... ')
         if (opts%verbosity .ge. 1) call am_print('number of kpoints in the original bz',bz%nkpts,' ... ')
         if (opts%verbosity .ge. 1) call am_print('kpoints in the original bz (only first 10 are shown)',transpose(bz%kpt(1:3,1:(minval([bz%nkpts,10])))),' ... ')
-        allocate(kpoints_fbz(3,bz%nkpts*ss%nsyms))
+        allocate(kpoints_fbz(3,bz%nkpts*pg%nsyms))
         allocate(w(bz%nkpts))
         m = 0
         for_each_kpoint_in_the_bz : do i = 1, bz%nkpts
             ! get its orbit
-            korb = kpoint_orbit(ss%R,bz%kpt(:,i))
+            korb = kpoint_orbit(pg%R,bz%kpt(:,i))
             korb = unique(korb)
             ! get its weight
             w(i) = size(korb,2)
             ! check that weight is a factor of the number of symmetry operations
-            if ( modulo(ss%nsyms,w(i)) .ne. 0 ) then
+            if ( modulo(pg%nsyms,w(i)) .ne. 0 ) then
                 call am_print('ERROR','Weight is not a factor of the number of symmetry operation',' >>> ')
                 call am_print('kpoint',bz%kpt(:,i))
                 call am_print('weight',w(i))
-                call am_print('number of symmetry operations',ss%nsyms)
+                call am_print('number of symmetry operations',pg%nsyms)
                 call am_print('kpoint orbit',transpose(korb))
                 stop
             endif
@@ -507,7 +507,7 @@ module am_brillouin_zone
         enddo
     end subroutine expand_to_fbz
     
-    subroutine     outfile_bandcharacter(bz,uc,ss,iopts)
+    subroutine     outfile_bandcharacter(bz,uc,pg,iopts)
         ! 
         ! Creates outfile.bandcharacter, which contains the energy and character of the bands read either from EIGENVAL using bz%load_eigenval() or PROCAR using bz%load_procar()
         !
@@ -515,9 +515,9 @@ module am_brillouin_zone
         !
         implicit none
         !
-        class(am_class_bz)      , intent(in) :: bz !> brillouin zone class
+        class(am_class_bz), intent(in) :: bz !> brillouin zone class
         type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_symmetry) , intent(in) :: ss
+        type(am_class_symmetry) , intent(in) :: pg
         real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
         real(dp) :: k1(3) ! point for kdiff
         real(dp) :: k2(3) ! point for kdiff
@@ -525,7 +525,6 @@ module am_brillouin_zone
         integer :: fid
         integer :: i, j, l, m, n ! loop variables
         !
-       !  type(am_class_unit_cell), intent(in), optional :: uc
         type(am_class_options), intent(in), optional :: iopts
         type(am_class_options) :: opts
         if (present(iopts)) then 
@@ -593,8 +592,8 @@ module am_brillouin_zone
                     if (i .eq. 1) then
                         kdiff = 0
                     else
-                        k1 = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i-1),grid_points=grid_points,bas=uc%bas,R=ss%R)
-                        k2 = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i),grid_points=grid_points,bas=uc%bas,R=ss%R)
+                        k1 = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i-1),grid_points=grid_points,bas=uc%bas,R=pg%R)
+                        k2 = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i),grid_points=grid_points,bas=uc%bas,R=pg%R)
                         kdiff = kdiff + norm2( abs(k1-k2) )
                     endif
                     !
@@ -1012,7 +1011,7 @@ module am_brillouin_zone
     end subroutine tetrahedra_pdos
 
 
-    !subroutine get_tetrahedra(tet,bz,uc,ss,tet,iopts)
+    !subroutine get_tetrahedra(tet,bz,uc,pg,tet,iopts)
     !!
     !use am_unit_cell
     !use am_tet_mesh
@@ -1023,7 +1022,7 @@ module am_brillouin_zone
     !class(am_class_tetrahedra), intent(inout) :: tet
     !type(am_class_bz), intent(in) :: bz
     !type(am_class_unit_cell) , intent(in) :: uc
-    !type(am_class_symmetry), intent(in) :: ss
+    !type(am_class_symmetry), intent(in) :: pg
     !type(am_class_bz) :: fbz
     !type(am_class_options), intent(in), optional :: iopts
     !type(am_class_options) :: opts
@@ -1033,7 +1032,7 @@ module am_brillouin_zone
     !    call opts%defaults
     !endif
     !!
-    !call bz%expand_to_fbz(uc=uc,fbz=fbz,ss=ss,iopts=opts)
+    !call bz%expand_to_fbz(uc=uc,fbz=fbz,pg=pg,iopts=opts)
     !!
     !! call tessellate_mesh(kpt=fbz%kpt,corner=tet%corner,volume=tet%volume)
     !!
