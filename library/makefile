@@ -1,0 +1,27 @@
+include makefile.inc
+
+LIBS = libam.a
+SRCS = am_constants.f90 am_helpers.f90 am_histogram.f90 am_rank_and_sort.f90 am_options.f90 am_vasp_io.f90 am_tet_mesh.f90 am_unit_cell.f90 am_symmetry.f90 am_brillouin_zone.f90 am_wannier.f90
+OBJS = am_constants.o   am_helpers.o   am_histogram.o   am_rank_and_sort.o   am_options.o   am_vasp_io.o   am_tet_mesh.o   am_unit_cell.o   am_symmetry.o   am_brillouin_zone.o   am_wannier.o  
+
+all: $(LIBS)
+
+$(LIBS): $(OBJS)
+	-rm libam.a
+	ar rcv libam.a $(OBJS)
+	ranlib libam.a
+
+clean:
+	rm -f $(OBJS) *.mod *.o *.i90
+
+%: %.o
+	$(FC) $(FFLAGS) $(DEBUG) -o $@ $^ $(LDFLAGS)
+
+%.o: %.f90
+	$(FC) $(FFLAGS) $(DEBUG) -c $<
+
+%.o: %.F90
+	$(FC) $(FFLAGS) $(DEBUG) -c $<
+
+
+

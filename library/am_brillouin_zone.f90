@@ -25,9 +25,11 @@ module am_brillouin_zone
         procedure :: load_ibzkpt => load_ibzkpt_tet
 !        procedure :: get_tetrahedra
     end type am_class_tetrahedra
+
     !
     ! Brillouin Zone
     !
+
     type am_class_bz
         integer  :: nkpts     !> nkpts number of kpoints
         integer  :: nbands    !> nbands number of bands
@@ -35,7 +37,7 @@ module am_brillouin_zone
         integer  :: norbitals !> norbitals number of orbitals
         integer  :: nspins    !> nspins number of spins (1, 2 majority/minority, or 4 dirac spinors)
         integer  :: nelecs    !> number of electrons
-        real(dp), allocatable :: kpt(:,:)  !> kpt(3,nkpts) kpoint
+        real(dp), allocatable :: kpt(:,:)  !> kpt(3,nkpts) kpoint - notice that vasp IBZKPT is in fractional units.
         real(dp), allocatable :: E(:,:)    !> E(nbands,nkpts) energies
         real(dp), allocatable :: occ(:,:)  !> occ(nbands,nkpts) occupancies
         real(dp), allocatable :: w(:)      !> w(nkpts) normalized weights
@@ -63,11 +65,11 @@ module am_brillouin_zone
         procedure :: outfile_bandcharacter ! requires load_eigenval or load_procar
         procedure :: outfile_dosprojected
         !
-        procedure :: tetrahedra_pdos
-        
+        procedure :: tetrahedra_pdos    
     end type am_class_bz
-    !
-    contains
+    
+
+contains
 
     !
     ! functions which operate on kpoint
@@ -214,32 +216,6 @@ module am_brillouin_zone
     !
     ! functions which operate/generate on meshes/grids
     !
-
-    pure function  mesh_grid(n) result(grid_points)
-        !> 
-        !> Generates a mesh of lattice vectors (fractional coordinates) around the origin. 
-        !> n(1), n(2), n(3) specifies the number of mesh points away from 0, i.e. [-n:1:n]
-        !> To obtain a mesh of reciprocal lattice vectors: matmul(recbas,grid_points)
-        !> To obtain a mesh of real-space lattice vectors: matmul(bas,grid_points)
-        !>
-        implicit none
-        !
-        integer , intent(in) :: n(3)
-        real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
-        integer :: i1,i2,i3,j
-        !
-        allocate(grid_points(3,product(2*n+1)))
-        !
-        j=0
-        do i1 = -n(1),n(1)
-            do i2 = -n(2),n(2)
-                do i3 = -n(3),n(3)
-                    j=j+1
-                    grid_points(1:3,j)=[i1,i2,i3]
-                enddo
-            enddo
-        enddo
-    end function   mesh_grid
 
     pure function  mesh_monkhorstpack_grid(n,s) result(kpoints_frac)
         !> returns kpoints in fractional coordinates for monkhorst pack mesh dimensions

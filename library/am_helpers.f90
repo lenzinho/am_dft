@@ -10,9 +10,16 @@
     !
     interface am_print
         ! function overloading must start with the same name as the interface, i.e. "am_print" in this case
-        module procedure am_print_double, am_print_integer, am_print_string, am_print_logical, &
-            am_print_double_matrix, am_print_int_matrix, am_print_logical_matrix, &
-            am_print_double_vector, am_print_int_vector
+        module procedure am_print_double, &
+            am_print_integer, &
+            am_print_string, &
+            am_print_logical, &
+            am_print_double_matrix, &
+            am_print_complex_matrix, &
+            am_print_int_matrix, &
+            am_print_logical_matrix, &
+            am_print_double_vector, &
+            am_print_int_vector
     end interface ! am_print
     !
     interface linspace
@@ -49,6 +56,7 @@
         write(string,'(i)') int
         string = trim( adjustl( string ) )
     end function int2char
+    
     function dbl2char(dbl) result(string)
         !
         implicit none
@@ -89,6 +97,7 @@
             enddo
         endif
     end function
+
     integer function open_file(rw,filename)
         !> Borrowed from Olle
         implicit none
@@ -194,6 +203,32 @@
             eye(i,i) = 1.0_dp
         enddo
     end  function eye
+
+    pure function  mesh_grid(n) result(grid_points)
+        !> 
+        !> Generates a mesh of lattice vectors (fractional coordinates) around the origin. 
+        !> n(1), n(2), n(3) specifies the number of mesh points away from 0, i.e. [-n:1:n]
+        !> To obtain a mesh of reciprocal lattice vectors: matmul(recbas,grid_points)
+        !> To obtain a mesh of real-space lattice vectors: matmul(bas,grid_points)
+        !>
+        implicit none
+        !
+        integer , intent(in) :: n(3)
+        real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
+        integer :: i1,i2,i3,j
+        !
+        allocate(grid_points(3,product(2*n+1)))
+        !
+        j=0
+        do i1 = -n(1),n(1)
+            do i2 = -n(2),n(2)
+                do i3 = -n(3),n(3)
+                    j=j+1
+                    grid_points(1:3,j)=[i1,i2,i3]
+                enddo
+            enddo
+        enddo
+    end function   mesh_grid
 
     pure function det_3x3_dbl(a) result(det)
         !
