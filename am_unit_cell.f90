@@ -553,6 +553,12 @@
         integer  :: lattice_code
         real(dp), dimension(3,3) :: P,I,F,A,B,C,centering
         !
+        call am_print('WARNING','The method used to get the centering matrix is not guarenteed to work.')
+        call am_print('WARNING','The method used to get the centering matrix is not guarenteed to work.')
+        call am_print('WARNING','The method used to get the centering matrix is not guarenteed to work.')
+        ! Not guarneteed to work because not all the matrices possible are listed down here. There can also be their permutations.
+        !
+        !
         ! simple/primitive
         P(1:3,1) = [1,0,0]
         P(1:3,2) = [0,1,0]
@@ -752,7 +758,7 @@
     ! functions which operate on uc or similar derived types
     !
 
-    subroutine     load_poscar(uc,iopt_filename,iopts)
+    subroutine     load_poscar(uc,opts)
         ! 
         ! Reads the poscar file, look below: code is short and self explanatory.
         !
@@ -761,17 +767,7 @@
         implicit none
         !
         class(am_class_unit_cell), intent(inout) :: uc
-        ! optional i/o
-        character(len=*), intent(in), optional :: iopt_filename
-        character(1000) :: filename
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
-        filename = "POSCAR"; if ( present(iopt_filename) ) filename = trim(iopt_filename)
+        type(am_class_options), intent(in) :: opts
         !
         call read_poscar(&
             bas=uc%bas,&
@@ -780,12 +776,12 @@
             symbs=uc%symbs,&
             tau=uc%tau,&
             atype=uc%atype,&
-            iopt_filename=filename,&
+            iopt_filename=opts%poscar,&
             iopt_verbosity=opts%verbosity)
         !
     end subroutine load_poscar
 
-    subroutine     reduce_to_primitive(prim,uc,iopts)
+    subroutine     reduce_to_primitive(prim,uc,opts)
         !
         use am_rank_and_sort, only : rank
         !
@@ -793,8 +789,7 @@
         !
         class(am_class_unit_cell), intent(inout) :: prim
         type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
+        type(am_class_options), intent(in) :: opts
         !
         integer , allocatable :: indices(:)
         real(dp), allocatable :: T(:,:)
@@ -802,12 +797,6 @@
         real(dp), allocatable :: tau_prim_frac(:,:)
         real(dp) :: tau_ref(3)
         integer :: i, j, k 
-        !
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
         !
         if ( opts%verbosity .ge. 1) call am_print_title('Reducing to primitive cell')
         !
@@ -897,7 +886,7 @@
         prim%nspecies = uc%nspecies
     end subroutine reduce_to_primitive
 
-    subroutine     expand_to_supercell(sc,uc,bscfp,iopts)
+    subroutine     expand_to_supercell(sc,uc,bscfp,opts)
         !
         ! bscfp = supercell basis in fractional primitive lattice coordinates
         ! for primitive -> conventional cell, use: bscfp = inv(centering_matrix)
@@ -910,14 +899,7 @@
         real(dp) :: sc_recbas(3,3)
         real(dp) :: tau_wrk(3)
         integer :: i1, i2, i3, j, m
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
-        !
+        type(am_class_options), intent(in) :: opts
         !
         if (opts%verbosity .ge. 1) call am_print_title('Expanding to supercell')
         !
@@ -977,7 +959,7 @@
         !
     end subroutine expand_to_supercell
 
-    subroutine     primitive_to_conventional(conv,prim,iopts)
+    subroutine     primitive_to_conventional(conv,prim,opts)
         !
         use am_rank_and_sort
         !
@@ -987,14 +969,7 @@
         type(am_class_unit_cell), intent(in) :: prim
         real(dp) :: centering(3,3)
         integer :: lattice_code
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
-        !
+        type(am_class_options), intent(in) :: opts
         !
         if (opts%verbosity.ge.1) call am_print_title('Transforming to conventional cell') 
         !
@@ -1002,20 +977,20 @@
         !
         if (opts%verbosity.ge.1) then
         select case(lattice_code)
-        case(1);  call am_print('lattice','simple cubic cell')
-        case(2);  call am_print('lattice','body-centered cubic cell')
-        case(3);  call am_print('lattice','face-centered cubic cell')
-        case(4);  call am_print('lattice','hexagonal cell')
-        case(5);  call am_print('lattice','simple tetragonal cell')
-        case(6);  call am_print('lattice','body-centered tetragonal cell')
-        case(7);  call am_print('lattice','rhombohedral (trigonal) cell')
-        case(8);  call am_print('lattice','simple orthorhombic cell')
-        case(9);  call am_print('lattice','body-centered orthorhombic cell')
-        case(10); call am_print('lattice','face-centered orthorhombic cell')
-        case(11); call am_print('lattice','base centered orthorhombic cell')
-        case(12); call am_print('lattice','simple monoclinic cell')
-        case(13); call am_print('lattice','base-centered monoclinic cell')
-        case(14); call am_print('lattice','triclinic cell')
+        case(1);  call am_print('lattice','simple cubic cell',' ... ')
+        case(2);  call am_print('lattice','body-centered cubic cell',' ... ')
+        case(3);  call am_print('lattice','face-centered cubic cell',' ... ')
+        case(4);  call am_print('lattice','hexagonal cell',' ... ')
+        case(5);  call am_print('lattice','simple tetragonal cell',' ... ')
+        case(6);  call am_print('lattice','body-centered tetragonal cell',' ... ')
+        case(7);  call am_print('lattice','rhombohedral (trigonal) cell',' ... ')
+        case(8);  call am_print('lattice','simple orthorhombic cell',' ... ')
+        case(9);  call am_print('lattice','body-centered orthorhombic cell',' ... ')
+        case(10); call am_print('lattice','face-centered orthorhombic cell',' ... ')
+        case(11); call am_print('lattice','base centered orthorhombic cell',' ... ')
+        case(12); call am_print('lattice','simple monoclinic cell',' ... ')
+        case(13); call am_print('lattice','base-centered monoclinic cell',' ... ')
+        case(14); call am_print('lattice','triclinic cell',' ... ')
         case default
             call am_print('ERROR','Unknown lattice.')
         end select
@@ -1025,11 +1000,11 @@
         !
         if (opts%verbosity.ge.1) call am_print('centering matrix',centering)
         !
-        call conv%expand_to_supercell(uc=prim,bscfp=inv(centering),iopts=opts)
+        call conv%expand_to_supercell(uc=prim,bscfp=inv(centering),opts=opts)
         !
     end subroutine primitive_to_conventional
 
-    pure function  space_symmetries_from_basis(uc,iopts) result(seitz)
+    pure function  space_symmetries_from_basis(uc,opts) result(seitz)
         !
         !The program first finds the primitive unit cell by looking for
         !additional lattice vectors within the unit cell given in the input.
@@ -1051,6 +1026,7 @@
         implicit none
         ! subroutine i/o
         type(am_class_unit_cell), intent(in) :: uc
+        type(am_class_options), intent(in) :: opts
         real(dp), allocatable :: seitz(:,:,:)
         integer               :: nTs
         integer               :: nRs
@@ -1058,14 +1034,6 @@
         real(dp), allocatable :: R(:,:,:)
         real(dp), allocatable :: wrkspace(:,:,:)
         integer :: i, j, m
-        !
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
         !
         R = determine_lattice_point_symmetries(bas=uc%bas)
         nRs = size(R,3)

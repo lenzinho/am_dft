@@ -11,5 +11,8 @@ module am_constants
     !
     ! magic numbers
     integer , parameter :: string_length_schoenflies = 6
-    !
+    integer , parameter :: max_argument_length = 500
+    integer , parameter :: maximum_buffer_size = 500
+    
+    
 end module am_constants

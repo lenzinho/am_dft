@@ -122,7 +122,7 @@
     ! progress bar
     !
 
-    subroutine progressbar(message,j,totn)
+    subroutine     progressbar(message,j,totn)
         !> Borrowed from Olle; original from: https://software.intel.com/en-us/forums/intel-fortran-compiler-for-linux-and-mac-os-x/topic/270155
         integer, intent(in) :: j !> current index
         integer, intent(in) :: totn !> max indes

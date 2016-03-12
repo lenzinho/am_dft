@@ -12,9 +12,16 @@ module am_vasp_io
     public :: read_prjcar
     public :: read_eigenval
     public :: read_poscar
+    public :: read_amn
+    public :: read_eig
     !
     contains
-    subroutine read_ibzkpt(nkpts,kpt,w,ntets,vtet,tet,wtet,iopt_filename,iopt_verbosity) 
+
+    !
+    ! vasp
+    !
+
+    subroutine     read_ibzkpt(nkpts,kpt,w,ntets,vtet,tet,wtet,iopt_filename,iopt_verbosity) 
         !>
         !> Reads IBZKPT into variables.
         !>
@@ -29,7 +36,7 @@ module am_vasp_io
         implicit none
         !
         character(len=*), optional :: iopt_filename
-        character(100) :: fname
+        character(max_argument_length) :: fname
         integer, optional :: iopt_verbosity
         integer :: verbosity
         integer , intent(out) :: nkpts                          !> nkpts number of kpoints
@@ -44,7 +51,7 @@ module am_vasp_io
         !
         integer :: iostat
         integer :: fid ! file id
-        character(500) :: buffer ! read buffer
+        character(maximum_buffer_size) :: buffer ! read buffer
         character(len=:), allocatable :: word(:) ! read buffer
         integer :: i ! loop variables
         !
@@ -60,7 +67,7 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if (verbosity .ge. 1) call am_print('actual file read is',fname,' ... ')
+            if (verbosity .ge. 1) call am_print('actual file read is',trim(fname),' ... ')
             !
             ! (LINE 1) Automatically generated mesh
             read(fid,'(a)') buffer
@@ -91,45 +98,51 @@ module am_vasp_io
             allocate(w(nkpts))
             w = w_int/real(sum(w_int),dp)
             ! (LINE 820) Tetrahedra
-            read(unit=fid,fmt='(a)',iostat=iostat) buffer
-            if ( iostat .eq. 0 ) then
-            if ( buffer(1:1) .eq. "T" ) then
-                ! (LINE 821) 3976    0.00000559453079
-                read(unit=fid,fmt='(a)') buffer
-                word = strsplit(buffer,delimiter=' ')
-                !> ntets number of tetrahedra
-                read(word(1),*) ntets
-                !> vtet(ntets) tetrahedron volume
-                read(word(2),*) vtet_tmp
-                allocate(vtet(ntets))
-                vtet = vtet_tmp
+            if (present(vtet).and.present(tet).and.present(wtet)) then
                 !
-                if (verbosity .ge. 1) call am_print('number of tetrahedra',ntets,' ... ')
-                if (verbosity .ge. 1) call am_print('tetrahedron volume (equal for all tetrahedra)',vtet_tmp,' ... ')
-                !
-                allocate(tet(4,ntets))
-                allocate(wtet(ntets))
-                ! (LINE 822)  24         1         2         2        17
-                do i = 1, ntets
+                read(unit=fid,fmt='(a)',iostat=iostat) buffer
+                if ( iostat .eq. 0 ) then
+                if ( buffer(1:1) .eq. "T" ) then
+                
+                    ! (LINE 821) 3976    0.00000559453079
                     read(unit=fid,fmt='(a)') buffer
                     word = strsplit(buffer,delimiter=' ')
-                    !> wtet(ntets) weights
-                    read(word(1),*) wtet(i)
-                    !> tet(4,ntets) tetrahedron connection table
-                    read(word(2),*) tet(1,i)
-                    read(word(3),*) tet(2,i)
-                    read(word(4),*) tet(3,i)
-                    read(word(5),*) tet(4,i)
-                enddo
-                if (verbosity.ge.1) then
-                    if (i.gt.10) call am_print('corner indicies of first ten tetrahedra',transpose(tet(:,1:10)),' ... ')
-                    if (i.le.10) call am_print('corner indicies tetrahedra',transpose(tet),' ... ')
+                    !> ntets number of tetrahedra
+                    read(word(1),*) ntets
+                    !> vtet(ntets) tetrahedron volume
+                    read(word(2),*) vtet_tmp
+                    allocate(vtet(ntets))
+                    vtet = vtet_tmp
+                    !
+                    if (verbosity .ge. 1) call am_print('number of tetrahedra',ntets,' ... ')
+                    if (verbosity .ge. 1) call am_print('tetrahedron volume (equal for all tetrahedra)',vtet_tmp,' ... ')
+                    !
+                    allocate(tet(4,ntets))
+                    allocate(wtet(ntets))
+                    ! (LINE 822)  24         1         2         2        17
+                    do i = 1, ntets
+                        read(unit=fid,fmt='(a)') buffer
+                        word = strsplit(buffer,delimiter=' ')
+                        !> wtet(ntets) weights
+                        read(word(1),*) wtet(i)
+                        !> tet(4,ntets) tetrahedron connection table
+                        read(word(2),*) tet(1,i)
+                        read(word(3),*) tet(2,i)
+                        read(word(4),*) tet(3,i)
+                        read(word(5),*) tet(4,i)
+                    enddo
+                    if (verbosity.ge.1) then
+                        if (i.gt.10) call am_print('corner indicies of first ten tetrahedra',transpose(tet(:,1:10)),' ... ')
+                        if (i.le.10) call am_print('corner indicies tetrahedra',transpose(tet),' ... ')
+                    endif
                 endif
-            endif
+                endif
+                !
             endif
         close(fid)
     end subroutine read_ibzkpt 
-    subroutine read_procar(nkpts,nbands,nions,norbitals,nspins,E,occ,kpt,w,orbitals,lmproj,iopt_filename,iopt_verbosity)
+
+    subroutine     read_procar(nkpts,nbands,nions,norbitals,nspins,E,occ,kpt,w,orbitals,lmproj,iopt_filename,iopt_verbosity)
         !>
         !> Reads PROCAR into file.
         !>
@@ -148,7 +161,7 @@ module am_vasp_io
         implicit none
         !
         character(*), optional :: iopt_filename
-        character(100) :: fname
+        character(max_argument_length) :: fname
         integer, optional :: iopt_verbosity
         integer :: verbosity
         integer , intent(out) :: nkpts     !> nkpts number of kpoints
@@ -164,7 +177,7 @@ module am_vasp_io
         real(dp), allocatable, intent(out) :: lmproj(:,:,:,:,:)   !> lmproj(nspins,norbitals,nions,nbands,nkpts)
         !
         integer :: fid ! file id
-        character(500) :: buffer ! read buffer
+        character(maximum_buffer_size) :: buffer ! read buffer
         character(len=:), allocatable :: word(:) ! read buffer
         integer :: i, j, l, m ! loop variables
         !
@@ -271,7 +284,8 @@ module am_vasp_io
             enddo
         close(fid)
     end subroutine read_procar
-    subroutine read_prjcar(nkpts,nbands,nspins,nkpts_prim,bas_prim,k_prim,w_prim,kpt,w,E,kproj,iopt_filename,iopt_verbosity)
+
+    subroutine     read_prjcar(nkpts,nbands,nspins,nkpts_prim,bas_prim,k_prim,w_prim,kpt,w,E,kproj,iopt_filename,iopt_verbosity)
         !>
         !> Reads PRJCAR into variables.
         !>
@@ -289,7 +303,7 @@ module am_vasp_io
         implicit none
         !
         character(*), optional :: iopt_filename
-        character(100) :: fname
+        character(max_argument_length) :: fname
         integer, optional :: iopt_verbosity
         integer :: verbosity
         integer,intent(out) :: nkpts_prim      !> nkpts_prim number of primitive kpoints (POSCAR.prim)
@@ -306,7 +320,7 @@ module am_vasp_io
         integer :: n !> spin index
         ! i/o
         integer :: fid, iostat
-        character(500) :: buffer
+        character(maximum_buffer_size) :: buffer
         character(len=:), allocatable :: word(:)
         ! loop variables
         integer :: i, j
@@ -446,7 +460,8 @@ module am_vasp_io
         close(fid)
         !
     end subroutine read_prjcar
-    subroutine read_eigenval(nkpts,nbands,nspins,nelecs,kpt,w,E,lmproj,iopt_filename,iopt_verbosity)
+
+    subroutine     read_eigenval(nkpts,nbands,nspins,nelecs,kpt,w,E,lmproj,iopt_filename,iopt_verbosity)
         !>
         !> Read EIGENVAL into variables
         !>
@@ -475,14 +490,14 @@ module am_vasp_io
         integer :: nions     !> nions number of ions - NO INFORMATION ABOUT THIS IN EIGEVAL, SET TO 1
         ! i/o
         integer :: fid
-        character(500) :: buffer
+        character(maximum_buffer_size) :: buffer
         character(len=:), allocatable :: word(:)
         ! loop variables
         integer :: i, j, m, j_and_m
         ! standard optionals
         character(*), intent(in), optional :: iopt_filename
         integer, intent(in), optional :: iopt_verbosity
-        character(100) :: fname
+        character(max_argument_length) :: fname
         integer :: verbosity
         !
         fname = "EIGENVAL"; if ( present(iopt_filename) ) fname = iopt_filename
@@ -574,7 +589,8 @@ module am_vasp_io
         close(fid)
         !
     end subroutine read_eigenval
-    subroutine read_poscar(bas,natoms,nspecies,symbs,tau,atype,iopt_filename,iopt_verbosity)
+
+    subroutine     read_poscar(bas,natoms,nspecies,symbs,tau,atype,iopt_filename,iopt_verbosity)
         ! Reads poscar into variables performing basic checks on the way. Call it like this:
         !
         !    bas(3,3) column vectors a(1:3,i), a(1:3,j), a(1:3,kpt)
@@ -607,13 +623,13 @@ module am_vasp_io
         real(dp) :: scale
         ! file i/o
         integer :: fid
-        character(500) :: buffer
+        character(maximum_buffer_size) :: buffer
         character(len=:), allocatable :: word(:)
         ! loop variables
         integer :: i, j, m, n
         ! optional i/o
         character(*), optional :: iopt_filename
-        character(100) :: fname
+        character(max_argument_length) :: fname
         integer, optional :: iopt_verbosity
         integer :: verbosity
         fname = "POSCAR"
@@ -755,5 +771,267 @@ module am_vasp_io
             !
         close(fid)
     end subroutine read_poscar
+
+    !
+    ! wannier90
+    !
+
+    subroutine     read_amn(U,nbands,nkpts,nwanniers,iopt_filename,iopt_verbosity)
+        !>
+        !> U is equal to a_matrix if there is no disentanglment.
+        !>
+        !>
+        implicit none
+        !
+        complex(dp), intent(out), allocatable :: U(:,:,:)
+        integer, intent(out) :: nbands, nkpts, nwanniers
+        integer  :: nwanprojs
+        real(dp) :: a_real, a_imag
+        integer  :: i, m, n, k
+        !
+        character(maximum_buffer_size) :: buffer ! read buffer
+        character(len=:), allocatable :: word(:) ! read buffer
+        !
+        integer :: fid
+        character(*), optional :: iopt_filename
+        character(max_argument_length) :: fname
+        integer, optional :: iopt_verbosity
+        integer :: verbosity
+        !
+        fname = "wannier90.amn"
+        if ( present(iopt_filename) ) fname = iopt_filename
+        verbosity = 1
+        if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
+        !
+        !
+        !
+        if ( verbosity .ge. 1 ) call am_print_title('Reading wannier unitary matrix (U matrix)')
+        !
+        fid = 1
+        open(unit=fid,file=trim(fname),status="old",action='read')
+            !
+            if (verbosity.ge.1) call am_print('actual file read is',trim(fname),' ... ')
+            !
+            ! (LINE 1) :File generated by VASP: unknown system
+            read(fid,*)
+            ! (LINE 2)            8          64           8
+            read(unit=fid,fmt='(a)') buffer
+            word = strsplit(buffer,delimiter=' ')
+            read(word(1),*) nbands
+            read(word(2),*) nkpts
+            read(word(3),*) nwanniers
+            nwanprojs=nbands*nwanniers*nkpts
+            if (verbosity.ge.1) call am_print('number of bands',nbands,' ... ')
+            if (verbosity.ge.1) call am_print('number of kpoints',nkpts,' ... ')
+            if (verbosity.ge.1) call am_print('number of neighbors',nwanniers,' ... ')
+            if (verbosity.ge.1) call am_print('number of projections',nwanprojs,' ... ')
+            ! Read the projections
+            allocate(U(nbands,nbands,nkpts))
+            do i = 1, nwanprojs
+                read(unit=fid,fmt='(a)') buffer
+                word = strsplit(buffer,delimiter=' ')
+                read(word(1),*) m ! loop over bands
+                read(word(2),*) n ! loop over bands
+                read(word(3),*) k ! loop over kpoints
+                read(word(4),*) a_real
+                read(word(4),*) a_imag
+                U(m,n,k) = cmplx(a_real,a_imag,kind=dp)
+            end do
+            !
+        close(fid)
+        !
+    end subroutine read_amn
+
+    subroutine     read_eig(E,nbands,nkpts,iopt_filename,iopt_verbosity)
+        !>
+        !> it seems that the U is equal to the a_matrix if there is no disentanglment.
+        !>
+        !>
+        implicit none
+        !
+        real(dp), intent(out), allocatable :: E(:,:) !> E(nbands,nkpts) energies
+        integer, intent(out) :: nbands
+        integer, intent(out) :: nkpts
+        real(dp) :: Ein
+        integer  :: i, j, k
+        !
+        character(maximum_buffer_size) :: buffer ! read buffer
+        character(len=:), allocatable :: word(:) ! read buffer
+        !
+        integer :: fid
+        integer :: iostat
+        character(*), optional :: iopt_filename
+        character(max_argument_length) :: fname
+        integer, optional :: iopt_verbosity
+        integer :: verbosity
+        !
+        fname = "wannier90.eig"
+        if ( present(iopt_filename) ) fname = iopt_filename
+        verbosity = 1
+        if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
+        !
+        if ( verbosity .ge. 1 ) call am_print_title('Reading eigenvalues for wannier')
+        !
+        ! SKIM FILE TO DETEMRINE PARAMETERS NECESSARY TO ALLOCATE SPACE
+        !
+        fid = 1
+        open(unit=fid,file=trim(fname),status="old",action='read')
+            !
+            if (verbosity .ge. 1) call am_print('actual file read is',trim(fname),' ... ')
+            !
+            nkpts  = 0
+            nbands = 0
+            !
+            do
+                ! (LINE 1)           1           1       -6.764130089716
+                read(unit=fid,fmt='(a)',iostat=iostat) buffer
+                word = strsplit(buffer,delimiter=' ')
+                if ( iostat .eq. 0 ) then
+                    !
+                    if ( size(word) .ge. 1 ) then
+                        !
+                        read(word(1),*) i
+                        if (i .gt. nbands) nbands = i
+                        !
+                        read(word(2),*) i
+                        if (i .gt. nkpts) nkpts = i
+                        !
+                    endif
+                    !
+                else
+                    exit
+                endif
+            enddo
+        close(fid)
+        !
+        if (verbosity.ge.1) call am_print('number of kpoints',nkpts,' ... ')
+        if (verbosity.ge.1) call am_print('number of bands',nbands,' ... ')
+        !
+        ! ACTUALLY READ IN THINGS NOW
+        !
+        allocate(E(nbands,nkpts)) !> E(nbands,nkpts)
+        !
+        fid = 1
+        open(unit=fid,file=trim(fname),status="old",action='read')
+            !
+            do i = 1, (nbands*nkpts)
+                ! (LINE 1)           1           1       -6.764130089716
+                read(unit=fid,fmt='(a)') buffer
+                word = strsplit(buffer,delimiter=' ')
+                read(word(1),*) j
+                read(word(2),*) k
+                read(word(3),*) Ein
+                E(j,k) = Ein
+            enddo
+        close(fid)
+        !
+    end subroutine read_eig
+
+
+
+!     subroutine read_mmn(iopt_filename,iopt_verbosity)
+!         !>
+!         !> Definition of overlap m_matrix. Eq. (25) PhysRevB 56 12847
+!         !>
+!         !>    M_{m,n}^{(k,b)} = < u_{m,k} | u_{n,k+b} >
+!         !> 
+!         !> The overlap matrix is a rank 4 matrix which has indices running over bands m and n,
+!         !> over kpoints k, and over neighboring kpoints to k. 
+!         !>  
+!         !> a_matrix      = projection of trial orbitals on bloch states
+!         !> m_matrix_orig = overlap of bloch states
+!         !> U      = the unitary rotations from the optimal subspace to the
+!         !>                 optimally smooth states. 
+!         !
+!         implicit none
+!         !
+!         fname = "wannier90.mmn"
+!         if ( present(iopt_filename) ) fname = iopt_filename
+!         verbosity = 1
+!         if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
+!         !
+!         !
+!         !
+!         if ( verbosity .ge. 1 ) call am_print_title('Reading wannier overlaps (MMN)')
+!         !
+!         fid = 1
+!         open(unit=fid,file=trim(fname),status="old",action='read')
+!             !
+!             if (verbosity .ge. 1) call am_print('actual file read is',fname,' ... ')
+!             !
+!             ! (LINE 1) :File generated by VASP: unknown system
+!             read(fid,*)
+!             ! (LINE 2)            8          64           8
+!             read(unit=fid,fmt='(a)') buffer
+!             word = strsplit(buffer,delimiter=' ')
+!             read(word(1),*) nbands
+!             read(word(2),*) nkpts
+!             read(word(3),*) nneighbors
+!             noverlaps=nkpts*nneighbors
+!             if (verbosity.ge.1) call am_print('number of bands',nbands,' ... ')
+!             if (verbosity.ge.1) call am_print('number of kpoints',nkpts,' ... ')
+!             if (verbosity.ge.1) call am_print('number of neighbors',nneighbors,' ... ')
+!             if (verbosity.ge.1) call am_print('number of overlaps',noverlaps,' ... ')
+!             !
+!             allocate(mmn_tmp(nbands,nbands))
+!             !
+!             do i = 1, noverlaps
+!                 ! (LINE 3)     1    2    0    0    0
+!                 read(unit=fid,fmt='(a)') buffer
+!                 word = strsplit(buffer,delimiter=' ')
+!                 read(word(1),*) kpt1 ! kpoint 1
+!                 read(word(2),*) kpt2 ! kpoint 2
+!                 read(word(3),*) nnl  ! bz of nearest neighbor index l
+!                 read(word(4),*) nnm  ! bz of nearest neighbor index m
+!                 read(word(5),*) nnn  ! bz of nearest neighbor index n
+!                 ! (LINE 3 - nbands^2+3) 0.208146341152   -0.972227642054
+!                 do n=1,nbands
+!                 do m=1,nbands
+!                     read(unit=fid,fmt='(a)') buffer
+!                     word = strsplit(buffer,delimiter=' ')
+!                     read(word(1),*) m_real
+!                     read(word(2),*) m_imag
+!                     mmn_tmp(m,n) = cmplx(m_real,m_imag,kind=dp)
+!                 enddo
+!                 enddo
+
+!                 ! nncell(3,nkpts,nneighbors)
+!                 ! nncell(i,kpt,nn) tells us in which BZ is nn-th nearest-neighbour of kpoint kpt. 
+
+!                 !
+!                 nn=0
+!                 nn_found=.false.
+!                 do inn = 1, nneighbors
+!                     if ((kpt2.eq.nnlist(kpt1,inn)).and. &
+!                        (nnl.eq.nncell(1,kpt1,inn)).and. &
+!                        (nnm.eq.nncell(2,kpt1,inn)).and. &
+!                        (nnn.eq.nncell(3,kpt1,inn)) ) then
+!                         if (.not.nn_found) then
+!                             nn_found=.true.
+!                             nn=inn
+!                         else
+!                             call io_error('Error reading '//trim(seedname)// &
+!                                 '.mmn. More than one matching nearest neighbour found')
+!                         endif
+!                     endif
+!                 end do
+!                 if (nn.eq.0) then
+!                     write(stdout,'(/a,i8,2i5,i4,2x,3i3)') &
+!                     ' Error reading '//trim(seedname)//'.mmn:',i,kpt1,kpt2,nn,nnl,nnm,nnn
+!                     call io_error('Neighbour not found')
+!                 end if
+!                 if (disentanglement) then
+!                     m_matrix_orig(:,:,nn,kpt1) = mmn_tmp(:,:)
+!                 else
+!                     ! disentanglement=.false. means numbands=numwann, so no the dimensions are the same
+!                     ! m_matrix(m,n,nn,kpt1) ! defined for each band 
+!                     m_matrix(:,:,nn,kpt1) = mmn_tmp(:,:)
+!                 end if
+!             end do
+!             !
+!         close(fid)    
+
+!     end subroutine read_mmn
+
 end module
     

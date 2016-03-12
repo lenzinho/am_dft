@@ -7,24 +7,24 @@ module am_symmetry
     !
     implicit none
     !
-  private
-  public :: am_class_symmetry
-  public :: determine_symmetry
+    private
+    public :: am_class_symmetry
+    public :: determine_symmetry
 
-  type am_class_symmetry 
-      integer :: nsyms                  !> number of point symmetries
-      real(dp), allocatable :: R(:,:,:) !> symmetry elements (operate on cartesian atomic basis)
-      real(dp), allocatable :: T(:,:)   !> symmetry elements (operate on cartesian atomic basis)
-      !
-      integer , allocatable :: schoenflies_code(:) ! look at schoenflies_decode to understand what each integer corresponds to
-      character(string_length_schoenflies) , allocatable :: schoenflies(:) ! decoded string
-      !
-  contains
-      ! procedure :: determine_symmetry
-      procedure :: point_group
-      procedure :: space_group
-      procedure :: stdout
-  end type
+    type am_class_symmetry 
+        integer :: nsyms                  !> number of point symmetries
+        real(dp), allocatable :: R(:,:,:) !> symmetry elements (operate on cartesian atomic basis)
+        real(dp), allocatable :: T(:,:)   !> symmetry elements (operate on cartesian atomic basis)
+        !
+        integer , allocatable :: schoenflies_code(:) ! look at schoenflies_decode to understand what each integer corresponds to
+        character(string_length_schoenflies) , allocatable :: schoenflies(:) ! decoded string
+        !
+    contains
+        ! procedure :: determine_symmetry
+        procedure :: point_group
+        procedure :: space_group
+        procedure :: stdout
+    end type
 
 contains
 
@@ -313,7 +313,7 @@ contains
     ! functions which operate on ss
     !
 
-    subroutine     point_group(pg,uc,ss,iopts)
+    subroutine     point_group(pg,uc,ss,opts)
         !
         ! requires only ss%R
         !
@@ -322,18 +322,10 @@ contains
         class(am_class_symmetry), intent(inout) :: pg
         type(am_class_symmetry) , intent(in) :: ss
         type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_options)  , intent(in), optional :: iopts
-        type(am_class_options) :: opts
+        type(am_class_options), intent(in) :: opts
         integer :: pg_schoenflies_code
         character(string_length_schoenflies) :: pg_schoenflies
-        !
         integer :: i
-        !
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
         !
         if ( opts%verbosity .ge. 1) call am_print_title('Determining point group symmetries')
         !
@@ -359,25 +351,18 @@ contains
         !
     end subroutine point_group
 
-    subroutine     space_group(ss,conv,iopts)
+    subroutine     space_group(ss,conv,opts)
         !
         implicit none
         !
         class(am_class_symmetry), intent(inout) :: ss
         type(am_class_unit_cell), intent(in) :: conv
+        type(am_class_options), intent(in) :: opts
         real(dp), allocatable :: seitz(:,:,:)
-        !
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
         !
         if ( opts%verbosity .ge. 1) call am_print_title('Determining space group symmetries')
         !
-        seitz = space_symmetries_from_basis(uc=conv,iopts=opts)
+        seitz = space_symmetries_from_basis(uc=conv,opts=opts)
         !
         ss%nsyms=size(seitz,3)
         if ( opts%verbosity .ge. 1) call am_print('number of space group symmetries found',ss%nsyms,' ... ') 
@@ -411,7 +396,7 @@ contains
         !
     end subroutine stdout
 
-    subroutine     determine_symmetry(uc,ss,pg,iopts)
+    subroutine     determine_symmetry(uc,ss,pg,opts)
         !
         implicit none
         !
@@ -419,24 +404,17 @@ contains
         type(am_class_symmetry), intent(out) :: pg
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_unit_cell) :: conv, prim
-        !
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
+        type(am_class_options), intent(in) :: opts
         !
         if ( opts%verbosity .ge. 1) call am_print_title('Analyzing symmetry')
         !
-        call prim%reduce_to_primitive(uc=uc,iopts=opts)
+        call prim%reduce_to_primitive(uc=uc,opts=opts)
         !
-        call conv%primitive_to_conventional(prim=prim,iopts=opts)
+        call conv%primitive_to_conventional(prim=prim,opts=opts)
         !
-        call ss%space_group(conv=conv,iopts=opts)
+        call ss%space_group(conv=conv,opts=opts)
         !
-        call pg%point_group(uc=uc,ss=ss,iopts=opts)
+        call pg%point_group(uc=uc,ss=ss,opts=opts)
         !
     end subroutine determine_symmetry
 

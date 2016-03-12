@@ -22,7 +22,7 @@ module am_brillouin_zone
         integer , allocatable :: corner(:,:) !> corner(4,ntet) indices of kpoints at the corner of the tetrahedra
         real(dp), allocatable :: w(:) !> w(ntet) tetrahedra weights
     contains
-        procedure :: load_ibzkpt
+        procedure :: load_ibzkpt => load_ibzkpt_tet
 !        procedure :: get_tetrahedra
     end type am_class_tetrahedra
     !
@@ -39,7 +39,7 @@ module am_brillouin_zone
         real(dp), allocatable :: E(:,:)    !> E(nbands,nkpts) energies
         real(dp), allocatable :: occ(:,:)  !> occ(nbands,nkpts) occupancies
         real(dp), allocatable :: w(:)      !> w(nkpts) normalized weights
-        integer , allocatable :: w_int(:)  !> w_integer(nkpts) integer weights
+        ! integer , allocatable :: w_int(:)  !> w_integer(nkpts) integer weights
         character(len=:), allocatable :: orbitals(:) !> orbitals(norbitals) names of orbitals
         real(dp), allocatable :: lmproj(:,:,:,:,:) !> lmproj(nspins,norbitals,nions,nbands,nkpts)
         integer , allocatable :: ibz_indx(:) !> index of kpoint in ibz
@@ -52,14 +52,19 @@ module am_brillouin_zone
         ! load vasp files into bz class
         procedure :: load_procar
         procedure :: load_eigenval
+        procedure :: load_ibzkpt => load_ibzkpt_bz
         ! bz stuff
         procedure :: expand_to_fbz
         procedure :: reduce_to_ibz
+        ! kpoints
+        procedure :: full_monkhorst_pack_mesh
+        procedure :: outfile_kpoints
         ! high level i/o
         procedure :: outfile_bandcharacter ! requires load_eigenval or load_procar
         procedure :: outfile_dosprojected
         !
         procedure :: tetrahedra_pdos
+        
     end type am_class_bz
     !
     contains
@@ -68,7 +73,7 @@ module am_brillouin_zone
     ! functions which operate on kpoint
     !
 
-    pure function locate_kpoint_in_fbz(kpoint,grid_points) result(position_in_fbz)
+    pure function  locate_kpoint_in_fbz(kpoint,grid_points) result(position_in_fbz)
         !> Given a kpoint in cartesian coordinates, determine if ...
         !> k is inside  ( 1) of FBZ, i.e. 2KG < G^2 for ALL Bragg planes
         !> k is on edge ( 0) of FBZ, i.e. 2KG = G^2 for ONE Bragg plane
@@ -107,9 +112,9 @@ module am_brillouin_zone
                 position_in_fbz = -1
             endif
         enddo
-    end function  locate_kpoint_in_fbz
+    end function   locate_kpoint_in_fbz
 
-    pure function reduce_kpoint_to_fbz(kpoint,grid_points,bas) result(kpoint_in_fbz)
+    pure function  reduce_kpoint_to_fbz(kpoint,grid_points,bas) result(kpoint_in_fbz)
         !> reduces kpoint (in cartesian) to the first Brillouin zone, as defined by the Wigner-Seitz cell
         implicit none
         !
@@ -144,9 +149,11 @@ module am_brillouin_zone
             enddo
         end do
         kpoint_in_fbz = kwrk
-    end function  reduce_kpoint_to_fbz
+    end function   reduce_kpoint_to_fbz
 
-    pure function reduce_kpoint_to_ibz(kpoint,grid_points,bas,R) result(kpoint_in_ibz)
+    function       reduce_kpoint_to_ibz(kpoint,grid_points,bas,R) result(kpoint_in_ibz)
+        !
+        use am_rank_and_sort
         !
         implicit none
         !
@@ -154,15 +161,14 @@ module am_brillouin_zone
         real(dp), intent(in) :: bas(3,3) !> real space basis (column vectors)
         real(dp), intent(in) :: grid_points(3,27) !> voronoi points (cartesian)
         real(dp), intent(in) :: R(:,:,:) !> point symmetries in cartesian
-        real(dp) :: try(3)
         real(dp) :: kpoint_in_fbz(3)
         real(dp) :: kpoint_in_ibz(3)
-        integer :: nR !> number of symmetry operations
-        real(dp) :: korb(3,size(R,3)) !> orbit
+        integer  :: nsyms !> number of symmetry operations
+        real(dp), allocatable :: korb(:,:) !> orbit
         integer  :: position_in_fbz
-        integer  :: i ! loop variable
+        integer, allocatable :: indices(:)
         !
-        nR = size(R,3)
+        nsyms = size(R,3)
         ! check if kpoint is outside fbz
         position_in_fbz = locate_kpoint_in_fbz(kpoint,grid_points)
         ! if outside fbz, bring inside (or on the edge) fbz
@@ -172,40 +178,18 @@ module am_brillouin_zone
             kpoint_in_fbz = kpoint
         endif
         ! get kpoint star (orbit)
-        korb = kpoint_orbit(R,kpoint_in_fbz)
-        ! get representative point (which is most positive and has kx > ky > kz)
-        kpoint_in_ibz = -100.0_dp
-        ! loop twice, first to get most positive ...
-        ! this first loop guarentees that something will be returned.
-        do i = 1,nR
-            try = korb(:,i)
-            if (try(1) .gt. kpoint_in_ibz(1) - tiny) then
-                if (try(2) .gt. kpoint_in_ibz(2) - tiny) then
-                    if (try(3) .gt. kpoint_in_ibz(3) - tiny) then
-                        kpoint_in_ibz = try
-                    endif
-                endif
-            endif
-        enddo
-        ! ... then to get most positive and one that has kx > ky > kz
-        ! this second loop will work for systems with cubic symmetry
-        do i = 1,nR
-            try = korb(:,i)
-            if (try(1) .gt. try(2) - tiny) then
-                if (try(2) .gt. try(3) - tiny) then
-                    if (try(1) .gt. kpoint_in_ibz(1) - tiny) then
-                        if (try(2) .gt. kpoint_in_ibz(2) - tiny) then
-                            if (try(3) .gt. kpoint_in_ibz(3) - tiny) then
-                                kpoint_in_ibz = try
-                            endif
-                        endif
-                    endif
-                endif
-            endif
-        enddo
-    end function  reduce_kpoint_to_ibz
+        korb = unique(kpoint_orbit(R,kpoint_in_fbz))
+        ! get representative point (sort it)
+        allocate(indices(size(korb,2)))
+        call rank(nint(1.0D5*korb(1,:)),indices); korb=korb(:,indices)
+        call rank(nint(1.0D5*korb(2,:)),indices); korb=korb(:,indices)
+        call rank(nint(1.0D5*korb(3,:)),indices); korb=korb(:,indices)
+        !         call am_print('WARNING','procedure doesnt exactly reduce to IBZ',' >>> ')
+        kpoint_in_ibz = korb(:,size(korb,2))
+        !
+    end function   reduce_kpoint_to_ibz
 
-    pure function kpoint_orbit(R,kpoint) result(korb)
+    pure function  kpoint_orbit(R,kpoint) result(korb)
         !> Given a kpoint in cartesian coordinates, return its orbit (star)
         !> A quick check to make sure that R(:,:,i) are in the correct cartesian units is to see
         !> whether R are unitary transformations, i.e. orthogonal matricies.
@@ -225,13 +209,13 @@ module am_brillouin_zone
         do i = 1,npntsym
             korb(:,i)=matmul(R(:,:,i),kpoint)
         enddo
-    end function  kpoint_orbit
+    end function   kpoint_orbit
 
     !
     ! functions which operate/generate on meshes/grids
     !
 
-    pure function mesh_grid(n) result(grid_points)
+    pure function  mesh_grid(n) result(grid_points)
         !> 
         !> Generates a mesh of lattice vectors (fractional coordinates) around the origin. 
         !> n(1), n(2), n(3) specifies the number of mesh points away from 0, i.e. [-n:1:n]
@@ -255,16 +239,16 @@ module am_brillouin_zone
                 enddo
             enddo
         enddo
-    end function  mesh_grid
+    end function   mesh_grid
 
-    pure function mesh_monkhorstpack_grid(n,s) result(kpoints_frac)
+    pure function  mesh_monkhorstpack_grid(n,s) result(kpoints_frac)
         !> returns kpoints in fractional coordinates for monkhorst pack mesh dimensions
         !> n(1:3)=[n1,n2,n3] and shift s(1:3)=[s1,s2,s3]
         !> according to http://cms.mpi.univie.ac.at/vasp/vasp/Automatic_k_mesh_generation.html
         implicit none
         !
         integer, intent(in) :: n(3) !> monkhorst pack mesh dimensions
-        integer, intent(in) :: s(3) !> monkhorst pack mesh shift
+        real(dp), intent(in) :: s(3) !> monkhorst pack mesh shift
         real(dp), allocatable :: kpoints_frac(:,:) !> kpoints_frac in fractional
         integer :: i1,i2,i3,j
         !
@@ -280,13 +264,13 @@ module am_brillouin_zone
                 enddo
             enddo
         enddo
-    end function  mesh_monkhorstpack_grid
+    end function   mesh_monkhorstpack_grid
 
     !
     ! functions which operate on bz or similar derived types
     ! 
 
-    subroutine     load_procar(bz,iopt_filename,iopts)
+    subroutine     load_procar(bz,opts)
         ! 
         ! Reads the PROCAR file, look below: code is short and self explanatory.
         !
@@ -297,17 +281,7 @@ module am_brillouin_zone
         implicit none
         !
         class(am_class_bz), intent(inout) :: bz
-        ! optional i/o
-        character(len=*), intent(in), optional :: iopt_filename
-        character(1000) :: filename
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
-        filename = "PROCAR"; if ( present(iopt_filename) ) filename = trim(iopt_filename)
+        type(am_class_options), intent(in) :: opts
         !
         call read_procar(nkpts=bz%nkpts,&
             nbands=bz%nbands,&
@@ -320,12 +294,12 @@ module am_brillouin_zone
             w=bz%w,&
             orbitals=bz%orbitals,&
             lmproj=bz%lmproj,&
-            iopt_filename=filename,&
+            iopt_filename=opts%procar,&
             iopt_verbosity=opts%verbosity)
         !
     end subroutine load_procar
 
-    subroutine     load_eigenval(bz,iopt_filename,iopts)
+    subroutine     load_eigenval(bz,opts)
         ! 
         ! Reads the eigenval file, look below: code is short and self explanatory.
         !
@@ -336,18 +310,7 @@ module am_brillouin_zone
         implicit none
         !
         class(am_class_bz), intent(inout) :: bz
-        ! optional i/o
-        character(len=*), intent(in), optional :: iopt_filename
-        character(1000) :: filename
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
-        !
-        filename = "EIGENVAL"; if ( present(iopt_filename) ) filename = trim(iopt_filename)
+        type(am_class_options), intent(in) :: opts
         !
         call read_eigenval(nkpts=bz%nkpts,&
             nbands=bz%nbands,&
@@ -357,7 +320,7 @@ module am_brillouin_zone
             w=bz%w,&
             E=bz%E,&
             lmproj=bz%lmproj,&
-            iopt_filename=filename,&
+            iopt_filename=opts%eigenval,&
             iopt_verbosity=opts%verbosity)
         !
         bz%nions=1
@@ -366,8 +329,33 @@ module am_brillouin_zone
         bz%orbitals='tot'
         !
     end subroutine load_eigenval
+
+    subroutine     load_ibzkpt_bz(bz,opts)
+        ! 
+        ! Reads the IBZKPT file, look below: code is short and self explanatory.
+        !
+        use am_options
+        !
+        implicit none
+        !
+        class(am_class_bz), intent(inout) :: bz
+        type(am_class_options), intent(in) :: opts
+        type(am_class_tetrahedra) :: tet
+        !
+        call read_ibzkpt(&
+            nkpts = bz%nkpts,&
+            kpt   = bz%kpt,&
+            w     = bz%w,&
+            ntets = tet%ntets,&
+            vtet  = tet%volume,&
+            tet   = tet%corner,&
+            wtet  = tet%w,&
+            iopt_filename = opts%ibzkpt,&
+            iopt_verbosity = opts%verbosity )
+        !
+    end subroutine load_ibzkpt_bz
     
-    subroutine     reduce_to_ibz(ibz,bz,uc,pg,iopts)
+    subroutine     reduce_to_ibz(ibz,bz,uc,pg,opts)
         !
         use am_helpers
         use am_unit_cell
@@ -376,54 +364,66 @@ module am_brillouin_zone
         implicit none
         !
         class(am_class_bz), intent(inout) :: ibz
-        type(am_class_bz), intent(in) :: bz
+        type(am_class_bz), intent(inout) :: bz
         type(am_class_symmetry), intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
+        type(am_class_options), intent(in) :: opts
         !
+        integer :: w ! integer weights (internal)
         real(dp), allocatable :: grid_points(:,:)
         integer :: i, j
         !
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
         !
+        if (opts%verbosity.ge.1) call am_print_title('Reducing to IBZ')
         ! generate voronoi points (cartesian)
         grid_points = matmul( reciprocal_basis(uc%bas), real(mesh_grid([1,1,1]),dp) )
         ! allocate workspace
         allocate(ibz%kpt(3,bz%nkpts))
         ! reduce kpoints to ibz
+        !$OMP PARALLEL PRIVATE(i) SHARED(grid_points,bz,ibz,uc,pg)
+        !$OMP DO
         do i = 1, bz%nkpts
             ibz%kpt(:,i) = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i),grid_points=grid_points,bas=uc%bas,R=pg%R)
         enddo
+        !$OMP END DO
+        !$OMP END PARALLEL
         ! get unique points
         ibz%kpt = unique(ibz%kpt)
         ! get number of unique points
         ibz%nkpts = size(ibz%kpt,2)
-        ! transfer properties to ibz
-        ibz%nbands    = bz%nbands
-        ibz%norbitals = bz%norbitals
-        ibz%nions     = bz%nions
-        ibz%nspins    = bz%nspins
-        ibz%nelecs    = bz%nelecs
-        allocate( ibz%E(ibz%nbands,ibz%nkpts) )
-        allocate( ibz%lmproj(ibz%nspins,ibz%norbitals,ibz%nions,ibz%nbands,ibz%nkpts) )
-        map_bz_point_properties_to_ibz : do i = 1, ibz%nkpts
-            do j = 1, bz%nkpts
-                if ( all(abs(bz%kpt(:,j) - ibz%kpt(:,i)).lt.tiny) ) then
-                    ibz%E(:,i) = ibz%E(:,j)
-                    ibz%lmproj(:,:,:,:,i) = ibz%lmproj(:,:,:,:,j)
-                    cycle map_bz_point_properties_to_ibz
-                endif
-            enddo
-        enddo map_bz_point_properties_to_ibz
+        ! set irreducible indices
+        if (.not.allocated(bz%ibz_indx)) allocate(bz%ibz_indx(bz%nkpts))
+        irrk : do i = 1,ibz%nkpts
+               do j = 1, bz%nkpts
+                   if ( all(abs(bz%kpt(:,j) - ibz%kpt(:,i)).lt.tiny) ) then
+                       bz%ibz_indx(j) = i
+                       cycle irrk
+                   endif
+               enddo
+        enddo irrk
+        ! get weights
+        allocate(ibz%w(ibz%nkpts))
+        do i = 1, ibz%nkpts
+            !
+            w = size(unique(kpoint_orbit(pg%R,ibz%kpt(:,i))),2)
+            !
+            if ( modulo(pg%nsyms,w).ne.0) then
+                call am_print('ERROR','Weight is not a factor of the number of symmetry operation',' >>> ')
+                call am_print('kpoint',ibz%kpt(:,i))
+                call am_print('weight (integer)',w)
+                call am_print('number of symmetry operations',pg%nsyms)
+                call am_print('kpoint orbit',transpose(unique(kpoint_orbit(pg%R,ibz%kpt(:,i)))))
+                stop
+            endif
+            !
+            ibz%w(i) = w
+        enddo
+        !
+        ibz%w(:) = ibz%w(:)/real(sum(ibz%w(:)),dp)
         !
     end subroutine reduce_to_ibz
 
-    subroutine     expand_to_fbz(fbz,bz,pg,iopts)
+    subroutine     expand_to_fbz(fbz,bz,pg,opts)
         !
         use am_unit_cell
         use am_options
@@ -431,25 +431,17 @@ module am_brillouin_zone
         !
         implicit none
         !
-        class(am_class_bz)     , intent(inout) :: fbz
-        type(am_class_bz)      , intent(in) :: bz
+        class(am_class_bz), intent(inout) :: fbz
+        type(am_class_bz), intent(in) :: bz
         type(am_class_symmetry), intent(in) :: pg
+        type(am_class_options), intent(in) :: opts
         !
         real(dp), allocatable :: korb(:,:)
         real(dp), allocatable :: kpoints_fbz(:,:) ! workspace
         integer :: i, j, m
         integer, allocatable :: w(:)
         !
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
-        !
-        if (opts%verbosity .ge. 1) write(*,*)
-        if (opts%verbosity .ge. 1) write(*,'(a)' ) 'Expand kpoints to FBZ'
+        if (opts%verbosity .ge. 1) call am_print_title('Expand kpoints to FBZ')
         if (opts%verbosity .ge. 1) call am_print('number of point symmetries',pg%nsyms,' ... ')
         if (opts%verbosity .ge. 1) call am_print('number of kpoints in the original bz',bz%nkpts,' ... ')
         if (opts%verbosity .ge. 1) call am_print('kpoints in the original bz (only first 10 are shown)',transpose(bz%kpt(1:3,1:(minval([bz%nkpts,10])))),' ... ')
@@ -507,7 +499,7 @@ module am_brillouin_zone
         enddo
     end subroutine expand_to_fbz
     
-    subroutine     outfile_bandcharacter(bz,uc,pg,iopts)
+    subroutine     outfile_bandcharacter(bz,uc,pg,opts)
         ! 
         ! Creates outfile.bandcharacter, which contains the energy and character of the bands read either from EIGENVAL using bz%load_eigenval() or PROCAR using bz%load_procar()
         !
@@ -518,6 +510,7 @@ module am_brillouin_zone
         class(am_class_bz), intent(in) :: bz !> brillouin zone class
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_symmetry) , intent(in) :: pg
+        type(am_class_options), intent(in) :: opts
         real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
         real(dp) :: k1(3) ! point for kdiff
         real(dp) :: k2(3) ! point for kdiff
@@ -525,16 +518,7 @@ module am_brillouin_zone
         integer :: fid
         integer :: i, j, l, m, n ! loop variables
         !
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
-        !
-        if (opts%verbosity .ge. 1) write(*,*)
-        if (opts%verbosity .ge. 1) write(*,'(a)' ) 'Writing bandcharacter file'
+        if (opts%verbosity .ge. 1) call am_print_title('Writing bandcharacter file')
         !
         !
         ! generate voronoi points (cartesian), used to reduce points to wigner-seitz brillouin zone
@@ -615,7 +599,7 @@ module am_brillouin_zone
         !
     end subroutine outfile_bandcharacter
 
-    subroutine     outfile_dosprojected(bz,iopts)
+    subroutine     outfile_dosprojected(bz,opts)
         ! 
         ! Creates outfile.dosprojected
         !
@@ -624,19 +608,11 @@ module am_brillouin_zone
         implicit none
         !
         class(am_class_bz), intent(inout) :: bz !> brillouin zone class
+        type(am_class_options), intent(in) :: opts
         integer :: fid
         integer :: i, l, m, n ! loop variables
         !
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
-        !
-        if (opts%verbosity .ge. 1) write(*,*)
-        if (opts%verbosity .ge. 1) write(*,'(a)' ) 'Writing dosprojected file'
+        if (opts%verbosity .ge. 1) call am_print_title('Writing dosprojected file')
         !
         fid = 1
         open(unit=fid,file="outfile.dosprojected",status="replace",action='write')
@@ -705,6 +681,89 @@ module am_brillouin_zone
         close(fid)
         !
     end subroutine outfile_dosprojected
+
+
+! subroutine transfer_properties(bz_src,bz_dest)
+        ! transfer properties to 
+!         bz_dest%nbands    = bz_src%nbands
+!         bz_dest%norbitals = bz_src%norbitals
+!         bz_dest%nions     = bz_src%nions
+!         bz_dest%nspins    = bz_src%nspins
+!         bz_dest%nelecs    = bz_src%nelecs
+!         allocate( bz_dest%E(bz_dest%nbands,bz_dest%nkpts) )
+!         allocate( bz_dest%lmproj(bz_dest%nspins,bz_dest%norbitals,bz_dest%nions,bz_dest%nbands,bz_dest%nkpts) )
+!         map_bz_point_properties_to_bz_dest : do i = 1, bz_dest%nkpts
+!             do j = 1, bz%nkpts
+!                 if ( all(abs(bz%kpt(:,j) - bz_dest%kpt(:,i)).lt.tiny) ) then
+!                     bz_dest%E(:,i) = bz_dest%E(:,j)
+!                     bz_dest%lmproj(:,:,:,:,i) = bz_dest%lmproj(:,:,:,:,j)
+!                     cycle map_bz_point_properties_to_bz_dest
+!                 endif
+!             enddo
+!         enddo map_bz_point_properties_to_ibz
+
+    !
+    !
+    !
+
+    subroutine     full_monkhorst_pack_mesh(fbz,uc,n,s,opts)
+        !
+        use am_options
+        !
+        implicit none
+        !
+        class(am_class_bz), intent(inout) :: fbz !> brillouin zone class
+        type(am_class_unit_cell), intent(in) :: uc
+        integer, intent(in) :: n(3)
+        real(dp), intent(in) :: s(3)
+        type(am_class_options), intent(in) :: opts
+        real(dp) :: grid_points(3,27) !> voronoi points (27=3^3)
+        integer :: i
+        !
+        if (opts%verbosity.ge.1) call am_print_title('Generating full monkhorst pack mesh')
+        ! get kpoints in fractional
+        fbz%kpt = mesh_monkhorstpack_grid(n=n,s=s)
+        ! convert to cartesian
+        fbz%kpt = matmul(reciprocal_basis(uc%bas),fbz%kpt)
+        ! determine how many kpoints there are
+        fbz%nkpts = size(fbz%kpt,2)
+        ! generate voronoi points (cartesian)
+        grid_points = matmul(reciprocal_basis(uc%bas),mesh_grid([1,1,1]))
+        ! reduce kpoints to FBZ using voronoi points
+        allocate(fbz%w(fbz%nkpts))
+        !$OMP PARALLEL PRIVATE(i) SHARED(uc,fbz,grid_points)
+        !$OMP DO
+        do i = 1,fbz%nkpts
+            fbz%kpt(:,i) = reduce_kpoint_to_fbz(uc%bas,grid_points,fbz%kpt(:,i))
+            fbz%w        = 1.0_dp/real(fbz%nkpts,dp)
+        enddo
+        !$OMP END DO
+        !$OMP END PARALLEL
+        if (opts%verbosity.ge.1) call am_print('kpoints (first twenty)',transpose(fbz%kpt(:,1:minval([20,fbz%nkpts]))),' ... ')
+    end subroutine full_monkhorst_pack_mesh
+
+    subroutine     outfile_kpoints(bz,fname)
+        !
+        ! fname = name of file to write kpoints to.
+        !
+        implicit none
+        class(am_class_bz), intent(in) :: bz
+        character(*), intent(in) :: fname
+        integer :: fid
+        integer :: i
+        real(dp) :: smallest_weight
+        !
+        smallest_weight = minval(bz%w(:))
+        !
+        fid = 1
+        !
+        open(unit=fid,file=trim(fname),status='replace',action='write')
+            do i = 1,bz%nkpts
+                write(fid,'(3f20.6,f20.6,i20)') bz%kpt(:,i), bz%w(i), nint(bz%w(i)/smallest_weight)
+            enddo
+        close(fid)
+    end subroutine outfile_kpoints
+
 
     !
     ! functions which operate on tetrahedra connectivity lists
@@ -863,7 +922,7 @@ module am_brillouin_zone
     ! functions which operate on tet or similar derived types
     !
 
-    subroutine     load_ibzkpt(tet,iopt_bz,iopt_filename,iopts)
+    subroutine     load_ibzkpt_tet(tet,iopt_bz,opts)
         ! 
         ! Reads the IBZKPT file, look below: code is short and self explanatory.
         !
@@ -873,18 +932,8 @@ module am_brillouin_zone
         !
         class(am_class_tetrahedra), intent(inout) :: tet
         type(am_class_bz), intent(in), optional :: iopt_bz
+        type(am_class_options), intent(in) :: opts
         type(am_class_bz) :: bz_tmp
-        ! optional i/o
-        character(len=*), intent(in), optional :: iopt_filename
-        character(1000) :: filename
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
-        filename = "IBZKPT"; if ( present(iopt_filename) ) filename = trim(iopt_filename)
         !
         ! tetrahedra parameters:
         ! ntets number f tetrahedra
@@ -900,7 +949,7 @@ module am_brillouin_zone
             vtet  = tet%volume,&
             tet   = tet%corner,&
             wtet  = tet%w,&
-            iopt_filename = filename,&
+            iopt_filename = opts%ibzkpt,&
             iopt_verbosity = opts%verbosity )
         !
         if (present(iopt_bz)) then
@@ -922,17 +971,18 @@ module am_brillouin_zone
             !
         endif
         !
-    end subroutine load_ibzkpt
+    end subroutine load_ibzkpt_tet
 
-    subroutine     tetrahedra_pdos(bz,tet,iopts)
+    subroutine     tetrahedra_pdos(bz,tet,opts)
         !
         use am_histogram
         use am_options
         !
         implicit none
         !
-        class(am_class_bz)       , intent(inout) :: bz
+        class(am_class_bz), intent(inout) :: bz
         type(am_class_tetrahedra), intent(in) :: tet
+        type(am_class_options), intent(in) :: opts
         real(dp) :: maxE ! maximum band energy
         real(dp) :: minE ! minimum band energy
         real(dp) :: dE   ! energy increment
@@ -940,15 +990,7 @@ module am_brillouin_zone
         real(dp) :: Ec(4) ! corner energies
         integer :: i, j, k, m, n, o
         !
-        type(am_class_options), intent(in), optional :: iopts
-        type(am_class_options) :: opts
-        if (present(iopts)) then 
-            opts = iopts
-        else
-            call opts%defaults
-        endif
-        !
-        if (iopts%verbosity .ge. 1) call am_print_title('Tetrahedron integration')
+        if (opts%verbosity .ge. 1) call am_print_title('Tetrahedron integration')
         !
         dE = 0.01_dp
         minE = minval(bz%E(:,:))
@@ -959,14 +1001,14 @@ module am_brillouin_zone
         !
         call plot_histogram( histogram(pack(bz%E(:,:),(bz%E(:,:).ge.minE).and.(bz%E(:,:).le.maxE)),column_width) )
         !
-        if (iopts%verbosity .ge. 1) call am_print('number of bands',bz%nbands,' ... ')
-        if (iopts%verbosity .ge. 1) call am_print('number of tetrahedra',tet%ntets,' ... ')
-        if (iopts%verbosity .ge. 1) call am_print('lowest band energy',minE,' ... ')
-        if (iopts%verbosity .ge. 1) call am_print('highest band energy',maxE,' ... ')
-        if (iopts%verbosity .ge. 1) call am_print('minimum probing energy',bz%Ep(1),' ... ')
-        if (iopts%verbosity .ge. 1) call am_print('maximum probing energy',bz%Ep(bz%nEp),' ... ')
-        if (iopts%verbosity .ge. 1) call am_print('energy increments dE',dE,' ... ')
-        if (iopts%verbosity .ge. 1) call am_print('number of probing energies',bz%nEp,' ... ')
+        if (opts%verbosity .ge. 1) call am_print('number of bands',bz%nbands,' ... ')
+        if (opts%verbosity .ge. 1) call am_print('number of tetrahedra',tet%ntets,' ... ')
+        if (opts%verbosity .ge. 1) call am_print('lowest band energy',minE,' ... ')
+        if (opts%verbosity .ge. 1) call am_print('highest band energy',maxE,' ... ')
+        if (opts%verbosity .ge. 1) call am_print('minimum probing energy',bz%Ep(1),' ... ')
+        if (opts%verbosity .ge. 1) call am_print('maximum probing energy',bz%Ep(bz%nEp),' ... ')
+        if (opts%verbosity .ge. 1) call am_print('energy increments dE',dE,' ... ')
+        if (opts%verbosity .ge. 1) call am_print('number of probing energies',bz%nEp,' ... ')
         !
         allocate(bz%pdos(bz%nspins,bz%norbitals,bz%nions,bz%nEp))
         allocate(bz%dos(bz%nEp))
@@ -1011,125 +1053,88 @@ module am_brillouin_zone
     end subroutine tetrahedra_pdos
 
 
-    !subroutine get_tetrahedra(tet,bz,uc,pg,tet,iopts)
-    !!
-    !use am_unit_cell
-    !use am_tet_mesh
-    !use am_options
-    !!
-    !implicit none
-    !!
-    !class(am_class_tetrahedra), intent(inout) :: tet
-    !type(am_class_bz), intent(in) :: bz
-    !type(am_class_unit_cell) , intent(in) :: uc
-    !type(am_class_symmetry), intent(in) :: pg
-    !type(am_class_bz) :: fbz
-    !type(am_class_options), intent(in), optional :: iopts
-    !type(am_class_options) :: opts
-    !if (present(iopts)) then 
-    !    opts = iopts
-    !else
-    !    call opts%defaults
-    !endif
-    !!
-    !call bz%expand_to_fbz(uc=uc,fbz=fbz,pg=pg,iopts=opts)
-    !!
-    !! call tessellate_mesh(kpt=fbz%kpt,corner=tet%corner,volume=tet%volume)
-    !!
-    !
-    !end subroutine get_tetrahedra
+!     subroutine get_tetrahedra(tet,bz,uc,pg,tet,iopts)
+!         !
+!         use am_unit_cell
+!         use am_tet_mesh
+!         use am_options
+!         !
+!         implicit none
+!         !
+!         class(am_class_tetrahedra), intent(inout) :: tet
+!         type(am_class_bz), intent(in) :: bz
+!         type(am_class_unit_cell) , intent(in) :: uc
+!         type(am_class_symmetry), intent(in) :: pg
+!         type(am_class_bz) :: fbz
+!         type(am_class_options), intent(in), optional :: iopts
+!         type(am_class_options) :: opts
+!         if (present(iopts)) then 
+!            opts = iopts
+!         else
+!            call opts%defaults
+!         endif
+!         !
+!         call bz%expand_to_fbz(uc=uc,fbz=fbz,pg=pg,iopts=opts)
+!         !
+!         ! call tessellate_mesh(kpt=fbz%kpt,corner=tet%corner,volume=tet%volume)
+!         !
+        
+!     end subroutine get_tetrahedra
 
     
     !
     ! things up to here have been edited
     !
     ! INCOMPLETE THINGS: 
-    !pure subroutine build_mp_mesh(bz,bas,recbas,n,s,R)
-    !!> Given a basis, reciprocal basis, monkhorst pack parameters (dimensions n, shift s), and
-    !!> orthogonal point symmetry matrices in cartesian coordinates, build bz.
-    !implicit none
-    !!
-    !class(am_class_bz), intent(inout) :: bz !> brillouin zone class
-    !real(dp), intent(in) :: bas(3,3) !> primitive basis
-    !real(dp), intent(in) :: recbas(3,3) !> reciprocal basis
-    !integer,  intent(in) :: n(3) !> monkhorst pack mesh dimensions
-    !integer,  intent(in) :: s(3) !> monkhorst pack mesh shift
-    !real(dp), intent(in) :: R(:,:,:) !> point symmetries in cartesian
-    !!
-    !integer  :: nR !> number of symmetry operations
-    !real(dp) :: grid_points(3,27) !> voronoi points (27=3^3)
-    !real(dp), allocatable :: kpoints(:,:) !> list of kpoints
-    !real(dp), allocatable :: kpoints_ibz(:,:) !> list of kpoints in ibz for each kpoint in fbz
-    !real(dp), allocatable :: kpoints_ibz_unique(:,:) !> list of unique kpoints in ibz
-    !real(dp) :: korb(3,size(R,3)) !> full orbit, with redudancies if present
-    !integer  :: i, j, k, i1, i2 ! loop variable
-    !!
-    !! fbz part:
-    !!
-    !! get kpoints in fractional
-    !kpoints = mesh_monkhorstpack_grid(n=n,s=s)
-    !! convert to cartesian
-    !kpoints = matmul(recbas,kpoints)
-    !! detemrine how many kpoints there are
-    !bz%nfbz = size(kpoints,2)
-    !! generate voronoi points (cartesian)
-    !grid_points = mesh_grid(recbas)
-    !! reduce kpoints to FBZ using voronoi points
-    !do i = 1,bz%nfbz
-    !    kpoints(:,i) = reduce_kpoint_to_fbz(bas,grid_points,kpoints(:,i))
-    !enddo
-    !! save kpoints in fbz
-    !allocate(bz%k_fbz(bz%nfbz))
-    !do i = 1,bz%nfbz
-    !    bz%k_fbz(i)%k = kpoints(:,i) !> cartesian
-    !enddo
-    !!
-    !! ibz part:
-    !!
-    !nR = size(R,3)
-    !! allocate space for ibz
-    !allocate(kpoints_ibz(3,bz%nfbz))
-    !! reduce kpoints to ibz
-    !do i = 1,bz%nfbz
-    !    kpoints_ibz(:,i) = reduce_kpoint_to_ibz(bas,recbas,grid_points,R,kpoints(:,i))
-    !enddo
-    !! get unique points
-    !kpoints_ibz_unique = unique(kpoints_ibz)
-    !! get number of unique points
-    !bz%nibz = size(kpoints_ibz_unique,2)
-    !! allocate space for ibz points
-    !allocate(bz%k_ibz(bz%nibz))
-    !! save ibz properties
-    !do i = 1,bz%nibz
-    !    ! kpoint coordinate
-    !    bz%k_ibz(i)%k = kpoints_ibz_unique(:,i)
-    !    ! index connecting fbz to ibz
-    !    do j = 1, bz%nfbz
-    !        if ( all(abs(kpoints_ibz(:,j)-bz%k_ibz(i)%k).lt.tiny) ) bz%k_fbz(j)%irr_indx = i
-    !    enddo
-    !    ! orbit
-    !    korb = kpoint_orbit(R,bz%k_ibz(i)%k)
-    !    ! get number of stabilizers (number of elements in little group) and allocate space
-    !    k = 0
-    !    do j = 1, nR
-    !        if ( all(abs(korb(:,j)-bz%k_ibz(i)%k).lt.tiny) ) k=k+1
-    !    enddo
-    !    allocate(bz%k_ibz(i)%littlgrp(3,3,k))
-    !    ! get little group (stabilizers)
-    !    k = 0
-    !    do j = 1, nR
-    !        if ( all(abs(korb(:,j)-bz%k_ibz(i)%k).lt.tiny) ) then
-    !            k = k + 1
-    !            bz%k_ibz(i)%littlgrp(:,:,k) = R(:,:,j)
-    !        endif
-    !    enddo
-    !    ! save orbit
-    !    bz%k_ibz(i)%korbit = unique(korb)
-    !    ! save weight
-    !    bz%k_ibz(i)%w = size(bz%k_ibz(i)%korbit,2)
-    !enddo
-    !end subroutine
-    !    !
+
+
+
+!         !
+!         ! ibz part:
+!         !
+!         nR = size(R,3)
+!         ! allocate space for ibz
+!         allocate(kpoints_ibz(3,bz%nfbz))
+!         ! reduce kpoints to ibz
+!         do i = 1,bz%nfbz
+!            kpoints_ibz(:,i) = reduce_kpoint_to_ibz(bas,recbas,grid_points,R,kpoints(:,i))
+!         enddo
+!         ! get unique points
+!         kpoints_ibz_unique = unique(kpoints_ibz)
+!         ! get number of unique points
+!         bz%nibz = size(kpoints_ibz_unique,2)
+!         ! allocate space for ibz points
+!         allocate(bz%k_ibz(bz%nibz))
+!         ! save ibz properties
+!         do i = 1,bz%nibz
+!            ! kpoint coordinate
+!            bz%k_ibz(i)%k = kpoints_ibz_unique(:,i)
+!            ! index connecting fbz to ibz
+!            do j = 1, bz%nfbz
+!                if ( all(abs(kpoints_ibz(:,j)-bz%k_ibz(i)%k).lt.tiny) ) bz%k_fbz(j)%irr_indx = i
+!            enddo
+!            ! orbit
+!            korb = kpoint_orbit(R,bz%k_ibz(i)%k)
+!            ! get number of stabilizers (number of elements in little group) and allocate space
+!            k = 0
+!            do j = 1, nR
+!                if ( all(abs(korb(:,j)-bz%k_ibz(i)%k).lt.tiny) ) k=k+1
+!            enddo
+!            allocate(bz%k_ibz(i)%littlgrp(3,3,k))
+!            ! get little group (stabilizers)
+!            k = 0
+!            do j = 1, nR
+!                if ( all(abs(korb(:,j)-bz%k_ibz(i)%k).lt.tiny) ) then
+!                    k = k + 1
+!                    bz%k_ibz(i)%littlgrp(:,:,k) = R(:,:,j)
+!                endif
+!            enddo
+!            ! save orbit
+!            bz%k_ibz(i)%korbit = unique(korb)
+!            ! save weight
+!            bz%k_ibz(i)%w = size(bz%k_ibz(i)%korbit,2)
+!         enddo
+
     !
 
     !
