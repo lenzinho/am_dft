@@ -419,7 +419,6 @@
         real(dp), intent(in) :: a(:)
         logical :: are_different
         integer :: i, j, n
-        real(dp) :: tiny
         !
         n = size(a)
         !

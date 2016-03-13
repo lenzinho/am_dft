@@ -22,25 +22,29 @@ for program in `find . -name main.f90` ; do
 		#
 		echo ""
 		echo "+----------------------------------------------------------------------------------------+"
-		echo ""
-		pwd
-		echo ""
-		echo "+----------------------------------------------------------------------------------------+"
-		echo ""
 		#
 		if [ ! -f makefile.inc ]; then
 			ln -s ../makefile.inc .
 		fi
 		#
-		make
-		#
 		program_name=${PWD##*/}
 		program_name=`echo ${program_name} | sed 's/prog_//'`
+		#
+		echo ${program_name}
+		pwd
+		#
+		make
+		#
 		if [ -f ${program_name} ]; then
-		if [ ! -f ../${d}/${program_name} ]; then
-		    ln -s ../${d}/${program_name} ../bin/
+			if [ ! -f ../bin/${program_name} ]; then
+			    ln -s ../${d}/${program_name} ../bin/
+			fi
+		else
+			echo "ERROR! Program did not compile correctly."
+			echo ${program_name}
 		fi
-		fi
+		echo "+----------------------------------------------------------------------------------------+"
+		echo ""
 		#
 	cd ${odir}
 	#

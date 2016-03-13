@@ -32,6 +32,21 @@ contains
     ! functions which operate on R(3,3) in cartesian coordinates
     !
 
+
+    pure function  point_symmetry_convert_to_cartesian(R_frac,bas) result(R)
+        !
+        use am_unit_cell, only : reciprocal_basis
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: R_frac(3,3)
+        real(dp), intent(in) :: bas(3,3)
+        real(dp) :: R(3,3)
+        !
+        R = matmul(bas,matmul(R_frac,reciprocal_basis(bas)))
+        !
+    end function   point_symmetry_convert_to_cartesian
+
     pure function  point_symmetry_convert_to_fractional(R,bas) result(R_frac)
         !
         use am_unit_cell, only : reciprocal_basis
@@ -70,7 +85,7 @@ contains
         !
     end function   point_symmetry_determinant
 
-    function       point_symmetry_schoenflies(R,bas) result(schoenflies_code)
+    function       point_symmetry_schoenflies(R) result(schoenflies_code)
         !>
         !> Point symmetries are input into this function in cartesian coordinates
         !> and converted inside to fractional coordinates so that they are nice
@@ -83,17 +98,13 @@ contains
         implicit none
         !
         real(dp), intent(in) :: R(3,3)
-        real(dp), intent(in) :: bas(3,3)
-        real(dp) :: R_frac(3,3)
         real(dp) :: tr
         real(dp) :: det
         integer :: schoenflies_code
         !
-        ! transform point symmetry to fractional coordinates
-        R_frac = point_symmetry_convert_to_fractional(R,bas)
-        ! get trace and determinant
-        tr  = point_symmetry_trace(R_frac)
-        det = point_symmetry_determinant(R_frac)
+        ! get trace and determinant (fractional)
+        tr  = point_symmetry_trace(R)
+        det = point_symmetry_determinant(R)
         !
         ! The Mathematical Theory of Symmetry in Solids: Representation Theory for
         ! Point Groups and Space Groups. 1 edition. Oxford?: New York: Oxford University
@@ -114,8 +125,7 @@ contains
         !
         if (schoenflies_code .eq. 0) then
             call am_print('ERROR','Unable to identify point symmetry.',' >>> ')
-            call am_print('R (cart)',R)
-            call am_print('R (frac)',R_frac)
+            call am_print('R (frac)',R)
             call am_print('tr (frac)',tr)
             call am_print('det (frac)',det)
             stop
@@ -313,7 +323,7 @@ contains
     ! functions which operate on ss
     !
 
-    subroutine     point_group(pg,uc,ss,opts)
+    subroutine     point_group(pg,ss,opts)
         !
         ! requires only ss%R
         !
@@ -321,13 +331,12 @@ contains
         !
         class(am_class_symmetry), intent(inout) :: pg
         type(am_class_symmetry) , intent(in) :: ss
-        type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
         integer :: pg_schoenflies_code
         character(string_length_schoenflies) :: pg_schoenflies
         integer :: i
         !
-        if ( opts%verbosity .ge. 1) call am_print_title('Determining point group symmetries')
+        if (opts%verbosity.ge.1) call am_print_title('Determining point group symmetries')
         !
         pg%R = unique(ss%R)
         !
@@ -336,7 +345,7 @@ contains
         allocate(pg%schoenflies_code(pg%nsyms))
         allocate(pg%schoenflies(pg%nsyms))
         do i = 1, pg%nsyms
-            pg%schoenflies_code(i) = point_symmetry_schoenflies(pg%R(:,:,i),uc%bas)
+            pg%schoenflies_code(i) = point_symmetry_schoenflies(pg%R(:,:,i))
             pg%schoenflies(i)      = schoenflies_decode(pg%schoenflies_code(i))
         enddo
         !
@@ -347,7 +356,9 @@ contains
         !
         if (opts%verbosity.ge.1) call am_print('number of point group operations',pg%nsyms,' ... ')
         !
-        if ( opts%verbosity .ge. 1) call pg%stdout
+        if (opts%verbosity.ge.1) call pg%stdout
+        !
+        call pg%stdout(trim('outfile.pointgroup'))
         !
     end subroutine point_group
 
@@ -360,39 +371,70 @@ contains
         type(am_class_options), intent(in) :: opts
         real(dp), allocatable :: seitz(:,:,:)
         !
-        if ( opts%verbosity .ge. 1) call am_print_title('Determining space group symmetries')
+        if (opts%verbosity.ge.1) call am_print_title('Determining space group symmetries')
         !
         seitz = space_symmetries_from_basis(uc=conv,opts=opts)
         !
         ss%nsyms=size(seitz,3)
-        if ( opts%verbosity .ge. 1) call am_print('number of space group symmetries found',ss%nsyms,' ... ') 
+        !
+        if (opts%verbosity.ge.1) call am_print('number of space group symmetries found',ss%nsyms,' ... ') 
         !
         allocate(ss%R(3,3,ss%nsyms))
         allocate(ss%T(3,ss%nsyms))
         ss%R(1:3,1:3,1:ss%nsyms) = seitz(1:3,1:3,1:ss%nsyms)
         ss%T(1:3,1:ss%nsyms)     = seitz(1:3,4,1:ss%nsyms)
         !
-        if ( opts%verbosity .ge. 1) call ss%stdout
+        if (opts%verbosity.ge.1) call ss%stdout
+        !
+        call ss%stdout(trim('outfile.spacegroup'))
         !
     end subroutine space_group
 
-    subroutine     stdout(ss)
+    subroutine     stdout(ss,iopt_filename)
         !
         implicit none
         !
         class(am_class_symmetry), intent(in) ::  ss
+        character(*), intent(in), optional :: iopt_filename
+        integer :: fid
         integer :: i,j,k
         !
-        write(*,'(5x,a3,9a6)',advance='no') '#', 'R11', 'R21', 'R31', &
-                                               & 'R12', 'R22', 'R32', &
-                                               & 'R13', 'R23', 'R33'
-        if (allocated(ss%T))  write(*,'(a3,3a6)',advance='no') ' | ', 'T1', 'T2', 'T3'
-        write(*,*)
+        if ( present(iopt_filename) ) then
+            ! write to file
+            fid = 1
+            open(unit=fid,file=trim(iopt_filename),status="replace",action='write')
+        else
+            ! stdout
+            fid = 6
+        endif
+        !
+        ! write standard out to file
+        !
+        write(fid,'(5x,a3,9a6)',advance='no') '#', 'R11', 'R21', 'R31', 'R12', 'R22', 'R32', 'R13', 'R23', 'R33'
+        if (allocated(ss%T))  write(fid,'(a4,3a6)',advance='no') '  | ', 'T1', 'T2', 'T3'
+        write(fid,*)
         do i = 1, ss%nsyms
-            write(*,'(5x,i3,9f6.2)',advance='no') i, (( ss%R(j,k,i), j = 1,3) , k = 1,3)
-            if (allocated(ss%T)) write(*,'(a3,3f6.2)',advance='no') ' | ', (ss%T(j,i),j = 1,3)
-            write(*,*)
+            write(fid,'(5x,i3,9i6)',advance='no') i, (( nint(ss%R(j,k,i)), j = 1,3) , k = 1,3)
+            if (allocated(ss%T)) then
+                write(fid,'(a4)',advance='no') '  | '
+                do j = 1,3
+                    if     (abs(ss%T(j,i)-0).lt.tiny) then
+                        write(fid,'(a6)'   ,advance='no') '0'
+                    elseif (abs(ss%T(j,i)-1).lt.tiny) then
+                        write(fid,'(a6)'   ,advance='no') '1'
+                    elseif (abs(ss%T(j,i)+1).lt.tiny) then
+                        write(fid,'(a6)'   ,advance='no') '-1'
+                    else
+                        write(fid,'(a6)',advance='no') trim('1/' // int2char(nint(1.0_dp/ss%T(j,i))) )
+                    endif
+                enddo
+            endif
+            write(fid,*)
         enddo
+        !
+        ! close file
+        !
+        if ( present(iopt_filename) ) close(fid)
         !
     end subroutine stdout
 
@@ -406,7 +448,7 @@ contains
         type(am_class_unit_cell) :: conv, prim
         type(am_class_options), intent(in) :: opts
         !
-        if ( opts%verbosity .ge. 1) call am_print_title('Analyzing symmetry')
+        if (opts%verbosity.ge.1) call am_print_title('Analyzing symmetry')
         !
         call prim%reduce_to_primitive(uc=uc,opts=opts)
         !
@@ -414,7 +456,7 @@ contains
         !
         call ss%space_group(conv=conv,opts=opts)
         !
-        call pg%point_group(uc=uc,ss=ss,opts=opts)
+        call pg%point_group(ss=ss,opts=opts)
         !
     end subroutine determine_symmetry
 

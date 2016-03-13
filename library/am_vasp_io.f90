@@ -195,7 +195,7 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if (verbosity .ge. 1) call am_print('actual file read is',fname,' ... ')
+            if (verbosity .ge. 1) call am_print('actual file read is',trim(fname),' ... ')
             ! (LINE 1) PROCAR lm decomposed
             read(fid,'(a)')
             ! (LINE 2) # of kpt-points:  160         # of bands:   8         # of ions:   2
@@ -337,7 +337,7 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if ( verbosity .ge. 1) call am_print('actual file read',fname,' ... ')
+            if ( verbosity .ge. 1) call am_print('actual file read',trim(fname),' ... ')
             !
             nkpts_prim = 0
             nkpts  = 0
@@ -510,7 +510,7 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if (verbosity .ge. 1) call am_print('actual file read',fname,' ... ')
+            if (verbosity .ge. 1) call am_print('actual file read',trim(fname),' ... ')
             ! (LINE 1)     2    2    1    1
             read(unit=fid,fmt='(a)') buffer
             word = strsplit(buffer,delimiter=' ')
@@ -598,7 +598,7 @@ module am_vasp_io
         !    nspecies number of unique atomic species
         !    symbs(nspecies) list of atomic symbols
         !    natoms_per_species(natoms) number of atoms per species
-        !    tau(3,natoms) cartesian atomic coordinates
+        !    tau(3,natoms) fractional atomic coordinates
         !    atype(natoms) type atom
         !
         !    call read_poscar( bas,natoms,nspecies,natoms_per_species,symbs,tau,atype )
@@ -609,9 +609,8 @@ module am_vasp_io
         integer,intent(out) :: natoms
         integer,intent(out) :: nspecies
         character(len=:), allocatable, intent(out) :: symbs(:) ! 1 symb per species
-        ! integer, allocatable, intent(out) :: natoms_per_species(:) ! number of atoms per species - REMOVED THIS AS AN OUTPUT
         integer , allocatable :: natoms_per_species(:) ! number of atoms per species
-        real(dp), allocatable, intent(out) :: tau(:,:) ! atomic coordinates tau_read(3,natoms) in cartesian
+        real(dp), allocatable, intent(out) :: tau(:,:) ! atomic coordinates tau_read(3,natoms) in fractional
         integer,allocatable, intent(out) :: atype(:) ! type of atom tau_read(natoms)
         ! subroutine internal parameters
         real(dp) :: recbas(3,3)
@@ -644,7 +643,7 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if (verbosity .ge. 1) call am_print('actual file read',fname,' ... ')
+            if (verbosity .ge. 1) call am_print('actual file read',trim(fname),' ... ')
             ! (LINE 1) header
              read(unit=fid,fmt='(a)')
             ! (LINE 2) lattice parameter scaling
@@ -746,18 +745,20 @@ module am_vasp_io
                     do n = 1,3
                         read(word(n),*) tau_read(n,m)
                     enddo
-                    ! make sure everything is in cartesian
+                    ! make sure everything is in fractional
                     if ( direct ) then
-                        tau(1:3,m) = matmul( bas,tau_read(1:3,m) )
+                        ! tau(1:3,m) = matmul( bas,tau_read(1:3,m) ) ! cartesian
+                        tau(1:3,m) = tau_read(1:3,m)
                     endif
                     if ( cartesian ) then
-                        tau(1:3,m) = scale * tau_read(1:3,m)
+                        ! tau(1:3,m) = scale * tau_read(1:3,m) ! cartesian
+                        tau(1:3,m) = matmul( recbas, scale * tau_read(1:3,m) )
                     endif
                 enddo
             enddo
             !
             if ( verbosity .ge. 1 ) then
-                write(*,'(" ... ",a)') "atomic positions (cartesian)"
+                write(*,'(" ... ",a)') "atomic positions (fractional)"
                 m = 0
                 do i = 1, nspecies
                     do j = 1, natoms_per_species(i)
