@@ -33,9 +33,9 @@
         !
         fid = 6
         !
-        write(fid,'(a,a,a)') "+", repeat("-",column_width), "+"
-        write(fid,'(a,a,a)') "|",  centertitle(title,column_width), "|" 
-        write(fid,'(a,a,a)') "+", repeat("-",column_width), "+"
+        write(fid,'(a,a,a)') "+", repeat("-",column_width-2), "+"
+        write(fid,'(a,a,a)') "|",  centertitle(title,column_width-2), "|" 
+        write(fid,'(a,a,a)') "+", repeat("-",column_width-2), "+"
         !
     end subroutine am_print_title
 

@@ -816,7 +816,7 @@
         
         T = translations_from_basis(tau=uc%tau,atype=uc%atype,iopt_include=trim('prim'),iopt_sym_prec=opts%sym_prec)
         nTs = size(T,2)
-        if (opts%verbosity .ge. 1) call am_print("possible primitive lattice translations found",nTs," ... ")
+        if (opts%verbosity.ge.1) call am_print("possible primitive lattice translations found",nTs," ... ")
         
         !
         ! 2) convert T to cartesian
@@ -831,8 +831,12 @@
         allocate(indices(nTs))
         call rank(norm2(T,1),indices)
         T=T(1:3, indices(nTs:1:-1) )
-        if (opts%verbosity .ge. 1) call am_print("possible primitive lattice vectors (cart)",transpose(T)," ... ")
-        if (opts%verbosity .ge. 1) call am_print("possible primitive lattice vectors (frac)",transpose(matmul(reciprocal_basis(uc%bas),T))," ... ")
+        if (opts%verbosity.ge.1) then
+            call am_print_two_matrices_side_by_side(name='possible primitive lattice vectors',&
+                Atitle='fractional (original)',A=transpose(matmul(reciprocal_basis(uc%bas),T)),&
+                Btitle='cartesian' ,B=transpose(T),&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+        endif
         
         !
         ! 5) select three primitive vectors which yield the smallest cell volume
@@ -858,23 +862,31 @@
         endif
         !
         prim%bas = T(1:3,[i,j,k])
-        if (opts%verbosity .ge. 1) call am_print("volume",primitive_volume(prim%bas)," ... ")
-        if (opts%verbosity .ge. 1) call am_print("primitive basis (cart)",prim%bas," ... ")
-        if (opts%verbosity .ge. 1) call am_print("primitive basis (frac, in terms of original basis)",matmul(reciprocal_basis(uc%bas),prim%bas)," ... ")
-        if (opts%verbosity .ge. 1) call am_print("supercell basis (frac, in terms of primitive basis)",matmul(reciprocal_basis(prim%bas),uc%bas)," ... ")
+        if (opts%verbosity.ge.1) call am_print("volume",primitive_volume(prim%bas)," ... ")
+        if (opts%verbosity.ge.1) then
+            call am_print_two_matrices_side_by_side(name='original basis',&
+                Atitle='fractional (primitive)',A=matmul(reciprocal_basis(prim%bas),uc%bas),&
+                Btitle='cartesian'             ,B=uc%bas,&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+        endif
+        if (opts%verbosity.ge.1) then
+            call am_print_two_matrices_side_by_side(name='primitive basis',&
+                Atitle='fractional (original)',A=matmul(reciprocal_basis(uc%bas),prim%bas),&
+                Btitle='cartesian'            ,B=prim%bas,&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+        endif
         
         !
         ! 6) reduce atoms to primitive cell
         !
 
-        if (opts%verbosity .ge. 1) call am_print('number of atoms in original cell',uc%natoms,' ... ')
+        if (opts%verbosity.ge.1) call am_print('number of atoms in original cell',uc%natoms,' ... ')
         ! a) set first atom at the origin
         allocate(prim%tau(3,uc%natoms))
         tau_ref = uc%tau(1:3,1)
         do i = 1, uc%natoms
             prim%tau(1:3,i) = uc%tau(1:3,i) - tau_ref
         enddo
-        if (opts%verbosity .ge. 1) call am_print('original atomic basis (frac, in terms of primitive)',transpose(prim%tau),' ... ')
         ! b) reduce to primitive cell
         do i = 1,uc%natoms
             prim%tau(1:3,i) = modulo(prim%tau(1:3,i)+opts%sym_prec,1.0_dp)-opts%sym_prec
@@ -882,9 +894,13 @@
         ! c) get unique values
         prim%tau = unique(prim%tau,opts%sym_prec)
         prim%natoms = size(prim%tau,2)
-        if (opts%verbosity .ge. 1) call am_print('number of atoms in reduced cell',prim%natoms,' ... ')
-        if (opts%verbosity .ge. 1) call am_print('reduced atomic basis (frac, in terms of primitive)',transpose(prim%tau),' ... ')
-        if (opts%verbosity .ge. 1) call am_print('reduced atomic basis (cart)',transpose(matmul(prim%bas,prim%tau)),' ... ')
+        if (opts%verbosity.ge.1) call am_print('number of atoms in primitive cell',prim%natoms,' ... ')
+        if (opts%verbosity.ge.1) then
+            call am_print_two_matrices_side_by_side(name='reduced atomic basis',&
+                Atitle='fractional (primitive)',A=transpose(prim%tau),&
+                Btitle='cartesian'             ,B=transpose(matmul(prim%bas,prim%tau)),&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+        endif
         
         !
         ! 7) transfer atomic species by comparing atomic coordinates
@@ -930,19 +946,25 @@
         integer :: i1, i2, i3, j, m
         type(am_class_options), intent(in) :: opts
         !
-        if (opts%verbosity .ge. 1) call am_print_title('Expanding to supercell')
-        !
-        if (opts%verbosity .ge. 1) call am_print('supercell basis (primitive fractional)',bscfp,' ... ')
+        if (opts%verbosity.ge.1) call am_print_title('Expanding to supercell')
         !
         inv_bscfp = reciprocal_basis(bscfp)
         !
-        if (opts%verbosity .ge. 1) call am_print('primitive basis (supercell fractional)',reciprocal_basis(bscfp),' ... ')
-        !
         sc%bas = matmul(uc%bas,bscfp)
         !
-        if (opts%verbosity .ge. 1) call am_print('supercell basis (cart)',sc%bas,' ... ')
+        if (opts%verbosity.ge.1) then
+            call am_print_two_matrices_side_by_side(name='primitive basis',&
+                Atitle='fractional (supercell)',A=reciprocal_basis(bscfp),&
+                Btitle='cartesian'             ,B=uc%bas,&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+        endif
         !
-        if (opts%verbosity .ge. 1) call am_print('primitive basis (cart)',uc%bas,' ... ')
+        if (opts%verbosity.ge.1) then
+            call am_print_two_matrices_side_by_side(name='supercell basis',&
+                Atitle='fractional (primitive)',A=bscfp,&
+                Btitle='cartesian'             ,B=sc%bas,&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+        endif
         !
         if ((mod(det(bscfp)+opts%sym_prec,1.0_dp)-opts%sym_prec).gt.opts%sym_prec) then
             call am_print('ERROR','The determinant of the supercell basis in primitive fractional coordinates must be an integer.',' >>> ')
@@ -950,9 +972,15 @@
         endif
         !
         sc%natoms = nint(det(bscfp)*uc%natoms)
-        if (opts%verbosity .ge. 1) call am_print('number of atoms (supercell)',sc%natoms,' ... ')
-        if (opts%verbosity .ge. 1) call am_print('number of atoms (primitive)',uc%natoms,' ... ')
-        if (opts%verbosity .ge. 1) call am_print('primitive atoms (primitive fractional)',transpose(uc%tau),' ... ')
+        if (opts%verbosity.ge.1) call am_print('number of atoms (supercell)',sc%natoms,' ... ')
+        if (opts%verbosity.ge.1) call am_print('number of atoms (primitive)',uc%natoms,' ... ')
+        !
+        if (opts%verbosity.ge.1) then
+            call am_print_two_matrices_side_by_side(name='primitive atomic basis',&
+                Atitle='fractional (primitive)',A=transpose(uc%tau),&
+                Btitle='cartesian'             ,B=transpose(matmul(uc%bas,uc%tau)),&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+        endif
         !
         allocate(sc%tau(3,sc%natoms))
         allocate(sc%atype(sc%natoms))
@@ -987,8 +1015,12 @@
         ! correct basic rounding error
         where(abs(sc%tau).lt.opts%sym_prec) sc%tau=0.0_dp 
         !
-        if (opts%verbosity .ge. 1) call am_print("supercell atomic basis (frac)",transpose(sc%tau),' ... ')
-        if (opts%verbosity .ge. 1) call am_print("supercell atomic basis (cart)",transpose(matmul(sc%bas,sc%tau)),' ... ')
+        if (opts%verbosity.ge.1) then
+            call am_print_two_matrices_side_by_side(name='supercell atomic basis',&
+                Atitle='fractional (supercell)',A=transpose(sc%tau),&
+                Btitle='cartesian'             ,B=transpose(matmul(sc%bas,sc%tau)),&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+        endif
         !
     end subroutine expand_to_supercell
 

@@ -720,7 +720,8 @@ contains
             ! write to file for debugging
             ! call fbz%outfile_kpoints(fname='outfile.primitive_monkhorst_pack_cart')
         ! generate voronoi points (cartesian)
-        grid_points = matmul(reciprocal_basis(uc%bas),mesh_grid([1,1,1]))
+        grid_points = mesh_grid([1,1,1])
+        grid_points = matmul(reciprocal_basis(uc%bas),grid_points)
         ! reduce kpoints to FBZ using voronoi points
         !$OMP PARALLEL PRIVATE(i) SHARED(uc,fbz,grid_points)
         !$OMP DO
@@ -729,12 +730,12 @@ contains
         enddo
         !$OMP END DO
         !$OMP END PARALLEL
-        ! write to file for debugging
-        call fbz%outfile_kpoints(fname='outfile.fbz_monkhorst_pack_cart')
+            ! write to file for debugging
+            call fbz%outfile_kpoints(fname='outfile.fbz_monkhorst_pack_cart')
         ! convert back to fractional
         fbz%kpt = matmul(uc%bas,fbz%kpt)
-        ! write to file for debugging
-        call fbz%outfile_kpoints(fname='outfile.fbz_monkhorst_pack_frac')
+            ! write to file for debugging
+            ! call fbz%outfile_kpoints(fname='outfile.fbz_monkhorst_pack_frac')
         ! sort
         allocate(sorted_indices(fbz%nkpts))
         allocate(sort_parameter(fbz%nkpts))

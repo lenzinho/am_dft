@@ -11,7 +11,7 @@ module am_constants
     complex , parameter :: cmplx_i = (0.0_dp,1.0_dp)
     !
     ! magic numbers
-    integer , parameter :: column_width = 90
+    integer , parameter :: column_width = 100
     integer , parameter :: string_length_schoenflies = 6
     integer , parameter :: max_argument_length = 500
     integer , parameter :: maximum_buffer_size = 500
