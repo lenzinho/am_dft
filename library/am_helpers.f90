@@ -122,6 +122,73 @@
         !
     end function print_pretty
 
+    subroutine     am_print_two_matrices_side_by_side(name, Atitle, Btitle, A, B , iopt_emph, iopt_fid , iopt_teaser )
+        !
+        implicit none
+        !
+        character(*), intent(in) :: name
+        character(*), intent(in) :: Atitle
+        character(*), intent(in) :: Btitle
+        real(dp)    , intent(in) :: A(:,:)
+        real(dp)    , intent(in) :: B(:,:)
+        logical     , intent(in), optional :: iopt_teaser
+        integer     , intent(in), optional :: iopt_fid
+        character(5), intent(in), optional :: iopt_emph
+        logical :: teaser
+        character(5) :: emph
+        integer :: fid
+        integer :: i, j, m, n
+        !
+        fid=6
+        if ( present(iopt_fid)  ) fid = iopt_fid
+        emph = "     "
+        if ( present(iopt_emph) ) emph = iopt_emph
+        teaser = .false.
+        if ( present(iopt_teaser) ) teaser = iopt_teaser
+        !
+        !
+        !
+        if (size(A,1).ne.size(B,1)) then
+            call am_print('ERROR','Size mismatch: A and B.',' >>> ')
+            stop
+        endif
+        if (size(A,2).ne.size(B,2)) then
+            call am_print('ERROR','Size mismatch: A and B.',' >>> ')
+            stop
+        endif
+        !
+        m=size(A,1)
+        n=size(A,2)
+        !
+        if (teaser) m = minval([10,m])
+        !
+        write(fid,'(a,a," = ")') emph, name
+        !
+        write(fid,'(5x,a)',advance='no') centertitle(Atitle,n*15)
+        write(fid,'(5x,a)',advance='no') centertitle(Btitle,n*15)
+        write(fid,*)
+        !
+        write(fid,'(5x,a)',advance='no') centertitle(repeat('-',n*15),n*15)
+        write(fid,'(5x,a)',advance='no') centertitle(repeat('-',n*15),n*15)
+        write(fid,*)
+        !
+        do i = 1, m
+            !
+            write(fid,'(5x)',advance='no')
+            do j = 1,n
+                write(fid,'(f15.8)',advance='no') A(i,j)
+            enddo
+            !
+            write(fid,'(5x)',advance='no')
+            do j = 1,n
+                write(fid,'(f15.8)',advance='no') B(i,j)
+            enddo
+            !
+            write(fid,*)
+        enddo
+        !
+    end subroutine am_print_two_matrices_side_by_side
+
     !
     ! OPEN FILE
     !
@@ -150,7 +217,7 @@
                 endif
             enddo
         endif
-    end function
+    end function unit_number
 
     integer function open_file(rw,filename)
         !> Borrowed from Olle
@@ -179,7 +246,7 @@
             write(*,*) 'Could not open ',filename
             stop
         endif
-    end function
+    end function open_file 
 
     !
     ! progress bar
@@ -527,11 +594,20 @@
         !
     end function  gcd
 
-
     !
-    ! helper functions
+    ! things that should've existed in fortran already
     !
-
+    
+    function      exists(fname)
+        !
+        implicit none
+        !
+        character(max_argument_length) :: fname
+        logical :: exists
+        !
+        inquire(file=trim(fname),exist=exists)
+        !
+    end function  exists
 
     pure function strsplit(str,delimiter) result(word)
         !

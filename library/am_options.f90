@@ -3,8 +3,10 @@ module am_options
     use am_constants 
     !
     type am_class_options
-        integer :: verbosity
+        integer  :: verbosity
         real(dp) :: sym_prec
+        integer  :: n(3) ! monkhorst pack mesh grid dimensions
+        real(dp) :: s(3) ! monkhorst pack mesh grid shift
         character(max_argument_length) :: ibzkpt
         character(max_argument_length) :: procar
         character(max_argument_length) :: prjcar
@@ -30,6 +32,8 @@ module am_options
         !
         opts%verbosity = 1
         opts%sym_prec = tiny
+        opts%n        = [9,9,9] ! monkhorst pack mesh grid dimensions
+        opts%s        = real([0,0,0],dp) ! monkhorst pack mesh grid shift
         opts%ibzkpt   = 'IBZKPT'
         opts%procar   = 'PROCAR'
         opts%prjcar   = 'PRJCAR'
@@ -49,7 +53,7 @@ module am_options
         class(am_class_options), intent(inout) :: opts
         character(max_argument_length) :: argument
         integer :: narg
-        integer :: i
+        integer :: i, j
         !
         call opts%defaults
         !
@@ -71,6 +75,21 @@ module am_options
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*) opts%sym_prec
+                !
+                ! monkhorst pack mesh
+                !
+                case('-s')
+                    do j = 1,3
+                        i=i+1
+                        call get_command_argument(i,argument)
+                        read(argument,*) opts%s(j)
+                        enddo
+                case('-n')
+                    do j = 1,3
+                        i=i+1
+                        call get_command_argument(i,argument)
+                        read(argument,*) opts%n(j)
+                    enddo
                 !
                 ! vasp
                 ! 

@@ -116,28 +116,31 @@ contains
         enddo
     end function   locate_kpoint_in_fbz
 
-    pure function  reduce_kpoint_to_fbz(kpoint,grid_points,bas) result(kpoint_in_fbz)
-        !> reduces kpoint (in cartesian) to the first Brillouin zone, as defined by the Wigner-Seitz cell
+    pure function  reduce_kpoint_to_fbz(kpoint_cart,grid_points,bas) result(kpoint_fbz_cart)
+        !> reduces kpoint (in cartsian) to the first Brillouin zone (Wigner-Seitz cell, defined in cartesian coordinates)
+        !> cartesian kpoint is returned! 
         implicit none
         !
-        real(dp), intent(in) :: kpoint(3) !> cartesian
+        real(dp), intent(in) :: kpoint_cart(3) !> cartesian
         real(dp), intent(in) :: bas(3,3) !> real space basis (column vectors)
         real(dp), intent(in) :: grid_points(3,27) !> voronoi points (cartesian)
         real(dp) :: kwrk(3) !> workspace for kpoint
         real(dp) :: G(3) !> reciprocal lattice vector
         real(dp) :: P !> bragg plane condition
-        real(dp) :: kpoint_in_fbz(3)
+        real(dp) :: kpoint_fbz_cart(3)
         integer :: i ! loop variable
         logical :: is_not_done
         !
         ! take kpoint in cartesian coordinates
-        kwrk = kpoint
+        kwrk = kpoint_cart
         ! convert to fractional
         kwrk = matmul(bas,kwrk)
         ! reduce to reciprocal unit cell
         kwrk = modulo(kwrk+tiny,1.0_dp)-tiny
-        ! reduce to first Brillouin zone, which is defined as a Wigner-Seitz cell
-        ! (the procedure below makes sure the closest reciprocal lattice point is [0 0 0])
+        ! convert back to cartesian
+        kwrk = matmul(reciprocal_basis(bas),kwrk)
+        ! reduce to Wigner-Seitz cell (aka first Brillouin zone) by translating the k-point
+        ! until the closest reciprocal lattice point is [0 0 0]
         is_not_done = .true.
         do while ( is_not_done )
             is_not_done = .false.
@@ -150,7 +153,9 @@ contains
                 endif
             enddo
         end do
-        kpoint_in_fbz = kwrk
+        !
+        kpoint_fbz_cart = kwrk
+        !
     end function   reduce_kpoint_to_fbz
 
     function       reduce_kpoint_to_ibz(kpoint,grid_points,bas,R) result(kpoint_in_ibz)
@@ -217,7 +222,7 @@ contains
     ! functions which operate/generate on meshes/grids
     !
 
-    pure function  mesh_monkhorstpack_grid(n,s) result(kpoints_frac)
+    pure function  mesh_monkhorstpack_grid(n,s) result(kpt)
         !> returns kpoints in fractional coordinates for monkhorst pack mesh dimensions
         !> n(1:3)=[n1,n2,n3] and shift s(1:3)=[s1,s2,s3]
         !> according to http://cms.mpi.univie.ac.at/vasp/vasp/Automatic_k_mesh_generation.html
@@ -225,21 +230,22 @@ contains
         !
         integer, intent(in) :: n(3) !> monkhorst pack mesh dimensions
         real(dp), intent(in) :: s(3) !> monkhorst pack mesh shift
-        real(dp), allocatable :: kpoints_frac(:,:) !> kpoints_frac in fractional
+        real(dp), allocatable :: kpt(:,:) !> kpt in fractional
         integer :: i1,i2,i3,j
         !
-        allocate(kpoints_frac(3,product(n)))
+        allocate(kpt(3,product(n)))
         !
         j=0
         do i1=1,n(1)
             do i2=1,n(2)
                 do i3=1,n(3)
                     j=j+1
-                    kpoints_frac(1:3,j) = [i1+s(1),i2+s(2),i3+s(3)]*1.0_dp
-                    kpoints_frac(1:3,j) = kpoints_frac(1:3,j)/n
+                    kpt(1:3,j) = real([i1+s(1)-1,i2+s(2)-1,i3+s(3)-1],dp)
+                    kpt(1:3,j) = kpt(1:3,j)/real(n,dp)
                 enddo
             enddo
         enddo
+        !
     end function   mesh_monkhorstpack_grid
 
     !
@@ -684,38 +690,69 @@ contains
 
     subroutine     full_monkhorst_pack_mesh(fbz,uc,n,s,opts)
         !
+        use am_rank_and_sort
         use am_options
         !
         implicit none
         !
         class(am_class_bz), intent(inout) :: fbz !> brillouin zone class
         type(am_class_unit_cell), intent(in) :: uc
-        integer, intent(in) :: n(3)
+        integer , intent(in) :: n(3)
         real(dp), intent(in) :: s(3)
         type(am_class_options), intent(in) :: opts
         real(dp) :: grid_points(3,27) !> voronoi points (27=3^3)
+        integer , allocatable :: sorted_indices(:)
+        real(dp), allocatable :: sort_parameter(:)
         integer :: i
         !
         if (opts%verbosity.ge.1) call am_print_title('Generating full monkhorst pack mesh')
         ! get kpoints in fractional
         fbz%kpt = mesh_monkhorstpack_grid(n=n,s=s)
-        ! convert to cartesian
-        fbz%kpt = matmul(reciprocal_basis(uc%bas),fbz%kpt)
         ! determine how many kpoints there are
         fbz%nkpts = size(fbz%kpt,2)
+        ! determine weights
+        allocate(fbz%w(fbz%nkpts))
+        fbz%w = 1/real(fbz%nkpts,dp)
+            ! write to file for debugging
+            ! call fbz%outfile_kpoints(fname='outfile.primitive_monkhorst_pack_frac')
+        ! convert to cartesian
+        fbz%kpt = matmul(reciprocal_basis(uc%bas),fbz%kpt)
+            ! write to file for debugging
+            ! call fbz%outfile_kpoints(fname='outfile.primitive_monkhorst_pack_cart')
         ! generate voronoi points (cartesian)
         grid_points = matmul(reciprocal_basis(uc%bas),mesh_grid([1,1,1]))
         ! reduce kpoints to FBZ using voronoi points
-        allocate(fbz%w(fbz%nkpts))
         !$OMP PARALLEL PRIVATE(i) SHARED(uc,fbz,grid_points)
         !$OMP DO
         do i = 1,fbz%nkpts
-            fbz%kpt(:,i) = reduce_kpoint_to_fbz(uc%bas,grid_points,fbz%kpt(:,i))
-            fbz%w        = 1.0_dp/real(fbz%nkpts,dp)
+            fbz%kpt(:,i) = reduce_kpoint_to_fbz(kpoint_cart=fbz%kpt(:,i),grid_points=grid_points,bas=uc%bas)
         enddo
         !$OMP END DO
         !$OMP END PARALLEL
-        if (opts%verbosity.ge.1) call am_print('kpoints (first twenty)',transpose(fbz%kpt(:,1:minval([20,fbz%nkpts]))),' ... ')
+        ! write to file for debugging
+        call fbz%outfile_kpoints(fname='outfile.fbz_monkhorst_pack_cart')
+        ! convert back to fractional
+        fbz%kpt = matmul(uc%bas,fbz%kpt)
+        ! write to file for debugging
+        call fbz%outfile_kpoints(fname='outfile.fbz_monkhorst_pack_frac')
+        ! sort
+        allocate(sorted_indices(fbz%nkpts))
+        allocate(sort_parameter(fbz%nkpts))
+        do i = 1, 3
+            sort_parameter = fbz%kpt(i,:)
+            call rank(sort_parameter,sorted_indices)
+            fbz%w=fbz%w(sorted_indices)
+            fbz%kpt=fbz%kpt(:,sorted_indices)
+        enddo
+        !
+        if (opts%verbosity.ge.1) then
+            ! am_print_two_matrices_side_by_side(name, Atitle, Btitle, A, B , in_emph, in_fid )
+            call am_print_two_matrices_side_by_side(name='kpoints',&
+                Atitle='fractional',A=transpose(fbz%kpt),&
+                Btitle='cartesian' ,B=transpose(matmul(reciprocal_basis(uc%bas),fbz%kpt)),&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+        endif
+        !
     end subroutine full_monkhorst_pack_mesh
 
     subroutine     outfile_kpoints(bz,fname)
@@ -727,15 +764,12 @@ contains
         character(*), intent(in) :: fname
         integer :: fid
         integer :: i
-        real(dp) :: smallest_weight
-        !
-        smallest_weight = minval(bz%w(:))
         !
         fid = 1
         !
         open(unit=fid,file=trim(fname),status='replace',action='write')
-            do i = 1,bz%nkpts
-                write(fid,'(3f20.6,f20.6,i20)') bz%kpt(:,i), bz%w(i), nint(bz%w(i)/smallest_weight)
+            do i = 1, bz%nkpts
+                write(fid,'(i7,3f20.6,f20.6)') i, bz%kpt(:,i), bz%w(i)
             enddo
         close(fid)
     end subroutine outfile_kpoints
