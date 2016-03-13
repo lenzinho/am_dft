@@ -327,6 +327,8 @@ contains
         !
         ! requires only ss%R
         !
+        use am_rank_and_sort
+        !
         implicit none
         !
         class(am_class_symmetry), intent(inout) :: pg
@@ -334,6 +336,8 @@ contains
         type(am_class_options), intent(in) :: opts
         integer :: pg_schoenflies_code
         character(string_length_schoenflies) :: pg_schoenflies
+        integer , allocatable :: sorted_indices(:)
+        real(dp), allocatable :: sort_parameter(:)
         integer :: i
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining point group symmetries')
@@ -341,6 +345,23 @@ contains
         pg%R = unique(ss%R)
         !
         pg%nsyms = size(pg%R,3)
+        !
+        ! <sort>
+        !
+        allocate(sorted_indices(pg%nsyms))
+        allocate(sort_parameter(pg%nsyms))
+        !
+        do i = 1, pg%nsyms; sort_parameter(i) = point_symmetry_determinant(pg%R(:,:,i)); enddo
+        call rank(sort_parameter,sorted_indices)
+        sorted_indices = sorted_indices(pg%nsyms:1:-1)
+        pg%R=pg%R(:,:,sorted_indices)
+        !
+        do i = 1, pg%nsyms; sort_parameter(i) = point_symmetry_trace(pg%R(:,:,i)); enddo
+        call rank(sort_parameter,sorted_indices)
+        sorted_indices = sorted_indices(pg%nsyms:1:-1)
+        pg%R=pg%R(:,:,sorted_indices)
+        !
+        ! </sort>
         !
         allocate(pg%schoenflies_code(pg%nsyms))
         allocate(pg%schoenflies(pg%nsyms))
@@ -377,12 +398,17 @@ contains
 
     subroutine     space_group(ss,conv,opts)
         !
+        use am_rank_and_sort
+        !
         implicit none
         !
         class(am_class_symmetry), intent(inout) :: ss
         type(am_class_unit_cell), intent(in) :: conv
         type(am_class_options), intent(in) :: opts
         real(dp), allocatable :: seitz(:,:,:)
+        integer , allocatable :: sorted_indices(:)
+        real(dp), allocatable :: sort_parameter(:)
+        integer :: i
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining space group symmetries')
         !
@@ -396,6 +422,40 @@ contains
         allocate(ss%T(3,ss%nsyms))
         ss%R(1:3,1:3,1:ss%nsyms) = seitz(1:3,1:3,1:ss%nsyms)
         ss%T(1:3,1:ss%nsyms)     = seitz(1:3,4,1:ss%nsyms)
+        !
+        ! <sort>
+        !
+        allocate(sorted_indices(ss%nsyms))
+        allocate(sort_parameter(ss%nsyms))
+        !
+        do i = 1, ss%nsyms; sort_parameter(i) = point_symmetry_determinant(ss%R(:,:,i)); enddo
+        call rank(sort_parameter,sorted_indices)
+        sorted_indices = sorted_indices(ss%nsyms:1:-1)
+        ss%R=ss%R(:,:,sorted_indices)
+        ss%T=ss%T(:,sorted_indices)
+        !
+        do i = 1, ss%nsyms; sort_parameter(i) = point_symmetry_trace(ss%R(:,:,i)); enddo
+        call rank(sort_parameter,sorted_indices)
+        sorted_indices = sorted_indices(ss%nsyms:1:-1)
+        ss%R=ss%R(:,:,sorted_indices)
+        ss%T=ss%T(:,sorted_indices)
+        !
+        sort_parameter = ss%T(1,:)
+        call rank(sort_parameter,sorted_indices)
+        ss%R=ss%R(:,:,sorted_indices)
+        ss%T=ss%T(:,sorted_indices)
+        !
+        sort_parameter = ss%T(2,:)
+        call rank(sort_parameter,sorted_indices)
+        ss%R=ss%R(:,:,sorted_indices)
+        ss%T=ss%T(:,sorted_indices)
+        !
+        sort_parameter = ss%T(3,:)
+        call rank(sort_parameter,sorted_indices)
+        ss%R=ss%R(:,:,sorted_indices)
+        ss%T=ss%T(:,sorted_indices)
+        !
+        ! </sort>
         !
         if (opts%verbosity.ge.1) call ss%stdout
         !
@@ -423,25 +483,15 @@ contains
         !
         ! write standard out to file
         !
-        write(fid,'(5x,a3,9a6)',advance='no') '#', 'R11', 'R21', 'R31', 'R12', 'R22', 'R32', 'R13', 'R23', 'R33'
-        if (allocated(ss%T))  write(fid,'(a4,3a6)',advance='no') '  | ', 'T1', 'T2', 'T3'
+        write(fid,'(5x,a3,9a5)',advance='no') '#', 'R11', 'R21', 'R31', 'R12', 'R22', 'R32', 'R13', 'R23', 'R33'
+        if (allocated(ss%T))  write(fid,'(a4,3a5)',advance='no') '  | ', 'T1', 'T2', 'T3'
         write(fid,*)
         do i = 1, ss%nsyms
-            write(fid,'(5x,i3,9i6)',advance='no') i, (( nint(ss%R(j,k,i)), j = 1,3) , k = 1,3)
+            write(fid,'(5x,i3,9i5)',advance='no') i, (( nint(ss%R(j,k,i)), j = 1,3) , k = 1,3)
             if (allocated(ss%T)) then
                 write(fid,'(a4)',advance='no') '  | '
                 do j = 1,3
-                    if     (abs(ss%T(j,i)-0).lt.tiny) then
-                        write(fid,'(a6)'   ,advance='no') '0'
-                    elseif (abs(ss%T(j,i)-1).lt.tiny) then
-                        write(fid,'(a6)'   ,advance='no') '1'
-                    elseif (abs(ss%T(j,i)+1).lt.tiny) then
-                        write(fid,'(a6)'   ,advance='no') '-1'
-                    elseif (abs(nint(1.0_dp/ss%T(j,i))-1.0_dp/ss%T(j,i)).lt.tiny) then
-                        write(fid,'(a6)',advance='no') trim('1/' // int2char(nint(1.0_dp/ss%T(j,i))) )
-                    else
-                        write(fid,'(f6.2)',advance='no') ss%T(j,i)
-                    endif
+                    write(fid,'(a5)',advance='no') trim(print_pretty(ss%T(j,i)))
                 enddo
             endif
             write(fid,*)

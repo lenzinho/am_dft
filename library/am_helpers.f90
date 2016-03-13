@@ -46,7 +46,7 @@
     ! CONVERT DATA TYPES
     !
 
-    function int2char(int) result(string)
+    function     int2char(int) result(string)
         !
         implicit none
         !
@@ -57,7 +57,7 @@
         string = trim( adjustl( string ) )
     end function int2char
     
-    function dbl2char(dbl) result(string)
+    function     dbl2char(dbl) result(string)
         !
         implicit none
         !
@@ -67,6 +67,60 @@
         write(string,'(f)') dbl
         string = trim( adjustl( string ) )
     end function dbl2char
+
+    function     dbl2frac(dbl) result(nd)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: dbl
+        integer :: n, c, d
+        integer :: nd(2)
+        !
+        d = 100
+        n = nint(dbl*d)
+        c = gcd(n,d)
+        n = n/c
+        d = d/c
+        nd(1) = n ! numerator
+        nd(2) = d ! denominator
+        !
+    end function dbl2frac
+
+    function     print_pretty(dbl) result(string)
+        !
+        ! call it with trim
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: dbl
+        character(len=column_width) :: string
+        integer :: num_den(2)
+        !
+        !
+        if     (abs(dbl).lt.tiny) then
+            string='0'
+            return
+        endif
+        if (abs(nint(dbl)-dbl).lt.tiny) then
+            string=int2char(nint(dbl))
+            return
+        endif
+        if (abs(nint(dbl)+dbl).lt.tiny) then
+            string=int2char(nint(dbl))
+            return
+        endif
+        ! convert double to fraction
+        num_den = dbl2frac(dbl)
+        if (abs(num_den(2)).gt.tiny) then
+        if (abs(num_den(1)/real(num_den(2),dp)-dbl).lt.tiny) then
+            write(string,'(a,a,a)') trim(int2char(num_den(1))), '/', trim(int2char(num_den(2)))
+            return
+        endif
+        endif
+        ! do nothing
+        write(string,*) dbl
+        !
+    end function print_pretty
 
     !
     ! OPEN FILE
@@ -202,9 +256,9 @@
         do i = 1, n
             eye(i,i) = 1.0_dp
         enddo
-    end  function eye
+    end function  eye
 
-    pure function  mesh_grid(n) result(grid_points)
+    pure function mesh_grid(n) result(grid_points)
         !> 
         !> Generates a mesh of lattice vectors (fractional coordinates) around the origin. 
         !> n(1), n(2), n(3) specifies the number of mesh points away from 0, i.e. [-n:1:n]
@@ -228,7 +282,7 @@
                 enddo
             enddo
         enddo
-    end function   mesh_grid
+    end function  mesh_grid
 
     pure function det_3x3_dbl(a) result(det)
         !
@@ -271,7 +325,9 @@
         !
     end function  inv_3x3_dbl
 
+    !
     ! generic math functions
+    !
 
 #include "am_helpers_unique.f90"
 
@@ -439,6 +495,38 @@
         enddo
         enddo        
     end function  are_different
+
+    pure function lcm(a,b)
+        !
+        implicit none
+        !
+        integer, intent(in) :: a,b
+        integer :: lcm
+        !
+        lcm = a*b / gcd(a,b)
+        !
+    end function  lcm
+ 
+    pure function gcd(a,b)
+        !
+        implicit none
+        !
+        integer, intent(in) :: a, b
+        integer :: t, bc, ac
+        integer :: gcd
+        !
+        bc = b
+        ac = a
+        !
+        do while (bc/=0)
+            t = bc
+            bc = mod(ac,bc)
+            ac = t
+        end do
+        gcd = abs(ac)
+        !
+    end function  gcd
+
 
     !
     ! helper functions

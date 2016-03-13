@@ -21,25 +21,31 @@ module am_rank_and_sort
     public :: unique_rank
     public :: sort_using_quicksort
     public :: sort_using_insertion
+    
     !
+
     interface rank
-    module procedure d_rank, r_rank, i_rank
+        module procedure d_rank, r_rank, i_rank
     end interface rank
+
     interface unique_rank
     module procedure d_unique_rank, r_unique_rank, i_unique_rank
     end interface unique_rank
+
     interface nearless
     module procedure d_nearless, r_nearless, i_nearless
     end interface nearless
+
     interface sort_using_quicksort
     ! This subroutine uses quick sort.
     module procedure d_sort_using_quicksort, r_sort_using_quicksort, i_sort_using_quicksort
     end interface sort_using_quicksort
+
     interface sort_using_insertion
     ! This subroutine uses insertion sort. Faster for small arrays (<20).
     module procedure d_sort_using_insertion, r_sort_using_insertion, i_sort_using_insertion
     end interface sort_using_insertion
-    !
+
     contains
     !
     subroutine d_rank(xdont, irngt)
