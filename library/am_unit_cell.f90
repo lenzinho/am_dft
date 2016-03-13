@@ -617,14 +617,20 @@
         ! subroutine i/o
         integer , intent(in) :: atype(:) !> atype(natoms) list identifing type of atom
         real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates
-        character(len=*), intent(in), optional :: iopt_include !> iopt_include can be 'primzero', 'prim', 'zero'; if present it adds [0,0,0] and the primitive basis to the T vectors returned. 
+        character(len=*), intent(in), optional :: iopt_include 
+        !> iopt_include string can contain 'prim', 'zero', 'relax' and any combination of each
+        !> if it has 'zero'  : add [0,0,0] to the T vectors returned
+        !> if it has 'prim'  : add primitive basis to the T vectors returned
+        !> if it has 'relax' : relax symmetry check and return all translations connecting reference atom to every other atom
+        !> the addition of 'relax' is useful for determining the space group
+        !> the omition of 'relax', which is the default procedure, is useful for reducing an arbitrary cell to the primitive cell
         real(dp), allocatable :: T(:,:)   !> T(3,nTs) translation which leaves basis invariant
         ! internal
         integer  :: natoms ! natoms number of atoms
         integer  :: nTs ! nTs number of primitive lattice vector candidates
-        real(dp) :: tau_ref(3) ! tau_ref(3) fractional coordinates of reference atom
         real(dp), allocatable :: wrk(:,:) ! wrk(1:3,nTs) list of possible lattice vectors that are symmetry-compatible volume
         real(dp) :: wrkr(3)
+        logical :: relax_symmetry
         ! loop variables
         integer :: i, j
         ! optionals
@@ -636,26 +642,34 @@
             sym_prec = tiny
         endif
         !
+        relax_symmetry = .false.
+        if (present(iopt_include)) then
+            if (index(iopt_include,'relax').ne.0) relax_symmetry = .true.
+        endif 
+        !
         !
         !
         natoms = size(tau,2)
         allocate(wrk(3,natoms-1+3)) 
         wrk = 0.0_dp
-        ! choose one atom (ideally choose an atom corresponding to the species with the fewest number of atoms in unit cell)
+        ! choose reference atom (ideally choose an atom corresponding to the species with the fewest number of atoms in unit cell)
         i = 1
-        tau_ref(1:3) =  tau(1:3,i)
         ! search for lattice vectors using, as translational components, vectors connecting the choosen atom to other atoms of the same species
         nTs = 0
         do j = 1,natoms
             if ( i .ne. j) then
             if ( atype(i) .eq. atype(j) ) then
                 ! shift to put reference atom at zero.
-                wrkr(1:3) = tau(1:3,j) - tau_ref
+                wrkr(1:3) = tau(1:3,j) - tau(1:3,i)
                 !
-                if ( is_symmetry_valid(iopt_T=wrkr, atype=atype, tau=tau, iopt_sym_prec=sym_prec) ) then
-                    ! lattice vector found
+                if (relax_symmetry) then
                     nTs = nTs + 1
                     wrk(1:3,nTs) = wrkr
+                else
+                    if ( is_symmetry_valid(iopt_T=wrkr, atype=atype, tau=tau, iopt_sym_prec=sym_prec) ) then
+                        nTs = nTs + 1
+                        wrk(1:3,nTs) = wrkr
+                    endif
                 endif
             endif
             endif
@@ -1059,7 +1073,7 @@
             !
             if (opts%verbosity.ge.1) call am_print('possible (im-)proper rotations',nRs,' ... ')
             !
-            T = translations_from_basis(tau=uc%tau,atype=uc%atype,iopt_sym_prec=opts%sym_prec,iopt_include="zero")
+            T = translations_from_basis(tau=uc%tau,atype=uc%atype,iopt_sym_prec=opts%sym_prec,iopt_include=trim('zero,relax'))
             nTs = size(T,2)
             ! 
             if (opts%verbosity.ge.1) call am_print('possible translations',nTs,' ... ')

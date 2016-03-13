@@ -354,7 +354,20 @@ contains
         !
         if (opts%verbosity.ge.1) call am_print('point group',pg_schoenflies,' ... ')
         !
-        if (opts%verbosity.ge.1) call am_print('number of point group operations',pg%nsyms,' ... ')
+        if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,' ... ')
+        !
+        if (opts%verbosity.ge.1) then
+            call am_print('number of e   point symmetries',count(pg%schoenflies_code.eq.1),' ... ')
+            call am_print('number of c_2 point symmetries',count(pg%schoenflies_code.eq.2),' ... ')
+            call am_print('number of c_3 point symmetries',count(pg%schoenflies_code.eq.3),' ... ')
+            call am_print('number of c_4 point symmetries',count(pg%schoenflies_code.eq.4),' ... ')
+            call am_print('number of c_6 point symmetries',count(pg%schoenflies_code.eq.5),' ... ')
+            call am_print('number of i   point symmetries',count(pg%schoenflies_code.eq.6),' ... ')
+            call am_print('number of s_2 point symmetries',count(pg%schoenflies_code.eq.7),' ... ')
+            call am_print('number of s_6 point symmetries',count(pg%schoenflies_code.eq.8),' ... ')
+            call am_print('number of s_4 point symmetries',count(pg%schoenflies_code.eq.9),' ... ')
+            call am_print('number of s_3 point symmetries',count(pg%schoenflies_code.eq.10),' ... ')
+        endif
         !
         if (opts%verbosity.ge.1) call pg%stdout
         !
@@ -424,8 +437,10 @@ contains
                         write(fid,'(a6)'   ,advance='no') '1'
                     elseif (abs(ss%T(j,i)+1).lt.tiny) then
                         write(fid,'(a6)'   ,advance='no') '-1'
-                    else
+                    elseif (abs(nint(1.0_dp/ss%T(j,i))-1.0_dp/ss%T(j,i)).lt.tiny) then
                         write(fid,'(a6)',advance='no') trim('1/' // int2char(nint(1.0_dp/ss%T(j,i))) )
+                    else
+                        write(fid,'(f6.2)',advance='no') ss%T(j,i)
                     endif
                 enddo
             endif
