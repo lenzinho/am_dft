@@ -10,6 +10,8 @@ module am_symmetry
     private
     public :: am_class_symmetry
     public :: determine_symmetry
+    !
+    public :: point_symmetry_convert_to_cartesian
 
     type am_class_symmetry 
         integer :: nsyms                  !> number of point symmetries
@@ -407,7 +409,7 @@ contains
         real(dp), allocatable :: seitz(:,:,:)
         integer , allocatable :: sorted_indices(:)
         real(dp), allocatable :: sort_parameter(:)
-        integer :: i
+        integer :: i, j
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining space group symmetries')
         !
@@ -439,20 +441,12 @@ contains
         ss%R=ss%R(:,:,sorted_indices)
         ss%T=ss%T(:,sorted_indices)
         !
-        sort_parameter = ss%T(1,:)
-        call rank(sort_parameter,sorted_indices)
-        ss%R=ss%R(:,:,sorted_indices)
-        ss%T=ss%T(:,sorted_indices)
-        !
-        sort_parameter = ss%T(2,:)
-        call rank(sort_parameter,sorted_indices)
-        ss%R=ss%R(:,:,sorted_indices)
-        ss%T=ss%T(:,sorted_indices)
-        !
-        sort_parameter = ss%T(3,:)
-        call rank(sort_parameter,sorted_indices)
-        ss%R=ss%R(:,:,sorted_indices)
-        ss%T=ss%T(:,sorted_indices)
+        do j = 1,3
+            sort_parameter = ss%T(j,:)
+            call rank(sort_parameter,sorted_indices)
+            ss%R=ss%R(:,:,sorted_indices)
+            ss%T=ss%T(:,sorted_indices)
+        enddo
         !
         ! </sort>
         !

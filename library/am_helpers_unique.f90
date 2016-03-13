@@ -30,6 +30,7 @@
         B(:,:,1:k) = wrkspace(:,:,1:k)
         !
     end function  unique_matrices_double
+
     pure function unique_columns_double(A,iopt_tiny) result(B)
         !> returns unique columns of double matrix A(:,i) within numerical precision
         implicit none
@@ -64,6 +65,7 @@
             B(:,i) = wrkspace(:,i)
         enddo
     end function  unique_columns_double
+
     pure function unique_columns_integer(A) result(B)
         !> returns unique columns of double matrix A(:,i) within numerical precision
         implicit none
@@ -90,6 +92,7 @@
             B(:,i) = wrkspace(:,i)
         enddo
     end function  unique_columns_integer
+    
     pure function unique_integer(A) result(B)
         !> returns unique values of integer array A(:)
         implicit none
