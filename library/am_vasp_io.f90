@@ -62,7 +62,7 @@ module am_vasp_io
         !
         !
         !
-        if ( verbosity .ge. 1 ) call am_print_title('Reading IBZKPT')
+        if (verbosity.ge.1) call am_print_title('Reading IBZKPT')
         !
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
@@ -190,7 +190,7 @@ module am_vasp_io
         !
         !
         !
-        if ( verbosity .ge. 1 ) call am_print_title('Reading PROCAR')
+        if (verbosity.ge.1) call am_print_title('Reading PROCAR')
         !
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
@@ -330,7 +330,7 @@ module am_vasp_io
         !
         !
         !
-        if ( verbosity .ge. 1 ) call am_print_title('Reading PRJCAR')
+        if (verbosity.ge.1) call am_print_title('Reading PRJCAR')
         !
         ! SKIM FILE TO DETEMRINE PARAMETERS NECESSARY TO ALLOCATE SPACE
         !
@@ -505,7 +505,7 @@ module am_vasp_io
         !
         !
         !
-        if ( verbosity .ge. 1 ) call am_print_title('Reading EIGENVAL')
+        if (verbosity.ge.1) call am_print_title('Reading EIGENVAL')
         !
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
@@ -638,7 +638,7 @@ module am_vasp_io
         !
         !
         !
-        if ( verbosity .ge. 1 ) call am_print_title('Reading POSCAR')
+        if (verbosity.ge.1) call am_print_title('Reading POSCAR')
         !
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
@@ -668,7 +668,7 @@ module am_vasp_io
                 call am_print("ERROR","Basis vectors are not coplanar!"," >>> ")
                 stop
             endif
-            if ( verbosity .ge. 1 ) call am_print( "basis (column vectors)", bas, " ... " )
+            if (verbosity.ge.1) call am_print( "basis (column vectors)", bas, " ... " )
             ! get reciprocal basis as column vectors b
             recbas(1,1)=bas(2,2)*bas(3,3)-bas(3,2)*bas(2,3)
             recbas(1,2)=bas(3,2)*bas(1,3)-bas(1,2)*bas(3,3)
@@ -685,16 +685,16 @@ module am_vasp_io
             ! strslplit => allocate internally, character(500)::symbs(j)
             symbs = strsplit(buffer,delimiter=' ')
             nspecies = size(symbs)
-            if ( verbosity .ge. 1 ) call am_print( "number of unique atomic species", nspecies, " ... ")
-            if ( verbosity .ge. 1 ) write(*,'(" ... ","atomic species =",100a3)') ( symbs(i)(1:2), i = 1, nspecies)
+            if (verbosity.ge.1) call am_print( "number of unique atomic species", nspecies, " ... ")
+            if (verbosity.ge.1) write(*,'(" ... ","atomic species =",100a3)') ( symbs(i)(1:2), i = 1, nspecies)
             ! (LINE 6) 1  1
             allocate(natoms_per_species(nspecies))
             read(fid,*) natoms_per_species
-            if ( verbosity .ge. 1 ) write(*,'(" ... ","number of atoms per species =",100i4)') ( natoms_per_species(i), i = 1, nspecies)
+            if (verbosity.ge.1) write(*,'(" ... ","number of atoms per species =",100i4)') ( natoms_per_species(i), i = 1, nspecies)
             ! get total number of atoms
             natoms=sum(natoms_per_species)
             ! write the total number of atoms
-            if ( verbosity .ge. 1 ) call am_print("total number of atoms", natoms, " ... ")
+            if (verbosity.ge.1) call am_print("total number of atoms", natoms, " ... ")
             ! (LINE 8) Direct
             direct = .false.
             cartesian = .false.
@@ -720,13 +720,13 @@ module am_vasp_io
             end select
             !
             if ( selective_dynamics ) then
-                if ( verbosity .ge. 1 ) write(*,'(a5,a)') ' ... ', 'selective dynamics'
+                if (verbosity.ge.1) write(*,'(a5,a)') ' ... ', 'selective dynamics'
             endif
             if ( direct ) then
-                if ( verbosity .ge. 1 ) write(*,'(a5,a)') ' ... ', 'atomic coordinates read in with fractional units and converted to cartesian coordinates'
+                if (verbosity.ge.1) write(*,'(a5,a)') ' ... ', 'atomic coordinates read in with fractional units and converted to cartesian coordinates'
             endif
             if ( cartesian ) then
-                if ( verbosity .ge. 1 ) write(*,'(a5,a)') ' ... ', 'atomic coordinates read in with cartesian coordinates'
+                if (verbosity.ge.1) write(*,'(a5,a)') ' ... ', 'atomic coordinates read in with cartesian coordinates'
             endif
             ! (LINE 9-10)   0.1250000000000000  0.1250000000000000  0.1250000000000000
             ! read atomic positions
@@ -757,7 +757,7 @@ module am_vasp_io
                 enddo
             enddo
             !
-            if ( verbosity .ge. 1 ) then
+            if (verbosity.ge.1) then
                 write(*,'(" ... ",a)') "atomic positions (fractional)"
                 m = 0
                 do i = 1, nspecies
@@ -806,7 +806,7 @@ module am_vasp_io
         !
         !
         !
-        if ( verbosity .ge. 1 ) call am_print_title('Reading wannier unitary matrix (U matrix)')
+        if (verbosity.ge.1) call am_print_title('Reading wannier unitary matrix (U matrix)')
         !
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
@@ -871,7 +871,7 @@ module am_vasp_io
         verbosity = 1
         if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
         !
-        if ( verbosity .ge. 1 ) call am_print_title('Reading eigenvalues for wannier')
+        if (verbosity.ge.1) call am_print_title('Reading eigenvalues for wannier')
         !
         ! SKIM FILE TO DETEMRINE PARAMETERS NECESSARY TO ALLOCATE SPACE
         !
@@ -953,7 +953,7 @@ module am_vasp_io
 !         !
 !         !
 !         !
-!         if ( verbosity .ge. 1 ) call am_print_title('Reading wannier overlaps (MMN)')
+!         if (verbosity.ge.1) call am_print_title('Reading wannier overlaps (MMN)')
 !         !
 !         fid = 1
 !         open(unit=fid,file=trim(fname),status="old",action='read')

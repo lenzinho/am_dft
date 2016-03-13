@@ -32,7 +32,6 @@ contains
     ! functions which operate on R(3,3) in cartesian coordinates
     !
 
-
     pure function  point_symmetry_convert_to_cartesian(R_frac,bas) result(R)
         !
         use am_unit_cell, only : reciprocal_basis
