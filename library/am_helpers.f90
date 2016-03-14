@@ -46,7 +46,7 @@
     ! CONVERT DATA TYPES
     !
 
-    function     int2char(int) result(string)
+    function      int2char(int) result(string)
         !
         implicit none
         !
@@ -55,9 +55,9 @@
         !
         write(string,'(i)') int
         string = trim( adjustl( string ) )
-    end function int2char
+    end function  int2char
     
-    function     dbl2char(dbl) result(string)
+    function      dbl2char(dbl) result(string)
         !
         implicit none
         !
@@ -66,9 +66,9 @@
         !
         write(string,'(f)') dbl
         string = trim( adjustl( string ) )
-    end function dbl2char
+    end function  dbl2char
 
-    function     dbl2frac(dbl) result(nd)
+    function      dbl2frac(dbl) result(nd)
         !
         implicit none
         !
@@ -84,9 +84,9 @@
         nd(1) = n ! numerator
         nd(2) = d ! denominator
         !
-    end function dbl2frac
+    end function  dbl2frac
 
-    function     print_pretty(dbl) result(string)
+    function      print_pretty(dbl) result(string)
         !
         ! call it with trim
         !
@@ -120,7 +120,7 @@
         ! do nothing
         write(string,*) dbl
         !
-    end function print_pretty
+    end function  print_pretty
 
     subroutine     am_print_two_matrices_side_by_side(name, Atitle, Btitle, A, B , iopt_emph, iopt_fid , iopt_teaser )
         !
@@ -134,6 +134,7 @@
         logical     , intent(in), optional :: iopt_teaser
         integer     , intent(in), optional :: iopt_fid
         character(5), intent(in), optional :: iopt_emph
+        integer, parameter :: maximum_lines_to_print = 10
         logical :: teaser
         character(5) :: emph
         integer :: fid
@@ -160,7 +161,7 @@
         m=size(A,1)
         n=size(A,2)
         !
-        if (teaser) m = minval([10,m])
+        if (teaser) m = minval([maximum_lines_to_print,m])
         !
         write(fid,'(a,a," = ")') emph, name
         !
@@ -186,6 +187,12 @@
             !
             write(fid,*)
         enddo
+        !
+        if (size(A,1).gt.maximum_lines_to_print) then
+            write(fid,'(5x,a)',advance='no') centertitle(' ... ',n*15)
+            write(fid,'(5x,a)',advance='no') centertitle(' ... ',n*15)
+            write(fid,*)
+        endif
         !
     end subroutine am_print_two_matrices_side_by_side
 
