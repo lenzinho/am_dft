@@ -11,6 +11,7 @@
     public :: am_class_unit_cell
     public :: space_symmetries_from_basis ! used by am_symmetry
     public :: reciprocal_basis ! used by am_symmetry
+    public :: is_symmetry_valid
     
     type am_class_unit_cell
         real(dp) :: bas(3,3) !> column vectors a(1:3,i), a(1:3,j), a(1:3,k)
@@ -666,7 +667,7 @@
                     nTs = nTs + 1
                     wrk(1:3,nTs) = wrkr
                 else
-                    if ( is_symmetry_valid(iopt_T=wrkr, atype=atype, tau=tau, iopt_sym_prec=sym_prec) ) then
+                    if ( is_symmetry_valid(iopt_T=wrkr, iopt_atype=atype, tau=tau, iopt_sym_prec=sym_prec) ) then
                         nTs = nTs + 1
                         wrk(1:3,nTs) = wrkr
                     endif
@@ -692,18 +693,19 @@
         !
     end function  translations_from_basis
 
-    pure function is_symmetry_valid(tau,atype,iopt_R,iopt_T,iopt_sym_prec)
+    pure function is_symmetry_valid(tau,iopt_atype,iopt_R,iopt_T,iopt_sym_prec)
         !
         ! check whether symmetry operation is valid
         !
         implicit none
         ! function i/o
         real(dp), intent(in)           :: tau(:,:) !> tau(3,natoms) fractional atomic basis
-        integer , intent(in), optional :: atype(:) !> atype(natoms) list identify type of atom
+        integer , intent(in), optional :: iopt_atype(:) !> atype(natoms) list identify type of atom
         real(dp), intent(in), optional :: iopt_R(3,3)
         real(dp), intent(in), optional :: iopt_T(3)
         real(dp), intent(in), optional :: iopt_sym_prec
         !
+        integer , allocatable :: atype(:)
         real(dp) :: R(3,3)
         real(dp) :: T(3)
         real(dp) :: sym_prec
@@ -714,6 +716,13 @@
         logical  :: overlap_found
         !
         natoms = size(tau,2)
+        !
+        if ( present(iopt_atype) ) then
+            atype = iopt_atype
+        else
+            allocate(atype(natoms))
+            atype = 1
+        endif
         !
         if ( present(iopt_sym_prec) ) then
             sym_prec = iopt_sym_prec
@@ -809,21 +818,21 @@
         !
         if ( opts%verbosity .ge. 1) call am_print_title('Reducing to primitive cell')
         !
-        
+
         !
         ! 1) get basis translations which could serve as primitive cell vectors
         !
-        
+
         T = translations_from_basis(tau=uc%tau,atype=uc%atype,iopt_include=trim('prim'),iopt_sym_prec=opts%sym_prec)
         nTs = size(T,2)
         if (opts%verbosity.ge.1) call am_print("possible primitive lattice translations found",nTs," ... ")
-        
+
         !
         ! 2) convert T to cartesian
         !
-        
+
         T = matmul(uc%bas,T)
-        
+
         !
         ! 4) sort primitive vectors based on magnitude (smallest last)
         !
@@ -1115,7 +1124,7 @@
             m=0
             do i = 1, nRs
             do j = 1, nTs
-                if ( is_symmetry_valid(tau=uc%tau,atype=uc%atype,&
+                if ( is_symmetry_valid(tau=uc%tau,iopt_atype=uc%atype,&
                     & iopt_R=R(1:3,1:3,i),iopt_T=T(1:3,j),iopt_sym_prec=opts%sym_prec)) then
                     m = m + 1
                     wrkspace(1:3,1:3,m)=R(1:3,1:3,i)

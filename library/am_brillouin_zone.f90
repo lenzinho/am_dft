@@ -121,7 +121,7 @@ contains
     end function   locate_kpoint_in_fbz
 
     pure function  reduce_kpoint_to_fbz(kpoint,grid_points,bas) result(kpoint_fbz)
-        !> reduces kpoint (in cartsian) to the first Brillouin zone (Wigner-Seitz cell, defined in cartesian coordinates)
+        !> reduces kpoint (in fractional) to the first Brillouin zone (Wigner-Seitz cell, defined in cartesian coordinates)
         !> cartesian kpoint is returned! 
         implicit none
         !
@@ -135,7 +135,7 @@ contains
         integer :: i ! loop variable
         logical :: is_not_done
         !
-        ! take kpoint in fractional coordinates
+        ! take kpoint in fractional coordinates (will become cartesian later)
         k_cart = kpoint
         ! reduce to reciprocal unit cell
         k_cart = modulo(k_cart+tiny,1.0_dp)-tiny
@@ -173,7 +173,7 @@ contains
         real(dp), intent(in) :: sym_prec
         real(dp) :: kpoint_in_fbz(3)
         real(dp) :: kpoint_in_ibz(3)
-        real(dp), allocatable :: korb(:,:) !> orbit
+        real(dp), allocatable :: korbit(:,:) !> orbit
         integer , allocatable :: indices(:)
         integer :: i, nsyms
         !
@@ -181,20 +181,20 @@ contains
         ! reduce kpoint to primitive reciprocal lattice
         kpoint_in_fbz = modulo(kpoint+sym_prec,1.0_dp) - sym_prec
         ! get kpoint orbit
-        korb = kpoint_orbit(R,kpoint_in_fbz)
+        korbit = kpoint_orbit(R,kpoint_in_fbz)
         ! reduce korbit to primitive reciprocal lattice
-        korb = modulo(korb+sym_prec,1.0_dp) - sym_prec
+        korbit = modulo(korbit+sym_prec,1.0_dp) - sym_prec
         ! get unique points in orbit
-        korb = unique(korb,sym_prec)
+        korbit = unique(korbit,sym_prec)
         ! sort
-        allocate(indices(size(korb,2)))
+        allocate(indices(size(korbit,2)))
         do i = 1,3
             ! rank to remove numerical noise
-            call rank(nint(korb(i,:)*1.0D6),indices)
-            korb=korb(:,indices)
+            call rank(nint(korbit(i,:)*1.0D6),indices)
+            korbit=korbit(:,indices)
         enddo
         ! get representative point
-        kpoint_in_ibz = korb(:,1)
+        kpoint_in_ibz = korbit(:,1)
         ! reduce representative irreducible point to fbz
         kpoint_in_ibz = reduce_kpoint_to_fbz(kpoint=kpoint_in_ibz,grid_points=grid_points,bas=bas)
         !
@@ -364,10 +364,69 @@ contains
         !
     end subroutine load_ibzkpt_bz
 
+    subroutine     full_monkhorst_pack_mesh(fbz,uc,n,s,opts)
+        !
+        use am_rank_and_sort
+        use am_options
+        !
+        implicit none
+        !
+        class(am_class_bz), intent(inout) :: fbz !> brillouin zone class
+        type(am_class_unit_cell), intent(in) :: uc
+        integer , intent(in) :: n(3)
+        real(dp), intent(in) :: s(3)
+        type(am_class_options), intent(in) :: opts
+        real(dp) :: grid_points(3,27) !> voronoi points (27=3^3)
+        integer , allocatable :: sorted_indices(:)
+        real(dp), allocatable :: sort_parameter(:)
+        integer :: i
+        !
+        if (opts%verbosity.ge.1) call am_print_title('Generating Monkhorst-Pack mesh on FBZ')
+        ! get kpoints in fractional
+        fbz%kpt = mesh_monkhorstpack_grid(n=n,s=s)
+        ! determine how many kpoints there are
+        fbz%nkpts = size(fbz%kpt,2)
+        if (opts%verbosity.ge.1) call am_print('number of kpoints',fbz%nkpts,' ... ')
+        ! determine weights
+        allocate(fbz%w(fbz%nkpts))
+        fbz%w = 1/real(fbz%nkpts,dp)
+            ! write to file for debugging
+            ! call fbz%outfile_kpoints(fname='outfile.primitive_monkhorst_pack_frac')
+        ! generate voronoi points (cartesian)
+        grid_points = mesh_grid([1,1,1])
+        grid_points = matmul(reciprocal_basis(uc%bas),grid_points)
+        ! reduce kpoints to FBZ using voronoi points
+        !$OMP PARALLEL PRIVATE(i) SHARED(uc,fbz,grid_points)
+        !$OMP DO
+        do i = 1,fbz%nkpts
+            fbz%kpt(:,i) = reduce_kpoint_to_fbz(kpoint=fbz%kpt(:,i),grid_points=grid_points,bas=uc%bas)
+        enddo
+        !$OMP END DO
+        !$OMP END PARALLEL
+            ! write to file for debugging
+            ! call fbz%outfile_kpoints(fname='outfile.fbz_monkhorst_pack_frac')
+        ! sort
+        allocate(sorted_indices(fbz%nkpts))
+        allocate(sort_parameter(fbz%nkpts))
+        do i = 1, 3
+            sort_parameter = fbz%kpt(i,:)
+            call rank(sort_parameter,sorted_indices)
+            fbz%w=fbz%w(sorted_indices)
+            fbz%kpt=fbz%kpt(:,sorted_indices)
+        enddo
+        ! write to stdout
+        if (opts%verbosity.ge.1) then
+            ! am_print_two_matrices_side_by_side(name, Atitle, Btitle, A, B , in_emph, in_fid )
+            call am_print_two_matrices_side_by_side(name='kpoints',&
+                Atitle='fractional',A=transpose(fbz%kpt),&
+                Btitle='cartesian' ,B=transpose(matmul(reciprocal_basis(uc%bas),fbz%kpt)),&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+        endif
+        !
+    end subroutine full_monkhorst_pack_mesh
+
     subroutine     reduce_to_ibz(ibz,bz,uc,pg,opts)
         !
-        use am_helpers
-        use am_unit_cell
         use am_options
         !
         implicit none
@@ -418,19 +477,7 @@ contains
                 ! 3) the MP mesh contains different dimensions along x,y,z, i.e. 3 3 5  
             endif
         endif
-        if (opts%verbosity.ge.1) call am_print('sum weight',nint(sum(ibz%w)),' ... ')
-        if (opts%verbosity.ge.1) call am_print('min weight',nint(minval(ibz%w)),' ... ')
-        if (opts%verbosity.ge.1) call am_print('max weight',nint(maxval(ibz%w)),' ... ')
-        if (opts%verbosity.ge.1) call am_print('avg weight',sum(ibz%w)/real(ibz%nkpts,dp),' ... ')
-        if (opts%verbosity.ge.1) then
-            write(*,'(a5,a)') ' ... ', 'histogram of weights'
-            write(*,'(5x,a10,a10)' ) 'weights', '# kpts'
-            write(*,'(5x,a10,a10)' ) repeat('-',8), repeat('-',8)
-            do i = minval(ibz%w), maxval(ibz%w)
-                j = count(ibz%w.eq.i)
-                if (j.ne.0) write(*,'(5x,i10,i10)' ) i, j
-            enddo
-        endif
+        if (opts%verbosity.ge.1) call stdout_weights(ibz)
         ! normalize weights
         ibz%w = ibz%w/real(sum(ibz%w),dp)
         ! set irreducible indices
@@ -453,71 +500,94 @@ contains
         !
     end subroutine reduce_to_ibz
 
-    subroutine     expand_to_fbz(fbz,bz,pg,opts)
+    subroutine     expand_to_fbz(fbz,bz,uc,pg,opts)
         !
-        use am_unit_cell
         use am_options
-        use am_helpers
         !
         implicit none
         !
         class(am_class_bz), intent(inout) :: fbz
-        type(am_class_bz), intent(in) :: bz
-        type(am_class_symmetry), intent(in) :: pg
-        type(am_class_options), intent(in) :: opts
-        !
+        type(am_class_bz) , intent(in) :: bz
+        type(am_class_unit_cell), intent(in) :: uc
+        type(am_class_symmetry) , intent(in) :: pg
+        type(am_class_options)  , intent(in) :: opts
         real(dp), allocatable :: korbit(:,:)
-        real(dp), allocatable :: kpoints_fbz(:,:) ! workspace
+        real(dp), allocatable :: kpoints_fbz(:,:)
+        real(dp), allocatable :: grid_points(:,:)
         integer :: i, j, m
-        integer, allocatable :: w(:)
+        integer :: w
         !
         if (opts%verbosity.ge.1) call am_print_title('Expand kpoints to FBZ')
         if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,' ... ')
+        if (opts%verbosity.ge.1) then
+            call am_print('number of point symmetries compatible with original k-point mesh',&
+                size(get_kpoint_compatible_symmetries(kpt=bz%kpt,R=pg%R,sym_prec=opts%sym_prec),3),' ... ')
+        endif
         if (opts%verbosity.ge.1) call am_print('number of kpoints in the original bz',bz%nkpts,' ... ')
-        if (opts%verbosity.ge.1) call am_print('kpoints in the original bz (only first 10 are shown)',transpose(bz%kpt(1:3,1:(minval([bz%nkpts,10])))),' ... ')
-        allocate(kpoints_fbz(3,bz%nkpts*pg%nsyms))
-        allocate(w(bz%nkpts))
+        if (opts%verbosity.ge.1) then
+            call am_print_two_matrices_side_by_side(name='original kpoints',&
+                Atitle='fractional',A=transpose(bz%kpt),&
+                Btitle='cartesian' ,B=transpose(matmul(reciprocal_basis(uc%bas),bz%kpt)),&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+        endif
+        !
+        allocate(kpoints_fbz(3,bz%nkpts*pg%nsyms)) ! wkrspace
         m = 0
-        for_each_kpoint_in_the_bz : do i = 1, bz%nkpts
+        ! expand each kpoint onto the fbz
+        !$OMP PARALLEL PRIVATE(i,w,korbit) SHARED(kpoints_fbz,pg)
+        !$OMP DO
+        do i = 1, bz%nkpts
             ! get its orbit
             korbit = kpoint_orbit(pg%R,bz%kpt(:,i))
+            ! reduce korbit to primitive reciprocal lattice
+            korbit = modulo(korbit+opts%sym_prec,1.0_dp)-opts%sym_prec
+            ! get unique values
             korbit = unique(korbit,opts%sym_prec)
             ! get its weight
-            w(i) = size(korbit,2)
+            w = size(korbit,2)
             ! check that weight is a factor of the number of symmetry operations
-            if ( modulo(pg%nsyms,w(i)) .ne. 0 ) then
+            if ( modulo(pg%nsyms,w) .ne. 0 ) then
                 call am_print('ERROR','Weight is not a factor of the number of symmetry operation',' >>> ')
                 call am_print('kpoint',bz%kpt(:,i))
-                call am_print('weight',w(i))
+                call am_print('weight',w)
                 call am_print('number of symmetry operations',pg%nsyms)
                 call am_print('kpoint orbit',transpose(korbit))
                 stop
             endif
-            !
-            do j = 1 , w(i)
+            ! save all unique points in orbit as part of the fbz
+            do j = 1,w
                 m = m + 1
-                ! save the orbit as part of fbz
                 kpoints_fbz(:,m) = korbit(:,j)
             enddo
-        enddo for_each_kpoint_in_the_bz
-        ! make sure there are no repititions in the fbz
-        fbz%kpt = unique(kpoints_fbz,opts%sym_prec)
+        enddo
+        !$OMP END DO
+        !$OMP END PARALLEL
+        ! make sure there are no repetitions in the fbz
+        fbz%kpt = unique(kpoints_fbz(:,1:m),opts%sym_prec)
         ! get number of kpoints in the fbz
         fbz%nkpts = size(fbz%kpt,2)
+        ! reduce kpoints to FBZ using voronoi points
+        grid_points = mesh_grid([1,1,1])
+        grid_points = matmul(reciprocal_basis(uc%bas),grid_points)
+        !$OMP PARALLEL PRIVATE(i) SHARED(fbz,grid_points,uc)
+        !$OMP DO
+        do i = 1,fbz%nkpts
+            fbz%kpt(:,i) = reduce_kpoint_to_fbz(kpoint=fbz%kpt(:,i),grid_points=grid_points,bas=uc%bas)
+        enddo
+        !$OMP END DO
+        !$OMP END PARALLEL
         if (opts%verbosity.ge.1) call am_print('number of kpoints in the fbz',fbz%nkpts,' ... ')
-        if (opts%verbosity.ge.1) call am_print('kpoints in the fbz (only first 10 are shown)',transpose(fbz%kpt(1:3,1:(minval([fbz%nkpts,10])))),' ... ')
-        if (opts%verbosity.ge.1) call am_print('max weight',maxval(w),' ... ')
-        if (opts%verbosity.ge.1) call am_print('min weight',minval(w),' ... ')
-        if (opts%verbosity.ge.1) call am_print('tot weight',sum(w),' ... ')
-        if (opts%verbosity.ge.1) call am_print('avg weight',sum(w)/(1.0_dp*fbz%nkpts),' ... ')
         if (opts%verbosity.ge.1) then
-            write(*,'(a5,a20,a6)' ) ' ... ', 'distribution', 'kpts'
-            do i = minval(w), maxval(w)
-                j = count(w.eq.i)
-                if (j .ne. 0) write(*,'(5x,a17,i3,i6)' ) 'weight =', i, j
-            enddo
+            call am_print_two_matrices_side_by_side(name='full kpoints',&
+                Atitle='fractional',A=transpose(fbz%kpt),&
+                Btitle='cartesian' ,B=transpose(matmul(reciprocal_basis(uc%bas),fbz%kpt)),&
+                iopt_emph=' ... ',iopt_teaser=.true.)
         endif
-        ! 
+        ! set weights
+        allocate(fbz%w(fbz%nkpts))
+        fbz%w = 1/real(fbz%nkpts,dp)
+        ! set irreducible indices
+        if (allocated(fbz%ibz_indx)) deallocate(fbz%ibz_indx)
         allocate(fbz%ibz_indx(fbz%nkpts))
         do i = 1, fbz%nkpts
             get_indices_of_each_kpoint_in_bz : do j = 1, bz%nkpts
@@ -714,90 +784,26 @@ contains
         !
     end subroutine outfile_dosprojected
 
-
-! subroutine transfer_properties(bz_src,bz_dest)
-        ! transfer properties to 
-!         bz_dest%nbands    = bz_src%nbands
-!         bz_dest%norbitals = bz_src%norbitals
-!         bz_dest%nions     = bz_src%nions
-!         bz_dest%nspins    = bz_src%nspins
-!         bz_dest%nelecs    = bz_src%nelecs
-!         allocate( bz_dest%E(bz_dest%nbands,bz_dest%nkpts) )
-!         allocate( bz_dest%lmproj(bz_dest%nspins,bz_dest%norbitals,bz_dest%nions,bz_dest%nbands,bz_dest%nkpts) )
-!         map_bz_point_properties_to_bz_dest : do i = 1, bz_dest%nkpts
-!             do j = 1, bz%nkpts
-!                 if ( all(abs(bz%kpt(:,j) - bz_dest%kpt(:,i)).lt.tiny) ) then
-!                     bz_dest%E(:,i) = bz_dest%E(:,j)
-!                     bz_dest%lmproj(:,:,:,:,i) = bz_dest%lmproj(:,:,:,:,j)
-!                     cycle map_bz_point_properties_to_bz_dest
-!                 endif
-!             enddo
-!         enddo map_bz_point_properties_to_ibz
-
-    !
-    !
-    !
-
-    subroutine     full_monkhorst_pack_mesh(fbz,uc,n,s,opts)
-        !
-        use am_rank_and_sort
-        use am_options
+    subroutine     stdout_weights(bz)
         !
         implicit none
         !
-        class(am_class_bz), intent(inout) :: fbz !> brillouin zone class
-        type(am_class_unit_cell), intent(in) :: uc
-        integer , intent(in) :: n(3)
-        real(dp), intent(in) :: s(3)
-        type(am_class_options), intent(in) :: opts
-        real(dp) :: grid_points(3,27) !> voronoi points (27=3^3)
-        integer , allocatable :: sorted_indices(:)
-        real(dp), allocatable :: sort_parameter(:)
-        integer :: i
+        type(am_class_bz) :: bz
+        integer :: i,j
         !
-        if (opts%verbosity.ge.1) call am_print_title('Generating full monkhorst pack mesh')
-        ! get kpoints in fractional
-        fbz%kpt = mesh_monkhorstpack_grid(n=n,s=s)
-        ! determine how many kpoints there are
-        fbz%nkpts = size(fbz%kpt,2)
-        if (opts%verbosity.ge.1) call am_print('number of kpoints',fbz%nkpts,' ... ')
-        ! determine weights
-        allocate(fbz%w(fbz%nkpts))
-        fbz%w = 1/real(fbz%nkpts,dp)
-            ! write to file for debugging
-            ! call fbz%outfile_kpoints(fname='outfile.primitive_monkhorst_pack_frac')
-        ! generate voronoi points (cartesian)
-        grid_points = mesh_grid([1,1,1])
-        grid_points = matmul(reciprocal_basis(uc%bas),grid_points)
-        ! reduce kpoints to FBZ using voronoi points
-        !$OMP PARALLEL PRIVATE(i) SHARED(uc,fbz,grid_points)
-        !$OMP DO
-        do i = 1,fbz%nkpts
-            fbz%kpt(:,i) = reduce_kpoint_to_fbz(kpoint=fbz%kpt(:,i),grid_points=grid_points,bas=uc%bas)
+        call am_print('sum weight',nint(sum(bz%w)),' ... ')
+        call am_print('min weight',nint(minval(bz%w)),' ... ')
+        call am_print('max weight',nint(maxval(bz%w)),' ... ')
+        call am_print('avg weight',sum(bz%w)/real(bz%nkpts,dp),' ... ')
+        write(*,'(a5,a)') ' ... ', 'histogram of weights'
+        write(*,'(5x,a10,a10)' ) 'weights', '# kpts'
+        write(*,'(5x,a10,a10)' ) repeat('-',8), repeat('-',8)
+        do i = minval(bz%w), maxval(bz%w)
+            j = count(bz%w.eq.i)
+            if (j.ne.0) write(*,'(5x,i10,i10)' ) i, j
         enddo
-        !$OMP END DO
-        !$OMP END PARALLEL
-            ! write to file for debugging
-            ! call fbz%outfile_kpoints(fname='outfile.fbz_monkhorst_pack_frac')
-        ! sort
-        allocate(sorted_indices(fbz%nkpts))
-        allocate(sort_parameter(fbz%nkpts))
-        do i = 1, 3
-            sort_parameter = fbz%kpt(i,:)
-            call rank(sort_parameter,sorted_indices)
-            fbz%w=fbz%w(sorted_indices)
-            fbz%kpt=fbz%kpt(:,sorted_indices)
-        enddo
-        ! write to stdout
-        if (opts%verbosity.ge.1) then
-            ! am_print_two_matrices_side_by_side(name, Atitle, Btitle, A, B , in_emph, in_fid )
-            call am_print_two_matrices_side_by_side(name='kpoints',&
-                Atitle='fractional',A=transpose(fbz%kpt),&
-                Btitle='cartesian' ,B=transpose(matmul(reciprocal_basis(uc%bas),fbz%kpt)),&
-                iopt_emph=' ... ',iopt_teaser=.true.)
-        endif
         !
-    end subroutine full_monkhorst_pack_mesh
+    end subroutine stdout_weights
 
     subroutine     outfile_kpoints(bz,fname)
         !
@@ -816,8 +822,8 @@ contains
                 write(fid,'(i7,3f20.6,f20.6)') i, bz%kpt(:,i), bz%w(i)
             enddo
         close(fid)
+        !
     end subroutine outfile_kpoints
-
 
     !
     ! functions which operate on tetrahedra connectivity lists
@@ -1250,6 +1256,30 @@ contains
     !
     !
     !end subroutine tessellate_fbz
+    !
+    !
+
+
+! subroutine transfer_properties(bz_src,bz_dest)
+        ! transfer properties to 
+!         bz_dest%nbands    = bz_src%nbands
+!         bz_dest%norbitals = bz_src%norbitals
+!         bz_dest%nions     = bz_src%nions
+!         bz_dest%nspins    = bz_src%nspins
+!         bz_dest%nelecs    = bz_src%nelecs
+!         allocate( bz_dest%E(bz_dest%nbands,bz_dest%nkpts) )
+!         allocate( bz_dest%lmproj(bz_dest%nspins,bz_dest%norbitals,bz_dest%nions,bz_dest%nbands,bz_dest%nkpts) )
+!         map_bz_point_properties_to_bz_dest : do i = 1, bz_dest%nkpts
+!             do j = 1, bz%nkpts
+!                 if ( all(abs(bz%kpt(:,j) - bz_dest%kpt(:,i)).lt.tiny) ) then
+!                     bz_dest%E(:,i) = bz_dest%E(:,j)
+!                     bz_dest%lmproj(:,:,:,:,i) = bz_dest%lmproj(:,:,:,:,j)
+!                     cycle map_bz_point_properties_to_bz_dest
+!                 endif
+!             enddo
+!         enddo map_bz_point_properties_to_ibz
+
+    !
     !
     !
 

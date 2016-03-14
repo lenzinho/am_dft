@@ -1,5 +1,6 @@
 module am_wannier
 	!
+	use am_unit_cell
 	use am_constants
 	use am_helpers
 	!
@@ -42,7 +43,6 @@ contains
         !
         use am_options
         use am_vasp_io
-        use am_brillouin_zone
         !
         implicit none
         !
@@ -64,7 +64,6 @@ contains
         !
         use am_options
         use am_vasp_io
-        use am_brillouin_zone
         !
         implicit none
         !

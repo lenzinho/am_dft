@@ -10,6 +10,7 @@ module am_symmetry
     private
     public :: am_class_symmetry
     public :: determine_symmetry
+    public :: get_kpoint_compatible_symmetries
     !
     public :: point_symmetry_convert_to_cartesian
 
@@ -517,6 +518,35 @@ contains
         call pg%point_group(ss=ss,opts=opts)
         !
     end subroutine determine_symmetry
+
+    !
+    ! functions which operate on kpoints
+    !
+
+    function     get_kpoint_compatible_symmetries(kpt,R,sym_prec) result(R_syms)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: R(:,:,:)
+        real(dp), intent(in) :: kpt(:,:)
+        real(dp), intent(in) :: sym_prec
+        real(dp), allocatable :: R_syms(:,:,:)
+        real(dp) :: wrkspace(3,3,size(R,3))
+        integer  :: i, j, nsyms
+        !
+        nsyms = size(R,3)
+        !
+        j=0
+        do i = 1, nsyms
+            if (is_symmetry_valid(tau=kpt,iopt_R=R,iopt_sym_prec=sym_prec)) then
+                j=j+1
+                wrkspace(:,:,j) = R(:,:,i)
+            endif
+        enddo
+        allocate(R_syms(3,3,j))
+        R_syms = wrkspace(:,:,1:j)
+        !
+    end function get_kpoint_compatible_symmetries
 
 end module am_symmetry
 
