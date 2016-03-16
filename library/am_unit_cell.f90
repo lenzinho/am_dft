@@ -166,13 +166,18 @@
         real(dp), intent(in) :: bas(3,3)
         real(dp), intent(in) :: sym_prec
         real(dp), allocatable :: R(:,:,:) !> point symmetries (fractional)
-        !)
+        !
+        character(3), parameter :: method = 'bas' ! met/bas : metric vs basis methods
+        real(dp) :: id(3,3)
         real(dp) :: recbas(3,3)
         real(dp) :: metric(3,3)
         real(dp) :: buffer(3,3,48) ! buffer for point symmetries
         integer  :: k ! point symmetry counter
-        real(dp) :: o(3,3) ! point symmetry in fractional
+        real(dp) :: o(3,3)  ! point symmetry in fractional
+        real(dp) :: oc(3,3) ! point symmetry in cartesian
         integer  :: i, i11, i12, i13, i21, i22, i23, i31, i32, i33 ! used to generate unitary rotational matrices
+        !
+        id = eye(3)
         !
         recbas = reciprocal_basis(bas)
         !
@@ -195,14 +200,38 @@
                     o(1,1:3)=real([i11-2,i12-2,i13-2],dp)
                     o(2,1:3)=real([i21-2,i22-2,i23-2],dp)
                     o(3,1:3)=real([i31-2,i32-2,i33-2],dp)
-                    ! check that metric is left unchanged (relaxed tiny bounds here; prone to rounding errors)
-                    if ( all( abs(matmul(transpose(o),matmul(metric,o))-metric) .lt. sym_prec ) ) then
-                        k = k + 1
-                        ! store point symmetry in cartesian coordinates
-                        ! buffer(1:3,1:3,k) = matmul(bas,matmul(o,recbas))
-                        ! store point symmetry in fractional coordinates
-                        buffer(:,:,k) = o
-                    endif
+                    select case (method)
+                    case ('met')
+                        !
+                        ! Checks that metric is left unchanged by symmetry opreation in fractional coordinates.
+                        ! i.e. that metric tensor commutes with point symmetry.
+                        !
+                        if ( all( abs(matmul(transpose(o),matmul(metric,o))-metric) .lt. sym_prec ) ) then
+                            k = k + 1
+                            ! store point symmetry in cartesian coordinates
+                            ! buffer(1:3,1:3,k) = matmul(bas,matmul(o,recbas))
+                            ! store point symmetry in fractional coordinates
+                            buffer(:,:,k) = o
+                        endif
+                    case ('bas')
+                        !
+                        ! Checks that point symmetry in cartesian coordinates is unitary. (O^-1 = O^T, i.e. O*O^T = O*O^-1 = I) 
+                        !
+                        ! Transform point symmetry to cartesian coordinates. Values which are possible 
+                        ! in cartesian coordinates are: cos(pi/n), sin(pi/n) for n = 1, 2, 3, 6
+                        ! Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. 
+                        ! Cambridge, UK ; New York: Cambridge University Press, 2008. page 275.
+                        !
+                        !           n  =      1         2         3         6
+                        !    sin(pi/n) =   0.0000    1.0000    0.8660    0.5000
+                        !    cos(pi/n) =  -1.0000    0.0000    0.5000    0.8660 - sqrt(3)/2
+                        !
+                        oc = matmul(bas,matmul(o,recbas))
+                        if ( all(abs(matmul(transpose(oc),oc)-id) .lt. tiny) ) then
+                            k = k + 1
+                            buffer(:,:,k) = o ! store point symmetry in fractional coordinates
+                        endif
+                    end select
                     !
                 enddo
                 enddo
