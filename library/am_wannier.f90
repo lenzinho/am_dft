@@ -21,7 +21,7 @@ module am_wannier
 		procedure :: load_eig
 		!
 		procedure :: get_hamiltonian
-		procedure :: wannier_development_space
+		procedure :: fourier_interpolation
 	end type am_class_wannier
 
 contains
@@ -91,18 +91,13 @@ contains
 		allocate(wan%H_k(wan%nbands,wan%nbands,wan%nkpts))
     	!
     	do k = 1, wan%nkpts
-    		!
     		! hamiltonian in diagonalized bloch-state basis
-    		!
 	    	E=0.0_dp
 	    	do i = 1,wan%nbands
 		    	E(i,i) = wan%E(i,k)
 	    	enddo
-	    	!
 	    	! hamiltonian in rotated wannier basis
-	    	!
 			wan%H_k(:,:,k) = matmul(transpose(conjg(wan%U(:,:,k))),matmul(E,wan%U(:,:,k)))
-			!
 		enddo
 		!
 	end subroutine get_hamiltonian
@@ -128,33 +123,33 @@ contains
     	character(7), intent(in) :: direction ! forward/reverse
     	integer :: i,j,nx,nk
     	real(dp), allocatable :: kernel(:,:)
+    	real(dp), allocatable :: RdotK(:,:)
     	!
     	nx = size(R,2)
     	nk = size(K,2)
     	!
+    	allocate(RdotK(nx,nk))
+    	allocate(kernel(nx,nk))
+		do i = 1, nx
+		do j = 1, nk
+		  	RdotK(i,j) = dot_product(R(:,i),K(:,j))
+		enddo
+		enddo
+		!
     	select case (direction)
     	case('forward')
     		! Eq. 25 PRB 65, 035109 : k -> r
-	    	allocate(kernel(nx,nk))
-			do i = 1, nx
-			do j = 1, nk
-			  	kernel(i,j) = exp( -cmplx_i*twopi*dot_product(R(:,i),K(:,j)) )
-			enddo
-			enddo
+	    	kernel = exp(-cmplx_i*twopi*RdotK)
 			kernel = kernel/real(nk,dp)
 		case('reverse')
 			! Eq. 26 PRB 65, 035109 : r -> k
-			allocate(kernel(nk,nx))
-			do j = 1, nk
-			do i = 1, nx
-			  	kernel(j,i) = exp(  cmplx_i*twopi*dot_product(R(:,i),K(:,j)) )
-			enddo
-			enddo
+			kernel = exp(+cmplx_i*twopi*transpose(RdotK))
 			! notice, no normalization factor in revese operation!
 		case default
 			call am_print('ERROR','FFT option unknown.',' >>> ')
 			stop
 		end select
+		!
 	end function   fft_kernel
 
 	function       fft_hamiltonian(H_k,kpt,rpt) result(H_r)
@@ -211,40 +206,131 @@ contains
 		!
 	end function   ifft_hamiltonian
 
+	function       get_fft_mesh(kpt) result(fourier_points)
+		!
+		implicit none
+		!
+		real(dp) :: kpt(:,:)
+		real(dp), allocatable :: fourier_points(:,:)
+		logical :: mask(size(kpt,2))
+		integer :: n(3)
+		integer :: i
+		!
+		do i = 1,3
+			mask = (abs(kpt(i,:)).gt.tiny)
+			n(i) = nint(1/(minval(abs(pack(kpt(i,:),mask)))*2))
+		enddo
+		!
+	    fourier_points = mesh_grid(n)
+		!
+	end function   get_fft_mesh
+
 	!
 	! other
 	!
 
-	subroutine     wannier_development_space(wan,uc,bz,opts)
+	subroutine     fourier_interpolation(wan,uc,bz,opts)
     	!
     	use am_brillouin_zone
     	!
     	implicit none
     	!
     	class(am_class_wannier), intent(inout) :: wan
-    	type(am_class_bz), intent(in) :: bz
+    	type(am_class_bz), intent(inout) :: bz
 		type(am_class_unit_cell), intent(in) :: uc
 		type(am_class_options) :: opts
-		real(dp), allocatable :: grid_points(:,:)
-    	!
-	    call wan%load_amn(opts=opts)
+		real(dp), allocatable :: fourier_points(:,:)
+		!
+	    ! should use a gamma-centered odd mesh
+	    ! gamma provides the dc component; the pairs of - and + provide the cosine and sine components.
+	    call am_print('1.0_dp/minval(bz%kpt(1,:))',nint(1.0_dp/minval(bz%kpt(1,:))))
+	    call am_print('nint(1.0_dp/minval(bz%kpt(1,:)))',nint(1.0_dp/minval(bz%kpt(1,:))))
+	    call am_print('nint(1.0_dp/minval(bz%kpt(1,:)))/2',nint(1.0_dp/minval(bz%kpt(1,:)))/2)
 	    !
-	    call wan%load_eig(opts=opts)
+	    fourier_points = get_fft_mesh(bz%kpt)
 	    !
-	    call wan%get_hamiltonian()
-	    !
-	    grid_points = matmul( uc%bas, real(mesh_grid([2,2,2]),dp) )
+	    call am_print('fourier_points',transpose(fourier_points))
 	    !
 	    call am_print('H',wan%H_k(:,:,1))
 	    !
-	    wan%H_r = fft_hamiltonian(H_k=wan%H_k,kpt=bz%kpt,rpt=grid_points)
+	    wan%H_r = fft_hamiltonian(H_k=wan%H_k,kpt=bz%kpt,rpt=fourier_points)
 		!
-		wan%H_k = ifft_hamiltonian(H_r=wan%H_r,kpt=bz%kpt,rpt=grid_points)
+		wan%H_k = ifft_hamiltonian(H_r=wan%H_r,kpt=bz%kpt,rpt=fourier_points)
 		!
 		call am_print('H',wan%H_k(:,:,1))
 
 		!
 		! test kernel (should get delta function.)
+		! clear; clc
+		! % THIS IS THE FFT ALGORITHM:
+		! % X MUST BE DEFINED BETWEEN 0 and 1 WITHOUT DOUBLE COUNTING EDGES
+		! % i.e. X must be defined within the brillouin zone, no double counting boundaries
+		!
+		! % points inside the BZ (not carefully count edge so that no points are included twice)
+		! % best to use cartesian coordinates here. figure out how to do it. cart
+		! % will let the bz assume the nice wigner seitz cell shape.
+		! x = linspace(-0.5,0.5,100); x=x(1:end-1);
+		! k(1,:)=x(:); k(3,:)=0;
+		!
+		! % energy values to interpolate
+		! E(:,1) = sin(x*2*pi)+sin(x*2*pi*4);
+		!
+		! plot(x,E,'o-')
+		!
+		! % Y MUST BE DEFINED AT INTEGER VALUES and MUST BE SYMMETRY AT 0.
+		! % These are real space lattice sites centered, use wigner-seitz BZ and
+		! % wigner-seitz real-space superlattice. Number of real space points
+		! % determine the number of fourier components. 
+		! % FIRST TRY RE-IMPLEMENTING BOLTZTRAP. FOURIER INTERPOLATION.
+		!
+		! % fourier components corresponging to real-space primitive lattice sites
+		! n = 20;
+		! y=[-n:1:n];
+		! r(1,:)=y(:); r(3,:)=0;
+		!
+		! % start main script here
+		!
+		! nk=size(k,2);
+		! nr=size(r,2);
+		!
+		! % F converts k -> r
+		! for i = 1:nk
+		! for j = 1:nr
+		!     F(j,i) = exp( -sqrt(-1)*2*pi*dot(k(:,i),r(:,j)) );
+		! end
+		! end
+		! F = F/nk; % NOTICE ONLY FORWARD TRANSFER HAS NORMALIZATION. See Eq. 25.
+		!
+		! % WHEN RESAMPLED. THE K NORMALIZATION FACTOR NEEDS TO BE THE SAME.
+		!
+		! % RESAMPLE K HERE
+		! x = linspace(0,1,100); x=x(1:end-1);
+		! clear k; k(1,:)=x(:); k(3,:)=0; nk=size(k,2);
+		!
+		! % I converts r -> k
+		! for i = 1:nk
+		! for j = 1:nr
+		!     I(i,j) = exp( +sqrt(-1)*2*pi*dot(k(:,i),r(:,j)) );
+		! end
+		! end
+		! % INVERSE TRANSFORM DOES NOT HAVE NORMALIZATION.
+		!
+		! % Fourier components are obtained from:
+		! fourer_components(1:nr) = F*E;
+		!
+		! % norm(I*(F*E)-E) % ~ 1E-15
+		! hold on;
+		! plot(x,I*(F*E),'*')
+		!
+		! hold off;
+		!
+		! % surf(abs(F*I),'edgecolor','none'); view([0 0 1])
+		! %%
+		!
+
+
+
+
 ! 		!
 ! 		call am_print('test',&
 ! 		matmul( fft_kernel(X=grid_points,K=bz%kpt(:,1:10),direction='reverse'), &
@@ -252,7 +338,7 @@ contains
 
 
 
-	end subroutine wannier_development_space
+	end subroutine fourier_interpolation
 
 
 

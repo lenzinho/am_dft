@@ -11,7 +11,6 @@ module am_brillouin_zone
     private
     !
     public :: am_class_bz
-    !
     public :: am_class_tetrahedra
     !
     ! Tetrahedra

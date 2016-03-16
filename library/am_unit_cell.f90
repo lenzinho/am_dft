@@ -76,7 +76,7 @@
         recbas = recbas/(recbas(1,1)*bas(1,1)+recbas(1,2)*bas(2,1)+recbas(1,3)*bas(3,1))
     end function  reciprocal_basis
 
-    pure function metric_from_basis(bas) result(metric)
+    pure function metric_tensor(bas) result(metric)
         !
         implicit none
         !
@@ -85,9 +85,9 @@
         !
         metric = matmul(transpose(bas),bas)
         !
-    end function  metric_from_basis
+    end function  metric_tensor
 
-    pure function determine_lattice_point_symmetries(bas) result(R)
+    pure function lattice_symmetries(bas,sym_prec) result(R)
         !>
         !> Given a metric tensor, this function returns the (arthimetic) a-holohodry:
         !> the group of point symmetries R (fractional) that are compatible with the
@@ -164,18 +164,19 @@
         implicit none
         ! subroutine i/o
         real(dp), intent(in) :: bas(3,3)
-        real(dp), allocatable :: R(:,:,:) !> point symmetries (cartesian coordinates)
-        !
+        real(dp), intent(in) :: sym_prec
+        real(dp), allocatable :: R(:,:,:) !> point symmetries (fractional)
+        !)
         real(dp) :: recbas(3,3)
         real(dp) :: metric(3,3)
         real(dp) :: buffer(3,3,48) ! buffer for point symmetries
         integer  :: k ! point symmetry counter
-        real(dp) :: o(3,3) ! point symmetry in fractional (converted to cartesian before output)
+        real(dp) :: o(3,3) ! point symmetry in fractional
         integer  :: i, i11, i12, i13, i21, i22, i23, i31, i32, i33 ! used to generate unitary rotational matrices
         !
         recbas = reciprocal_basis(bas)
         !
-        metric = metric_from_basis(bas)
+        metric = metric_tensor(bas)
         !
         buffer = 0.0_dp
         !
@@ -195,7 +196,7 @@
                     o(2,1:3)=real([i21-2,i22-2,i23-2],dp)
                     o(3,1:3)=real([i31-2,i32-2,i33-2],dp)
                     ! check that metric is left unchanged (relaxed tiny bounds here; prone to rounding errors)
-                    if ( all( abs(matmul(transpose(o),matmul(metric,o))-metric) .lt. 1E-4 ) ) then
+                    if ( all( abs(matmul(transpose(o),matmul(metric,o))-metric) .lt. sym_prec ) ) then
                         k = k + 1
                         ! store point symmetry in cartesian coordinates
                         ! buffer(1:3,1:3,k) = matmul(bas,matmul(o,recbas))
@@ -218,7 +219,7 @@
             R(:,:,i)= buffer(:,:,i)
         enddo
         !
-    end function  determine_lattice_point_symmetries
+    end function  lattice_symmetries
 
     function      apply_elastic_deformation(bas,deformation_code,strain_max,nstrains,iopt_verbosity) result(bas_def)
         !
@@ -404,7 +405,7 @@
         endif
     end function  apply_elastic_deformation
 
-    function      lattice_type(bas) result(lattice_code)
+    function      lattice_type(bas,sym_prec) result(lattice_code)
         !>
         !> get crystal system centering from the number of point symmetries and metric tensor. 
         !> For the formalism, see:
@@ -431,19 +432,21 @@
         implicit none
         !
         real(dp), intent(in) :: bas(3,3) ! number of point group symmetries
+        real(dp), intent(in) :: sym_prec
         integer  :: lattice_code
         integer  :: nsyms ! number of symmetries
         real(dp) :: M(3,3) ! metric tensor
         !
-        nsyms = size( determine_lattice_point_symmetries(bas), 3)
+        nsyms = size( lattice_symmetries(bas,sym_prec), 3)
         !
-        M = metric_from_basis(bas)
+        M = metric_tensor(bas)
         !
         lattice_code = 0
         !
         select case (nsyms)
         case(2) ! triclinic
-            lattice_code = 14
+                lattice_code = 14
+                return
         case(4) ! monoclinic
             if (are_equal( [0.0_dp,M(1,3),M(2,3)] )) then
             if (are_different( [M(1,1),M(2,2),M(3,3)] )) then
@@ -509,12 +512,8 @@
             endif
         case(24)! hexagonal
             ! simple hexagonal
-            if (are_equal( [M(1,1),M(2,2),2.0_dp*M(1,2)] ).and.are_equal( [0.0_dp,M(1,3),M(2,3)] )) then
-            if (are_different( [M(2,2),M(3,3),M(2,3)] )) then
                 lattice_code = 4
                 return
-            endif
-            endif
         case(48)! cubic
             ! simple cubic
             if (are_equal( [M(1,1),M(2,2),M(3,3)] ).and.are_equal( [0.0_dp,M(1,2),M(1,3),M(2,3)] )) then
@@ -915,17 +914,26 @@
         ! 7) transfer atomic species by comparing atomic coordinates
         !
         
+        !
+        ! ENCOUNTERING PROBLEM HERE WITH TAU_REF SHIFT. NOT TAKEN INTO ACCOUNT IN THIS LAST STEP. 
+        ! NEED TO APPLY MODULO AFTER SHIFT STILL.
         allocate(prim%atype(prim%natoms))
         do i = 1, prim%natoms
             prim%atype(i) = 0
             search_for_atom : do j = 1, uc%natoms
-                if ( all(abs(prim%tau(1:3,i)-uc%tau(1:3,j)).lt.opts%sym_prec) ) then
+                if ( all(abs(prim%tau(1:3,i)-modulo(uc%tau(1:3,j)-tau_ref+opts%sym_prec,1.0_dp)+opts%sym_prec).lt.opts%sym_prec) ) then
                     prim%atype(i) = uc%atype(j)
                     exit search_for_atom
                 endif
             enddo search_for_atom
-            if (prim%atype(i) .eq. 0) then
+            if (prim%atype(i).eq.0) then
                 call am_print('ERROR','Unable to identify atom in reduced cell',' >>> ')
+                call am_print('atom #',i)
+                call am_print('coordinate of reference atom',tau_ref)
+                call am_print('atomic coordinate of unidentified atoms',prim%tau(1:3,i))
+                call am_print('atom types',uc%atype(:))
+                call am_print('atom original',transpose(uc%tau))
+                call am_print('atom reduced',transpose(prim%tau))
                 stop
             endif
         enddo
@@ -1047,7 +1055,7 @@
         !
         if (opts%verbosity.ge.1) call am_print_title('Transforming to conventional cell') 
         !
-        lattice_code = lattice_type(prim%bas)
+        lattice_code = lattice_type(bas=prim%bas,sym_prec=opts%sym_prec)
         !
         if (opts%verbosity.ge.1) then
         select case(lattice_code)
@@ -1109,7 +1117,7 @@
             real(dp), allocatable :: wrkspace(:,:,:)
             integer :: i, j, m
             !
-            R = determine_lattice_point_symmetries(bas=uc%bas)
+            R = lattice_symmetries(bas=uc%bas,sym_prec=opts%sym_prec)
             nRs = size(R,3)
             !
             if (opts%verbosity.ge.1) call am_print('possible (im-)proper rotations',nRs,' ... ')

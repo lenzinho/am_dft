@@ -16,8 +16,8 @@ module am_symmetry
 
     type am_class_symmetry 
         integer :: nsyms                  !> number of point symmetries
-        real(dp), allocatable :: R(:,:,:) !> symmetry elements (operate on cartesian atomic basis)
-        real(dp), allocatable :: T(:,:)   !> symmetry elements (operate on cartesian atomic basis)
+        real(dp), allocatable :: R(:,:,:) !> symmetry elements (operate on fractional atomic basis)
+        real(dp), allocatable :: T(:,:)   !> symmetry elements (operate on fractional atomic basis)
         !
         integer , allocatable :: schoenflies_code(:) ! look at schoenflies_decode to understand what each integer corresponds to
         character(string_length_schoenflies) , allocatable :: schoenflies(:) ! decoded string
@@ -89,9 +89,7 @@ contains
 
     function       point_symmetry_schoenflies(R) result(schoenflies_code)
         !>
-        !> Point symmetries are input into this function in cartesian coordinates
-        !> and converted inside to fractional coordinates so that they are nice
-        !> integers which can be easily classified.
+        !> Point symmetries in fractional coordinates so that they are nice integers which can be easily classified.
         !>
         !>    element:         e    i  c_2  c_3  c_4  c_6  s_2  s_6  s_4  s_3
         !>    trace:          +3   -3   -1    0   +1   +2   +1    0   -1   -2
@@ -353,12 +351,16 @@ contains
         allocate(sorted_indices(pg%nsyms))
         allocate(sort_parameter(pg%nsyms))
         !
-        do i = 1, pg%nsyms; sort_parameter(i) = point_symmetry_determinant(pg%R(:,:,i)); enddo
+        do i = 1, pg%nsyms
+            sort_parameter(i) = point_symmetry_determinant(pg%R(:,:,i))
+        enddo
         call rank(sort_parameter,sorted_indices)
         sorted_indices = sorted_indices(pg%nsyms:1:-1)
         pg%R=pg%R(:,:,sorted_indices)
         !
-        do i = 1, pg%nsyms; sort_parameter(i) = point_symmetry_trace(pg%R(:,:,i)); enddo
+        do i = 1, pg%nsyms
+            sort_parameter(i) = point_symmetry_trace(pg%R(:,:,i))
+        enddo
         call rank(sort_parameter,sorted_indices)
         sorted_indices = sorted_indices(pg%nsyms:1:-1)
         pg%R=pg%R(:,:,sorted_indices)
