@@ -16,6 +16,8 @@ module am_options
         character(max_argument_length) :: wan_mmn
         character(max_argument_length) :: wan_win
         character(max_argument_length) :: wan_eig
+        logical :: primitivize
+        logical :: center
 
     contains
         procedure :: defaults
@@ -43,6 +45,8 @@ module am_options
         opts%wan_mmn  = 'wannier90.mmn'
         opts%wan_win  = 'wannier90.win'
         opts%wan_eig  = 'wannier90.eig'
+        opts%primitivize = .false. ! reduces unit cell to primitive cel
+        opts%center = .false. ! centers unit cell
         !
     end subroutine  defaults
 
@@ -75,6 +79,10 @@ module am_options
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*) opts%sym_prec
+                case('-center') ! convertes the unit cell from primitive to conventional
+                    opts%center  = .true.
+                case('-primitivize') ! convertes the unit cell from primitive to conventional
+                    opts%primitivize = .true.
                 !
                 ! monkhorst pack mesh
                 !

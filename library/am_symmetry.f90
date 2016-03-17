@@ -506,16 +506,11 @@ contains
         type(am_class_symmetry), intent(out) :: ss
         type(am_class_symmetry), intent(out) :: pg
         type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_unit_cell) :: conv, prim
-        type(am_class_options), intent(in) :: opts
+        type(am_class_options)  , intent(in) :: opts
         !
         if (opts%verbosity.ge.1) call am_print_title('Analyzing symmetry')
         !
-        call prim%reduce_to_primitive(uc=uc,opts=opts)
-        !
-        call conv%primitive_to_conventional(prim=prim,opts=opts)
-        !
-        call ss%space_group(conv=conv,opts=opts)
+        call ss%space_group(conv=uc,opts=opts)
         !
         call pg%point_group(ss=ss,opts=opts)
         !
