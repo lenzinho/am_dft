@@ -8,10 +8,10 @@ module am_symmetry
     implicit none
     !
     private
+    !
     public :: am_class_symmetry
     public :: determine_symmetry
     public :: get_kpoint_compatible_symmetries
-    !
     public :: point_symmetry_convert_to_cartesian
 
     type am_class_symmetry 
@@ -27,7 +27,14 @@ module am_symmetry
         procedure :: point_group
         procedure :: space_group
         procedure :: stdout
+        procedure :: tensor_2nd_rank
+        procedure :: tensor_3rd_rank
+        procedure :: tensor_4th_rank
     end type
+
+    interface transform_tensor
+        module procedure transform_tensor_fourth_rank, transform_tensor_second_rank, transform_tensor_third_rank
+    end interface ! transform_tensor
 
 contains
 
@@ -132,6 +139,216 @@ contains
         endif
         !
     end function   point_symmetry_schoenflies
+
+    !
+    ! functions which operate on tensors or make symmetry-adapted tensors
+    !
+
+    subroutine     tensor_2nd_rank(pg,uc,opts)
+        !
+        class(am_class_symmetry), intent(in) :: pg
+        type(am_class_unit_cell), intent(in) :: uc
+        type(am_class_options), intent(in) :: opts
+        !
+        real(dp) :: M(3,3) !> IMPORTANT: M is the original tensor before the permutation 
+#include "am_symmetry_tensor.f90"
+    end subroutine tensor_2nd_rank
+
+    subroutine     tensor_3rd_rank(pg,uc,opts)
+        !
+        class(am_class_symmetry), intent(in) :: pg
+        type(am_class_unit_cell), intent(in) :: uc
+        type(am_class_options), intent(in) :: opts
+        !
+        real(dp) :: M(3,3,3) !> IMPORTANT: M is the original tensor before the permutation 
+#include "am_symmetry_tensor.f90"
+    end subroutine tensor_3rd_rank
+
+    subroutine     tensor_4th_rank(pg,uc,opts)
+        !
+        class(am_class_symmetry), intent(in) :: pg
+        type(am_class_unit_cell), intent(in) :: uc
+        type(am_class_options), intent(in) :: opts
+        !
+        real(dp) :: M(3,3,3,3) !> IMPORTANT: M is the original tensor before the permutation 
+#include "am_symmetry_tensor.f90"
+    end subroutine tensor_4th_rank
+
+    pure function  transform_tensor_second_rank(M,R) resulT(RM)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: M(:,:)
+        real(dp), intent(in) :: R(:,:)
+        real(dp) :: RM(size(M,1),size(M,2))
+        integer :: i,j,ip,jp
+        !
+        ! for a second-rank tensor M, this operation is equivalent to RM = R*M*R^T
+        ! Eq 13.9 Wootten, p 478 row major order accessed faster
+        !
+        RM = 0
+        !
+        do j = 1,3
+        do i = 1,3
+            do jp = 1,3
+            do ip = 1,3
+                RM(i,j) = RM(i,j) + R(i,ip)*R(j,jp)*M(ip,jp)
+            enddo
+            enddo
+        enddo
+        enddo
+        !
+    end function   transform_tensor_second_rank
+
+    pure function  transform_tensor_third_rank(M,R) resulT(RM)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: M(:,:,:)
+        real(dp), intent(in) :: R(3,3)
+        real(dp) :: RM(size(M,1),size(M,2),size(M,3))
+        integer :: i,j,k,ip,jp,kp
+        !
+        ! for a second-rank tensor M, this operation is equivalent to RM = R*M*R^T
+        ! Eq 13.9 Wootten, p 478 row major order accessed faster
+        !
+        RM = 0
+        !
+        do k = 1,3
+        do j = 1,3
+        do i = 1,3
+            do kp = 1,3
+            do jp = 1,3
+            do ip = 1,3
+                RM(i,j,k) = RM(i,j,k) + R(i,ip)*R(j,jp)*R(k,kp)*M(ip,jp,kp)
+            enddo
+            enddo
+            enddo
+        enddo
+        enddo
+        enddo
+        !
+    end function   transform_tensor_third_rank
+
+    pure function  transform_tensor_fourth_rank(M,R) resulT(RM)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: M(:,:,:,:)
+        real(dp), intent(in) :: R(3,3)
+        real(dp) :: RM(size(M,1),size(M,2),size(M,3),size(M,4))
+        integer  :: i,j,k,l,ip,jp,kp,lp
+        !
+        ! for a second-rank tensor M, this operation is equivalent to RM = R*M*R^T
+        ! Eq 13.9 Wootten, p 478 row major order accessed faster
+        !
+        RM = 0
+        !
+        do l = 1,3
+        do k = 1,3
+        do j = 1,3
+        do i = 1,3
+            do lp = 1,3
+            do kp = 1,3
+            do jp = 1,3
+            do ip = 1,3
+                RM(i,j,k,l) = RM(i,j,k,l) + R(i,ip)*R(j,jp)*R(k,kp)*R(l,lp)*M(ip,jp,kp,lp)
+            enddo
+            enddo
+            enddo
+            enddo
+        enddo
+        enddo
+        enddo
+        enddo
+        !
+    end function   transform_tensor_fourth_rank
+
+    subroutine     parse_symmetry_equations(LHS,RHS,is_zero,is_independent,is_dependent,verbosity)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: LHS(:,:)
+        real(dp), intent(in) :: RHS(:,:)
+        logical , intent(out), allocatable :: is_dependent(:)
+        logical , intent(out), allocatable :: is_zero(:)
+        logical , intent(out), allocatable :: is_independent(:)
+        integer :: nterms_zero
+        integer :: nterms_independent
+        integer :: nterms_dependent
+        integer :: nterms
+        integer :: verbosity
+        integer :: i, j 
+        !
+        nterms = size(LHS,1)
+        allocate(is_dependent(nterms))
+        allocate(is_zero(nterms))
+        allocate(is_independent(nterms))
+        !
+        if (verbosity.ge.1) call am_print('total number of terms',nterms,' ... ')
+        !
+        ! null terms (equal zero)
+        !
+        is_zero = (all(abs(RHS).lt.tiny,2))
+        nterms_zero = count(all(abs(RHS).lt.tiny,2))
+        if (verbosity.ge.1) call am_print('number of terms equal to zero',nterms_zero,' ... ')
+        !
+        ! independent terms (equal themselves and nothing else)
+        !
+        is_independent = (all(abs(RHS-LHS).lt.tiny,2))
+        nterms_independent = count(is_independent)
+        if (verbosity.ge.1) call am_print('number of independent terms',nterms_independent,' ... ')
+        !
+        ! dependent terms (can be written via independent terms)
+        !
+        is_dependent = (any(abs(RHS).gt.tiny,2))
+        is_dependent = (is_dependent.and..not.is_independent)
+        nterms_dependent = count(is_dependent)
+        if (verbosity.ge.1) call am_print('number of dependent terms',nterms_dependent,' ... ')
+        !
+        if (nterms_zero+nterms_independent+nterms_dependent.ne.nterms) then
+            call am_print('ERROR','The number of terms which are independent, null, and dependent do not add to the total number of terms.',' >>> ')
+            stop
+        endif
+        !
+        ! write symmetry equations to stdout
+        !
+        if (verbosity.ge.1) then
+            write(*,'(a5,a)') ' ... ', 'symmetry equations'
+            !
+            ! write the terms that are independent (equal only to themselves)
+            !
+            do i = 1,nterms
+                if (is_independent(i)) then
+                    write(*,'(5x,a1,a,a1,a1,a)',advance='no') 'a',trim(int2char(i)),'=', 'a', trim(int2char(i))
+                    write(*,*)
+                endif
+            enddo
+            !
+            ! write the terms that are interrelated.
+            !
+            do i = 1,nterms
+                if (is_dependent(i)) then
+                    write(*,'(5x,a1,a,a1)',advance='no') 'a',trim(int2char(i)),'='
+                    do j = 1,nterms
+                        if (abs(RHS(i,j)).gt.tiny) then
+                            write(*,'(a,a,a)',advance='no') trim(dbl2charSP(RHS(i,j),5)), '*a', trim(int2char(j))
+                        endif
+                    enddo
+                    write(*,*)
+                endif
+            enddo
+            !
+            ! finally, write the terms that are equal to zero.
+            !
+            do i = 1,nterms
+                if (is_zero(i)) then
+                    write(*,'(5x,a1,a,a)') 'a',trim(int2char(i)),'=+0.00'
+                endif
+            enddo
+        endif
+        !
+    end subroutine parse_symmetry_equations
 
     !
     ! schoenflies decode
@@ -323,7 +540,7 @@ contains
     ! functions which operate on ss
     !
 
-    subroutine     point_group(pg,ss,opts)
+    subroutine     point_group(pg,uc,ss,opts)
         !
         ! requires only ss%R
         !
@@ -333,6 +550,7 @@ contains
         !
         class(am_class_symmetry), intent(inout) :: pg
         type(am_class_symmetry) , intent(in) :: ss
+        type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
         integer :: pg_schoenflies_code
         character(string_length_schoenflies) :: pg_schoenflies
@@ -394,20 +612,20 @@ contains
             call am_print('number of s_3 point symmetries',count(pg%schoenflies_code.eq.10),' ... ')
         endif
         !
-        if (opts%verbosity.ge.1) call pg%stdout
+        if (opts%verbosity.ge.1) call pg%stdout(iopt_uc=uc)
         !
-        call pg%stdout(trim('outfile.pointgroup'))
+        call pg%stdout(iopt_uc=uc,iopt_filename=trim('outfile.pointgroup'))
         !
     end subroutine point_group
 
-    subroutine     space_group(ss,conv,opts)
+    subroutine     space_group(ss,uc,opts)
         !
         use am_rank_and_sort
         !
         implicit none
         !
         class(am_class_symmetry), intent(inout) :: ss
-        type(am_class_unit_cell), intent(in) :: conv
+        type(am_class_unit_cell), intent(in) :: uc ! space groups are tabulated in the litearture for conventional cells, but primitive or arbitrary cell works just as wlel.
         type(am_class_options), intent(in) :: opts
         real(dp), allocatable :: seitz(:,:,:)
         integer , allocatable :: sorted_indices(:)
@@ -416,7 +634,7 @@ contains
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining space group symmetries')
         !
-        seitz = space_symmetries_from_basis(uc=conv,opts=opts)
+        seitz = space_symmetries_from_basis(uc=uc,opts=opts)
         !
         ss%nsyms=size(seitz,3)
         !
@@ -453,20 +671,24 @@ contains
         !
         ! </sort>
         !
-        if (opts%verbosity.ge.1) call ss%stdout
+        if (opts%verbosity.ge.1) call ss%stdout(iopt_uc=uc)
         !
-        call ss%stdout(trim('outfile.spacegroup'))
+        call ss%stdout(iopt_uc=uc,iopt_filename=trim('outfile.spacegroup'))
         !
     end subroutine space_group
 
-    subroutine     stdout(ss,iopt_filename)
+    subroutine     stdout(ss,iopt_uc,iopt_filename)
         !
         implicit none
         !
         class(am_class_symmetry), intent(in) ::  ss
+        type(am_class_unit_cell), intent(in), optional :: iopt_uc
         character(*), intent(in), optional :: iopt_filename
+        integer :: width
+        real(dp) :: R(3,3), T(3)
         integer :: fid
         integer :: i,j,k
+        character(15) :: fmt5, fmt4, fmt6, fmt1, fmt2, fmt3
         !
         if ( present(iopt_filename) ) then
             ! write to file
@@ -479,19 +701,69 @@ contains
         !
         ! write standard out to file
         !
-        write(fid,'(5x,a3,9a5)',advance='no') '#', 'R11', 'R21', 'R31', 'R12', 'R22', 'R32', 'R13', 'R23', 'R33'
-        if (allocated(ss%T))  write(fid,'(a4,3a5)',advance='no') '  | ', 'T1', 'T2', 'T3'
+        fmt5=   "(a4)"
+        fmt4=   "(a4,3a7)"
+        fmt6=       "(a7)"
+        fmt1="(5x,i3,9a7)"
+        fmt2="(5x,a3,9a7)"
+        fmt3="(5x,a)"
+        width = 9*7+3
+        if (allocated(ss%T)) width=width + 3*7+4
+        !
+        !
+        ! fractional
+        !
+        write(fid,fmt3,advance='no') centertitle('fractional',width)
         write(fid,*)
+        write(fid,fmt3,advance='no') repeat('-',width)
+        write(fid,*)
+        !
+        write(fid,fmt2,advance='no') '#', 'R11', 'R21', 'R31', 'R12', 'R22', 'R32', 'R13', 'R23', 'R33'
+        if (allocated(ss%T))  write(fid,fmt4,advance='no') '  | ', 'T1', 'T2', 'T3'
+        write(fid,*)
+        !
         do i = 1, ss%nsyms
-            write(fid,'(5x,i3,9i5)',advance='no') i, (( nint(ss%R(j,k,i)), j = 1,3) , k = 1,3)
+            R = ss%R(:,:,i)
+            write(fid,fmt1,advance='no') i, (( trim(print_pretty(R(j,k))), j = 1,3) , k = 1,3)
             if (allocated(ss%T)) then
-                write(fid,'(a4)',advance='no') '  | '
+                T = ss%T(:,i)
+                write(fid,fmt5,advance='no') '  | '
                 do j = 1,3
-                    write(fid,'(a5)',advance='no') trim(print_pretty(ss%T(j,i)))
+                    write(fid,fmt6,advance='no') trim(print_pretty(T(j)))
+                enddo
+            endif
+            write(fid,*)
+            !
+        enddo
+        !
+        ! cartesian
+        !
+        !
+        if (present(iopt_uc)) then
+        !
+        write(fid,fmt3,advance='no') centertitle('cartesian',width)
+        write(fid,*)
+        write(fid,fmt3,advance='no') repeat('-',width)
+        write(fid,*)
+        !
+        write(fid,fmt2,advance='no') '#', 'R11', 'R21', 'R31', 'R12', 'R22', 'R32', 'R13', 'R23', 'R33'
+        if (allocated(ss%T))  write(fid,fmt4,advance='no') '  | ', 'T1', 'T2', 'T3'
+        write(fid,*)
+        !
+        do i = 1, ss%nsyms
+            R = point_symmetry_convert_to_cartesian(R_frac=ss%R(:,:,i),bas=iopt_uc%bas)
+            write(fid,fmt1,advance='no') i, (( trim(print_pretty(R(j,k))), j = 1,3) , k = 1,3)
+            if (allocated(ss%T)) then
+                T = matmul(iopt_uc%bas,ss%T(:,i))
+                write(fid,fmt5,advance='no') '  | '
+                do j = 1,3
+                    write(fid,fmt6,advance='no') trim(print_pretty(T(j)))
                 enddo
             endif
             write(fid,*)
         enddo
+        !
+        endif
         !
         ! close file
         !
@@ -510,9 +782,10 @@ contains
         !
         if (opts%verbosity.ge.1) call am_print_title('Analyzing symmetry')
         !
-        call ss%space_group(conv=uc,opts=opts)
+        call ss%space_group(uc=uc,opts=opts)
         !
-        call pg%point_group(ss=ss,opts=opts)
+        call pg%point_group(ss=ss,uc=uc,opts=opts)
+        !
         !
     end subroutine determine_symmetry
 
@@ -520,7 +793,7 @@ contains
     ! functions which operate on kpoints
     !
 
-    function     get_kpoint_compatible_symmetries(kpt,R,sym_prec) result(R_syms)
+    function        get_kpoint_compatible_symmetries(kpt,R,sym_prec) result(R_syms)
         !
         implicit none
         !
@@ -543,7 +816,7 @@ contains
         allocate(R_syms(3,3,j))
         R_syms = wrkspace(:,:,1:j)
         !
-    end function get_kpoint_compatible_symmetries
+    end function    get_kpoint_compatible_symmetries
 
 end module am_symmetry
 

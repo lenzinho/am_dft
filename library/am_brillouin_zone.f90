@@ -415,7 +415,7 @@ contains
         enddo
         ! write to stdout
         if (opts%verbosity.ge.1) then
-            ! am_print_two_matrices_side_by_side(name, Atitle, Btitle, A, B , in_emph, in_fid )
+            ! am_print_two_matrices_side_by_side(name, Atitle, Btitle, A, B , in_emph, iopt_fid )
             call am_print_two_matrices_side_by_side(name='kpoints',&
                 Atitle='fractional',A=transpose(fbz%kpt),&
                 Btitle='cartesian' ,B=transpose(matmul(reciprocal_basis(uc%bas),fbz%kpt)),&

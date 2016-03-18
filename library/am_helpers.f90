@@ -22,6 +22,10 @@
             am_print_int_vector
     end interface ! am_print
     !
+    interface print_sparse
+        module procedure print_sparse_double, print_sparse_integer
+    end interface ! print_sparse
+    !
     interface linspace
         module procedure linspace_double, linspace_integer
     end interface ! linspace
@@ -33,6 +37,10 @@
     interface det
         module procedure det_3x3_dbl
     end interface ! det
+    !
+    interface rref
+        module procedure rref_dbl, rref_int
+    end interface ! rref
 
     contains
 
@@ -41,8 +49,7 @@
     !
 
 #include "am_helpers_print.f90"
-
-    !
+ !
     ! CONVERT DATA TYPES
     !
 
@@ -66,7 +73,22 @@
         !
         write(string,'(f)') dbl
         string = trim( adjustl( string ) )
+        !
     end function  dbl2char
+
+    function      dbl2charSP(dbl,iopt_len) result(string)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: dbl
+        integer, intent(in), optional :: iopt_len
+        character(100) :: string
+        !
+        write(string,'(SP,f)') dbl
+        string = trim( adjustl( string ) )
+        if (present(iopt_len)) string = string(1:iopt_len)
+        !
+    end function  dbl2charSP
 
     function      dbl2frac(dbl) result(nd)
         !
@@ -97,15 +119,13 @@
         integer :: num_den(2)
         !
         !
-        if     (abs(dbl).lt.tiny) then
+        ! convert double to 0
+        if (abs(dbl).lt.tiny) then
             string='0'
             return
         endif
+        ! convert double to integer
         if (abs(nint(dbl)-dbl).lt.tiny) then
-            string=int2char(nint(dbl))
-            return
-        endif
-        if (abs(nint(dbl)+dbl).lt.tiny) then
             string=int2char(nint(dbl))
             return
         endif
@@ -383,7 +403,13 @@
         real(dp) :: determinant
         real(dp) :: ainv(3,3)
         !
-        determinant = det(a)
+        determinant = &
+              + a(1,1)*a(2,2)*a(3,3) &
+              - a(1,1)*a(2,3)*a(3,2) &
+              - a(1,2)*a(2,1)*a(3,3) &
+              + a(1,2)*a(2,3)*a(3,1) &
+              + a(1,3)*a(2,1)*a(3,2) &
+              - a(1,3)*a(2,2)*a(3,1)
         !
         cofactor(1,1) = +(a(2,2)*a(3,3)-a(2,3)*a(3,2))
         cofactor(1,2) = -(a(2,1)*a(3,3)-a(2,3)*a(3,1))
@@ -398,6 +424,80 @@
         ainv = transpose(cofactor) / determinant
         !
     end function  inv_3x3_dbl
+
+    pure subroutine rref_dbl(A)
+        !
+        implicit none
+        !
+        real(dp), dimension(:,:), intent(inout) :: A
+        integer :: pivot, norow, nocolumn
+        integer :: r, i
+        real, dimension(:), allocatable :: trow
+        pivot = 1
+        norow = size(A, 1)
+        nocolumn = size(A, 2)
+        !
+        allocate(trow(nocolumn))
+        !
+        do r = 1, norow
+            if ( nocolumn <= pivot ) exit
+            i = r
+            do while ( A(i, pivot) == 0 )
+                i = i + 1
+                if ( norow == i ) then
+                    i = r
+                    pivot = pivot + 1
+                    if ( nocolumn == pivot ) return
+                end if
+            end do
+            trow = A(i, :)
+            A(i, :) = A(r, :)
+            A(r, :) = trow
+            A(r, :) = A(r, :) / A(r, pivot)
+            do i = 1, norow
+                if ( i /= r ) A(i, :) = A(i, :) - A(r, :) * A(i, pivot)
+            end do
+            pivot = pivot + 1
+        end do
+        deallocate(trow)
+    end subroutine  rref_dbl
+
+    pure subroutine rref_int(A)
+        !
+        implicit none
+        !
+        integer, dimension(:,:), intent(inout) :: A
+        integer :: pivot, norow, nocolumn
+        integer :: r, i
+        integer, allocatable :: trow(:)
+        pivot = 1
+        norow = size(A,1)
+        nocolumn = size(A,2)
+        !
+        allocate(trow(nocolumn))
+        !
+        do r = 1, norow
+            if ( nocolumn <= pivot ) exit
+            i = r
+            do while ( A(i, pivot) == 0 )
+                i = i + 1
+                if ( norow == i ) then
+                    i = r
+                    pivot = pivot + 1
+                    if ( nocolumn == pivot ) return
+                end if
+            end do
+            trow = A(i, :)
+            A(i, :) = A(r, :)
+            A(r, :) = trow
+            A(r, :) = A(r, :) / A(r, pivot)
+            do i = 1, norow
+                if ( i /= r ) A(i, :) = A(i, :) - A(r, :) * A(i, pivot)
+            end do
+            pivot = pivot + 1
+        end do
+        deallocate(trow)
+    end subroutine  rref_int
 
     !
     ! generic math functions
