@@ -14,6 +14,7 @@ module am_vasp_io
     public :: read_poscar
     public :: read_amn
     public :: read_eig
+    public :: write_poscar
     !
     contains
 
@@ -772,6 +773,77 @@ module am_vasp_io
             !
         close(fid)
     end subroutine read_poscar
+
+    subroutine     write_poscar(bas,natoms,nspecies,symbs,tau,atype,iopt_filename)
+        !>
+        !> Write poscar based on structure data.
+        !>
+        implicit none
+        ! subroutine i/o
+        real(dp), intent(in) :: bas(3,3) ! column vectors a(1:3,i), a(1:3,j), a(1:3,kpt)
+        integer , intent(in) :: natoms
+        integer , intent(in) :: nspecies
+        character(len=*), intent(in) :: symbs(:) ! 1 symb per species
+        real(dp), intent(in) :: tau(:,:) ! atomic coordinates tau_read(3,natoms) in fractional
+        integer , intent(in) :: atype(:) ! type of atom tau_read(natoms)
+        ! file i/o
+        integer :: fid
+        ! loop variables
+        integer :: i, j, m, n
+        ! optional i/o
+        character(*), optional :: iopt_filename
+        character(max_argument_length) :: fname
+        integer :: verbosity
+        fname = "outfile.POSCAR"
+        if ( present(iopt_filename) ) fname = iopt_filename
+        !
+        !
+        !
+        call am_print_title('Writing POSCAR')
+        !
+        fid = 1
+        open(unit=fid,file=trim(fname),status='replace',action='write')
+            !
+            call am_print('file',trim(fname),' ... ')
+            ! (LINE 1) header
+            write(unit=fid,fmt='(a)') 'POSCAR'
+            ! (LINE 2) lattice parameter scaling
+            write(unit=fid,fmt='(f20.12)') 1.0_dp
+            ! (LINES 3-5) basis
+            do i = 1,3
+            do j = 1,3
+                write(unit=fid,fmt='(f20.12)',advance='no') bas(j,i)
+            enddo
+            write(unit=fid,fmt=*)
+            enddo
+            ! (LINE 6) V  N
+            do i = 1, nspecies
+            write(unit=fid,fmt='(x,a,x)',advance='no') trim(symbs(i))
+            enddo
+            write(unit=fid,fmt=*)
+            ! (LINE 7) 1  1
+            do i = 1, nspecies
+            write(unit=fid,fmt='(x,a,x)',advance='no') trim(int2char(count(atype.eq.i)))
+            enddo
+            write(unit=fid,fmt=*)
+            ! (LINE 8) Direct
+            write(unit=fid,fmt='(a)') 'Direct'
+            ! (LINE 9-10)   0.1250000000000000  0.1250000000000000  0.1250000000000000
+            do i = 1, nspecies
+                do j = 1, natoms
+                    if (atype(j).eq.i) then
+                        !
+                        do n = 1,3
+                            write(unit=fid,fmt='(f20.12)',advance='no') tau(n,j)
+                        enddo
+                        write(unit=fid,fmt=*)
+                        !
+                    endif
+                enddo
+            enddo
+            !
+        close(fid)
+    end subroutine write_poscar
 
     !
     ! wannier90

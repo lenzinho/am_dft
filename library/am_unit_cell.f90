@@ -25,6 +25,7 @@
         procedure :: reduce_to_primitive
         procedure :: expand_to_supercell
         procedure :: primitive_to_conventional
+        procedure :: output_poscar
     end type am_class_unit_cell
 
     contains
@@ -640,7 +641,7 @@
     ! functions which operate on atomic basis
     !
 
-    pure function translations_from_basis(tau,atype,iopt_include,iopt_sym_prec) result(T)
+    function translations_from_basis(tau,atype,iopt_include,iopt_sym_prec) result(T)
         !
         implicit none
         ! subroutine i/o
@@ -690,6 +691,7 @@
             if ( atype(i) .eq. atype(j) ) then
                 ! shift to put reference atom at zero.
                 wrkr(1:3) = tau(1:3,j) - tau(1:3,i)
+                ! wrkr = modulo(wrkr+sym_prec,1.0_dp)-sym_prec ! added this in for testing.
                 !
                 if (relax_symmetry) then
                     nTs = nTs + 1
@@ -721,7 +723,7 @@
         !
     end function  translations_from_basis
 
-    pure function is_symmetry_valid(tau,iopt_atype,iopt_R,iopt_T,iopt_sym_prec)
+    function      is_symmetry_valid(tau,iopt_atype,iopt_R,iopt_T,iopt_sym_prec)
         !
         ! check whether symmetry operation is valid
         !
@@ -733,6 +735,8 @@
         real(dp), intent(in), optional :: iopt_T(3)
         real(dp), intent(in), optional :: iopt_sym_prec
         !
+        ! real(dp) :: tau_shifted(size(tau,1),size(tau,2))
+        ! real(dp) :: shift(3)
         integer , allocatable :: atype(:)
         real(dp) :: R(3,3)
         real(dp) :: T(3)
@@ -772,8 +776,6 @@
             T = real([0,0,0],dp)
         endif
         !
-        !
-        !
         m = 0
         do i = 1, natoms
             ! apply symmetry operation
@@ -798,6 +800,7 @@
         enddo
         if (m .eq. natoms) then
             is_symmetry_valid = .true.
+            return
         endif
     end function  is_symmetry_valid
 
@@ -827,6 +830,28 @@
             iopt_verbosity=opts%verbosity)
         !
     end subroutine load_poscar
+
+    subroutine     output_poscar(uc,file_output_poscar)
+        ! 
+        ! Reads the poscar file, look below: code is short and self explanatory.
+        !
+        use am_vasp_io
+        !
+        implicit none
+        !
+        class(am_class_unit_cell), intent(inout) :: uc
+        character(*), intent(in) :: file_output_poscar
+        !
+        call write_poscar(&
+            bas=uc%bas,&
+            natoms=uc%natoms,&
+            nspecies=uc%nspecies,&
+            symbs=uc%symbs,&
+            tau=uc%tau,&
+            atype=uc%atype,&
+            iopt_filename=file_output_poscar)
+        !
+    end subroutine output_poscar
 
     subroutine     reduce_to_primitive(prim,uc,opts)
         !
@@ -1067,6 +1092,10 @@
                 Btitle='cartesian'             ,B=transpose(matmul(sc%bas,sc%tau)),&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
+        ! transfer other stuff
+        allocate(character(500)::sc%symbs(uc%nspecies))
+        sc%symbs = uc%symbs
+        sc%nspecies = uc%nspecies
         !
     end subroutine expand_to_supercell
 
@@ -1144,6 +1173,7 @@
             real(dp), allocatable :: T(:,:)
             real(dp), allocatable :: R(:,:,:)
             real(dp), allocatable :: wrkspace(:,:,:)
+            real(dp) :: shift(3), T_shifted(3)
             integer :: i, j, m
             !
             R = lattice_symmetries(bas=uc%bas,sym_prec=opts%sym_prec)
@@ -1153,16 +1183,40 @@
             !
             T = translations_from_basis(tau=uc%tau,atype=uc%atype,iopt_sym_prec=opts%sym_prec,iopt_include=trim('zero,relax'))
             nTs = size(T,2)
-            ! 
+            !
             if (opts%verbosity.ge.1) call am_print('possible translations',nTs,' ... ')
+            !
+            if (opts%verbosity.ge.1) then
+                call am_print_two_matrices_side_by_side(name='translations',&
+                    Atitle='fractional',A=transpose(T),&
+                    Btitle='cartesian' ,B=transpose(matmul(uc%bas,T)),&
+                    iopt_emph=' ... ',iopt_teaser=.true.)
+            endif 
             !
             allocate(wrkspace(4,4,nTs*nRs))
             wrkspace = 0.0_dp
             m=0
             do i = 1, nRs
             do j = 1, nTs
+                ! Shift tau to put the first atom at the origin. This is important because the
+                ! rotational part of the symmetry operation must leave at least one atom in it's
+                ! original location. If the atom already has a displacement, then it will be rotated
+                ! to another position.
+                if (.not.any(all(abs(uc%tau).lt.opts%sym_prec,2))) then
+                    shift = uc%tau(:,1)
+                    ! tau' = R*tau + T
+                    ! tau' - s = R*(tau-s) + T
+                    ! tau' = R*tau + (R*S+T-s) = R*tau + T_shifted ! sign is wrong here for some reason.
+                    ! thus, T_shifted = T - R*s + s
+                    T_shifted = T(:,j) - matmul(R(:,:,i),shift) + shift
+                    ! reduce to primitive
+                    T_shifted = modulo(T_shifted+opts%sym_prec,1.0_dp)-opts%sym_prec
+                else
+                    T_shifted = T(:,j)
+                endif
+                !
                 if ( is_symmetry_valid(tau=uc%tau,iopt_atype=uc%atype,&
-                    & iopt_R=R(1:3,1:3,i),iopt_T=T(1:3,j),iopt_sym_prec=opts%sym_prec)) then
+                    & iopt_R=R(1:3,1:3,i),iopt_T=T_shifted,iopt_sym_prec=opts%sym_prec)) then
                     m = m + 1
                     wrkspace(1:3,1:3,m)=R(1:3,1:3,i)
                     wrkspace(1:3,4,m)=T(1:3,j)
