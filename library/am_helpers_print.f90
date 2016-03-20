@@ -1,17 +1,17 @@
-    subroutine     print_sparse_double(title,A,in_emph,iopt_fid)
+    subroutine     print_sparse_double(title,A,iopt_emph,iopt_fid)
         !
         implicit none
         !
         character(len=*), intent(in) :: title
         real(dp), intent(in) :: A(:,:)
-        character(len=5), optional, intent(in) :: in_emph
+        character(len=5), optional, intent(in) :: iopt_emph
         character(len=5) :: emph
         integer, optional, intent(in) :: iopt_fid
         integer :: i, j
         integer :: fid
         !
-        if ( present(in_emph) ) then
-            emph = in_emph
+        if ( present(iopt_emph) ) then
+            emph = iopt_emph
         else
             emph = "     "
         endif
@@ -42,20 +42,20 @@
         !
     end subroutine print_sparse_double
 
-    subroutine     print_sparse_integer(title,A,in_emph,iopt_fid)
+    subroutine     print_sparse_integer(title,A,iopt_emph,iopt_fid)
         !
         implicit none
         !
         character(len=*), intent(in) :: title
         integer, intent(in) :: A(:,:)
-        character(len=5), optional, intent(in) :: in_emph
+        character(len=5), optional, intent(in) :: iopt_emph
         character(len=5) :: emph
         integer, optional, intent(in) :: iopt_fid
         integer :: i, j
         integer :: fid
         !
-        if ( present(in_emph) ) then
-            emph = in_emph
+        if ( present(iopt_emph) ) then
+            emph = iopt_emph
         else
             emph = "     "
         endif
@@ -127,13 +127,13 @@
         !
     end subroutine am_print_title
 
-    subroutine     am_print_logical( name, bool , in_emph, iopt_fid )
+    subroutine     am_print_logical( name, bool , iopt_emph, iopt_fid )
         !
         implicit none
         !
         character(len=*), intent(in) :: name
         logical, intent(in) :: bool
-        character(len=5), optional, intent(in) :: in_emph
+        character(len=5), optional, intent(in) :: iopt_emph
         character(len=5) :: emph
         integer, optional, intent(in) :: iopt_fid
         integer :: fid
@@ -141,18 +141,18 @@
         fid = 6
         if ( present(iopt_fid)  ) fid = iopt_fid
         emph = "     "
-        if ( present(in_emph) ) emph = in_emph
+        if ( present(iopt_emph) ) emph = iopt_emph
         !
         write(fid,'(a,a," = ",l)') emph, name, bool
     end subroutine am_print_logical
 
-    subroutine     am_print_double( name, dbl , in_emph, iopt_fid )
+    subroutine     am_print_double( name, dbl , iopt_emph, iopt_fid )
         !
         implicit none
         !
         character(len=*), intent(in) :: name
         real(dp) :: dbl
-        character(len=5), optional, intent(in) :: in_emph
+        character(len=5), optional, intent(in) :: iopt_emph
         character(len=5) :: emph
         integer, optional, intent(in) :: iopt_fid
         integer :: fid
@@ -160,18 +160,18 @@
         fid = 6
         if ( present(iopt_fid)  ) fid = iopt_fid
         emph = "     "
-        if ( present(in_emph) ) emph = in_emph
+        if ( present(iopt_emph) ) emph = iopt_emph
         !
         write(fid,'(a,a," = ",g15.5)') emph, name, dbl2char(dbl)
     end subroutine am_print_double
 
-    subroutine     am_print_integer( name, i , in_emph, iopt_fid )
+    subroutine     am_print_integer( name, i , iopt_emph, iopt_fid )
         !
         implicit none
         !
         character(len=*), intent(in) :: name
         integer, intent(in) :: i
-        character(len=5), optional, intent(in) :: in_emph
+        character(len=5), optional, intent(in) :: iopt_emph
         character(len=5) :: emph
         integer, optional, intent(in) :: iopt_fid
         integer :: fid
@@ -179,17 +179,17 @@
         fid = 6
         if ( present(iopt_fid)  ) fid = iopt_fid
         emph = "     "
-        if ( present(in_emph) ) emph = in_emph
+        if ( present(iopt_emph) ) emph = iopt_emph
         !
         write(fid,'(a,a," = ",a)') emph, name, int2char(i)
     end subroutine am_print_integer
 
-    subroutine     am_print_string( name, str , in_emph, iopt_fid )
+    subroutine     am_print_string( name, str , iopt_emph, iopt_fid )
         !
         implicit none
         !
         character(len=*), intent(in) :: name, str
-        character(len=5), optional, intent(in) :: in_emph
+        character(len=5), optional, intent(in) :: iopt_emph
         character(len=5) :: emph
         integer, optional, intent(in) :: iopt_fid
         integer :: fid
@@ -197,19 +197,19 @@
         fid = 6
         if ( present(iopt_fid)  ) fid = iopt_fid
         emph = "     "
-        if ( present(in_emph) ) emph = in_emph
+        if ( present(iopt_emph) ) emph = iopt_emph
         !
         write(fid,'(a,a," = ",a)') emph, name, str
     end subroutine am_print_string
 
-    subroutine     am_print_logical_matrix( name, A , in_emph, iopt_fid )
+    subroutine     am_print_logical_matrix( name, A , iopt_emph, iopt_fid )
         !
         implicit none
         !
         character(len=*), intent(in) :: name
         logical, intent(in) :: A(:,:)
         integer :: i,j,m,n
-        character(len=5), optional, intent(in) :: in_emph
+        character(len=5), optional, intent(in) :: iopt_emph
         character(len=5) :: emph
         integer, optional, intent(in) :: iopt_fid
         integer :: fid
@@ -217,7 +217,7 @@
         fid = 6
         if ( present(iopt_fid)  ) fid = iopt_fid
         emph = "     "
-        if ( present(in_emph) ) emph = in_emph
+        if ( present(iopt_emph) ) emph = iopt_emph
         !
         m=size(A,1)
         n=size(A,2)
@@ -227,39 +227,55 @@
         enddo
     end subroutine am_print_logical_matrix
 
-    subroutine     am_print_double_matrix( name, A , in_emph, iopt_fid )
+    subroutine     am_print_double_matrix(iopt_name, A, iopt_emph, iopt_fname)
         !
         implicit none
         !
-        character(len=*), intent(in) :: name
+        character(*), intent(in), optional :: iopt_name
+        character(5), intent(in), optional :: iopt_emph
+        character(*), intent(in), optional :: iopt_fname
         real(dp), intent(in) :: A(:,:)
-        integer :: i,j,m,n
-        character(len=5), optional, intent(in) :: in_emph
-        character(len=5) :: emph
-        integer, optional, intent(in) :: iopt_fid
+        integer :: i, j
         integer :: fid
         !
-        fid=6
-        if ( present(iopt_fid)  ) fid = iopt_fid
-        emph = "     "
-        if ( present(in_emph) ) emph = in_emph
+        if (present(iopt_fname)) then
+            fid = 1
+            open(unit=fid,file=trim(iopt_fname),status='replace',action='write')
+        else
+            fid=6
+        endif
         !
-        m=size(A,1)
-        n=size(A,2)
-        write(fid,'(a,a," = ",a)') emph, name
-        do i = 1, m
-            write(fid,"(5x,100g15.5)") ( A(i,j), j = 1, n )
+        if (present(iopt_emph)) then
+            write(unit=fid,fmt='(a)',advance='no') iopt_emph
+        else
+            write(unit=fid,fmt='(a)',advance='no') '     '
+        endif
+        if (present(iopt_name)) then
+            write(unit=fid,fmt='(a)',advance='no') iopt_name
+            write(unit=fid,fmt='(a)',advance='no') ' = '
+        endif
+        write(unit=fid,fmt='(a)')
+        !
+        do i = 1, size(A,1)
+            write(unit=fid,fmt='(5x)',advance='no')
+            do j = 1, size(A,2)
+            write(unit=fid,fmt='(f15.5)',advance='no') A(i,j)
+            enddo
+            write(unit=fid,fmt=*)
         enddo
+        !
+        if (present(iopt_fname)) close(fid)
+        !
     end subroutine am_print_double_matrix
 
-    subroutine     am_print_complex_matrix( name, A , in_emph, iopt_fid )
+    subroutine     am_print_complex_matrix( name, A , iopt_emph, iopt_fid )
         !
         implicit none
         !
         character(len=*), intent(in) :: name
         complex(dp), intent(in) :: A(:,:)
         integer :: i,j,m,n
-        character(len=5), optional, intent(in) :: in_emph
+        character(len=5), optional, intent(in) :: iopt_emph
         character(len=5) :: emph
         integer, optional, intent(in) :: iopt_fid
         integer :: fid
@@ -267,24 +283,24 @@
         fid=6
         if ( present(iopt_fid)  ) fid = iopt_fid
         emph = "     "
-        if ( present(in_emph) ) emph = in_emph
+        if ( present(iopt_emph) ) emph = iopt_emph
         !
         m=size(A,1)
         n=size(A,2)
         write(fid,'(a,a," = ",a)') emph, name
         do i = 1, m
-            write(fid,"(5x,100g15.5)") ( A(i,j), j = 1, n )
+            write(fid,"(5x,100f15.5)") ( A(i,j), j = 1, n )
         enddo
     end subroutine am_print_complex_matrix
 
-    subroutine     am_print_int_matrix( name, A , in_emph, iopt_fid )
+    subroutine     am_print_int_matrix( name, A , iopt_emph, iopt_fid )
         !
         implicit none
         !
         character(len=*), intent(in) :: name
         integer, intent(in) :: A(:,:)
         integer :: i,j,m,n
-        character(len=5), optional, intent(in) :: in_emph
+        character(len=5), optional, intent(in) :: iopt_emph
         character(len=5) :: emph
         integer, optional, intent(in) :: iopt_fid
         integer :: fid
@@ -292,7 +308,7 @@
         fid = 6
         if ( present(iopt_fid)  ) fid = iopt_fid
         emph = "     "
-        if ( present(in_emph) ) emph = in_emph
+        if ( present(iopt_emph) ) emph = iopt_emph
         !
         m=size(A,1)
         n=size(A,2)
@@ -302,14 +318,14 @@
         enddo
     end subroutine am_print_int_matrix
 
-    subroutine     am_print_double_vector( name, A , in_emph, iopt_fid )
+    subroutine     am_print_double_vector( name, A , iopt_emph, iopt_fid )
         !
         implicit none
         !
         character(len=*), intent(in) :: name
         real(dp), intent(in) :: A(:)
         integer :: i,m
-        character(len=5), optional, intent(in) :: in_emph
+        character(len=5), optional, intent(in) :: iopt_emph
         character(len=5) :: emph
         integer, optional, intent(in) :: iopt_fid
         integer :: fid
@@ -317,21 +333,21 @@
         fid = 6
         if ( present(iopt_fid)  ) fid = iopt_fid
         emph = "     "
-        if ( present(in_emph) ) emph = in_emph
+        if ( present(iopt_emph) ) emph = iopt_emph
         !
         m=size(A)
         write(fid,'(a,a," = ",a)') emph, name
-        write(fid,"(5x,100g15.5)") ( A(i), i = 1, m )
+        write(fid,"(5x,100f15.5)") ( A(i), i = 1, m )
     end subroutine am_print_double_vector
 
-    subroutine     am_print_int_vector( name, A , in_emph, iopt_fid )
+    subroutine     am_print_int_vector( name, A , iopt_emph, iopt_fid )
         !
         implicit none
         !
         character(len=*), intent(in) :: name
         integer, intent(in) :: A(:)
         integer :: j,m
-        character(len=5), optional, intent(in) :: in_emph
+        character(len=5), optional, intent(in) :: iopt_emph
         character(len=5) :: emph
         integer, optional, intent(in) :: iopt_fid
         integer :: fid
@@ -339,7 +355,7 @@
         fid = 6
         if ( present(iopt_fid)  ) fid = iopt_fid
         emph = "     "
-        if ( present(in_emph) ) emph = in_emph
+        if ( present(iopt_emph) ) emph = iopt_emph
         !
         m=size(A)
         write(fid,'(a,a," = ",a)') emph, name

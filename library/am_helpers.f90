@@ -38,10 +38,6 @@
         module procedure det_3x3_dbl
     end interface ! det
     !
-    interface rref
-        module procedure rref_dbl, rref_int
-    end interface ! rref
-
     contains
 
     !
@@ -425,79 +421,46 @@
         !
     end function  inv_3x3_dbl
 
-    pure subroutine rref_dbl(A)
+    subroutine     rref(matrix)
         !
         implicit none
+        !    
         !
-        real(dp), dimension(:,:), intent(inout) :: A
+        real(dp), intent(inout) :: matrix(:,:)
+        real(dp), allocatable :: trow(:)
         integer :: pivot, norow, nocolumn
         integer :: r, i
-        real, dimension(:), allocatable :: trow
+        !
         pivot = 1
-        norow = size(A, 1)
-        nocolumn = size(A, 2)
+        norow = size(matrix, 1)
+        nocolumn = size(matrix, 2)
         !
         allocate(trow(nocolumn))
         !
         do r = 1, norow
-            if ( nocolumn <= pivot ) exit
-            i = r
-            do while ( A(i, pivot) == 0 )
-                i = i + 1
-                if ( norow == i ) then
-                    i = r
-                    pivot = pivot + 1
-                    if ( nocolumn == pivot ) return
-                end if
-            end do
-            trow = A(i, :)
-            A(i, :) = A(r, :)
-            A(r, :) = trow
-            A(r, :) = A(r, :) / A(r, pivot)
-            do i = 1, norow
-                if ( i /= r ) A(i, :) = A(i, :) - A(r, :) * A(i, pivot)
-            end do
-            pivot = pivot + 1
+        if ( nocolumn <= pivot ) exit
+        i = r
+        do while (abs(matrix(i, pivot)).lt.tiny)
+          i = i + 1
+          if ( norow == i ) then
+             i = r
+             pivot = pivot + 1
+             if ( nocolumn == pivot ) return
+          end if
+        end do
+        ! swap rows i and r
+        trow = matrix(i, :)
+        matrix(i, :) = matrix(r, :)
+        matrix(r, :) = trow
+        !
+        matrix(r, :) = matrix(r, :) / matrix(r, pivot)
+        do i = 1, norow
+          if ( i /= r ) matrix(i, :) = matrix(i, :) - matrix(r, :) * matrix(i, pivot) 
+        end do
+        pivot = pivot + 1
         end do
         deallocate(trow)
-    end subroutine  rref_dbl
-
-    pure subroutine rref_int(A)
-        !
-        implicit none
-        !
-        integer, dimension(:,:), intent(inout) :: A
-        integer :: pivot, norow, nocolumn
-        integer :: r, i
-        integer, allocatable :: trow(:)
-        pivot = 1
-        norow = size(A,1)
-        nocolumn = size(A,2)
-        !
-        allocate(trow(nocolumn))
-        !
-        do r = 1, norow
-            if ( nocolumn <= pivot ) exit
-            i = r
-            do while ( A(i, pivot) == 0 )
-                i = i + 1
-                if ( norow == i ) then
-                    i = r
-                    pivot = pivot + 1
-                    if ( nocolumn == pivot ) return
-                end if
-            end do
-            trow = A(i, :)
-            A(i, :) = A(r, :)
-            A(r, :) = trow
-            A(r, :) = A(r, :) / A(r, pivot)
-            do i = 1, norow
-                if ( i /= r ) A(i, :) = A(i, :) - A(r, :) * A(i, pivot)
-            end do
-            pivot = pivot + 1
-        end do
-        deallocate(trow)
-    end subroutine  rref_int
+    end subroutine rref
 
     !
     ! generic math functions

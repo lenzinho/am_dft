@@ -641,7 +641,7 @@
     ! functions which operate on atomic basis
     !
 
-    function translations_from_basis(tau,atype,iopt_include,iopt_sym_prec) result(T)
+    pure function translations_from_basis(tau,atype,iopt_include,iopt_sym_prec) result(T)
         !
         implicit none
         ! subroutine i/o
@@ -723,7 +723,7 @@
         !
     end function  translations_from_basis
 
-    function      is_symmetry_valid(tau,iopt_atype,iopt_R,iopt_T,iopt_sym_prec)
+    pure function is_symmetry_valid(tau,iopt_atype,iopt_R,iopt_T,iopt_sym_prec)
         !
         ! check whether symmetry operation is valid
         !
