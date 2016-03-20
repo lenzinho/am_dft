@@ -27,13 +27,14 @@ module am_symmetry
         procedure :: point_group
         procedure :: space_group
         procedure :: stdout
-        procedure :: conductivity_tensor
-        procedure :: tensor_3rd_rank
-        procedure :: elasticity_tensor
+        procedure :: tensor_conductivity ! both electrical and thermal
+        procedure :: tensor_thermoelectricity
+        procedure :: tensor_elasticity
+        procedure :: tensor_pizeoelectricity
     end type
 
     interface transform_tensor
-        module procedure transform_tensor_fourth_rank, transform_tensor_second_rank, transform_tensor_third_rank
+        module procedure transform_tensor_second_rank, transform_tensor_third_rank, transform_tensor_fourth_rank
     end interface ! transform_tensor
 
 contains
@@ -144,7 +145,7 @@ contains
     ! functions which operate on tensors or make symmetry-adapted tensors
     !
 
-    subroutine     conductivity_tensor(pg,uc,opts)
+    subroutine     tensor_conductivity(pg,uc,opts)
         !
         class(am_class_symmetry), intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
@@ -166,7 +167,7 @@ contains
         integer :: i, j, n
         integer :: nequations
         !
-        if (opts%verbosity.ge.1) call am_print_title('Determining elasticity tensor')
+        if (opts%verbosity.ge.1) call am_print_title('Determining conductivity tensor symmetry')
         !
         tensor_rank = size(shape(M))
         nsyms = size(pg%R,3)
@@ -243,19 +244,96 @@ contains
         call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
             is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
         !
-    end subroutine conductivity_tensor
+    end subroutine tensor_conductivity
 
-    subroutine     tensor_3rd_rank(pg,uc,opts)
+    subroutine     tensor_thermoelectricity(pg,uc,opts)
         !
         class(am_class_symmetry), intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
         !
-        real(dp) :: M(3,3,3) !> IMPORTANT: M is the original tensor before the permutation 
-#include "am_symmetry_tensor.f90"
-    end subroutine tensor_3rd_rank
+        real(dp) :: M(3,3)                          !> IMPORTANT: M is the original tensor before the permutation (shape of tensor is very important!)
+        integer  :: nterms                          !> nterms the number of terms
+        integer  :: nsyms                           !> nsyms number of symmetry elements
+        integer  :: tensor_rank                     !> tensor_rank rank of tensor matrix M, determined automatically by code
+        real(dp), allocatable :: M1d(:)             !> M1d(nterms) an array which is used to build the matrix M
+        real(dp), allocatable :: T(:,:)             !> T(nsyms,nterms) permutation matrx containing rows vectors describing how M is rotated by a point symmetry R
+        real(dp), allocatable :: A(:,:)             !> A(nsyms*nterms,2*nterms) augmented matrix equation
+        real(dp), allocatable :: LHS(:,:)           !> LHS(nterms,nterms) left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
+        real(dp), allocatable :: RHS(:,:)           !> RHS(nterms,nterms) right hand side of augmented matrix equation
+        logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
+        logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
+        logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
+        integer :: i, j
+        integer :: nequations
+        !
+        if (opts%verbosity.ge.1) call am_print_title('Determining thermoelectric tensor symmetry')
+        !
+        tensor_rank = size(shape(M))
+        nsyms = size(pg%R,3)
+        nterms = 3**tensor_rank
+        !
+        allocate(M1d(nterms))
+        allocate(T(nsyms,nterms))
+        allocate(A(nsyms*nterms,2*nterms)) ! augmented matrix
+        !
+        A = 0
+        nequations = 0
+        ! <CRYSTAL_SYMMETRIES>
+        ! apply point symmetries (each point symmetry corresponds to nterms possible equations
+        ! relating the terms to each other)
+        do i = 1,nterms
+            M1d = 0
+            M1d(i) = 1
+            M = reshape(M1d,shape(M))
+            do j = 1, nsyms
+                nequations = nequations + 1
+                ! RM shows how the M has been permuted by the symmetry operation j save the permutation obtained with RM
+                ! as a row-vectors in T(nsyms,nterms)  Nye, J.F. "Physical properties of crystals: their representation
+                ! by tensors and matrices"
+                T(j,1:nterms) = pack( transform_tensor(M=M,R=point_symmetry_convert_to_cartesian(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
+            enddo
+            ! save an augmented matrix A
+            A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
+            A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(2-1)) = 0.0_dp
+            A([1:nsyms]+nsyms*(i-1),         i+nterms*(2-1)) = 1.0_dp
+        enddo
+        ! reduce to row echlon form to incorporate crystal symmetries
+        call rref(A)
+        ! </CRYSTAL_SYMMETRIES>
+        !
+        ! <INTRINSIC_SYMMETRIES>
+        !
+        ! THERMOELECTIRCITY TENSOR HAS NO INTRINSIC SYMMETRY. Nye p 227, Eq 47.
+        !
+        ! Now apply intrinsic symmetries, which are fundamental properties of the elastic/stress/strain tensors and,
+        ! therefore, independent of the crystal Nye, J.F. "Physical properties of crystals: their representation by
+        ! tensors and matrices". p 30. Note: Conductivity tensor is a symmetric second-rank tensor. (see p 22 and 227)
+        ! Also see p 194 Eq 4, which proves that the thermal and electrical conductivities are symmetric tensors
+        ! explicitly.
+        ! </INTRINSIC_SYMMETRIES>
+        !
+        ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS should be the identity matrix,
+        ! which, together with the RHS, completely specifies all relationships between variables.
+        allocate(LHS(nterms,nterms))
+        allocate(RHS(nterms,nterms))
+        LHS = A(1:nterms,1:nterms)
+        RHS = A(1:nterms,[1:nterms]+nterms)
+        !
+        if ( any(abs(LHS-eye(nterms)).gt.tiny) ) then
+            call am_print('ERROR','Unable to reduce matrix to row echlon form.')
+            call print_sparse('spy(LHS)',LHS)
+            stop
+        endif
+        !
+        call am_print('number of symmetry equations',nequations,' ... ')
+        !
+        call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
+            is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
+        !
+    end subroutine tensor_thermoelectricity
 
-    subroutine     elasticity_tensor(pg,uc,opts)
+    subroutine     tensor_elasticity(pg,uc,opts)
         !
         class(am_class_symmetry), intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
@@ -345,8 +423,6 @@ contains
         ! reduce to echlon form once again to incorporate the intrinsic symmetries.
         call rref(A)
         !
-        call am_print('number of symmetry equations',nequations)
-        !
         ! call print_sparse('A = [LHS|RHS]',A(1:nterms,:),' ... ')
         ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS
         ! should be the identity matrix, which, together with the RHS, completely 
@@ -362,10 +438,116 @@ contains
             stop
         endif
         !
+        call am_print('number of symmetry equations',nequations,' ... ')
+        !
         call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
             is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
         !
-    end subroutine elasticity_tensor
+    end subroutine tensor_elasticity
+
+    subroutine     tensor_pizeoelectricity(pg,uc,opts)
+        !
+        class(am_class_symmetry), intent(in) :: pg
+        type(am_class_unit_cell), intent(in) :: uc
+        type(am_class_options), intent(in) :: opts
+        !
+        real(dp) :: M(3,3,3)                        !> IMPORTANT: M is the original tensor before the permutation (shape of tensor is very important!)
+        real(dp) :: RM(3,3,3)                       !> rotated/permuted matrix M
+        integer  :: nterms                          !> nterms the number of terms
+        integer  :: nsyms                           !> nsyms number of symmetry elements
+        integer  :: tensor_rank                     !> tensor_rank rank of tensor matrix M, determined automatically by code
+        real(dp), allocatable :: M1d(:)             !> M1d(nterms) an array which is used to build the matrix M
+        real(dp), allocatable :: T(:,:)             !> T(nsyms,nterms) permutation matrx containing rows vectors describing how M is rotated by a point symmetry R
+        real(dp), allocatable :: A(:,:)             !> A(nsyms*nterms,2*nterms) augmented matrix equation
+        real(dp), allocatable :: LHS(:,:)           !> LHS(nterms,nterms) left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
+        real(dp), allocatable :: RHS(:,:)           !> RHS(nterms,nterms) right hand side of augmented matrix equation
+        logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
+        logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
+        logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
+        integer :: i, j, k, n
+        integer :: nequations
+        !
+        if (opts%verbosity.ge.1) call am_print_title('Determining piezoelectric tensor symmetry')
+        !
+        tensor_rank = size(shape(M))
+        nsyms = size(pg%R,3)
+        nterms = 3**tensor_rank
+        !
+        allocate(M1d(nterms))
+        allocate(T(nsyms,nterms))
+        allocate(A(nsyms*nterms,2*nterms)) ! augmented matrix
+        !
+        A = 0
+        nequations = 0
+        ! <CRYSTAL_SYMMETRIES>
+        ! apply point symmetries (each point symmetry corresponds to nterms possible equations
+        ! relating the terms to each other)
+        do i = 1,nterms
+            M1d = 0
+            M1d(i) = 1
+            M = reshape(M1d,shape(M))
+            do j = 1, nsyms
+                nequations = nequations + 1
+                ! RM shows how the M has been permuted by the symmetry operation j save the permutation obtained with RM
+                ! as a row-vectors in T(nsyms,nterms)  Nye, J.F. "Physical properties of crystals: their representation
+                ! by tensors and matrices"
+                T(j,1:nterms) = pack( transform_tensor(M=M,R=point_symmetry_convert_to_cartesian(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
+            enddo
+            ! save an augmented matrix A
+            A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
+            A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(2-1)) = 0.0_dp
+            A([1:nsyms]+nsyms*(i-1),         i+nterms*(2-1)) = 1.0_dp
+        enddo
+        ! reduce to row echlon form to incorporate crystal symmetries
+        call rref(A)
+        ! </CRYSTAL_SYMMETRIES>
+        !
+        ! <INTRINSIC_SYMMETRIES>
+        ! Now apply intrinsic symmetries, which are fundamental properties, independent of crystal symmetries. Nye, J.F.
+        ! "Physical properties of crystals: their representation by tensors and matrices". For the intrinsic
+        ! thermoelectric tensor, see p 130. The two last indices, when permuted, leave the tensor invariant because
+        ! these indices correspond to the electrical conductivity tensor which is also invariant under such
+        ! permutations.
+        call am_print('WARNING','Something seems to not be working here...',' >>> ')
+        call am_print('WARNING','Do not trust these results!',' >>> ') ! for hexagonal structure, only 1 independent term is obtained.
+        n = nterms
+        do k = 1,3
+        do j = 1,3
+        do i = 1,3
+            ! d_ijk = d_ikj ! permute indices; Nye p 111, Eq 4
+            nequations = nequations+1
+            n  = n+1
+            M  = 0.0_dp
+            RM = 0.0_dp
+             M(i,j,k) = 1.0_dp
+            RM(i,k,j) = 1.0_dp
+            A(n,[1:nterms]+nterms*(1-1))= pack( M , .true. ) ! RHS
+            A(n,[1:nterms]+nterms*(2-1))= pack( RM, .true. ) ! LHS
+        enddo
+        enddo
+        enddo
+        call rref(A)
+        ! </INTRINSIC_SYMMETRIES>
+        !
+        ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS should be the identity matrix,
+        ! which, together with the RHS, completely specifies all relationships between variables.
+        allocate(LHS(nterms,nterms))
+        allocate(RHS(nterms,nterms))
+        LHS = A(1:nterms,1:nterms)
+        RHS = A(1:nterms,[1:nterms]+nterms)
+        !
+        if ( any(abs(LHS-eye(nterms)).gt.tiny) ) then
+            call am_print('ERROR','Unable to reduce matrix to row echlon form.')
+            call print_sparse('spy(LHS)',LHS)
+            stop
+        endif
+        !
+        call am_print('number of symmetry equations',nequations,' ... ')
+        !
+        call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
+            is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
+        !
+    end subroutine tensor_pizeoelectricity
 
     pure function  transform_tensor_second_rank(M,R) resulT(RM)
         !
@@ -400,7 +582,7 @@ contains
         real(dp), intent(in) :: M(:,:,:)
         real(dp), intent(in) :: R(3,3)
         real(dp) :: RM(size(M,1),size(M,2),size(M,3))
-        integer :: i,j,k,ip,jp,kp
+        integer  :: i,j,k,ip,jp,kp
         !
         ! for a second-rank tensor M, this operation is equivalent to RM = R*M*R^T
         ! Eq 13.9 Wootten, p 478 row major order accessed faster
@@ -507,38 +689,39 @@ contains
         ! write symmetry equations to stdout
         !
         if (verbosity.ge.1) then
-            write(*,'(a5,a)') ' ... ', 'irreducible symmetry equations'
-            !
-            ! write the terms that are independent (equal only to themselves)
-            !
-            do i = 1,nterms
-                if (is_independent(i)) then
-                    write(*,'(5x,a1,a,a1,a1,a)',advance='no') 'a',trim(int2char(i)),'=', 'a', trim(int2char(i))
-                    write(*,*)
-                endif
-            enddo
-            !
-            ! write the terms that are interrelated.
-            !
-            do i = 1,nterms
-                if (is_dependent(i)) then
-                    write(*,'(5x,a1,a,a1)',advance='no') 'a',trim(int2char(i)),'='
-                    do j = 1,nterms
-                        if (abs(RHS(i,j)).gt.tiny) then
-                            write(*,'(a,a,a)',advance='no') trim(dbl2charSP(RHS(i,j),5)), '*a', trim(int2char(j))
-                        endif
-                    enddo
-                    write(*,*)
-                endif
-            enddo
-            !
-            ! finally, write the terms that are equal to zero.
-            !
-            do i = 1,nterms
-                if (is_zero(i)) then
-                    write(*,'(5x,a1,a,a)') 'a',trim(int2char(i)),'=+0.00'
-                endif
-            enddo
+            if (nterms_zero.ne.nterms) then
+                !
+                write(*,'(a5,a)') ' ... ', 'irreducible symmetry equations'
+                !
+                ! write the independentterms (equal only to themselves)
+                !
+                do i = 1,nterms
+                    if (is_independent(i)) then
+                        write(*,'(5x,a1,a,a1,a1,a)',advance='no') 'a',trim(int2char(i)),'=', 'a', trim(int2char(i))
+                        write(*,*)
+                    endif
+                enddo
+                ! write the interrelated terms
+                do i = 1,nterms
+                    if (is_dependent(i)) then
+                        write(*,'(5x,a1,a,a1)',advance='no') 'a',trim(int2char(i)),'='
+                        do j = 1,nterms
+                            if (abs(RHS(i,j)).gt.tiny) then
+                                write(*,'(a,a,a)',advance='no') trim(dbl2charSP(RHS(i,j),5)), '*a', trim(int2char(j))
+                            endif
+                        enddo
+                        write(*,*)
+                    endif
+                enddo
+                ! !
+                ! ! finally, write the terms that are equal to zero.
+                ! !
+                ! do i = 1,nterms
+                !     if (is_zero(i)) then
+                !         write(*,'(5x,a1,a,a)') 'a',trim(int2char(i)),'=+0.00'
+                !     endif
+                ! enddo
+            endif
         endif
         !
     end subroutine parse_symmetry_equations
