@@ -27,7 +27,7 @@ module am_symmetry
         procedure :: point_group
         procedure :: space_group
         procedure :: stdout
-        procedure :: tensor_2nd_rank
+        procedure :: conductivity_tensor
         procedure :: tensor_3rd_rank
         procedure :: elasticity_tensor
     end type
@@ -144,13 +144,14 @@ contains
     ! functions which operate on tensors or make symmetry-adapted tensors
     !
 
-    subroutine     tensor_2nd_rank(pg,uc,opts)
+    subroutine     conductivity_tensor(pg,uc,opts)
         !
         class(am_class_symmetry), intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
         !
-        real(dp) :: M(3,3)                          !> IMPORTANT: M is the original tensor before the permutation 
+        real(dp) :: M(3,3)                          !> IMPORTANT: M is the original tensor before the permutation (shape of tensor is very important!)
+        real(dp) :: RM(3,3)                         !> rotated/permuted matrix M
         integer  :: nterms                          !> nterms the number of terms
         integer  :: nsyms                           !> nsyms number of symmetry elements
         integer  :: tensor_rank                     !> tensor_rank rank of tensor matrix M, determined automatically by code
@@ -162,9 +163,10 @@ contains
         logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
         logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
         logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
-        integer :: i, j
+        integer :: i, j, n
+        integer :: nequations
         !
-        if (opts%verbosity.ge.1) call am_print_title('Determining second-rank tensor')
+        if (opts%verbosity.ge.1) call am_print_title('Determining elasticity tensor')
         !
         tensor_rank = size(shape(M))
         nsyms = size(pg%R,3)
@@ -175,15 +177,19 @@ contains
         allocate(A(nsyms*nterms,2*nterms)) ! augmented matrix
         !
         A = 0
-        !
+        nequations = 0
+        ! <CRYSTAL_SYMMETRIES>
+        ! apply point symmetries (each point symmetry corresponds to nterms possible equations
+        ! relating the terms to each other)
         do i = 1,nterms
             M1d = 0
             M1d(i) = 1
             M = reshape(M1d,shape(M))
             do j = 1, nsyms
-                ! RM shows how the M has been permuted by the symmetry operation j
-                ! save the permutation obtained with RM as a row-vectors in T(nsyms,nterms) 
-                ! T(j,1:nterms) = pack( transform_tensor(M=M,R=pg%R(:,:,j)),.true.)
+                nequations = nequations + 1
+                ! RM shows how the M has been permuted by the symmetry operation j save the permutation obtained with RM
+                ! as a row-vectors in T(nsyms,nterms)  Nye, J.F. "Physical properties of crystals: their representation
+                ! by tensors and matrices"
                 T(j,1:nterms) = pack( transform_tensor(M=M,R=point_symmetry_convert_to_cartesian(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
             enddo
             ! save an augmented matrix A
@@ -191,13 +197,36 @@ contains
             A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(2-1)) = 0.0_dp
             A([1:nsyms]+nsyms*(i-1),         i+nterms*(2-1)) = 1.0_dp
         enddo
-        !
+        ! reduce to row echlon form to incorporate crystal symmetries
         call rref(A)
+        ! </CRYSTAL_SYMMETRIES>
         !
-        call print_sparse('A = [LHS|RHS]',A(1:nterms,:),' ... ')
-        ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS
-        ! should be the identity matrix, which, together with the RHS, completely 
-        ! specifies all relationships between variables. 
+        ! <INTRINSIC_SYMMETRIES>
+        ! Now apply intrinsic symmetries, which are fundamental properties of the elastic/stress/strain tensors and,
+        ! therefore, independent of the crystal Nye, J.F. "Physical properties of crystals: their representation by
+        ! tensors and matrices". p 30. Note: Conductivity tensor is a symmetric second-rank tensor. (see p 22 and 227)
+        ! Thermoelectric tensor is an anti-symmetric second-rank tensor. Also see p 194 Eq 4, which proves that the
+        ! thermal and electrical conductivities are symmetric tensors explicitly.
+        n = nterms
+        do j = 1,3
+        do i = 1,3
+            ! sigma_ij = sigma_ji ! permute indices
+            nequations = nequations+1
+            n  = n+1
+            M  = 0.0_dp
+            RM = 0.0_dp
+             M(i,j) = 1.0_dp
+            RM(j,i) = 1.0_dp
+            A(n,[1:nterms]+nterms*(1-1))= pack( M , .true. ) ! RHS
+            A(n,[1:nterms]+nterms*(2-1))= pack( RM, .true. ) ! LHS
+        enddo
+        enddo
+        ! reduce to echlon form once again to incorporate the intrinsic symmetries
+        call rref(A)
+        ! </INTRINSIC_SYMMETRIES>
+        !
+        ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS should be the identity matrix,
+        ! which, together with the RHS, completely specifies all relationships between variables.
         allocate(LHS(nterms,nterms))
         allocate(RHS(nterms,nterms))
         LHS = A(1:nterms,1:nterms)
@@ -209,10 +238,12 @@ contains
             stop
         endif
         !
+        call am_print('number of symmetry equations',nequations,' ... ')
+        !
         call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
             is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
         !
-    end subroutine tensor_2nd_rank
+    end subroutine conductivity_tensor
 
     subroutine     tensor_3rd_rank(pg,uc,opts)
         !
@@ -270,6 +301,7 @@ contains
                 ! RM shows how the M has been permuted by the symmetry operation j
                 ! save the permutation obtained with RM as a row-vectors in T(nsyms,nterms) 
                 ! T(j,1:nterms) = pack( transform_tensor(M=M,R=pg%R(:,:,j)),.true.)
+                ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
                 T(j,1:nterms) = pack( transform_tensor(M=M,R=point_symmetry_convert_to_cartesian(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
             enddo
             ! save an augmented matrix A
@@ -282,6 +314,7 @@ contains
         !
         ! now apply intrinsic symmetries, which are fundamental properties of the
         ! elastic/stress/strain tensors and, therefore, independent of the crystal
+        ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 5 and 6
         n = nterms
         do l = 1,3
         do k = 1,3
