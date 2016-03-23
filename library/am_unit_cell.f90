@@ -12,6 +12,7 @@
     public :: space_symmetries_from_basis ! used by am_symmetry
     public :: reciprocal_basis ! used by am_symmetry
     public :: is_symmetry_valid
+    public :: deform
     
     type am_class_unit_cell
         real(dp) :: bas(3,3) !> column vectors a(1:3,i), a(1:3,j), a(1:3,k)
@@ -285,16 +286,14 @@
             verbosity = 1
         endif
         !
-        if (verbosity.ge.1) write(*,*)
-        if (verbosity.ge.1) write(*,*) 'Elastic deformation'
-        !
         if (nstrains .le. 1) then
             call am_print('ERROR','More than one strain point is required.',' >>> ')
             stop
         endif
         !
         if (strain_max .gt. 0.1) then
-            call am_print('WARNI','Are you sure you want to use such large strain values? Continuing...',' >>> ')
+            call am_print('ERROR','Strain value too large.',' >>> ')
+            stop
         endif
         !
         dc = 'XXXXXX'
@@ -319,9 +318,7 @@
             case(20); dc='000EE0'
             case(40); dc='EEd000'
             case(41); dc='Ee0000'
-        end  select
-        !
-        if ( dc .eq. 'XXXXXX' ) then
+            case default
             call am_print('ERROR','Deformation code not found. Select one of the following:',' >>> ')
             write(*,'(5x,a)') "  0 =>  ( eta,  eta,  eta,    0,    0,    0)  | volume strain "
             write(*,'(5x,a)') "  1 =>  ( eta,    0,    0,    0,    0,    0)  | linear strain along x "
@@ -344,7 +341,7 @@
             write(*,'(5x,a)') " 40 =>  ( eta,  eta,  -2e,    0,    0,    0)  | tetragonal for 3/2(c11-c12)"
             write(*,'(5x,a)') " 41 =>  ( eta, -eta,    0,    0,    0,    0)  | orthorhombic for (c11-c12)"
             stop
-        endif
+        end select
         !
         eta_step = 2.0_dp*strain_max/(nstrains-1.0_dp)
         !
@@ -808,6 +805,43 @@
     ! functions which operate on uc or similar derived types
     !
 
+    subroutine     deform(def,uc,opts)
+        !
+        implicit none
+        !
+        type(am_class_unit_cell), allocatable, intent(out) :: def(:)
+        type(am_class_unit_cell) , intent(in) :: uc
+        type(am_class_options), intent(in) :: opts
+        real(dp), allocatable :: bas_def(:,:,:)
+        integer :: i, j
+        !
+        if (opts%verbosity.ge.1) call am_print_title('Elastically deforming structure')
+        !
+        bas_def = apply_elastic_deformation(bas=uc%bas,deformation_code=opts%deformation_code,strain_max=opts%maxstrain,nstrains=opts%nstrains,iopt_verbosity=opts%verbosity)
+        !
+        allocate(def(opts%nstrains))
+        !
+        do i = 1,opts%nstrains
+            !
+            def(i)%bas = bas_def(:,:,i)
+            !
+            allocate(character(maximum_buffer_size) :: def(i)%symbs(uc%nspecies))
+            allocate(def(i)%tau(3,uc%natoms))
+            allocate(def(i)%atype(uc%natoms))
+            def(i)%natoms   = uc%natoms
+            def(i)%nspecies = uc%nspecies
+            do j = 1,uc%nspecies
+            def(i)%symbs(j) = uc%symbs(j)
+            enddo
+            do j = 1,uc%natoms
+            def(i)%tau(:,j) = uc%tau(:,j)
+            def(i)%atype(j) = uc%atype(j)
+            enddo
+            !
+        enddo
+        !
+    end subroutine deform
+
     subroutine     load_poscar(uc,opts)
         ! 
         ! Reads the poscar file, look below: code is short and self explanatory.
@@ -841,6 +875,19 @@
         !
         class(am_class_unit_cell), intent(inout) :: uc
         character(*), intent(in) :: file_output_poscar
+        !
+        if (uc%nspecies.lt.1) then
+            call am_print('ERROR','Number of atomic species < 1.', ' >>> ')
+            stop
+        endif
+        if (uc%natoms.lt.1) then
+            call am_print('ERROR','Number of atoms < 1.', ' >>> ')
+            stop
+        endif
+        if (len(trim(uc%symbs(1))).eq.0) then
+            call am_print('ERROR','Atomic symbols not defined.', ' >>> ')
+            stop
+        endif
         !
         call write_poscar(&
             bas=uc%bas,&
@@ -1230,6 +1277,7 @@
             !
     end function   space_symmetries_from_basis
    
+    !
 
 
 end module

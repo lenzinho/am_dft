@@ -681,7 +681,7 @@
 
     pure function strsplit(str,delimiter) result(word)
         !
-        character(500), intent(in) :: str
+        character(maximum_buffer_size), intent(in) :: str
         character(1), intent(in) :: delimiter
         character(len=:), allocatable :: word(:) ! character(500) :: word(500)
         integer :: i, j, k
@@ -698,7 +698,7 @@
             endif
         enddo
         !
-        allocate(character(500) :: word(j))
+        allocate(character(maximum_buffer_size) :: word(j))
         !
         j = 0; k = 0
         do i = 1, len(str)

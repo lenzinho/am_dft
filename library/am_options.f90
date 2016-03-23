@@ -16,8 +16,12 @@ module am_options
         character(max_argument_length) :: wan_mmn
         character(max_argument_length) :: wan_win
         character(max_argument_length) :: wan_eig
+        integer :: supercell(3)
         logical :: primitivize
         logical :: center
+        integer :: deformation_code
+        real(dp):: maxstrain
+        integer :: nstrains
 
     contains
         procedure :: defaults
@@ -45,8 +49,12 @@ module am_options
         opts%wan_mmn  = 'wannier90.mmn'
         opts%wan_win  = 'wannier90.win'
         opts%wan_eig  = 'wannier90.eig'
+        opts%supercell= [1,1,1] ! no supercell
         opts%primitivize = .false. ! reduces unit cell to primitive cel
         opts%center = .false. ! centers unit cell
+        opts%deformation_code = -1000
+        opts%maxstrain = -1000
+        opts%nstrains = -1000
         !
     end subroutine  defaults
 
@@ -84,6 +92,28 @@ module am_options
                 case('-primitivize') ! convertes the unit cell from primitive to conventional
                     opts%primitivize = .true.
                 !
+                ! deformations
+                !
+                case('-strain')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*) opts%deformation_code
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*) opts%maxstrain
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*) opts%nstrains
+                !
+                ! supercell
+                !
+                case('-supercell')
+                    do j = 1,3
+                        i=i+1
+                        call get_command_argument(i,argument)
+                        read(argument,*) opts%supercell(j)
+                    enddo
+                !
                 ! monkhorst pack mesh
                 !
                 case('-s')
@@ -91,7 +121,7 @@ module am_options
                         i=i+1
                         call get_command_argument(i,argument)
                         read(argument,*) opts%s(j)
-                        enddo
+                    enddo
                 case('-n')
                     do j = 1,3
                         i=i+1

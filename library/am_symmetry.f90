@@ -23,7 +23,6 @@ module am_symmetry
         character(string_length_schoenflies) , allocatable :: schoenflies(:) ! decoded string
         !
     contains
-        ! procedure :: determine_symmetry
         procedure :: point_group
         procedure :: space_group
         procedure :: stdout
@@ -1169,7 +1168,7 @@ contains
     ! functions which operate on kpoints
     !
 
-    function        get_kpoint_compatible_symmetries(kpt,R,sym_prec) result(R_syms)
+    function       get_kpoint_compatible_symmetries(kpt,R,sym_prec) result(R_syms)
         !
         implicit none
         !
@@ -1192,7 +1191,7 @@ contains
         allocate(R_syms(3,3,j))
         R_syms = wrkspace(:,:,1:j)
         !
-    end function    get_kpoint_compatible_symmetries
+    end function   get_kpoint_compatible_symmetries
 
 end module am_symmetry
 
