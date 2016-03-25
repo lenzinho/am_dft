@@ -247,6 +247,12 @@ contains
 
     subroutine     tensor_thermoelectricity(pg,uc,opts)
         !
+        ! Onsager’s Principle requires that the electric resistivity and thermal conductivity tensors be symmetric, but
+        ! this does not hold for the Seebeck, Peltier (thermoelectric) coefficients which relate two different flows.
+        ! Thus there are, at most, nine coefficients to be determined rather than six.
+        !
+        ! Newnham "Properties of Materials"
+        !
         class(am_class_symmetry), intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
@@ -445,6 +451,10 @@ contains
     end subroutine tensor_elasticity
 
     subroutine     tensor_pizeoelectricity(pg,uc,opts)
+        !
+        ! Thus piezoelectricity transforms as a polar third rank tensor. d'_imn = a_ij a_mk a_nl d_jkl. In general there
+        ! are 33 = 27 tensor components, but because the stress tensor is symmetric (Xij = Xji), only 18 of the
+        ! components are independent.
         !
         class(am_class_symmetry), intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
