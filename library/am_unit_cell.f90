@@ -13,6 +13,8 @@
     public :: reciprocal_basis ! used by am_symmetry
     public :: is_symmetry_valid
     public :: deform
+    !
+    public :: neighbors
     
     type am_class_unit_cell
         real(dp) :: bas(3,3) !> column vectors a(1:3,i), a(1:3,j), a(1:3,k)
@@ -31,7 +33,9 @@
 
     contains
 
+    !
     ! functions which operate on bas(3,3)
+    !
 
     function      primitive_volume(bas,skip_volume_check) result(vol)
         !
@@ -800,6 +804,34 @@
             return
         endif
     end function  is_symmetry_valid
+
+    function      neighbors(tau,bas) result(d)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic basis (frac)
+        real(dp), intent(in) :: bas(3,3) !> unit cell basis
+        real(dp), allocatable :: d(:,:)  !> d(natoms,natoms) distances between atoms i and j (cart)
+        integer  :: natoms
+        real(dp) :: r(3,1)
+        real(dp) :: metric(3,3)
+        integer  :: i, j
+        !
+        metric = metric_tensor(bas)
+        !
+        natoms = size(tau,2)
+        !
+        allocate(d(natoms,natoms))
+        !
+        do i = 1, natoms
+            do j = 1, i
+                r(:,1) = tau(:,i)-tau(:,j)
+                d(i:i,j:j) = matmul(transpose(r),matmul(metric,r))
+                d(j,i) = d(i,j)
+            enddo
+        enddo
+        !
+    end function  neighbors
 
     !
     ! functions which operate on uc or similar derived types

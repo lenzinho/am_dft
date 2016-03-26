@@ -789,11 +789,10 @@ module am_vasp_io
         ! file i/o
         integer :: fid
         ! loop variables
-        integer :: i, j, m, n
+        integer :: i, j, n
         ! optional i/o
         character(*), optional :: iopt_filename
         character(max_argument_length) :: fname
-        integer :: verbosity
         fname = "outfile.POSCAR"
         if ( present(iopt_filename) ) fname = iopt_filename
         !
@@ -999,8 +998,6 @@ module am_vasp_io
         close(fid)
         !
     end subroutine read_eig
-
-
 
 !     subroutine read_mmn(iopt_filename,iopt_verbosity)
 !         !>

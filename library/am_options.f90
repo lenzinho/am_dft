@@ -19,6 +19,7 @@ module am_options
         integer :: supercell(3)
         logical :: primitivize
         logical :: center
+        logical :: deformation
         integer :: deformation_code
         real(dp):: maxstrain
         integer :: nstrains
@@ -51,7 +52,8 @@ module am_options
         opts%wan_eig  = 'wannier90.eig'
         opts%supercell= [1,1,1] ! no supercell
         opts%primitivize = .false. ! reduces unit cell to primitive cel
-        opts%center = .false. ! centers unit cell
+        opts%center   = .false. ! centers unit cell
+        opts%deformation = .false.
         opts%deformation_code = -1000
         opts%maxstrain = -1000
         opts%nstrains = -1000
@@ -104,6 +106,7 @@ module am_options
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*) opts%nstrains
+                    opts%deformation = .true.
                 !
                 ! supercell
                 !

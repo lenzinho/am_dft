@@ -11,6 +11,7 @@ module am_symmetry
     !
     public :: am_class_symmetry
     public :: determine_symmetry
+    public :: determine_bond_symmetries
     public :: get_kpoint_compatible_symmetries
     public :: point_symmetry_convert_to_cartesian
 
@@ -23,6 +24,7 @@ module am_symmetry
         character(string_length_schoenflies) , allocatable :: schoenflies(:) ! decoded string
         !
     contains
+        procedure :: stabilizers
         procedure :: point_group
         procedure :: space_group
         procedure :: stdout
@@ -33,7 +35,7 @@ module am_symmetry
     end type
 
     interface transform_tensor
-        module procedure transform_tensor_second_rank, transform_tensor_third_rank, transform_tensor_fourth_rank
+        module procedure transform_tensor_first_rank, transform_tensor_second_rank, transform_tensor_third_rank, transform_tensor_fourth_rank
     end interface ! transform_tensor
 
 contains
@@ -139,6 +141,152 @@ contains
         endif
         !
     end function   point_symmetry_schoenflies
+
+    !
+    ! functions for determining symmetry-adapted second-order force consants
+    !
+
+!     function       permutation_matrix(ss,uc,opts)
+!         !
+!         ! find permutation matrix; i.e. which atoms are connected by space symmetry opration R,T.
+!         !
+!         implicit none
+!         !
+!         class(am_class_symmetry), intent(inout) :: ss
+!         type(am_class_unit_cell), intent(in) :: uc
+!         type(am_class_options), intent(in) :: opts
+!         integer, allocatable :: permutation_matrix(:,:,:)
+!         real(dp) :: tau_rot(3)
+!         integer :: i,j,k
+!         !
+!         allocate(permutation_matrix(uc%natoms,uc%natoms,ss%nsyms))
+!         permutation_matrix = 0
+!         !
+!         do i = 1, ss%nsyms
+!             ! for each space symmetry operator determine where each atom is mapped to
+!             do j = 1,uc%natoms
+!                 ! apply symmetry operation to get "rotated" atom
+!                 tau_rot = matmul(ss%R(:,:,i),uc%tau(:,j)) + ss%T(:,j)
+!                 ! reduce rotated+translated point to unit cell
+!                 tau_rot = modulo(tau_rot+opts%sym_prec,1.0_dp)-opts%sym_prec
+!                 ! find matching atom
+!                 do k = 1, uc%natoms
+!                     if (all(abs(tau_rot-uc%tau(:,k)).lt.opts%sym_prec)) then
+!                         permutation_matrix(j,k,i) = 1
+!                         exit ! break loop
+!                     endif
+!                 enddo
+!             enddo
+!         enddo
+!         ! check that each column and row of the permutation_matrix sums to 1
+!         do i = 1,ss%nsyms
+!         do j = 1,uc%natoms
+!             !
+!             if (sum(permutation_matrix(:,j,i)).ne.1) then
+!                 call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
+!                 call am_print('i',i)
+!                 call am_print_sparse(permutation_matrix(:,:,i))
+!                 stop
+!             endif
+!             !
+!             if (sum(permutation_matrix(j,:,i)).ne.1) then
+!                 call am_print('ERROR','Permutation matrix has a row which does not sum to 1.')
+!                 call am_print('i',i)
+!                 call am_print_sparse(permutation_matrix(:,:,i))
+!                 stop
+!             endif
+!             !
+!         enddo
+!         enddo
+!         !
+!     end function   permutation_matrix
+
+!     subroutine     symmetry_adapted_2nd_order_force_constants(ss,sc,opts)
+!         !
+!         implicit none
+!         !
+!         class(am_class_symmetry), intent(inout) :: ss ! space group
+!         type(am_class_unit_cell), intent(in) :: sc ! supercell
+!         type(am_class_options)  , intent(in) :: opts
+!         type(am_class_unit_cell) :: prim ! primitive cell
+!         real(dp), allocatable :: M(:,:,:,:) ! M(uc%natoms,sc%natoms,3,3) force constant matrix (unrotated, original positions)
+!         real(dp), allocatable :: RM(:,:,:,:) ! RM(uc%natoms,sc%natoms,3,3) rotated force constant matrix (rotated around bond)
+!         real(dp), allocatable :: RRM(:,:,:,:) ! RM(uc%natoms,sc%natoms,3,3) rotated force constant matrix (rotated around bond + permuted atomic positions)
+!         real(dp), allocatable :: bond_group(:,:,:)
+!         integer  :: pair(2)
+!         real(dp) :: bond(3)
+!         integer  :: bond_group_order
+!         integer  :: nterms
+!         integer  :: nequations
+!         !
+!         call am_print_title('Determining symmetry-adapted 2nd order force constants')
+!         !
+!         call prim%reduce_to_primitive(uc=uc,opts=opts)
+!         !
+!         nterms = uc%natoms*sc%natoms*3*3
+!         call am_print('number of terms',nterms,' ... ')
+!         !
+!         allocate( M(uc%natoms,sc%natoms,3,3))
+!         allocate(RM(uc%natoms,sc%natoms,3,3))
+!         !
+!         ! Super and primitive atomic positions are in fractional coordinates (corresponding to their respective cells!)
+!         ! convert supercell basis to fractional primitive coordinates by first converting to cartesian, i.e. multiplying by sc%bas.
+!         sc2prim = matmul(reciprocal_basis(prim%bas),sc%bas) 
+!         !
+!         ! start counter for the number of symmetry equations
+!         nequations = 0
+!         do i = 1,nterms
+!             ! create a matrix with zero every and a value of 1, which is cycled to a new position at each iteration.
+!             M1d = 0
+!             M1d(i) = 1
+!             M = reshape(M1d,shape(M))
+!             ! find out which pair of atoms got the 1
+!             search : do j = 1, uc%natoms
+!             do k = 1, sc%natoms
+!                 if (any(M(j,k,:,:).gt.tiny)) then
+!                     pair(1) = j
+!                     pair(2) = k
+!                     exit search
+!                 end
+!             enddo
+!             enddo search
+!             ! get the bond corresponding to the pair of atoms in fractional primitive coordinats
+!             bond = prim%tau(:,pair(i))-matmul(sc2prim,uc%tau(:,pair(j)))
+!             ! get group of bond (stabilizers which leave the bond unchanged)
+!             bond_group = stabilizer(R=ss%R,v=bond)
+!             ! get order of bond group (number of group elements)
+!             bond_group_order = size(bond_group,3)
+!             ! apply transformation based on bond group (later: apply transformation based on atomic permutation)
+!             do j = 1, bond_group_order
+!                 nequations = nequations + 1
+!                 ! transform this part of the matrix like a second rank tensor
+!                 RM = 0
+!                 RM(pair(1),pair(2),:,:) = transform_tensor(M=M(i,j,:,:),R=point_symmetry_convert_to_cartesian(R_frac=bond_group(:,:,j),bas=prim%bas))
+!                 ! find all bonds that are equivalent to this one, i.e. find all atoms k in orbit around the first atom j
+!                 do k = 1, 
+!                 RRM = 0 
+
+!                 ! apply transformation based on atomic permutation
+
+
+!                     ! save the permutation obtained as a row-vectors in T(nsyms,nterms)  ... 
+!                     ! <<< NEED TO ALLOCATE T HERE >>> AT THIS POINT... I DON'T KNOW WHAT THE FIRST DIMENSION OF T SHOULD BE...
+!                     T(nequations,1:nterms) = pack( RM , .true. )
+!                 enddo
+!             enddo
+!             ! save an augmented matrix A
+!             A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
+!             A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(2-1)) = 0.0_dp
+!             A([1:nsyms]+nsyms*(i-1),         i+nterms*(2-1)) = 1.0_dp
+!         enddo
+!         ! reduce to row echlon form
+!         call rref(A)
+
+!         !
+
+
+!         !
+!     end subroutine symmetry_adapted_2nd_order_force_constants
 
     !
     ! functions which operate on tensors or make symmetry-adapted tensors
@@ -454,7 +602,9 @@ contains
         !
         ! Thus piezoelectricity transforms as a polar third rank tensor. d'_imn = a_ij a_mk a_nl d_jkl. In general there
         ! are 33 = 27 tensor components, but because the stress tensor is symmetric (Xij = Xji), only 18 of the
-        ! components are independent.
+        ! components are independent. 
+        !
+        ! Piezoelectric tensor is zero for crystals with inversion symmetry; i.e. the effect only exists in noncentrosymmetric crystals!
         !
         class(am_class_symmetry), intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
@@ -517,8 +667,6 @@ contains
         ! thermoelectric tensor, see p 130. The two last indices, when permuted, leave the tensor invariant because
         ! these indices correspond to the electrical conductivity tensor which is also invariant under such
         ! permutations.
-        call am_print('WARNING','Something seems to not be working here...',' >>> ')
-        call am_print('WARNING','Do not trust these results!',' >>> ') ! for hexagonal structure, only 1 independent term is obtained.
         n = nterms
         do k = 1,3
         do j = 1,3
@@ -557,6 +705,27 @@ contains
             is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
         !
     end subroutine tensor_pizeoelectricity
+
+    pure function  transform_tensor_first_rank(M,R) resulT(RM)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: M(:)
+        real(dp), intent(in) :: R(:,:)
+        real(dp) :: RM(size(M,1))
+        integer :: i,ip
+        !
+        ! for a first-rank tensor M, this operation is equivalent to RM = R*M
+        !
+        RM = 0
+        !
+        do i = 1,3
+        do ip = 1,3
+            RM(i) = RM(i) + R(i,ip)*M(ip)
+        enddo
+        enddo
+        !
+    end function   transform_tensor_first_rank
 
     pure function  transform_tensor_second_rank(M,R) resulT(RM)
         !
@@ -925,6 +1094,77 @@ contains
     ! functions which operate on ss
     !
 
+    subroutine     determine_bond_symmetries(ss,uc,opts)
+        !
+        implicit none
+        !
+        type(am_class_symmetry) , intent(in) :: ss ! space group
+        type(am_class_unit_cell), intent(in) :: uc ! unit cell
+        type(am_class_options)  , intent(in) :: opts
+        type(am_class_symmetry) :: bg ! bond group
+        type(am_class_symmetry) :: pg ! bond group
+        integer  :: i, j
+        real(dp) :: metric
+        real(dp) :: v(3)
+        !
+        do i = 1, uc%natoms
+            do j = 1,  i
+                ! bond vector
+                v = uc%tau(:,i)-uc%tau(:,j)
+                ! get stabilizer of bond (group), symmetries which leave bond invariant
+                call bg%stabilizers(ss=ss,v=v,opts=opts)
+                ! 
+                call stdout(ss=bg,iopt_uc=uc)
+                !
+                stop
+                !
+                if (opts%verbosity.ge.1) call am_print('bond between atoms',[i,j]) 
+                !
+                call pg%point_group(uc=uc,ss=bg,opts=opts)
+                !
+            enddo
+        enddo
+        !
+    end subroutine determine_bond_symmetries
+
+    subroutine     stabilizers(bg,ss,v,opts)
+        !
+        implicit none
+        !
+        class(am_class_symmetry), intent(inout) :: bg ! bond group
+        type(am_class_symmetry) , intent(in) :: ss ! space group
+        type(am_class_options)  , intent(in) :: opts
+        real(dp), intent(in) :: v(3) ! bond vector
+        logical, allocatable :: mask(:)
+        integer :: i, j
+        !
+        allocate(mask(ss%nsyms))
+        mask = .false.
+        !
+        do i = 1, ss%nsyms
+            ! take symmetry which leaves bond invariant. effectively, the symmetry which is able to map a point onto itself.
+            if (is_symmetry_valid(tau=reshape(v,[3,1]),iopt_R=ss%R(:,:,i),iopt_T=ss%T(:,i),iopt_sym_prec=opts%sym_prec)) then
+                mask(i) = .true.
+            endif
+        enddo
+        !
+        bg%nsyms = count(mask)
+        if (allocated(bg%R)) deallocate(bg%R)
+        if (allocated(bg%T)) deallocate(bg%T)
+        allocate(bg%R(3,3,bg%nsyms))
+        allocate(bg%T(3,bg%nsyms))
+        !
+        j=0
+        do i = 1, bg%nsyms
+            if (mask(i)) then
+                j=j+1
+                bg%R(:,:,j)=ss%R(:,:,i)
+                bg%T(:,j)=ss%T(:,i)
+            endif
+        enddo
+        !
+    end subroutine stabilizers
+
     subroutine     point_group(pg,uc,ss,opts)
         !
         ! requires only ss%R
@@ -970,6 +1210,8 @@ contains
         !
         ! </sort>
         !
+        if (allocated(pg%schoenflies_code)) deallocate(pg%schoenflies_code)
+        if (allocated(pg%schoenflies)) deallocate(pg%schoenflies)
         allocate(pg%schoenflies_code(pg%nsyms))
         allocate(pg%schoenflies(pg%nsyms))
         do i = 1, pg%nsyms
