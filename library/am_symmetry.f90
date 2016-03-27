@@ -345,6 +345,7 @@ contains
        integer, allocatable :: P(:,:,:)
        real(dp) :: tau_rot(3)
        integer :: i,j,k
+       logical :: found
        !
        allocate(P(uc%natoms,uc%natoms,ss%nsyms))
        P = 0
@@ -352,17 +353,28 @@ contains
        do i = 1, ss%nsyms
            ! determine the permutations of atomic indicies which results from each space symmetry operation
            do j = 1,uc%natoms
-               ! apply symmetry operation to get "rotated" atom
-               tau_rot = matmul(ss%R(:,:,i),uc%tau(:,j)) + ss%T(:,j)
-               ! reduce rotated+translated point to unit cell
-               tau_rot = modulo(tau_rot+opts%sym_prec,1.0_dp)-opts%sym_prec
-               ! find matching atom
-               do k = 1, uc%natoms
-                   if (all(abs(tau_rot-uc%tau(:,k)).lt.opts%sym_prec)) then
-                       P(j,k,i) = 1
-                       exit ! break loop
-                   endif
-               enddo
+                found = .false.
+                ! apply symmetry operation to get "rotated" atom
+                tau_rot = matmul(ss%R(:,:,i),uc%tau(:,j)) + ss%T(:,i)
+                ! reduce rotated+translated point to unit cell
+                tau_rot = modulo(tau_rot+opts%sym_prec,1.0_dp)-opts%sym_prec
+                ! find matching atom
+                do k = 1, uc%natoms
+                    if (all(abs(tau_rot-uc%tau(:,k)).lt.opts%sym_prec)) then
+                    P(j,k,i) = 1
+                    found = .true.
+                    exit ! break loop
+                    endif
+                enddo
+                if (found.eq..false.) then
+                    call am_print('ERROR','Unable to find matching atom.',' >>> ')
+                    call am_print('tau (all atoms)',transpose(uc%tau))
+                    call am_print('tau',uc%tau(:,j))
+                    call am_print('R',ss%R(:,:,i))
+                    call am_print('T',ss%T(:,i))
+                    call am_print('tau_rot',tau_rot)
+                    stop
+                endif
            enddo
        enddo
        !
@@ -375,6 +387,7 @@ contains
                call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
                call am_print('i',i)
                call am_print_sparse('spy(P_i)',P(:,:,i))
+               call am_print('P',P(:,:,i))
                stop
            endif
            !
@@ -382,6 +395,7 @@ contains
                call am_print('ERROR','Permutation matrix has a row which does not sum to 1.')
                call am_print('i',i)
                call am_print_sparse('spy(P_i)',P(:,:,i))
+               call am_print('P',P(:,:,i))
                stop
            endif
            !
