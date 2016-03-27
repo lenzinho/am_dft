@@ -30,22 +30,29 @@
         module procedure linspace_double, linspace_integer
     end interface ! linspace
     !
-    interface inv
-        module procedure inv_3x3_dbl
-    end interface ! inv
+!     interface inv
+!         module procedure inv_3x3_dbl
+!     end interface ! inv
     !
     interface det
         module procedure det_3x3_dbl
     end interface ! det
     !
+    interface issubset
+        module procedure issubset_vec, issubset_mat
+    end interface ! issubset
+    !
     contains
 
     !
-    ! PRINT TO STDOUT
+    ! include files
     !
 
-#include "am_helpers_print.f90"
- !
+#include "am_helpers_print.inc"
+
+#include "am_helpers_unique.inc"
+
+    !
     ! CONVERT DATA TYPES
     !
 
@@ -342,42 +349,10 @@
             - a(1,3)*a(2,2)*a(3,1)
         !
     end function   det_3x3_dbl
-    
-    pure function  inv_3x3_dbl(a) result(ainv)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: a(3,3)
-        real(dp) :: cofactor(3,3)
-        real(dp) :: determinant
-        real(dp) :: ainv(3,3)
-        !
-        determinant = &
-              + a(1,1)*a(2,2)*a(3,3) &
-              - a(1,1)*a(2,3)*a(3,2) &
-              - a(1,2)*a(2,1)*a(3,3) &
-              + a(1,2)*a(2,3)*a(3,1) &
-              + a(1,3)*a(2,1)*a(3,2) &
-              - a(1,3)*a(2,2)*a(3,1)
-        !
-        cofactor(1,1) = +(a(2,2)*a(3,3)-a(2,3)*a(3,2))
-        cofactor(1,2) = -(a(2,1)*a(3,3)-a(2,3)*a(3,1))
-        cofactor(1,3) = +(a(2,1)*a(3,2)-a(2,2)*a(3,1))
-        cofactor(2,1) = -(a(1,2)*a(3,3)-a(1,3)*a(3,2))
-        cofactor(2,2) = +(a(1,1)*a(3,3)-a(1,3)*a(3,1))
-        cofactor(2,3) = -(a(1,1)*a(3,2)-a(1,2)*a(3,1))
-        cofactor(3,1) = +(a(1,2)*a(2,3)-a(1,3)*a(2,2))
-        cofactor(3,2) = -(a(1,1)*a(2,3)-a(1,3)*a(2,1))
-        cofactor(3,3) = +(a(1,1)*a(2,2)-a(1,2)*a(2,1))
-        !
-        ainv = transpose(cofactor) / determinant
-        !
-    end function   inv_3x3_dbl
 
     subroutine     rref(matrix)
         !
         implicit none
-        !    
         !
         real(dp), intent(inout) :: matrix(:,:)
         real(dp), allocatable :: trow(:)
@@ -393,13 +368,13 @@
         do r = 1, norow
         if ( nocolumn <= pivot ) exit
         i = r
-        do while (abs(matrix(i, pivot)).lt.tiny)
-          i = i + 1
-          if ( norow == i ) then
-             i = r
-             pivot = pivot + 1
-             if ( nocolumn == pivot ) return
-          end if
+        do while (abs(matrix(i,pivot)).lt.tiny)
+            i = i + 1
+            if ( norow == i ) then
+                i = r
+                pivot = pivot + 1
+                if ( nocolumn == pivot ) return
+            end if
         end do
         ! swap rows i and r
         trow = matrix(i, :)
@@ -408,29 +383,60 @@
         !
         matrix(r, :) = matrix(r, :) / matrix(r, pivot)
         do i = 1, norow
-          if ( i /= r ) matrix(i, :) = matrix(i, :) - matrix(r, :) * matrix(i, pivot) 
+            if ( i /= r ) matrix(i, :) = matrix(i, :) - matrix(r, :) * matrix(i, pivot) 
         end do
         pivot = pivot + 1
         end do
         deallocate(trow)
     end subroutine rref
 
+
+!     function      kronecker_product(A,B) result(C)
+!         ! NEED TO CONFIRM THAT THIS WORKS...
+!         implicit none
+!         !
+!         real(dp), intent(in) :: A(:,:)
+!         real(dp), intent(in) :: B(:,:)
+!         real(dp), allocatable :: C(:,:)
+!         integer :: An, Am, Bn, Bm, Ai, Aj, Bi, Bj, Ci, Cj
+!         !
+!         An = size(A,1)
+!         Am = size(A,2)
+!         Bn = size(B,1)
+!         Bm = size(B,2)
+!         !
+!         allocate(C(An*Bn,Am*Bm))
+!         !
+!         Ci=0
+!         do Ai=1,An
+!         do Bi=1,Bn
+!             Ci=Ci+1
+!             Cj=0
+!             do Aj=1,Am
+!             do Bj=1,Bm
+!                 Cj=Cj+1
+!                 C(Ci,Cj) = A(Ai,Aj)*B(Bi,Bj)
+!             enddo
+!             enddo
+!         enddo
+!         enddo
+!         !
+!     end function  kronecker_product
+
     !
     ! generic math functions
     !
 
-#include "am_helpers_unique.f90"
-
-    pure function issubset(A,B,iopt_sym_prec)
-        !> returns true if true if B(:) is a subset of A(:,i) within numerical precision for any i
+    pure function issubset_vec(group,element,iopt_sym_prec) result(issubset)
+        !> returns true if true if element(:) is a subset of group(:,i) within numerical precision for any i
         implicit none
         !
-        real(dp), intent(in) :: A(:,:)
-        real(dp), intent(in) :: B(:)
-        logical :: issubset
-        integer :: i
+        real(dp), intent(in) :: group(:,:)
+        real(dp), intent(in) :: element(:)
         real(dp), intent(in), optional :: iopt_sym_prec
         real(dp) :: sym_prec
+        logical :: issubset
+        integer :: i
         !
         if (present(iopt_sym_prec)) then
             sym_prec = iopt_sym_prec
@@ -440,14 +446,42 @@
         !
         issubset = .false.
         !
-        do i = 1,size(A,2)
-            if ( all(abs(A(:,i)-B).lt.sym_prec) ) then
+        do i = 1,size(group,2)
+            if ( all(abs(group(:,i)-element).lt.sym_prec) ) then
                 issubset = .true.
                 return
             endif
         enddo
         !
-    end function  issubset
+    end function  issubset_vec
+
+    pure function issubset_mat(group,element,iopt_sym_prec) result(issubset)
+        !> returns true if true if element(:,:) is a subset of group(:,:,i) within numerical precision for any i
+        implicit none
+        !
+        real(dp), intent(in) :: group(:,:,:)
+        real(dp), intent(in) :: element(:,:)
+        real(dp), intent(in), optional :: iopt_sym_prec
+        real(dp) :: sym_prec
+        integer :: i
+        logical :: issubset
+        !
+        if (present(iopt_sym_prec)) then
+            sym_prec = iopt_sym_prec
+        else
+            sym_prec = tiny
+        endif
+        !
+        issubset = .false.
+        !
+        do i = 1,size(group,3)
+            if ( all(abs(group(:,:,i)-element(:,:)).lt.sym_prec) ) then
+                issubset = .true.
+                return
+            endif
+        enddo
+        !
+    end function  issubset_mat
 
     pure function linspace_double(d1,d2,n) result(y)
         !

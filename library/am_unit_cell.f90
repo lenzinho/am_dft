@@ -3,6 +3,7 @@
     use am_constants
     use am_helpers
     use am_options
+    use am_mkl
     !
     implicit none
     !
