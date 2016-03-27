@@ -7,7 +7,7 @@
 # the flag.
 
 FC     = ifort
-FFLAGS = -fpp -implicitnone -assume realloc_lhs -mkl -O5 -openmp -Difortprogressbar  
+FFLAGS = -fpp -O5 -mkl -openmp -implicitnone -assume realloc_lhs -assume bscc
 DEBUG  = -g -traceback  -warn all -traceback -check all -gen-interfaces -warn interfaces -check uninit -ftrapuv -fp-stack-check -fpe0 -check bounds -check noarg_temp_created
 LPATH  = -L../library
 IPATH  = -I../library

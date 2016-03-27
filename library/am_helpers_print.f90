@@ -1,4 +1,4 @@
-    subroutine     print_sparse_double(title,A,iopt_emph,iopt_fid)
+    subroutine     am_print_sparse_double(title,A,iopt_emph,iopt_fid)
         !
         implicit none
         !
@@ -40,9 +40,9 @@
         !
         write(fid,'(5x,a,a,a)') ,'+', repeat('-',size(A,2)), '+'
         !
-    end subroutine print_sparse_double
+    end subroutine am_print_sparse_double
 
-    subroutine     print_sparse_integer(title,A,iopt_emph,iopt_fid)
+    subroutine     am_print_sparse_integer(title,A,iopt_emph,iopt_fid)
         !
         implicit none
         !
@@ -84,7 +84,7 @@
         !
         write(fid,'(5x,a,a,a)') ,'+', repeat('-',size(A,2)), '+'
         !
-    end subroutine print_sparse_integer
+    end subroutine am_print_sparse_integer
 
     pure function  centertitle(title,length) result(title_centered)
         !

@@ -22,9 +22,9 @@
             am_print_int_vector
     end interface ! am_print
     !
-    interface print_sparse
-        module procedure print_sparse_double, print_sparse_integer
-    end interface ! print_sparse
+    interface am_print_sparse
+        module procedure am_print_sparse_double, am_print_sparse_integer
+    end interface ! am_print_sparse
     !
     interface linspace
         module procedure linspace_double, linspace_integer
@@ -49,15 +49,27 @@
     ! CONVERT DATA TYPES
     !
 
-    function      int2char(int) result(string)
+    function      int2char(int,iopt_sign) result(string)
         !
         implicit none
         !
-        integer :: int
+        integer, intent(in) :: int
+        character(len=*), intent(in), optional :: iopt_sign
         character(100) :: string
         !
-        write(string,'(i)') int
-        string = trim( adjustl( string ) )
+        if (.not.present(iopt_sign)) then
+            write(string,'(i)') int
+            string = trim( adjustl( string ) )
+        else
+            if (index(iopt_sign,'SP').ge.1) then 
+                write(string,'(SP,i)') int
+                string = trim( adjustl( string ) )
+            else
+                call am_print('ERROR','Unknown sign requested.')
+                stop
+            endif
+        endif
+        !
     end function  int2char
     
     function      dbl2char(dbl) result(string)
@@ -213,7 +225,7 @@
     end subroutine am_print_two_matrices_side_by_side
 
     !
-    ! OPEN FILE
+    ! open files
     !
 
     integer function unit_number(filename)
@@ -240,7 +252,7 @@
                 endif
             enddo
         endif
-    end function unit_number
+    end function   unit_number
 
     integer function open_file(rw,filename)
         !> Borrowed from Olle
@@ -269,72 +281,13 @@
             write(*,*) 'Could not open ',filename
             stop
         endif
-    end function open_file 
+    end function   open_file 
 
     !
-    ! progress bar
+    ! matrix functions
     !
 
-    subroutine     progressbar(message,j,totn)
-        !> Borrowed from Olle; original from: https://software.intel.com/en-us/forums/intel-fortran-compiler-for-linux-and-mac-os-x/topic/270155
-        integer, intent(in) :: j !> current index
-        integer, intent(in) :: totn !> max indes
-        character(len=*), intent(in) :: message
-        !
-        real(dp) :: f0
-        integer :: i,k
-        character(len=50) :: bar
-        character(len=40) :: msg
-        !
-        ! updates the fraction of calculation done
-        !
-        bar="     % |                                        |"
-        msg="                                        "
-        ! write the percentage in the bar
-        if ( totn .gt. 1 ) then
-            f0=100.0_dp*(j-1.0_dp)/(totn*1.0_dp-1)
-        else
-            f0=100.0_dp
-        endif
-        write(unit=bar(1:5),fmt="(F5.1)") f0
-        !fill in the bar
-        k=ceiling(40*f0/100)
-        do i = 1, k
-            bar(8+i:8+i)="="
-        enddo
-        ! add the message
-        do i=1,min(len_trim(message),40)
-            msg(i:i)=message(i:i)
-        enddo
-        !
-        ! Print the progress bar. Different compilers like it differently.
-        !
-        !#if ifortprogressbar
-        ! write(unit=6,fmt="(1X,a1,a1,a40,a50)") '+',char(13),msg,bar
-        ! unit 6 is the screen, stdout
-        write(unit=6,fmt="(1X,a1,a1,a40,a50)",advance='no') ' ',char(13),msg,bar
-        ! if ( j .eq. totn ) write(*,*) " "
-        !#elif gfortranprogressbar
-        !    if ( j .lt. totn ) then
-        !        write(*,'(1X,a,a,a)',advance='no') char(13),msg,bar
-        !    else
-        !        write(*,'(1X,a,a,a)') char(13),msg,bar
-        !    endif
-        !#else
-        !    ! Boring version.
-        !    if ( totn .gt. 100 ) then
-        !        if ( mod(j,totn/100) .eq. 0 ) write(*,*) msg,real(f0),'%'
-        !    else
-        !        write(*,*) msg,real(f0),'%'
-        !    endif
-        !#endif
-    end subroutine progressbar
-
-    !
-    ! MATRIX FUNCTIONS
-    !
-
-    pure function eye(n)
+    pure function  eye(n)
         !> nxn identity matrix
         implicit none
         !
@@ -346,9 +299,9 @@
         do i = 1, n
             eye(i,i) = 1.0_dp
         enddo
-    end function  eye
+    end function   eye
 
-    pure function mesh_grid(n) result(grid_points)
+    pure function  mesh_grid(n) result(grid_points)
         !> 
         !> Generates a mesh of lattice vectors (fractional coordinates) around the origin. 
         !> n(1), n(2), n(3) specifies the number of mesh points away from 0, i.e. [-n:1:n]
@@ -372,9 +325,9 @@
                 enddo
             enddo
         enddo
-    end function  mesh_grid
+    end function   mesh_grid
 
-    pure function det_3x3_dbl(a) result(det)
+    pure function  det_3x3_dbl(a) result(det)
         !
         implicit none
         !
@@ -388,9 +341,9 @@
             + a(1,3)*a(2,1)*a(3,2) &
             - a(1,3)*a(2,2)*a(3,1)
         !
-    end function  det_3x3_dbl
+    end function   det_3x3_dbl
     
-    pure function inv_3x3_dbl(a) result(ainv)
+    pure function  inv_3x3_dbl(a) result(ainv)
         !
         implicit none
         !
@@ -419,7 +372,7 @@
         !
         ainv = transpose(cofactor) / determinant
         !
-    end function  inv_3x3_dbl
+    end function   inv_3x3_dbl
 
     subroutine     rref(matrix)
         !
