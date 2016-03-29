@@ -15,8 +15,19 @@ module am_symmetry
     public :: bond_group
     public :: get_kpoint_compatible_symmetries
     public :: ps_frac2cart
+    !
 
-    type am_class_symmetry 
+    type am_class_conjugacy_class
+        !
+        integer :: nclasses
+        integer, allocatable :: nelements(:) ! number of elements in each class
+        integer, allocatable :: sym_identifier(:,:) ! 
+        integer, allocatable :: classrep_identifier(:) ! class representative
+        !
+
+    end type
+
+    type am_class_symmetry
         integer :: nsyms                  !> number of point symmetries
         real(dp), allocatable :: R(:,:,:) !> symmetry elements (operate on fractional atomic basis)
         real(dp), allocatable :: T(:,:)   !> symmetry elements (operate on fractional atomic basis)
@@ -24,6 +35,9 @@ module am_symmetry
         integer , allocatable :: ps_identifier(:) !> indices labeling point symmetries according to their actions (see decode_pointsymmetry)
         integer               :: pg_identifier    !>
         integer , allocatable :: cc_identifier(:) !> indices assiging each element to a conjugacy class
+        !
+        type(am_class_conjugacy_class) :: cc
+        !
     contains
         procedure :: point_group
         procedure :: space_group
@@ -38,8 +52,8 @@ module am_symmetry
         procedure :: tensor_elasticity
         procedure :: tensor_pizeoelectricity
         !
-        procedure :: character_table
-        procedure :: get_action_table
+        procedure :: conjugacy_class
+        procedure :: action_table_get
         procedure :: stabilizers
     end type
 
@@ -80,18 +94,6 @@ contains
         R_frac = matmul(reciprocal_basis(bas),matmul(R,bas))
         !
     end function   ps_cart2frac
-
-    function       apply_conjugation(center_matrix,side_matrix) result(C)
-            !
-            implicit none
-            !
-            real(dp), intent(in) :: side_matrix(:,:)
-            real(dp), intent(in) :: center_matrix(:,:)
-            real(dp) :: C(size(side_matrix,1),size(side_matrix,2))
-            !
-            C = matmul(side_matrix,matmul(center_matrix,inv(side_matrix)))
-            !
-    end function   apply_conjugation
 
     pure function  ps_determinant(R) result(determinant)
         !
@@ -183,7 +185,7 @@ contains
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining symmetry-adapted 2nd order force constants')
         !
-        PM = permutation_map(sg=sg,uc=uc,opts=opts)
+        PM = action_atom_permutation(sg=sg,uc=uc,opts=opts)
         !
         nsyms = size(sg%R,3)
         nterms = product(shape(M))
@@ -1180,8 +1182,8 @@ contains
         ! create space group instance
         call sg%create(R=seitz(1:3,1:3,:),T=seitz(1:3,4,:))
         !
-        ! determine conjugacy classes for representation
-        sg%cc_identifier = cc_get(rep=seitz,flags='seitz')
+        ! get conjugacy classes
+        call sg%conjugacy_class(opts=opts)
         !
         ! sort space group symmetries based on parameters
         call sg%sort(sort_parameter=sg%T(1,:),iopt_direction='ascend')
@@ -1189,17 +1191,14 @@ contains
         call sg%sort(sort_parameter=sg%T(3,:),iopt_direction='ascend')
         call sg%sort(sort_parameter=real(sg%cc_identifier,dp),iopt_direction='ascend')
         !
-        ! get character table
-        call sg%character_table(opts=opts)
-        !
         ! name the (im-)proper part of space symmetry
         call sg%name_symmetries(opts=notalk)
         !
         ! wrte action table
-        call sg%get_action_table(uc=uc,iopt_fname='outfile.action_space_group',opts=opts)
+        call sg%action_table_get(uc=uc,iopt_fname='outfile.action_space_group',opts=opts)
         !
         ! write to stdout and to file
-        if (opts%verbosity.ge.1) call sg%stdout(iopt_uc=uc)
+        ! if (opts%verbosity.ge.1) call sg%stdout(iopt_uc=uc)
         call sg%stdout(iopt_uc=uc,iopt_filename=trim('outfile.spacegroup'))
         !
     end subroutine space_group
@@ -1230,7 +1229,9 @@ contains
         if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,' ... ')
         !
         ! determine conjugacy classes for representation
-        pg%cc_identifier = cc_get(rep=pg%R,flags='')
+        
+        ! get conjugacy classes
+        call pg%conjugacy_class(opts=opts)
         !
         ! sort point group symmetries based on parameters
         allocate(sort_parameter(pg%nsyms))
@@ -1240,9 +1241,6 @@ contains
         call pg%sort(sort_parameter=sort_parameter,iopt_direction='ascend')
         call pg%sort(sort_parameter=real(pg%cc_identifier,dp),iopt_direction='ascend')
         !
-        ! get character table
-        call pg%character_table(opts=opts)
-        !
         ! name point symmetries
         call pg%name_symmetries(opts=opts)
         !
@@ -1251,10 +1249,10 @@ contains
         if (opts%verbosity.ge.1) call am_print('point group',decode_pointgroup(pg%pg_identifier),' ... ')
         !
         ! write action table
-        call pg%get_action_table(uc=uc,iopt_fname='outfile.action_point_group',opts=opts)
+        call pg%action_table_get(uc=uc,iopt_fname='outfile.action_point_group',opts=opts)
         !
         ! write to stdout and to file
-        if (opts%verbosity.ge.1) call pg%stdout(iopt_uc=uc)
+        ! if (opts%verbosity.ge.1) call pg%stdout(iopt_uc=uc)
         if (opts%verbosity.ge.1) call pg%stdout(iopt_uc=uc,iopt_filename=trim('outfile.pointgroup'))
         !
     end subroutine point_group
@@ -1343,6 +1341,55 @@ contains
         enddo
         !
     end subroutine bond_group
+
+    subroutine     conjugacy_class(sg,opts)
+        !
+        implicit none
+        !
+        class(am_class_symmetry), intent(inout) :: sg
+        type(am_class_options)  , intent(in) :: opts
+        real(dp), allocatable :: rep(:,:,:)
+        real(dp), allocatable :: CT(:,:)
+        character(100) :: flags
+        integer :: i
+        !
+        ! seitz rep
+        if (allocated(sg%T)) then
+            rep = rep_seitz(sg%R,sg%T)
+            flags='seitz'
+        else
+            rep = sg%R
+            flags=''
+        endif
+        !
+        ! determine conjugacy classes for representation
+        sg%cc_identifier = cc_get(rep=rep,flags=flags)
+        !
+        sg%cc%nclasses = maxval(sg%cc_identifier)
+        if (opts%verbosity.ge.1) call am_print('conjugacy classes',sg%cc%nclasses,' ... ')
+        !
+        sg%cc%nelements = cc_nelements(sg%cc_identifier)
+        if (opts%verbosity.ge.1) then
+            write(*,'(5x,a10)',advance='no') 'class'
+            do i = 1, sg%cc%nclasses
+                write(*,'(i5)',advance='no') i
+            enddo
+            write(*,*)
+            !
+            write(*,'(5x,a10)',advance='no') 'elements'
+            do i = 1, sg%cc%nclasses
+                write(*,'(i5)',advance='no') sg%cc%nelements(i)
+            enddo
+            write(*,*)
+        endif
+        !
+        ! cayley table
+!         CT = cayley_table(rep=rep,flags=flags)
+        !
+    end subroutine conjugacy_class
+
+
+
 
     subroutine     stabilizers(bg,sg,v,opts)
         !
@@ -1509,34 +1556,7 @@ contains
         !
     end subroutine name_symmetries
 
-    subroutine     character_table(sg,opts)
-        !
-        implicit none
-        !
-        class(am_class_symmetry), intent(in) :: sg
-        type(am_class_options)  , intent(in) :: opts
-        integer, allocatable :: reg_rep (:,:,:)
-        !
-        if (allocated(sg%T)) then
-            reg_rep = rep_regular(rep=rep_seitz(R=sg%R,T=sg%T),flags='seitz')
-        else
-            reg_rep = rep_regular(rep=sg%R,flags='')
-        endif
-        !
-
-!         cayley_table
-
-
-
-
-
-
-
-        ! WORKING ON THIS...
-        !
-    end subroutine character_table
-
-    function       permutation_map(sg,uc,opts) result(PM)
+    function       action_atom_permutation(sg,uc,opts) result(PM)
         !
         ! PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
         !
@@ -1557,9 +1577,9 @@ contains
             PM(:,i) = matmul(P(:,:,i),[1:uc%natoms])
         enddo
         !
-    end function   permutation_map
+    end function   action_atom_permutation
 
-    subroutine     get_action_table(sg,uc,iopt_fname,opts)
+    subroutine     action_table_get(sg,uc,iopt_fname,opts)
         !
         implicit none
         !
@@ -1576,7 +1596,7 @@ contains
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining action table')
         !
-        PM = permutation_map(sg=sg,uc=uc,opts=opts)
+        PM = action_atom_permutation(sg=sg,uc=uc,opts=opts)
         !
         if (present(iopt_fname)) then 
             fid = 1
@@ -1593,18 +1613,18 @@ contains
                 write(fid,'(i10)',advance='no') i
             enddo
             write(fid,*)
-            ! HEADER / SEPERATOR
-            write(fid,'(5x)',advance='no')
-            write(fid,'(5x)',advance='no')
-            do i = 1, sg%nsyms
-                write(fid,'(a10)',advance='no') ' '//repeat('-',9)
-            enddo
-            write(fid,*)
             ! CLASS IDENTIFIED
             write(fid,'(5x)',advance='no')
             write(fid,'(a5)',advance='no') 'class'
             do i = 1, sg%nsyms
                 write(fid,'(i10)',advance='no') sg%cc_identifier(i)
+            enddo
+            write(fid,*)
+            ! HEADER / SEPERATOR
+            write(fid,'(5x)',advance='no')
+            write(fid,'(5x)',advance='no')
+            do i = 1, sg%nsyms
+                write(fid,'(a10)',advance='no') ' '//repeat('-',9)
             enddo
             write(fid,*)
             ! POINT-SYMMMETRY IDENTIFIED
@@ -1679,7 +1699,7 @@ contains
             enddo
             !
         close(fid)
-    end subroutine get_action_table
+    end subroutine action_table_get
 
     subroutine     create(sg,R,T)
         !
@@ -1745,10 +1765,10 @@ contains
         !
         if (direction.eq.'d') sorted_indices = sorted_indices(sg%nsyms:1:-1)
         !
-        if (allocated(sg%R))                sg%R                = sg%R(:,:,sorted_indices)
-        if (allocated(sg%T))                sg%T                = sg%T(:,sorted_indices)
+        if (allocated(sg%R)) sg%R = sg%R(:,:,sorted_indices)
+        if (allocated(sg%T)) sg%T = sg%T(:,sorted_indices)
         if (allocated(sg%ps_identifier)) sg%ps_identifier = sg%ps_identifier(sorted_indices)
-        if (allocated(sg%cc_identifier))  sg%cc_identifier  = sg%cc_identifier(sorted_indices)
+        if (allocated(sg%cc_identifier)) sg%cc_identifier = sg%cc_identifier(sorted_indices)
         !
     end subroutine sort
 
@@ -1888,6 +1908,18 @@ contains
     ! procedures which operate on representations
     !
 
+    function       apply_conjugation(center_matrix,side_matrix) result(C)
+            !
+            implicit none
+            !
+            real(dp), intent(in) :: side_matrix(:,:)
+            real(dp), intent(in) :: center_matrix(:,:)
+            real(dp) :: C(size(side_matrix,1),size(side_matrix,2))
+            !
+            C = matmul(side_matrix,matmul(center_matrix,inv(side_matrix)))
+            !
+    end function   apply_conjugation
+
     function       cayley_table(rep,flags) result(CT)
         !
         implicit none
@@ -1968,6 +2000,7 @@ contains
         character(*), intent(in) :: flags     ! can be 'seitz', in which case the translational part is reduced to zero
         real(dp), allocatable :: celem(:,:,:) ! conjugate elements
         integer , allocatable :: cc_identifier(:)
+        integer , allocatable :: nelements(:)
         integer  :: i, j, k, n, nclasses
         !
         n = size(rep,3)
@@ -2018,11 +2051,24 @@ contains
             endif
         enddo
         !
-        ! consistency check
+        ! consistency checks
+        ! 1)
         if (any(cc_identifier.eq.0)) then
             call am_print('ERROR','Not every element in the group has been asigned a conjugacy class.',' >>> ')
             stop
         endif
+        ! 2) The number of elements ri in class Ci is a divisor of theorder of the group
+        ! Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. Cambridge, UK?; New York: Cambridge University Press, 2008. p 35.
+        nelements = cc_nelements(cc_identifier)
+        do i = 1, nclasses
+            if (modulo(n,nelements(i)).ne.0) then
+                call am_print('ERROR','Number of elements in class subgroup is not a divisor of the order of the group.')
+                call am_print('class',i)
+                call am_print('elements in class',nelements(i))
+                call am_print('elements in group',n)
+                stop
+            endif
+        enddo
         !
         contains
         subroutine     relabel_based_on_occurances(list)
