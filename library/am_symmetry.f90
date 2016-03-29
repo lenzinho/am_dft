@@ -14,16 +14,16 @@ module am_symmetry
     public :: determine_symmetry
     public :: bond_group
     public :: get_kpoint_compatible_symmetries
-    public :: point_symmetry_convert_to_cartesian
+    public :: ps_frac2cart
 
     type am_class_symmetry 
         integer :: nsyms                  !> number of point symmetries
         real(dp), allocatable :: R(:,:,:) !> symmetry elements (operate on fractional atomic basis)
         real(dp), allocatable :: T(:,:)   !> symmetry elements (operate on fractional atomic basis)
         !
-        integer , allocatable :: ps_identifier(:) ! look at decode_pointsymmetry to understand what each integer corresponds to
-        integer               :: pg_identifier
-        integer , allocatable :: conjugacy_class(:) !> indices assiging each element to a conjugacy class
+        integer , allocatable :: ps_identifier(:) !> indices labeling point symmetries according to their actions (see decode_pointsymmetry)
+        integer               :: pg_identifier    !>
+        integer , allocatable :: cc_identifier(:) !> indices assiging each element to a conjugacy class
     contains
         procedure :: point_group
         procedure :: space_group
@@ -32,12 +32,13 @@ module am_symmetry
         procedure :: sort
         procedure :: create
         !
-        procedure :: tensor_conductivity ! both electrical and thermal
+        procedure :: symmetry_adapted_2nd_order_force_constants
+        procedure :: tensor_conductivity
         procedure :: tensor_thermoelectricity
         procedure :: tensor_elasticity
         procedure :: tensor_pizeoelectricity
         !
-        procedure :: symmetry_adapted_2nd_order_force_constants
+        procedure :: character_table
         procedure :: get_action_table
         procedure :: stabilizers
     end type
@@ -52,7 +53,7 @@ contains
     ! functions which operate on R(3,3) in fractional coordinates
     !
 
-    pure function  point_symmetry_convert_to_cartesian(R_frac,bas) result(R)
+    pure function  ps_frac2cart(R_frac,bas) result(R)
         !
         use am_unit_cell, only : reciprocal_basis
         !
@@ -64,9 +65,9 @@ contains
         !
         R = matmul(bas,matmul(R_frac,reciprocal_basis(bas)))
         !
-    end function   point_symmetry_convert_to_cartesian
+    end function   ps_frac2cart
 
-    pure function  point_symmetry_convert_to_fractional(R,bas) result(R_frac)
+    pure function  ps_cart2frac(R,bas) result(R_frac)
         !
         use am_unit_cell, only : reciprocal_basis
         !
@@ -78,20 +79,21 @@ contains
         !
         R_frac = matmul(reciprocal_basis(bas),matmul(R,bas))
         !
-    end function   point_symmetry_convert_to_fractional
+    end function   ps_cart2frac
 
-    pure function  point_symmetry_trace(R) result(trace)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: R(3,3)
-        real(dp) :: trace
-        !
-        trace = R(1,1)+R(2,2)+R(3,3)
-        !
-    end function   point_symmetry_trace
+    function       apply_conjugation(center_matrix,side_matrix) result(C)
+            !
+            implicit none
+            !
+            real(dp), intent(in) :: side_matrix(:,:)
+            real(dp), intent(in) :: center_matrix(:,:)
+            real(dp) :: C(size(side_matrix,1),size(side_matrix,2))
+            !
+            C = matmul(side_matrix,matmul(center_matrix,inv(side_matrix)))
+            !
+    end function   apply_conjugation
 
-    pure function  point_symmetry_determinant(R) result(determinant)
+    pure function  ps_determinant(R) result(determinant)
         !
         implicit none
         !
@@ -102,9 +104,9 @@ contains
                   & R(1,2)*(R(2,3)*R(3,1)-R(2,1)*R(3,3))+&
                   & R(1,3)*(R(2,1)*R(3,2)-R(2,2)*R(3,1))
         !
-    end function   point_symmetry_determinant
+    end function   ps_determinant
 
-    function       point_symmetry_schoenflies(R) result(ps_identifier)
+    function       ps_schoenflies(R) result(ps_identifier)
         !>
         !> Point symmetries in fractional coordinates so that they are nice integers which can be easily classified.
         !>
@@ -120,8 +122,8 @@ contains
         integer :: ps_identifier
         !
         ! get trace and determinant (fractional)
-        tr  = point_symmetry_trace(R)
-        det = point_symmetry_determinant(R)
+        tr  = trace(R)
+        det = ps_determinant(R)
         !
         ! The Mathematical Theory of Symmetry in Solids: Representation Theory for
         ! Point Groups and Space Groups. 1 edition. Oxford?: New York: Oxford University
@@ -148,47 +150,7 @@ contains
             stop
         endif
         !
-    end function   point_symmetry_schoenflies
-
-    !
-    ! functions which operate on S(4,4) seitz matrix in fractional coordinates
-    !
-    
-    pure function  seitz_multiply(A,B) result(C)
-        !
-        ! in fractional coordinates rotational part of seitz operator is still unitary; it is not, however, an orthogonal matrix
-        ! for which A^-1 = A^T. But that's okay over here. Reduces translational part to within primitive cell.
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: A(4,4)
-        real(dp), intent(in) :: B(4,4)
-        real(dp) :: C(4,4)
-        !
-        C = matmul(A,B)
-        !
-        C(1:3,4) = modulo(C(1:3,4)+tiny,1.0_dp)-tiny
-        !
-    end function   seitz_multiply
-
-    pure function  seitz_make(R,T) result(B)
-        !
-        implicit none
-        !
-        real(dp), intent(in), optional :: R(3,3)
-        real(dp), intent(in), optional :: T(3)
-        real(dp) :: B(4,4)
-        !
-        B      = 0.0_dp
-        B(1,1) = 1.0_dp
-        B(2,2) = 1.0_dp
-        B(3,3) = 1.0_dp
-        B(4,4) = 1.0_dp
-        if (present(R)) B(1:3,1:3) = R
-        if (present(T)) B(1:3,4) = T
-        !
-    end function   seitz_make
-
+    end function   ps_schoenflies
 
     !
     ! functions for determining symmetry-adapted second-order force consants
@@ -252,7 +214,7 @@ contains
                 ! apply transformation
                 !
                 T(j,1:nterms) = pack( transform_2nd_order_force_constants(&
-                    M=M,R=point_symmetry_convert_to_cartesian(R_frac=sg%R(:,:,j),bas=uc%bas),PM=PM(:,j)) ,.true.)
+                    M=M,R=ps_frac2cart(R_frac=sg%R(:,:,j),bas=uc%bas),PM=PM(:,j)) ,.true.)
                 !
             enddo
             ! save an augmented matrix A
@@ -407,7 +369,7 @@ contains
                 ! RM shows how the M has been permuted by the symmetry operation j save the permutation obtained with RM
                 ! as a row-vectors in T(nsyms,nterms)  Nye, J.F. "Physical properties of crystals: their representation
                 ! by tensors and matrices"
-                T(j,1:nterms) = pack( transform_tensor(M=M,R=point_symmetry_convert_to_cartesian(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
+                T(j,1:nterms) = pack( transform_tensor(M=M,R=ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
             enddo
             ! save an augmented matrix A
             A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
@@ -513,7 +475,7 @@ contains
                 ! RM shows how the M has been permuted by the symmetry operation j save the permutation obtained with RM
                 ! as a row-vectors in T(nsyms,nterms)  Nye, J.F. "Physical properties of crystals: their representation
                 ! by tensors and matrices"
-                T(j,1:nterms) = pack( transform_tensor(M=M,R=point_symmetry_convert_to_cartesian(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
+                T(j,1:nterms) = pack( transform_tensor(M=M,R=ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
             enddo
             ! save an augmented matrix A
             A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
@@ -607,7 +569,7 @@ contains
                 ! RM shows how the M has been permuted by the symmetry operation j save the permutation obtained with RM
                 ! as a row-vectors in T(nsyms,nterms)  Nye, J.F. "Physical properties of crystals: their representation
                 ! by tensors and matrices"
-                T(j,1:nterms) = pack( transform_tensor(M=M,R=point_symmetry_convert_to_cartesian(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
+                T(j,1:nterms) = pack( transform_tensor(M=M,R=ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
             enddo
             ! save an augmented matrix A
             A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
@@ -710,7 +672,7 @@ contains
                 ! save the permutation obtained with RM as a row-vectors in T(nsyms,nterms) 
                 ! T(j,1:nterms) = pack( transform_tensor(M=M,R=pg%R(:,:,j)),.true.)
                 ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
-                T(j,1:nterms) = pack( transform_tensor(M=M,R=point_symmetry_convert_to_cartesian(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
+                T(j,1:nterms) = pack( transform_tensor(M=M,R=ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
             enddo
             ! save an augmented matrix A
             A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
@@ -1190,11 +1152,7 @@ contains
         !
         call sg%space_group(uc=uc,opts=opts)
         !
-        call sg%get_action_table(uc=uc,iopt_fname='outfile.action_space_group',opts=opts)
-        !
         call pg%point_group(sg=sg,uc=uc,opts=opts)
-        !
-        call pg%get_action_table(uc=uc,iopt_fname='outfile.action_point_group',opts=opts)
         !
     end subroutine determine_symmetry
 
@@ -1208,9 +1166,7 @@ contains
         type(am_class_unit_cell), intent(in) :: uc ! space groups are tabulated in the litearture for conventional cells, but primitive or arbitrary cell works just as wlel.
         type(am_class_options)  , intent(in) :: opts
         type(am_class_options) :: notalk
-        real(dp), allocatable  :: rep(:,:,:)
         real(dp), allocatable  :: seitz(:,:,:)
-        integer :: i
         !
         notalk=opts
         notalk%verbosity = 0
@@ -1225,16 +1181,22 @@ contains
         call sg%create(R=seitz(1:3,1:3,:),T=seitz(1:3,4,:))
         !
         ! determine conjugacy classes for representation
-        sg%conjugacy_class = get_conjugacy_classes(rep=seitz,opts='seitz',verbosity=opts%verbosity)
+        sg%cc_identifier = cc_get(rep=seitz,flags='seitz')
         !
         ! sort space group symmetries based on parameters
         call sg%sort(sort_parameter=sg%T(1,:),iopt_direction='ascend')
         call sg%sort(sort_parameter=sg%T(2,:),iopt_direction='ascend')
         call sg%sort(sort_parameter=sg%T(3,:),iopt_direction='ascend')
-        call sg%sort(sort_parameter=real(sg%conjugacy_class,dp),iopt_direction='ascend')
+        call sg%sort(sort_parameter=real(sg%cc_identifier,dp),iopt_direction='ascend')
+        !
+        ! get character table
+        call sg%character_table(opts=opts)
         !
         ! name the (im-)proper part of space symmetry
         call sg%name_symmetries(opts=notalk)
+        !
+        ! wrte action table
+        call sg%get_action_table(uc=uc,iopt_fname='outfile.action_space_group',opts=opts)
         !
         ! write to stdout and to file
         if (opts%verbosity.ge.1) call sg%stdout(iopt_uc=uc)
@@ -1254,7 +1216,6 @@ contains
         type(am_class_symmetry) , intent(in) :: sg
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
-        integer , allocatable :: sorted_indices(:)
         real(dp), allocatable :: sort_parameter(:)
         type(am_class_options) :: notalk
         integer :: i
@@ -1269,18 +1230,18 @@ contains
         if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,' ... ')
         !
         ! determine conjugacy classes for representation
-        pg%conjugacy_class = get_conjugacy_classes(rep=pg%R,verbosity=0)
+        pg%cc_identifier = cc_get(rep=pg%R,flags='')
         !
         ! sort point group symmetries based on parameters
         allocate(sort_parameter(pg%nsyms))
-        !
-        do i = 1, pg%nsyms; sort_parameter(i) = point_symmetry_trace(pg%R(:,:,i)); enddo
+        do i = 1, pg%nsyms; sort_parameter(i) = trace(pg%R(:,:,i)); enddo
         call pg%sort(sort_parameter=sort_parameter,iopt_direction='ascend')
-        !
-        do i = 1, pg%nsyms; sort_parameter(i) = point_symmetry_determinant(pg%R(:,:,i)); enddo
+        do i = 1, pg%nsyms; sort_parameter(i) = ps_determinant(pg%R(:,:,i)); enddo
         call pg%sort(sort_parameter=sort_parameter,iopt_direction='ascend')
+        call pg%sort(sort_parameter=real(pg%cc_identifier,dp),iopt_direction='ascend')
         !
-        call pg%sort(sort_parameter=real(pg%conjugacy_class,dp),iopt_direction='ascend')
+        ! get character table
+        call pg%character_table(opts=opts)
         !
         ! name point symmetries
         call pg%name_symmetries(opts=opts)
@@ -1288,6 +1249,9 @@ contains
         ! name point group
         pg%pg_identifier = point_group_schoenflies(pg%ps_identifier)
         if (opts%verbosity.ge.1) call am_print('point group',decode_pointgroup(pg%pg_identifier),' ... ')
+        !
+        ! write action table
+        call pg%get_action_table(uc=uc,iopt_fname='outfile.action_point_group',opts=opts)
         !
         ! write to stdout and to file
         if (opts%verbosity.ge.1) call pg%stdout(iopt_uc=uc)
@@ -1495,7 +1459,7 @@ contains
         write(fid,*)
         !
         do i = 1, sg%nsyms
-            R = point_symmetry_convert_to_cartesian(R_frac=sg%R(:,:,i),bas=iopt_uc%bas)
+            R = ps_frac2cart(R_frac=sg%R(:,:,i),bas=iopt_uc%bas)
             write(fid,fmt1,advance='no') i, (( trim(print_pretty(R(j,k))), j = 1,3) , k = 1,3)
             if (allocated(sg%T)) then
                 T = matmul(iopt_uc%bas,sg%T(:,i))
@@ -1527,7 +1491,7 @@ contains
         allocate(sg%ps_identifier(sg%nsyms))
         !
         do i = 1, sg%nsyms
-            sg%ps_identifier(i) = point_symmetry_schoenflies(sg%R(:,:,i))
+            sg%ps_identifier(i) = ps_schoenflies(sg%R(:,:,i))
         enddo
         !
         if (opts%verbosity.ge.1) then
@@ -1545,120 +1509,32 @@ contains
         !
     end subroutine name_symmetries
 
-    subroutine     create(sg,R,T)
+    subroutine     character_table(sg,opts)
         !
         implicit none
         !
-        class(am_class_symmetry), intent(inout) :: sg
-        real(dp), intent(in), optional :: R(:,:,:)
-        real(dp), intent(in), optional :: T(:,:)
-        integer  :: i
+        class(am_class_symmetry), intent(in) :: sg
+        type(am_class_options)  , intent(in) :: opts
+        integer, allocatable :: reg_rep (:,:,:)
         !
-        if (present(T).and.present(R)) then
-        if (size(R,3).ne.size(T,2)) then
-            call am_print('ERROR','R and T dimensions do not match.')
-            call am_print('shape(R)',shape(R))
-            call am_print('shape(T)',shape(T))
-            stop
-        endif
+        if (allocated(sg%T)) then
+            reg_rep = rep_regular(rep=rep_seitz(R=sg%R,T=sg%T),flags='seitz')
+        else
+            reg_rep = rep_regular(rep=sg%R,flags='')
         endif
         !
-        if (present(R)) then
-            sg%nsyms = size(R,3)
-            if (allocated(sg%R)) deallocate(sg%R)
-            allocate(sg%R(3,3,sg%nsyms))
-            do i = 1, sg%nsyms
-                sg%R(:,:,i) = R(:,:,i)
-            enddo
-        endif
-        !
-        if (present(T)) then
-            sg%nsyms = size(T,2)
-            if (allocated(sg%T)) deallocate(sg%T)
-            allocate(sg%T(3,sg%nsyms))
-            do i = 1, sg%nsyms
-                sg%T(:,i) = T(:,i)
-            enddo
-        endif
-        !
-    end subroutine create
 
-    !
-    ! group theoretical procedures which operate on sg
-    !
+!         cayley_table
 
-    function       permutation_rep(sg,uc,opts) result(P)
-       !
-       ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
-       !
-       implicit none
-       !
-       type(am_class_symmetry) , intent(in) :: sg
-       type(am_class_unit_cell), intent(in) :: uc
-       type(am_class_options)  , intent(in) :: opts
-       integer, allocatable :: P(:,:,:)
-       real(dp) :: tau_rot(3)
-       integer :: i,j,k
-       logical :: found
-       !
-       allocate(P(uc%natoms,uc%natoms,sg%nsyms))
-       P = 0
-       !
-       do i = 1, sg%nsyms
-           ! determine the permutations of atomic indicies which results from each space symmetry operation
-           do j = 1,uc%natoms
-                found = .false.
-                ! apply rotational component
-                tau_rot = matmul(sg%R(:,:,i),uc%tau(:,j))
-                ! apply translational component
-                if (allocated(sg%T)) tau_rot = tau_rot + sg%T(:,i)
-                ! reduce rotated+translated point to unit cell
-                tau_rot = modulo(tau_rot+opts%sym_prec,1.0_dp)-opts%sym_prec
-                ! find matching atom
-                do k = 1, uc%natoms
-                    if (all(abs(tau_rot-uc%tau(:,k)).lt.opts%sym_prec)) then
-                    P(j,k,i) = 1
-                    found = .true.
-                    exit ! break loop
-                    endif
-                enddo
-                if (found.eq..false.) then
-                    call am_print('ERROR','Unable to find matching atom.',' >>> ')
-                    call am_print('tau (all atoms)',transpose(uc%tau))
-                    call am_print('tau',uc%tau(:,j))
-                    call am_print('R',sg%R(:,:,i))
-                    call am_print('T',sg%T(:,i))
-                    call am_print('tau_rot',tau_rot)
-                    stop
-                endif
-           enddo
-       enddo
-       !
-       ! check that each column and row of the P sums to 1; i.e. P(:,:,i) is orthonormal for all i.
-       !
-       do i = 1,sg%nsyms
-       do j = 1,uc%natoms
-           !
-           if (sum(P(:,j,i)).ne.1) then
-               call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
-               call am_print('i',i)
-               call am_print_sparse('spy(P_i)',P(:,:,i))
-               call am_print('P',P(:,:,i))
-               stop
-           endif
-           !
-           if (sum(P(j,:,i)).ne.1) then
-               call am_print('ERROR','Permutation matrix has a row which does not sum to 1.')
-               call am_print('i',i)
-               call am_print_sparse('spy(P_i)',P(:,:,i))
-               call am_print('P',P(:,:,i))
-               stop
-           endif
-           !
-       enddo
-       enddo
-       !
-    end function   permutation_rep
+
+
+
+
+
+
+        ! WORKING ON THIS...
+        !
+    end subroutine character_table
 
     function       permutation_map(sg,uc,opts) result(PM)
         !
@@ -1673,7 +1549,7 @@ contains
         integer, allocatable :: PM(:,:)
         integer :: i
         !
-        P = permutation_rep(sg=sg,uc=uc,opts=opts)
+        P = rep_permutation(sg=sg,uc=uc,opts=opts)
         !
         allocate(PM(uc%natoms,sg%nsyms))
         PM = 0
@@ -1691,7 +1567,6 @@ contains
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options)  , intent(in) :: opts
         character(*), optional  , intent(in) :: iopt_fname
-        integer, allocatable :: P(:,:,:)
         integer, allocatable :: PM(:,:)
         integer :: fid
         character(10) :: buffer
@@ -1729,7 +1604,7 @@ contains
             write(fid,'(5x)',advance='no')
             write(fid,'(a5)',advance='no') 'class'
             do i = 1, sg%nsyms
-                write(fid,'(i10)',advance='no') sg%conjugacy_class(i)
+                write(fid,'(i10)',advance='no') sg%cc_identifier(i)
             enddo
             write(fid,*)
             ! POINT-SYMMMETRY IDENTIFIED
@@ -1806,6 +1681,44 @@ contains
         close(fid)
     end subroutine get_action_table
 
+    subroutine     create(sg,R,T)
+        !
+        implicit none
+        !
+        class(am_class_symmetry), intent(inout) :: sg
+        real(dp), intent(in), optional :: R(:,:,:)
+        real(dp), intent(in), optional :: T(:,:)
+        integer  :: i
+        !
+        if (present(T).and.present(R)) then
+        if (size(R,3).ne.size(T,2)) then
+            call am_print('ERROR','R and T dimensions do not match.')
+            call am_print('shape(R)',shape(R))
+            call am_print('shape(T)',shape(T))
+            stop
+        endif
+        endif
+        !
+        if (present(R)) then
+            sg%nsyms = size(R,3)
+            if (allocated(sg%R)) deallocate(sg%R)
+            allocate(sg%R(3,3,sg%nsyms))
+            do i = 1, sg%nsyms
+                sg%R(:,:,i) = R(:,:,i)
+            enddo
+        endif
+        !
+        if (present(T)) then
+            sg%nsyms = size(T,2)
+            if (allocated(sg%T)) deallocate(sg%T)
+            allocate(sg%T(3,sg%nsyms))
+            do i = 1, sg%nsyms
+                sg%T(:,i) = T(:,i)
+            enddo
+        endif
+        !
+    end subroutine create
+
     subroutine     sort(sg,sort_parameter,iopt_direction)
         !
         ! iopt_direction = 'ascend'/'descend', only first character is important
@@ -1835,105 +1748,295 @@ contains
         if (allocated(sg%R))                sg%R                = sg%R(:,:,sorted_indices)
         if (allocated(sg%T))                sg%T                = sg%T(:,sorted_indices)
         if (allocated(sg%ps_identifier)) sg%ps_identifier = sg%ps_identifier(sorted_indices)
-        if (allocated(sg%conjugacy_class))  sg%conjugacy_class  = sg%conjugacy_class(sorted_indices)
+        if (allocated(sg%cc_identifier))  sg%cc_identifier  = sg%cc_identifier(sorted_indices)
         !
     end subroutine sort
+
+    !
+    ! procedures which create representations
+    !
+
+    function       rep_seitz(R,T) result(seitz)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: R(:,:,:)
+        real(dp), intent(in) :: T(:,:)
+        real(dp), allocatable :: seitz(:,:,:)
+        integer :: i, n
+        !
+        n = size(R,3)
+        !
+        allocate(seitz(4,4,n))
+        seitz = 0
+        seitz(4,4,:)=1
+        do i = 1, n
+            seitz(1:3,1:3,i)=R(:,:,i)
+            seitz(1:3,4,i)  =T(:,i)
+        enddo
+        !
+    end function   rep_seitz
+
+    function       rep_permutation(sg,uc,opts) result(rep)
+       !
+       ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
+       !
+       implicit none
+       !
+       type(am_class_symmetry) , intent(in) :: sg
+       type(am_class_unit_cell), intent(in) :: uc
+       type(am_class_options)  , intent(in) :: opts
+       integer, allocatable :: rep(:,:,:)
+       real(dp) :: tau_rot(3)
+       integer :: i,j,k
+       logical :: found
+       !
+       allocate(rep(uc%natoms,uc%natoms,sg%nsyms))
+       rep = 0
+       !
+       do i = 1, sg%nsyms
+           ! determine the permutations of atomic indicies which results from each space symmetry operation
+           do j = 1,uc%natoms
+                found = .false.
+                ! apply rotational component
+                tau_rot = matmul(sg%R(:,:,i),uc%tau(:,j))
+                ! apply translational component
+                if (allocated(sg%T)) tau_rot = tau_rot + sg%T(:,i)
+                ! reduce rotated+translated point to unit cell
+                tau_rot = modulo(tau_rot+opts%sym_prec,1.0_dp)-opts%sym_prec
+                ! find matching atom
+                do k = 1, uc%natoms
+                    if (all(abs(tau_rot-uc%tau(:,k)).lt.opts%sym_prec)) then
+                    rep(j,k,i) = 1
+                    found = .true.
+                    exit ! break loop
+                    endif
+                enddo
+                if (found.eq..false.) then
+                    call am_print('ERROR','Unable to find matching atom.',' >>> ')
+                    call am_print('tau (all atoms)',transpose(uc%tau))
+                    call am_print('tau',uc%tau(:,j))
+                    call am_print('R',sg%R(:,:,i))
+                    call am_print('T',sg%T(:,i))
+                    call am_print('tau_rot',tau_rot)
+                    stop
+                endif
+           enddo
+       enddo
+       !
+       ! check that each column and row of the rep sums to 1; i.e. rep(:,:,i) is orthonormal for all i.
+       !
+       do i = 1,sg%nsyms
+       do j = 1,uc%natoms
+           !
+           if (sum(rep(:,j,i)).ne.1) then
+               call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
+               call am_print('i',i)
+               call am_print_sparse('spy(P_i)',rep(:,:,i))
+               call am_print('rep',rep(:,:,i))
+               stop
+           endif
+           !
+           if (sum(rep(j,:,i)).ne.1) then
+               call am_print('ERROR','Permutation matrix has a row which does not sum to 1.')
+               call am_print('i',i)
+               call am_print_sparse('spy(P_i)',rep(:,:,i))
+               call am_print('rep',rep(:,:,i))
+               stop
+           endif
+           !
+       enddo
+       enddo
+       !
+    end function   rep_permutation
+
+    function       rep_regular(rep,flags) result(reg_rep)
+        !>
+        !> Generates regular representation for each operator
+        !>
+        !> For details, see page 73-74, especially Eqs. 4.18 Symmetry and Condensed Matter Physics: A Computational
+        !> Approach. 1 edition. Cambridge, UK; New York: Cambridge  University Press, 2008.
+        !>
+        !> Requires identity to be the first element of group. regular representation is built from multiplication table
+        !> by making sure that the identity appears along the diagonal. this sometimes causes the row to be permuted with
+        !> respect to the columns. so, first find the permutation necessary to bring the identities to the center and
+        !> then build regular representations from this new multiplication table.
+        !>
+        implicit none
+        !
+        real(dp), intent(in) :: rep(:,:,:)
+        character(*), intent(in) :: flags ! can be nothing flags='' at call
+        integer, allocatable :: reg_rep(:,:,:)
+        integer, allocatable :: CT(:,:)
+        integer  :: n
+        integer  :: i
+        !
+        ! obtain cayley table
+        CT = cayley_table(rep=rep,flags=flags//'reg')
+        !
+        ! construct regular representation from cayley table
+        n = size(rep,3)
+        allocate(reg_rep(n,n,n))
+        reg_rep = 0
+        do i = 1, n
+            where (CT.eq.i) reg_rep(:,:,i) = 1
+        enddo
+        !
+    end function   rep_regular
 
     !
     ! procedures which operate on representations
     !
 
-    function       get_conjugacy_classes(rep,opts,verbosity) result(conjugacy_class)
+    function       cayley_table(rep,flags) result(CT)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: rep(:,:,:) ! list of 2D reps...
+        character(*), intent(in) :: flags ! 'reg' sorts rows to put identity along diagonals (useful for constructing regular representation), 'seitz' reduces translational part to primitive cell
+        integer, allocatable :: CT(:,:)
+        real(dp) :: W(size(rep,1),size(rep,2))
+        integer, allocatable :: sortmat(:,:)
+        integer, allocatable :: indices(:)
+        integer  :: n
+        integer  :: i, j
+        !
+        ! before doing anything, confirm that first element is the identity
+        if (any(abs(rep(:,:,1)-eye(size(rep,1))).gt.tiny)) then
+            call am_print('ERROR','First element of rep is not the identity.')
+            call am_print('first element of rep',rep(:,:,1))
+            stop
+        endif
+        !
+        n=size(rep,3)
+        !
+        allocate(CT(n,n))
+        !
+        do i = 1, n
+        do j = 1, n
+            !
+            W = matmul(rep(:,:,i),rep(:,:,j))
+            !
+            ! if 'seitz' flagged, reduce translational part to primitive cell 
+            if (index(flags,'seitz').ne.0) then
+                W(1:3,4) = modulo(W(1:3,4)+tiny,1.0_dp)-tiny
+            endif
+            !
+            CT(i,j) = get_matching_element_index_in_list(list=rep,elem=W)
+        enddo
+        enddo
+        !
+        ! if 'reg' flagged, re-order rows so that identities are along diagonal
+        if (index(flags,'reg').ne.0) then
+            !
+            allocate(sortmat(n,n))
+            allocate(indices(n))
+            indices = [1:n]
+            sortmat = 0
+            where (CT.eq.1) sortmat(:,:) = 1
+            indices = matmul(sortmat(:,:),indices)
+            CT = CT(indices,:)
+        endif
+        !
+        contains
+            function     get_matching_element_index_in_list(list,elem) result(i)
+                !
+                implicit none
+                real(dp), intent(in) :: list(:,:,:)
+                real(dp), intent(in) :: elem(:,:)
+                integer :: i
+                !
+                do i = 1,size(list,3)
+                    if (all(abs(list(:,:,i)-elem).lt.tiny)) return
+                enddo
+            end function get_matching_element_index_in_list
+        !
+    end function   cayley_table
+
+    !
+    ! functions which operate on conjugacy classes
+    !
+
+    function       cc_get(rep,flags) result(cc_identifier)
         !
         ! AX = XB conjugacy
         ! if rep and rep are conjugate pairs for some other element X in the group, then they are in the same class
         !
         implicit none
         !
-        real(dp), intent(in) :: rep(:,:,:) ! list of 2D reps...
-        character(*), intent(in), optional :: opts ! can be "seitz", in which case the translational part is reduced to zero
-        integer , intent(in) :: verbosity
-        real(dp), allocatable :: conjugate_elements(:,:,:)
-        integer , allocatable :: conjugacy_class(:)
-        integer , allocatable :: conjugacy_classes_relabled(:)
-        integer  :: i, j, k, n
-        !
-        !
-        if (verbosity.ge.1) call am_print_title('Determining conjugacy classes')
+        real(dp), intent(in) :: rep(:,:,:)    ! list of matrices representing group reps
+        character(*), intent(in) :: flags     ! can be 'seitz', in which case the translational part is reduced to zero
+        real(dp), allocatable :: celem(:,:,:) ! conjugate elements
+        integer , allocatable :: cc_identifier(:)
+        integer  :: i, j, k, n, nclasses
         !
         n = size(rep,3)
         !
         ! allocate space for conjugacy class
-        !
-        allocate(conjugacy_class(n))
-        conjugacy_class = 0
+        allocate(cc_identifier(n))
+        cc_identifier = 0
         !
         ! allocate space for conjugate elements
+        allocate(celem(size(rep,1),size(rep,2),n))
         !
-        allocate(conjugate_elements(size(rep,1),size(rep,2),n))
-        !
-        ! begin determination of conjugacy classes
-        !
+        ! determine conjugacy classes
         k = 0
         do i = 1, n
-        if (conjugacy_class(i).eq.0) then
+        if (cc_identifier(i).eq.0) then
             !
+            ! conjugate each element with all other group elements
             k=k+1
             do j = 1, n
-                conjugate_elements(:,:,j) = apply_conjugation( center_matrix=rep(:,:,i), side_matrix=rep(:,:,j) )
-                if (index(opts,'seitz').ne.0) conjugate_elements(1:3,4,j) = modulo(conjugate_elements(1:3,4,j)+tiny,1.0_dp)-tiny
+                celem(:,:,j) = apply_conjugation( center_matrix=rep(:,:,i), side_matrix=rep(:,:,j) )
+                if (index(flags,'seitz').ne.0) then
+                    celem(1:3,4,j) = modulo(celem(1:3,4,j)+tiny,1.0_dp)-tiny
+                endif
             enddo
             !
+            ! for each subgroup element created by conjugation find the corresponding index of the element in the group
+            ! in order to save the class identifier number
             do j = 1, n
-            if (conjugacy_class(j).eq.0) then
-            if (issubset( group=conjugate_elements, element=rep(:,:,j) )) then
-                conjugacy_class(j) = k
+            if (cc_identifier(j).eq.0) then
+            if (issubset( group=celem, element=rep(:,:,j) )) then
+                cc_identifier(j) = k
             endif
             endif
             enddo
             !
         endif
         enddo
+        nclasses = k
         !
-        conjugacy_classes_relabled = relabel_based_on_occurances(conjugacy_class)
-        conjugacy_class = conjugacy_classes_relabled
+        ! relabel classes based on number of elements in each class
+        call relabel_based_on_occurances(cc_identifier)
         !
         ! make sure identity is in the first class
-        ! THIS PROCEDURE ONLY WORKS IF IDENTITY IS IN A CLASS BY ITSELF
-        ! AND IF THE IDENTITY IS A DIAGONAL MATRIX
         do i = 1, n
             if (all(abs(rep(:,:,i)-eye(n)).lt.tiny)) then
-                where (conjugacy_class.eq.1) conjugacy_class = conjugacy_class(i)
-                conjugacy_class(i)=1
+                where (cc_identifier.eq.1) cc_identifier = cc_identifier(i)
+                cc_identifier(i)=1
             endif
         enddo
         !
-        if (verbosity.ge.1) then
-            call am_print('conjugacy classes',k,' ... ')
-            write(*,'(" ... ",a)') 'elements in each class'
-            do i = 1, k
-                write(*,'(5x,"class",i5," elements",i5)') i, count(i.eq.conjugacy_class)
-            enddo
-        endif
-        !
-        if (any(conjugacy_class.eq.0)) then
+        ! consistency check
+        if (any(cc_identifier.eq.0)) then
             call am_print('ERROR','Not every element in the group has been asigned a conjugacy class.',' >>> ')
             stop
         endif
         !
         contains
-        function      relabel_based_on_occurances(list) result(A_relabeled)
+        subroutine     relabel_based_on_occurances(list)
             !
             use am_rank_and_sort
             !
             implicit none
             !
-            integer , intent(in)  :: list(:)
+            integer , intent(inout) :: list(:)
             integer , allocatable :: A_sorted(:)
             integer , allocatable :: occurances(:) 
             integer , allocatable :: reverse_sort(:)
             integer , allocatable :: sorted_indices(:)
-            integer , allocatable :: A_relabeled(:)
+            integer , allocatable :: list_relabled(:)
             integer :: n, i, j
             !
             n = size(list,1)
@@ -1950,38 +2053,44 @@ contains
             call rank((1+maxval(list))*occurances+list,sorted_indices)
             A_sorted = list(sorted_indices)
             !
-            allocate(A_relabeled(n))
-            A_relabeled = 0
+            allocate(list_relabled(n))
+            list_relabled = 0
             !
             j=1
-            A_relabeled(1) = 1
+            list_relabled(1) = 1
             do i = 2, n
                 if (A_sorted(i).ne.A_sorted(i-1)) then
                     j=j+1
                 endif
-                A_relabeled(i) = j
+                list_relabled(i) = j
             enddo
             !
             ! return everything to the original order at call
             !
             allocate(reverse_sort(n))
             reverse_sort(sorted_indices)=[1:n]
-            A_relabeled=A_relabeled(reverse_sort)
-            !
-        end function  relabel_based_on_occurances
-    end function   get_conjugacy_classes
+            list=list_relabled(reverse_sort)
+        end subroutine relabel_based_on_occurances
+    end function   cc_get
 
-    function       apply_conjugation(center_matrix,side_matrix) result(C)
-            !
-            implicit none
-            !
-            real(dp), intent(in) :: side_matrix(:,:)
-            real(dp), intent(in) :: center_matrix(:,:)
-            real(dp) :: C(size(side_matrix,1),size(side_matrix,2))
-            !
-            C = matmul(side_matrix,matmul(center_matrix,inv(side_matrix)))
-            !
-    end function   apply_conjugation
+    function       cc_nelements(cc_identifier) result(nelements)
+        !
+        implicit none
+        !
+        integer, intent(in)  :: cc_identifier(:)
+        integer, allocatable :: nelements(:)
+        integer :: n
+        integer :: i
+        !
+        n = size(unique(cc_identifier))
+        !
+        allocate(nelements(n))
+        !
+        do i = 1,n
+            nelements(i) = count(i.eq.cc_identifier)
+        enddo
+    end function   cc_nelements
+
     !
     ! functions which operate on kpoints
     !
