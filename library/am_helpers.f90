@@ -38,6 +38,10 @@
         module procedure issubset_vec, issubset_mat
     end interface ! issubset
     !
+    interface diag
+        module procedure diag1, diag2
+    end interface ! diag
+    !
     contains
 
     !
@@ -48,7 +52,7 @@
 
 #include "am_helpers_unique.inc"
 
-#include "am_matlab_inspired.inc"
+#include "am_helpers_matlab.inc"
 
     !
     ! CONVERT DATA TYPES
@@ -538,7 +542,7 @@
         endif
         !
     end function  are_equal
-
+ 
     pure function are_different(a)
         !
         ! are all elements of a different from each other?

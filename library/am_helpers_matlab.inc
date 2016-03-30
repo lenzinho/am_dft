@@ -144,3 +144,85 @@
         enddo
         !
     end function  linspace_integer
+
+    pure function primes(nprimes)
+	    !
+    	! naive approach to generating the first n prime numbers
+    	!
+		implicit none
+		!
+		integer, intent(in)  :: nprimes
+		integer, allocatable :: primes(:) ! array that will hold the primes
+		integer :: at, found, i
+		logical :: is_prime
+		!
+		allocate (primes(nprimes))
+		!
+		primes(1) = 2
+		at = 2
+		found = 1
+		do
+		    is_prime = .true. ! assume prime
+		    do i = 1, found
+		        if (modulo(at,primes(i)).eq.0) then ! if divisible by any other element
+		            is_prime = .false.               ! in the array, then not prime.
+		            at = at + 1
+		            continue
+		        end if
+		    end do
+		    found = found + 1
+		    primes(found) = at
+		    at = at + 1
+		    if (found == nprimes) then ! stop when all primes are found
+		        exit
+		    endif
+		end do
+		!
+	end function  primes
+
+    pure function diag1(M) result(d)
+        !
+        ! get diagonal elements of matrix M
+        implicit none
+        !
+        real(dp), intent(in)  :: M(:,:)
+        real(dp), allocatable :: d(:)
+        integer :: n
+        integer :: i
+        !
+        n = min(size(M,1),size(M,2))
+        !
+        allocate(d(n))
+        !
+        do i = 1, n
+            d(i) = M(i,i)
+        enddo
+        !
+    end function  diag1
+
+    pure function diag2(d) result(M)
+        !
+        ! get diagonal elements of matrix M
+        implicit none
+        !
+        real(dp), intent(in)  :: d(:)
+        real(dp), allocatable :: M(:,:)
+        integer :: n
+        integer :: i
+        !
+        n = size(d,1)
+        !
+        allocate(M(n,n))
+        M=0
+        !
+        do i = 1, n
+            M(i,i) = d(i)
+        enddo
+        !
+    end function  diag2
+
+
+
+
+
+

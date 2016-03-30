@@ -17,16 +17,6 @@ module am_symmetry
     public :: ps_frac2cart
     !
 
-    type am_class_conjugacy_class
-        !
-        integer :: nclasses
-        integer, allocatable :: nelements(:) ! number of elements in each class
-        integer, allocatable :: sym_identifier(:,:) ! 
-        integer, allocatable :: classrep_identifier(:) ! class representative
-        !
-
-    end type
-
     type am_class_symmetry
         integer :: nsyms                  !> number of point symmetries
         real(dp), allocatable :: R(:,:,:) !> symmetry elements (operate on fractional atomic basis)
@@ -35,8 +25,6 @@ module am_symmetry
         integer , allocatable :: ps_identifier(:) !> indices labeling point symmetries according to their actions (see decode_pointsymmetry)
         integer               :: pg_identifier    !>
         integer , allocatable :: cc_identifier(:) !> indices assiging each element to a conjugacy class
-        !
-        type(am_class_conjugacy_class) :: cc
         !
     contains
         procedure :: point_group
@@ -52,7 +40,7 @@ module am_symmetry
         procedure :: tensor_elasticity
         procedure :: tensor_pizeoelectricity
         !
-        procedure :: conjugacy_class
+        procedure :: determine_character_table
         procedure :: action_table_get
         procedure :: stabilizers
     end type
@@ -1182,8 +1170,8 @@ contains
         ! create space group instance
         call sg%create(R=seitz(1:3,1:3,:),T=seitz(1:3,4,:))
         !
-        ! get conjugacy classes
-        call sg%conjugacy_class(opts=opts)
+        ! determine conjugacy classes for representation
+        sg%cc_identifier = cc_get(rep=seitz,flags='seitz')
         !
         ! sort space group symmetries based on parameters
         call sg%sort(sort_parameter=sg%T(1,:),iopt_direction='ascend')
@@ -1229,9 +1217,7 @@ contains
         if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,' ... ')
         !
         ! determine conjugacy classes for representation
-        
-        ! get conjugacy classes
-        call pg%conjugacy_class(opts=opts)
+        pg%cc_identifier = cc_get(rep=pg%R,flags='')
         !
         ! sort point group symmetries based on parameters
         allocate(sort_parameter(pg%nsyms))
@@ -1247,6 +1233,9 @@ contains
         ! name point group
         pg%pg_identifier = point_group_schoenflies(pg%ps_identifier)
         if (opts%verbosity.ge.1) call am_print('point group',decode_pointgroup(pg%pg_identifier),' ... ')
+        !
+        ! determine character table
+        call pg%determine_character_table(opts=opts)
         !
         ! write action table
         call pg%action_table_get(uc=uc,iopt_fname='outfile.action_point_group',opts=opts)
@@ -1342,7 +1331,9 @@ contains
         !
     end subroutine bond_group
 
-    subroutine     conjugacy_class(sg,opts)
+    subroutine     determine_character_table(sg,opts)
+        !
+        use am_rank_and_sort
         !
         implicit none
         !
@@ -1351,7 +1342,21 @@ contains
         real(dp), allocatable :: rep(:,:,:)
         real(dp), allocatable :: CT(:,:)
         character(100) :: flags
-        integer :: i
+        integer :: i, j, k
+        !
+        integer :: nsyms
+        integer :: nclasses
+        integer :: nirreps  ! just to make things clearer; always equal to nclasses
+        integer, allocatable :: nelements(:) ! number of elements in each class
+        integer, allocatable :: member(:,:) ! members(nclass,maxval(nelements))
+        integer, allocatable :: H(:,:,:) ! class multiplication coefficients
+        integer, allocatable :: CCT(:,:) ! class constant table which becomes character table (can be complex!)
+        integer, allocatable :: irrep_dim(:) ! rep dimensions
+        integer, allocatable :: indices(:)
+        real(dp) :: wrk
+
+        !
+        if (opts%verbosity.ge.1) call am_print_title('Determining character table')
         !
         ! seitz rep
         if (allocated(sg%T)) then
@@ -1362,31 +1367,238 @@ contains
             flags=''
         endif
         !
-        ! determine conjugacy classes for representation
+        nsyms = size(rep,3)
+        !
+        ! identify which class symmetry belongs to
+        ! cc_identifier(nsyms)
         sg%cc_identifier = cc_get(rep=rep,flags=flags)
         !
-        sg%cc%nclasses = maxval(sg%cc_identifier)
-        if (opts%verbosity.ge.1) call am_print('conjugacy classes',sg%cc%nclasses,' ... ')
+        ! get number of classes
+        nclasses = maxval(sg%cc_identifier)
+        ! if (opts%verbosity.ge.1) call am_print('conjugacy classes',nclasses,' ... ')
         !
-        sg%cc%nelements = cc_nelements(sg%cc_identifier)
+        ! get number of elements in each class
+        ! nelements(nclasses)
+        nelements = cc_nelements(sg%cc_identifier)
+        !
+        ! record indicies of each member element for each class (use the first member of class as class representative)
+        ! members(nclass,maxval(nelements)) 
+        member = cc_member(cc_identifier=sg%cc_identifier,nelements=nelements)
+        ! call am_print('class memebers',member,' ... ')
+        !
+        ! construct cayley table for quick access to symmetry multiplication
+        CT = cayley_table(rep=rep,flags=flags)
+        !
+        ! get class mutliplication coefficients
+        allocate(H(nclasses,nclasses,nclasses))
+        do i = 1,nclasses
+        do j = 1,nclasses
+        do k = 1,nclasses
+            H(j,k,i) = count( pack( CT(member(i,1:nelements(i)),member(j,1:nelements(j))) , .true. ) .eq. member(k,1) )
+        enddo
+        enddo
+        enddo
+        !
+        ! determine eigenvector which simultaneously diagonalize i Hjk(:,:) matrices
+        ! CCT(nirreps,nclasses)
+        CCT = cc_constant_table(real(H,dp))
+        !
+        ! get dimensions of representations using Eq. 4.53, p 91 of Wooten
+        ! Note: The absolute square is the result of the conjugate multiplication
+        nirreps = nclasses
+        allocate(irrep_dim(nirreps))
+        !
+        do i = 1, nirreps
+            ! sum on classes
+            wrk = 0
+            do j = 1, nclasses
+                wrk = wrk + abs(CCT(i,j))**2/real(nelements(j),dp)
+            enddo
+            ! compute irrep dimension
+            irrep_dim(i) = nint((nsyms/wrk)**0.5)
+        enddo
+        !
+        ! convert class constant table into character table
+        do i = 1, nirreps
+        do j = 1, nclasses
+            CCT(i,j) = nint(irrep_dim(i)/real(nelements(j),dp)*CCT(i,j))
+        enddo
+        enddo
+        !
+        ! sort irreps based on dimension
+        allocate(indices(nirreps))
+        indices = [1:nirreps]
+        call rank(irrep_dim,indices)
+        irrep_dim = irrep_dim(indices)
+        do j = 1,nclasses
+            CCT(:,j) = CCT(indices,j)
+        enddo
+        !
+        ! write class properties to stdout
+        !
         if (opts%verbosity.ge.1) then
+            !
+            write(*,'(a5,a)') ' ... ', 'character table'
+            !
             write(*,'(5x,a10)',advance='no') 'class'
-            do i = 1, sg%cc%nclasses
+            do i = 1, nclasses
                 write(*,'(i5)',advance='no') i
             enddo
             write(*,*)
             !
             write(*,'(5x,a10)',advance='no') 'elements'
-            do i = 1, sg%cc%nclasses
-                write(*,'(i5)',advance='no') sg%cc%nelements(i)
+            do i = 1, nclasses
+                write(*,'(i5)',advance='no') nelements(i)
             enddo
             write(*,*)
+            !
+            write(*,'(5x,a10)',advance='no') 'class rep'
+            do i = 1, nclasses
+                write(*,'(i5)',advance='no') member(i,1)
+            enddo
+            write(*,*)
+            !
+            write(*,'(5x,a10)',advance='no') repeat('-',10)
+            do i = 1, nclasses
+                write(*,'(a5)',advance='no') repeat('-',5)
+            enddo
+            write(*,*)
+            !
+            do i = 1, nirreps
+                write(*,'(5x,a6,i4)',advance='no') 'irrep', i
+                do j = 1, nclasses
+                    write(*,'(i5)',advance='no') CCT(i,j)
+                enddo
+                write(*,*)
+            enddo
+            !
         endif
+        ! check that the number of elements ri in class Ci is a divisor of theorder of the group
+        ! Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. Cambridge, UK?; New York: Cambridge University Press, 2008. p 35.
+        do i = 1, nclasses
+            if (modulo(nsyms,nelements(i)).ne.0) then
+                call am_print('ERROR','Number of elements in class subgroup is not a divisor of the order of the group.')
+                call am_print('class',i)
+                call am_print('elements in class',nelements(i))
+                call am_print('elements in group',nsyms)
+                stop
+            endif
+        enddo
         !
-        ! cayley table
-!         CT = cayley_table(rep=rep,flags=flags)
+        ! cc_constant_table
+
         !
-    end subroutine conjugacy_class
+
+        contains
+        function       cc_nelements(cc_identifier) result(nelements)
+            !
+            implicit none
+            !
+            integer, intent(in)  :: cc_identifier(:)
+            integer, allocatable :: nelements(:)
+            integer :: n
+            integer :: i
+            !
+            n = size(unique(cc_identifier))
+            !
+            allocate(nelements(n))
+            !
+            do i = 1,n
+                nelements(i) = count(i.eq.cc_identifier)
+            enddo
+        end function   cc_nelements
+
+        function       cc_member(cc_identifier,nelements) result(member)
+            !
+            implicit none
+            !
+            integer, allocatable, intent(in) :: cc_identifier(:)
+            integer, allocatable, intent(in) :: nelements(:) ! number of elements in each class
+            integer, allocatable :: member(:,:) ! members(nclass,maxval(nelements))
+            integer :: i, j, k
+            integer :: nsyms
+            integer :: nclasses
+            !
+            nsyms = size(cc_identifier,1)
+            nclasses = maxval(cc_identifier)
+            !
+            allocate(member(nclasses,maxval(nelements)))
+            member = 0
+            do i = 1, nclasses
+                k=0
+                do j = 1, nsyms
+                if (cc_identifier(j).eq.i) then
+                    k=k+1
+                    member(i,k) = j
+                endif
+                enddo
+            enddo
+        end function   cc_member
+
+        function       cc_constant_table(A) result(D)
+            !
+            ! determines characters which simultaneously diagonalizes i square matrices A(:,:,i)
+            ! only possible if A(:,:,i) commute with each other. Assumes all dimensions of A are the same.
+            !
+            implicit none
+            !
+            real(dp), intent(in) :: A(:,:,:)
+            real(dp), allocatable :: V(:,:) ! these two should match in this particular situation (character table determination from class multiplication coefficients)
+            integer , allocatable :: D(:,:) ! these two should match in this particular situation (character table determination from class multiplication coefficients)
+            real(dp), allocatable :: M(:,:)
+            integer , allocatable :: p(:)
+            integer , allocatable :: small(:)
+            integer :: n, i
+            !
+            n = size(A,3)
+            p = primes(n)
+            !
+            ! matrix pencil based on sqrt(primes)
+            ! all this does is lift the degeneracy of eigenvalues if necessary
+            allocate(M(n,n))
+            M = 0
+            do i = 1,n
+                M = M + p(i)**0.5*A(:,:,i)
+            enddo
+            !
+            ! get left and right eigenvectors: transpose(VL)*A*VR = D
+            call am_dgeev(A=M,VR=V)
+            !
+            ! check that matrices have been diagonalized properly and save eigenvalues
+            allocate(d(n,n))
+            do i = 1, n
+                !
+                M = matmul(inv(V),matmul(A(:,:,i),V))
+                ! tiny may be too small a criteria here... should probably use a value which scales with the size of the matrix.
+                if (any( abs(diag(diag(M))-M).gt. (tiny*n**2) )) then
+                    call am_print('ERROR','Unable to perform simultaneous matrix diagonalization. Check that whether they commute.')
+                    call am_print('M',M)
+                    call am_print('diag(M)',diag(M))
+                    call am_print('diag(diag(M))',diag(diag(M)))
+                    call am_print('abs(diag(diag(M))-M)',abs(diag(diag(M))-M))
+                    call am_print('sum of error',sum(abs(diag(diag(M))-M)))
+                    stop
+                endif
+                !
+                ! save diagonal elements as row vectors
+                D(:,i) = nint(diag( M ))
+                !
+            enddo
+            !
+            ! normalize each row of V to the smallest value in that row
+            allocate(small(n))
+            small = minloc( abs(V) , dim=1, mask = abs(V).gt.tiny )
+            do i = 1, n
+                V(:,i)=V(:,i)/V(small(i),i)
+            enddo
+            V = nint(transpose(V))
+            !
+            ! at this point V and D should be identical. The elements are to within +/- sign.
+            ! Return D which is more robust than V. 
+            !
+        end function   cc_constant_table
+
+    end subroutine determine_character_table
 
 
 
@@ -2000,7 +2212,6 @@ contains
         character(*), intent(in) :: flags     ! can be 'seitz', in which case the translational part is reduced to zero
         real(dp), allocatable :: celem(:,:,:) ! conjugate elements
         integer , allocatable :: cc_identifier(:)
-        integer , allocatable :: nelements(:)
         integer  :: i, j, k, n, nclasses
         !
         n = size(rep,3)
@@ -2057,18 +2268,6 @@ contains
             call am_print('ERROR','Not every element in the group has been asigned a conjugacy class.',' >>> ')
             stop
         endif
-        ! 2) The number of elements ri in class Ci is a divisor of theorder of the group
-        ! Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. Cambridge, UK?; New York: Cambridge University Press, 2008. p 35.
-        nelements = cc_nelements(cc_identifier)
-        do i = 1, nclasses
-            if (modulo(n,nelements(i)).ne.0) then
-                call am_print('ERROR','Number of elements in class subgroup is not a divisor of the order of the group.')
-                call am_print('class',i)
-                call am_print('elements in class',nelements(i))
-                call am_print('elements in group',n)
-                stop
-            endif
-        enddo
         !
         contains
         subroutine     relabel_based_on_occurances(list)
@@ -2118,24 +2317,6 @@ contains
             list=list_relabled(reverse_sort)
         end subroutine relabel_based_on_occurances
     end function   cc_get
-
-    function       cc_nelements(cc_identifier) result(nelements)
-        !
-        implicit none
-        !
-        integer, intent(in)  :: cc_identifier(:)
-        integer, allocatable :: nelements(:)
-        integer :: n
-        integer :: i
-        !
-        n = size(unique(cc_identifier))
-        !
-        allocate(nelements(n))
-        !
-        do i = 1,n
-            nelements(i) = count(i.eq.cc_identifier)
-        enddo
-    end function   cc_nelements
 
     !
     ! functions which operate on kpoints
