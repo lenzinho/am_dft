@@ -22,7 +22,7 @@
         real(dp) :: bas(3,3) !> column vectors a(1:3,i), a(1:3,j), a(1:3,k)
         integer  :: natoms   !> number of atoms
         integer  :: nspecies !> number of unique atomic species
-        character(len=:), allocatable :: symbs(:) !> symbs(nspecies) symbols of unique atomic species
+        character(len=:), allocatable :: symb(:) !> symb(nspecies) symbols of unique atomic species
         real(dp), allocatable :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates 
         integer , allocatable :: atype(:) !> index indentifying the atomic species for each atom
     contains
@@ -857,13 +857,13 @@
             !
             def(i)%bas = bas_def(:,:,i)
             !
-            allocate(character(maximum_buffer_size) :: def(i)%symbs(uc%nspecies))
+            allocate(character(maximum_buffer_size) :: def(i)%symb(uc%nspecies))
             allocate(def(i)%tau(3,uc%natoms))
             allocate(def(i)%atype(uc%natoms))
             def(i)%natoms   = uc%natoms
             def(i)%nspecies = uc%nspecies
             do j = 1,uc%nspecies
-            def(i)%symbs(j) = uc%symbs(j)
+            def(i)%symb(j) = uc%symb(j)
             enddo
             do j = 1,uc%natoms
             def(i)%tau(:,j) = uc%tau(:,j)
@@ -889,7 +889,7 @@
             bas=uc%bas,&
             natoms=uc%natoms,&
             nspecies=uc%nspecies,&
-            symbs=uc%symbs,&
+            symb=uc%symb,&
             tau=uc%tau,&
             atype=uc%atype,&
             iopt_filename=opts%poscar,&
@@ -916,7 +916,7 @@
             call am_print('ERROR','Number of atoms < 1.', ' >>> ')
             stop
         endif
-        if (len(trim(uc%symbs(1))).eq.0) then
+        if (len(trim(uc%symb(1))).eq.0) then
             call am_print('ERROR','Atomic symbols not defined.', ' >>> ')
             stop
         endif
@@ -925,14 +925,14 @@
             bas=uc%bas,&
             natoms=uc%natoms,&
             nspecies=uc%nspecies,&
-            symbs=uc%symbs,&
+            symb=uc%symb,&
             tau=uc%tau,&
             atype=uc%atype,&
             iopt_filename=file_output_poscar)
         !
     end subroutine output_poscar
 
-    subroutine     reduce_to_primitive(prim,uc,opts)
+    subroutine     reduce_to_primitive(prim,uc,oopts_uc2prim,opts)
         !
         use am_rank_and_sort, only : rank
         !
@@ -941,34 +941,25 @@
         class(am_class_unit_cell), intent(inout) :: prim
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
-        !
+        integer , allocatable, optional :: oopts_uc2prim(:) ! lists the indices of the uc atoms which are in prim (note that their coordinates may not match)
         integer , allocatable :: indices(:)
         real(dp), allocatable :: T(:,:)
-        integer :: nTs
+        real(dp) :: uc2prim(3,3)
         real(dp) :: tau_ref(3)
-        integer :: i, j, k 
+        integer  :: nTs
+        integer  :: i, j, k 
         !
         if ( opts%verbosity .ge. 1) call am_print_title('Reducing to primitive cell')
         !
-
         !
-        ! 1) get basis translations which could serve as primitive cell vectors
-        !
-
+        ! get basis translations which could serve as primitive cell vectors
         T = translations_from_basis(tau=uc%tau,atype=uc%atype,iopt_include=trim('prim'),iopt_sym_prec=opts%sym_prec)
+        T = matmul(uc%bas,T)
         nTs = size(T,2)
         if (opts%verbosity.ge.1) call am_print("possible primitive lattice translations found",nTs," ... ")
-
         !
-        ! 2) convert T to cartesian
         !
-
-        T = matmul(uc%bas,T)
-
-        !
-        ! 4) sort primitive vectors based on magnitude (smallest last)
-        !
-
+        ! sort primitive vectors based on magnitude (smallest last)
         allocate(indices(nTs))
         call rank(norm2(T,1),indices)
         T=T(1:3, indices(nTs:1:-1) )
@@ -978,14 +969,12 @@
                 Btitle='cartesian' ,B=transpose(T),&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
-        
         !
-        ! 5) select three primitive vectors which yield the smallest cell volume
         !
-
-        ! a) first vector: smallest vector
+        ! select three primitive vectors which yield the smallest cell volume by ...
+        ! ... selecting smallest vector as first vector
         i = nTs
-        ! b) second vector: smallest pritimive vector which is noncollinear to the first (non-zero cross product)
+        ! ... selecting smallest pritimive vector which is noncollinear to the first (non-zero cross product) as second vector
         do j = nTs,1,-1
             if ( any(cross_product(T(1:3,i),T(1:3,j)) .gt. tiny) ) exit
         enddo
@@ -993,7 +982,7 @@
             call am_print('ERROR','No pair of non-collinear lattice vectors found',' >>> ')
             stop
         endif
-        ! c) third vector: smallest primitive vector which produces a non-zero cell volume
+        ! ... selecting smallest primitive vector which produces a non-zero cell volume as third vector
         do k = nTs,1,-1
             if ( abs(primitive_volume(bas=T(1:3,[i,j,k]),skip_volume_check=.true.)) .gt. tiny ) exit
         enddo
@@ -1001,38 +990,39 @@
             call am_print('ERROR','No primitive basis found',' >>> ')
             stop
         endif
-        !
         prim%bas = T(1:3,[i,j,k])
-        if (opts%verbosity.ge.1) call am_print("volume",primitive_volume(prim%bas)," ... ")
+        ! output to stdout
         if (opts%verbosity.ge.1) then
+            call am_print("volume",primitive_volume(prim%bas)," ... ")
             call am_print_two_matrices_side_by_side(name='original basis',&
                 Atitle='fractional (primitive)',A=matmul(reciprocal_basis(prim%bas),uc%bas),&
                 Btitle='cartesian'             ,B=uc%bas,&
                 iopt_emph=' ... ',iopt_teaser=.true.)
-        endif
-        if (opts%verbosity.ge.1) then
             call am_print_two_matrices_side_by_side(name='primitive basis',&
-                Atitle='fractional (original)',A=matmul(reciprocal_basis(uc%bas),prim%bas),&
-                Btitle='cartesian'            ,B=prim%bas,&
+                Atitle='fractional (original)' ,A=matmul(reciprocal_basis(uc%bas),prim%bas),&
+                Btitle='cartesian'             ,B=prim%bas,&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
-        
         !
-        ! 6) reduce atoms to primitive cell
         !
-
+        ! reduce atoms to primitive cell by ...
         if (opts%verbosity.ge.1) call am_print('number of atoms in original cell',uc%natoms,' ... ')
-        ! a) set first atom at the origin
+        ! ... setting first atom at the origin
         allocate(prim%tau(3,uc%natoms))
         tau_ref = uc%tau(1:3,1)
         do i = 1, uc%natoms
             prim%tau(1:3,i) = uc%tau(1:3,i) - tau_ref
         enddo
-        ! b) reduce to primitive cell
+        ! ... converting all atoms to primitive fractional coordinates
+        uc2prim = matmul(reciprocal_basis(prim%bas),uc%bas)
+        do i = 1, uc%natoms
+            prim%tau(1:3,i) = matmul(uc2prim, prim%tau(1:3,i))
+        enddo
+        ! ... reducing all atoms to primitive cell
         do i = 1,uc%natoms
             prim%tau(1:3,i) = modulo(prim%tau(1:3,i)+opts%sym_prec,1.0_dp)-opts%sym_prec
         enddo
-        ! c) get unique values
+        ! ... getting unique values
         prim%tau = unique(prim%tau,opts%sym_prec)
         prim%natoms = size(prim%tau,2)
         if (opts%verbosity.ge.1) call am_print('number of atoms in primitive cell',prim%natoms,' ... ')
@@ -1042,14 +1032,12 @@
                 Btitle='cartesian'             ,B=transpose(matmul(prim%bas,prim%tau)),&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
-        
         !
-        ! 7) transfer atomic species by comparing atomic coordinates
         !
-        
-        !
-        ! ENCOUNTERING PROBLEM HERE WITH TAU_REF SHIFT. NOT TAKEN INTO ACCOUNT IN THIS LAST STEP. 
-        ! NEED TO APPLY MODULO AFTER SHIFT STILL.
+        ! transfer atomic species by comparing atomic coordinates
+        if (present(oopts_uc2prim)) then 
+            allocate(oopts_uc2prim(prim%natoms))
+        endif
         allocate(prim%atype(prim%natoms))
         do i = 1, prim%natoms
             prim%atype(i) = 0
@@ -1057,6 +1045,13 @@
                 if ( all(abs(prim%tau(1:3,i)-modulo(uc%tau(1:3,j)-tau_ref+opts%sym_prec,1.0_dp)+opts%sym_prec).lt.opts%sym_prec) ) then
                     prim%atype(i) = uc%atype(j)
                     exit search_for_atom
+                    ! 
+                    ! create list which shows which atoms have been transfered to the primitive cell
+                    !
+                    if (present(oopts_uc2prim)) then
+                        oopts_uc2prim(i) = j
+                    endif
+                    !
                 endif
             enddo search_for_atom
             if (prim%atype(i).eq.0) then
@@ -1070,13 +1065,11 @@
                 stop
             endif
         enddo
-
         !
         ! 8) transfer other stuff
         !
-
-        allocate(character(500)::prim%symbs(uc%nspecies))
-        prim%symbs = uc%symbs
+        allocate(character(500)::prim%symb(uc%nspecies))
+        prim%symb = uc%symb
         prim%nspecies = uc%nspecies
         !
     end subroutine reduce_to_primitive
@@ -1172,8 +1165,8 @@
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
         ! transfer other stuff
-        allocate(character(500)::sc%symbs(uc%nspecies))
-        sc%symbs = uc%symbs
+        allocate(character(500)::sc%symb(uc%nspecies))
+        sc%symb = uc%symb
         sc%nspecies = uc%nspecies
         !
     end subroutine expand_to_supercell

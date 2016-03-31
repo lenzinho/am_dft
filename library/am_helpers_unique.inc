@@ -1,3 +1,4 @@
+
     pure function unique_matrices_double(A,iopt_tiny) result(B)
         !> returns unique matrices of A(:,:,i) within numerical precision
         implicit none
