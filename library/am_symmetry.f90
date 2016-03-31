@@ -35,10 +35,10 @@ module am_symmetry
         procedure :: create
         !
         procedure :: symmetry_adapted_2nd_order_force_constants
-        procedure :: tensor_conductivity
-        procedure :: tensor_thermoelectricity
-        procedure :: tensor_elasticity
-        procedure :: tensor_pizeoelectricity
+        procedure :: symmetry_adapted_conducitvity
+        procedure :: symmetry_adapted_thermoelectricity
+        procedure :: symmetry_adapted_elasticity
+        procedure :: symmetry_adapted_pizeoelectricity
         !
         procedure :: determine_character_table
         procedure :: action_table_get
@@ -313,7 +313,7 @@ contains
     ! functions which operate on tensors or make symmetry-adapted tensors
     !
 
-    subroutine     tensor_conductivity(pg,uc,opts)
+    subroutine     symmetry_adapted_conducitvity(pg,uc,opts)
         !
         class(am_class_symmetry), intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
@@ -412,9 +412,9 @@ contains
         call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
             is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
         !
-    end subroutine tensor_conductivity
+    end subroutine symmetry_adapted_conducitvity
 
-    subroutine     tensor_thermoelectricity(pg,uc,opts)
+    subroutine     symmetry_adapted_thermoelectricity(pg,uc,opts)
         !
         ! Onsager’s Principle requires that the electric resistivity and thermal conductivity tensors be symmetric, but
         ! this does not hold for the Seebeck, Peltier (thermoelectric) coefficients which relate two different flows.
@@ -505,9 +505,9 @@ contains
         call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
             is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
         !
-    end subroutine tensor_thermoelectricity
+    end subroutine symmetry_adapted_thermoelectricity
 
-    subroutine     tensor_pizeoelectricity(pg,uc,opts)
+    subroutine     symmetry_adapted_pizeoelectricity(pg,uc,opts)
         !
         ! Thus piezoelectricity transforms as a polar third rank tensor. d'_imn = a_ij a_mk a_nl d_jkl. In general there
         ! are 33 = 27 tensor components, but because the stress tensor is symmetric (Xij = Xji), only 18 of the
@@ -613,9 +613,9 @@ contains
         call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
             is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
         !
-    end subroutine tensor_pizeoelectricity
+    end subroutine symmetry_adapted_pizeoelectricity
 
-    subroutine     tensor_elasticity(pg,uc,opts)
+    subroutine     symmetry_adapted_elasticity(pg,uc,opts)
         !
         class(am_class_symmetry), intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
@@ -725,7 +725,7 @@ contains
         call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
             is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
         !
-    end subroutine tensor_elasticity
+    end subroutine symmetry_adapted_elasticity
 
     pure function  transform_tensor_first_rank(M,R)  result(RM)
         !
@@ -1182,8 +1182,11 @@ contains
         ! name the (im-)proper part of space symmetry
         call sg%name_symmetries(opts=notalk)
         !
-        ! wrte action table
+        ! write action table
         call sg%action_table_get(uc=uc,iopt_fname='outfile.action_space_group',opts=opts)
+        !
+        ! get character table
+        call sg%determine_character_table(opts=opts)
         !
         ! write to stdout and to file
         ! if (opts%verbosity.ge.1) call sg%stdout(iopt_uc=uc)
@@ -1237,8 +1240,10 @@ contains
         ! determine character table
         call pg%determine_character_table(opts=opts)
         !
-        ! write action table
-        call pg%action_table_get(uc=uc,iopt_fname='outfile.action_point_group',opts=opts)
+        ! write action table 
+        ! currently not working for nonsymorphic space groups. (i.e. those which necessairly have a translational component)
+        ! actually it may just not be possible to do this for such a group because permutations linking atoms simply do not exist if only the rotational part is considered. the translational part is essential. an example is TiSe2.
+        ! call pg%action_table_get(uc=uc,iopt_fname='outfile.action_point_group',opts=opts)
         !
         ! write to stdout and to file
         ! if (opts%verbosity.ge.1) call pg%stdout(iopt_uc=uc)
@@ -1383,7 +1388,7 @@ contains
         !
         ! record indicies of each member element for each class (use the first member of class as class representative)
         ! members(nclass,maxval(nelements)) 
-        member = cc_member(cc_identifier=sg%cc_identifier,nelements=nelements)
+        member = cc_member(sg%cc_identifier)
         ! call am_print('class memebers',member,' ... ')
         !
         ! construct cayley table for quick access to symmetry multiplication
@@ -1438,8 +1443,6 @@ contains
         !
         if (opts%verbosity.ge.1) then
             !
-            write(*,'(a5,a)') ' ... ', 'character table'
-            !
             write(*,'(5x,a10)',advance='no') 'class'
             do i = 1, nclasses
                 write(*,'(i5)',advance='no') i
@@ -1485,10 +1488,6 @@ contains
             endif
         enddo
         !
-        ! cc_constant_table
-
-        !
-
         contains
         function       cc_nelements(cc_identifier) result(nelements)
             !
@@ -1496,41 +1495,44 @@ contains
             !
             integer, intent(in)  :: cc_identifier(:)
             integer, allocatable :: nelements(:)
-            integer :: n
+            integer :: nclasses
             integer :: i
             !
-            n = size(unique(cc_identifier))
+            nclasses = maxval(cc_identifier)
             !
-            allocate(nelements(n))
+            allocate(nelements(nclasses))
             !
-            do i = 1,n
+            do i = 1, nclasses
                 nelements(i) = count(i.eq.cc_identifier)
             enddo
         end function   cc_nelements
 
-        function       cc_member(cc_identifier,nelements) result(member)
+        function       cc_member(cc_identifier) result(member)
             !
             implicit none
             !
             integer, allocatable, intent(in) :: cc_identifier(:)
-            integer, allocatable, intent(in) :: nelements(:) ! number of elements in each class
+            integer, allocatable :: nelements(:) ! number of elements in each class
             integer, allocatable :: member(:,:) ! members(nclass,maxval(nelements))
             integer :: i, j, k
             integer :: nsyms
             integer :: nclasses
             !
             nsyms = size(cc_identifier,1)
+            !
             nclasses = maxval(cc_identifier)
+            !
+            nelements = cc_nelements(cc_identifier)
             !
             allocate(member(nclasses,maxval(nelements)))
             member = 0
             do i = 1, nclasses
                 k=0
                 do j = 1, nsyms
-                if (cc_identifier(j).eq.i) then
-                    k=k+1
-                    member(i,k) = j
-                endif
+                    if (cc_identifier(j).eq.i) then
+                        k=k+1
+                        member(i,k) = j
+                    endif
                 enddo
             enddo
         end function   cc_member
@@ -1549,6 +1551,8 @@ contains
             integer , allocatable :: p(:)
             integer , allocatable :: small(:)
             integer :: n, i
+            !
+            call am_print('WARNING','The procedure used to determine the character table does not allow for complex character')
             !
             n = size(A,3)
             p = primes(n)
@@ -2049,7 +2053,7 @@ contains
                     call am_print('tau (all atoms)',transpose(uc%tau))
                     call am_print('tau',uc%tau(:,j))
                     call am_print('R',sg%R(:,:,i))
-                    call am_print('T',sg%T(:,i))
+                    if (allocated(sg%T)) call am_print('T',sg%T(:,i))
                     call am_print('tau_rot',tau_rot)
                     stop
                 endif
@@ -2121,15 +2125,15 @@ contains
     !
 
     function       apply_conjugation(center_matrix,side_matrix) result(C)
-            !
-            implicit none
-            !
-            real(dp), intent(in) :: side_matrix(:,:)
-            real(dp), intent(in) :: center_matrix(:,:)
-            real(dp) :: C(size(side_matrix,1),size(side_matrix,2))
-            !
-            C = matmul(side_matrix,matmul(center_matrix,inv(side_matrix)))
-            !
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: side_matrix(:,:)
+        real(dp), intent(in) :: center_matrix(:,:)
+        real(dp) :: C(size(side_matrix,1),size(side_matrix,2))
+        !
+        C = matmul(side_matrix,matmul(center_matrix,inv(side_matrix)))
+        !
     end function   apply_conjugation
 
     function       cayley_table(rep,flags) result(CT)

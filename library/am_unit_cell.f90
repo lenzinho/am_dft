@@ -1298,7 +1298,8 @@
                 & iopt_R=R(1:3,1:3,i),iopt_T=T_shifted,iopt_sym_prec=opts%sym_prec)) then
                 m = m + 1
                 wrkspace(1:3,1:3,m)=R(1:3,1:3,i)
-                wrkspace(1:3,4,m)=T(1:3,j)
+                wrkspace(1:3,4,m)=T_shifted
+                !wrkspace(1:3,4,m)=T(1:3,j)
                 wrkspace(4,4,m)=1.0_dp
             endif
         enddo
