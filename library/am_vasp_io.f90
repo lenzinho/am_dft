@@ -591,25 +591,25 @@ module am_vasp_io
         !
     end subroutine read_eigenval
 
-    subroutine     read_poscar(bas,natoms,nspecies,symbs,tau,atype,iopt_filename,iopt_verbosity)
+    subroutine     read_poscar(bas,natoms,nspecies,symb,tau,atype,iopt_filename,iopt_verbosity)
         ! Reads poscar into variables performing basic checks on the way. Call it like this:
         !
         !    bas(3,3) column vectors a(1:3,i), a(1:3,j), a(1:3,kpt)
         !    natoms number of atoms
         !    nspecies number of unique atomic species
-        !    symbs(nspecies) list of atomic symbols
+        !    symb(nspecies) list of atomic symbols
         !    natoms_per_species(natoms) number of atoms per species
         !    tau(3,natoms) fractional atomic coordinates
         !    atype(natoms) type atom
         !
-        !    call read_poscar( bas,natoms,nspecies,natoms_per_species,symbs,tau,atype )
+        !    call read_poscar( bas,natoms,nspecies,natoms_per_species,symb,tau,atype )
         !
         implicit none
         ! subroutine i/o
         real(dp), intent(out) :: bas(3,3) ! column vectors a(1:3,i), a(1:3,j), a(1:3,kpt)
         integer,intent(out) :: natoms
         integer,intent(out) :: nspecies
-        character(len=:), allocatable, intent(out) :: symbs(:) ! 1 symb per species
+        character(len=:), allocatable, intent(out) :: symb(:) ! 1 symb per species
         integer , allocatable :: natoms_per_species(:) ! number of atoms per species
         real(dp), allocatable, intent(out) :: tau(:,:) ! atomic coordinates tau_read(3,natoms) in fractional
         integer,allocatable, intent(out) :: atype(:) ! type of atom tau_read(natoms)
@@ -683,11 +683,11 @@ module am_vasp_io
             recbas = recbas/vol
             ! (LINE 6) V  N
             read(unit=fid,fmt='(a)') buffer
-            ! strslplit => allocate internally, character(500)::symbs(j)
-            symbs = strsplit(buffer,delimiter=' ')
-            nspecies = size(symbs)
+            ! strslplit => allocate internally, character(500)::symb(j)
+            symb = strsplit(buffer,delimiter=' ')
+            nspecies = size(symb)
             if (verbosity.ge.1) call am_print( "number of unique atomic species", nspecies, " ... ")
-            if (verbosity.ge.1) write(*,'(" ... ","atomic species =",100a3)') ( symbs(i)(1:2), i = 1, nspecies)
+            if (verbosity.ge.1) write(*,'(" ... ","atomic species =",100a3)') ( symb(i)(1:2), i = 1, nspecies)
             ! (LINE 6) 1  1
             allocate(natoms_per_species(nspecies))
             read(fid,*) natoms_per_species
@@ -765,7 +765,7 @@ module am_vasp_io
                     do j = 1, natoms_per_species(i)
                         !
                         m = m + 1
-                        write(*,'(5x,a5,a3,3f13.8)') int2char(m), symbs(atype(m)), tau(1:3,m)
+                        write(*,'(5x,a5,a3,3f13.8)') int2char(m), symb(atype(m)), tau(1:3,m)
                         !
                     enddo
                 enddo
@@ -774,7 +774,7 @@ module am_vasp_io
         close(fid)
     end subroutine read_poscar
 
-    subroutine     write_poscar(bas,natoms,nspecies,symbs,tau,atype,iopt_filename)
+    subroutine     write_poscar(bas,natoms,nspecies,symb,tau,atype,iopt_filename)
         !>
         !> Write poscar based on structure data.
         !>
@@ -783,7 +783,7 @@ module am_vasp_io
         real(dp), intent(in) :: bas(3,3) ! column vectors a(1:3,i), a(1:3,j), a(1:3,kpt)
         integer , intent(in) :: natoms
         integer , intent(in) :: nspecies
-        character(len=*), intent(in) :: symbs(:) ! 1 symb per species
+        character(len=*), intent(in) :: symb(:) ! 1 symb per species
         real(dp), intent(in) :: tau(:,:) ! atomic coordinates tau_read(3,natoms) in fractional
         integer , intent(in) :: atype(:) ! type of atom tau_read(natoms)
         ! file i/o
@@ -817,7 +817,7 @@ module am_vasp_io
             enddo
             ! (LINE 6) V  N
             do i = 1, nspecies
-            write(unit=fid,fmt='(x,a,x)',advance='no') trim(symbs(i))
+            write(unit=fid,fmt='(x,a,x)',advance='no') trim(symb(i))
             enddo
             write(unit=fid,fmt=*)
             ! (LINE 7) 1  1

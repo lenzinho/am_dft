@@ -219,10 +219,51 @@
             M(i,i) = d(i)
         enddo
         !
-    end function  diag2
+    end function  diag2 
 
+    pure function kron(A,B) result(C)
+        ! kronecker product
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:)
+        real(dp), intent(in) :: B(:,:)
+        real(dp), allocatable :: C(:,:)
+        integer :: Am, An, Bm, Bn, i, j
+        !
+        Am = size(A,1)
+        An = size(A,2)
+        Bm = size(B,1)
+        Bn = size(B,2)
+        !
+        allocate(C(Am*Bm,An*Bn))
+        !
+        do i = 1,Am
+        do j = 1,An
+        C( [1:Bm]+Bm*(i-1), [1:Bn]+Bn*(j-1) ) = A(i,j)*B
+        enddo
+        enddo
+    end function  kron
 
-
-
-
+    pure function kron_pow(A,n) result(C)
+        ! kronecker power
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:)
+        integer , intent(in) :: n
+        real(dp), allocatable :: Cin(:,:)
+        real(dp), allocatable :: C(:,:)
+        integer :: i
+        !
+        allocate(C,source=A)
+        !
+        ! if n = 1, C = A^1 
+        ! if n = 2, C = A^2 
+        ! etc... 
+        do i = 1, (n-1)
+            Cin = kron(C,A)
+            deallocate(C)
+            allocate(C,source=Cin)
+        enddo
+        !
+    end function  kron_pow
 

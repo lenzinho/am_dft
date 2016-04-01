@@ -45,10 +45,6 @@ module am_symmetry
         procedure :: stabilizers
     end type
 
-    interface transform_tensor
-        module procedure transform_tensor_first_rank, transform_tensor_second_rank, transform_tensor_third_rank, transform_tensor_fourth_rank
-    end interface ! transform_tensor
-
 contains
 
     !
@@ -148,17 +144,26 @@ contains
 
     subroutine     symmetry_adapted_2nd_order_force_constants(sg,uc,opts)
         !
-        use am_progress_bar
+        use am_rank_and_sort
         !
         class(am_class_symmetry), intent(in) :: sg
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
         !
-        real(dp) :: M(3,3,uc%natoms,uc%natoms)      !> IMPORTANT: M is the original tensor before the permutation (shape of tensor is very important!)
-        real(dp) :: RM(3,3,uc%natoms,uc%natoms)     !> rotated/permuted matrix M
+        integer  :: npairs
+        real(dp) :: metric(3,3)
+        type(am_class_unit_cell) :: prim
+        type(am_class_options) :: notalk
+        real(dp), allocatable  :: d(:)
+        integer , allocatable  :: p(:,:)
+        integer , allocatable  :: uc2prim(:)
+        integer , allocatable  :: indices(:)
+        real(dp) :: v(3)
+        !
+        real(dp), allocatable :: M(:,:,:,:)         !> IMPORTANT: M is the original tensor before the permutation (shape of tensor is very important!)
+        integer , allocatable :: PM(:,:)            !> PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
         integer  :: nterms                          !> nterms the number of terms
         integer  :: nsyms                           !> nsyms number of symmetry elements
-        integer , allocatable :: PM(:,:)            !> PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
         real(dp), allocatable :: M1d(:)             !> M1d(nterms) an array which is used to build the matrix M
         real(dp), allocatable :: T(:,:)             !> T(nsyms,nterms) permutation matrx containing rows vectors describing how M is rotated by a point symmetry R
         real(dp), allocatable :: A(:,:)             !> A(nsyms*nterms,2*nterms) augmented matrix equation
@@ -167,15 +172,73 @@ contains
         logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
         logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
         logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
+        logical , allocatable :: mask(:)            !> to speed up the symmetry determination process
         integer :: i, j, k, l, n
         integer :: nequations
         integer :: rank_of_T
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining symmetry-adapted 2nd order force constants')
         !
+        call am_print('total number of atoms',uc%natoms,' ... ')
+        !
+        ! get atoms in primitive cell
+        notalk = opts 
+        notalk%verbosity = 0
+        call prim%reduce_to_primitive(uc=uc,oopts_uc2prim=uc2prim,opts=notalk)
+        call am_print('number of primitive cell',prim%natoms,' ... ')
+        !
+        npairs = uc%natoms*prim%natoms
+        call am_print('number of pairs formed with primitive cell atoms',npairs,' ... ')
+        !
+        ! get distances between atoms in primitive cell and in unit cell
+        allocate(d(npairs)) ! distances
+        allocate(p(2,npairs)) ! pairs
+        k=0
+        do n = 1, prim%natoms
+            i = uc2prim(n)
+            do j = 1, uc%natoms
+                k=k+1
+                ! get distance between atoms (length of bond)
+                v = matmul(uc%bas,uc%tau(:,i)-uc%tau(:,j))
+                d(k) = norm2(v)
+                ! pair indices
+                p(1,k) = i
+                p(2,k) = j
+            enddo
+        enddo
+        !
+        ! sort based on distance
+        allocate(indices(npairs))
+        call rank(d,indices)
+        d=d(indices)
+        p(1,:)=p(1,indices)
+        p(2,:)=p(2,indices)
+        !
+        ! write to stdout
+        if (opts%verbosity.ge.1) then
+            write(*,'(a5,a10,a10,a10)') ' ... ', 'pairs', 'distance'
+            write(*,'(5x,a10,a10,a10)') repeat('-',9), repeat('-',9)
+            do k = 1, npairs
+                if (d(k).gt.tiny) then
+                if (d(k).gt.d(k-1)) then
+                    write(*,'(5x,a5,a5,f10.5,i10)') trim(uc%symb(uc%atype(p(1,k)))), trim(uc%symb(uc%atype(p(2,k)))), d(k) 
+                endif
+                endif
+            enddo
+        endif
+        !
+        ! now begin the symmetry determination 
+        ! determine force constants for all bonds connecting primitive atoms to atoms within a user-specified real-space cutoff distance
+        !
+        ! permutation map shows how symmetry operations map what atoms to what... 
         PM = action_atom_permutation(sg=sg,uc=uc,opts=opts)
+        call am_print('PM',PM)
+        !
+        stop
         !
         nsyms = size(sg%R,3)
+        !
+        allocate(M(3,3,prim%natoms,uc%natoms))
         nterms = product(shape(M))
         !
         allocate(M1d(nterms))
@@ -185,38 +248,36 @@ contains
         A = 0
         nequations = 0
         !
-        ! apply point symmetries
-        !
-        !$OMP PARALLEL PRIVATE(i,j,M,M1d,T) SHARED(A,uc,sg,PM,nequations)
-        !$OMP DO
-        do i = 1,nterms
-            write(*,*) i/real(nterms)
-            !
-            M1d = 0
-            M1d(i) = 1
-            M = reshape(M1d,shape(M))
-            do j = 1, nsyms
-                !
-                ! each point symmetry corresponds to nterms possible equations among terms
-                !
-                nequations = nequations + nterms
-                !
-                ! apply transformation
-                !
-                T(j,1:nterms) = pack( transform_2nd_order_force_constants(&
-                    M=M,R=ps_frac2cart(R_frac=sg%R(:,:,j),bas=uc%bas),PM=PM(:,j)) ,.true.)
-                !
-            enddo
-            ! save an augmented matrix A
-            A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
-            A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(2-1)) = 0.0_dp
-            A([1:nsyms]+nsyms*(i-1),         i+nterms*(2-1)) = 1.0_dp
-        enddo
-        !$OMP END DO
-        !$OMP END PARALLEL
-        !
-        ! reduce to row echlon form
-        call rref(A)
+!         !$OMP PARALLEL PRIVATE(i,j,M,M1d,T) SHARED(A,uc,sg,PM,nequations)
+!         !$OMP DO
+!         do i = 1,nterms
+!             write(*,*) i/real(nterms)
+!             !
+!             M1d = 0
+!             M1d(i) = 1
+!             M = reshape(M1d,shape(M))
+!             do j = 1, nsyms
+!                 !
+!                 ! each point symmetry corresponds to nterms possible equations among terms
+!                 !
+!                 nequations = nequations + nterms
+!                 !
+!                 ! apply transformation
+!                 !
+!                 T(j,1:nterms) = pack( transform_2nd_order_force_constants(&
+!                     M=M,R=ps_frac2cart(R_frac=sg%R(:,:,j),bas=uc%bas),PM=PM(:,j)) ,.true.)
+!                 !
+!             enddo
+!             ! save an augmented matrix A
+!             A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
+!             A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(2-1)) = 0.0_dp
+!             A([1:nsyms]+nsyms*(i-1),         i+nterms*(2-1)) = 1.0_dp
+!         enddo
+!         !$OMP END DO
+!         !$OMP END PARALLEL
+!         !
+!         ! reduce to row echlon form
+!         call rref(A)
         !
         !         ! now apply intrinsic symmetries, which are fundamental properties of the
         !         ! elastic/stress/strain tensors and, therefore, independent of the crystal
@@ -291,8 +352,8 @@ contains
         !
         RM = 0
         !
-        do i = 1,natoms
-        do j = 1,natoms
+        do i = 1, natoms
+        do j = 1, natoms
         do beta  = 1,3
         do alpha = 1,3
             ! gamma -> alpha
@@ -332,7 +393,8 @@ contains
         logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
         logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
         logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
-        integer :: i, j, n
+        logical , allocatable :: mask(:)            !> mask to speed up the symmetry determination process
+        integer :: i, j, k, n
         integer :: nequations
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining conductivity tensor symmetry')
@@ -347,19 +409,31 @@ contains
         !
         A = 0
         nequations = 0
-        ! <CRYSTAL_SYMMETRIES>
+        !
         ! apply point symmetries (each point symmetry corresponds to nterms possible equations
         ! relating the terms to each other)
+        !
+        allocate(mask(nterms))
+        mask = .true.
+        ! <CRYSTAL_SYMMETRIES>
         do i = 1,nterms
             M1d = 0
             M1d(i) = 1
             M = reshape(M1d,shape(M))
             do j = 1, nsyms
+                ! Track number of symmetry equations for fun.
                 nequations = nequations + nterms
-                ! RM shows how the M has been permuted by the symmetry operation j save the permutation obtained with RM
-                ! as a row-vectors in T(nsyms,nterms)  Nye, J.F. "Physical properties of crystals: their representation
-                ! by tensors and matrices"
-                T(j,1:nterms) = pack( transform_tensor(M=M,R=ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
+                ! Save the action of the symmetry operations as row-vectors in T(nsyms,nterms) 
+                ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
+                T(j,1:nterms) = matmul( kron_pow(ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas),tensor_rank) , M1d)
+                ! Apply a mask to make this faster. Once the term is connected to an orbit, all other orbits follow
+                ! immediately. There is no need to reapply the point symmetries to the term on which the mapping occurs
+                do k = 1, nterms
+                    if (abs(T(j,k)).gt.tiny) then
+                        mask(k) = .false.
+                    endif
+                enddo
+                !
             enddo
             ! save an augmented matrix A
             A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
@@ -377,6 +451,7 @@ contains
         ! Thermoelectric tensor is an anti-symmetric second-rank tensor. Also see p 194 Eq 4, which proves that the
         ! thermal and electrical conductivities are symmetric tensors explicitly.
         n = nterms
+        k=0
         do j = 1,3
         do i = 1,3
             ! sigma_ij = sigma_ji ! permute indices
@@ -384,10 +459,12 @@ contains
             n  = n+1
             M  = 0.0_dp
             RM = 0.0_dp
-             M(i,j) = 1.0_dp
+            M(i,j) = 1.0_dp
             RM(j,i) = 1.0_dp
-            A(n,[1:nterms]+nterms*(1-1))= pack( M , .true. ) ! RHS
-            A(n,[1:nterms]+nterms*(2-1))= pack( RM, .true. ) ! LHS
+            A(n,[1:nterms]+nterms*(1-1))=pack( M , .true. ) ! RHS
+            A(n,[1:nterms]+nterms*(2-1))=pack( RM, .true. ) ! LHS
+            k=k+1
+            T(k,1:nterms) = pack(M,.true.)
         enddo
         enddo
         ! reduce to echlon form once again to incorporate the intrinsic symmetries
@@ -414,6 +491,24 @@ contains
         !
     end subroutine symmetry_adapted_conducitvity
 
+    pure function  transpositional_operator(n) result(M)
+        !
+        implicit none
+        !
+        integer, intent(in) :: n
+        real(dp), allocatable :: M(:,:)
+        integer  :: i, j
+        !
+        allocate(M(n**2,n**2))
+        M=0
+        !
+        do i = 1, n
+        do j = 1, n
+           M(i+n*(j-1),j+n*(i-1)) = 1.0_dp
+        enddo
+        enddo
+    end function   transpositional_operator
+
     subroutine     symmetry_adapted_thermoelectricity(pg,uc,opts)
         !
         ! Onsager’s Principle requires that the electric resistivity and thermal conductivity tensors be symmetric, but
@@ -438,7 +533,8 @@ contains
         logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
         logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
         logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
-        integer :: i, j
+        logical , allocatable :: mask(:)            !> mask to speed up the symmetry determination process
+        integer :: i, j, k
         integer :: nequations
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining thermoelectric tensor symmetry')
@@ -453,19 +549,34 @@ contains
         !
         A = 0
         nequations = 0
-        ! <CRYSTAL_SYMMETRIES>
+        !
         ! apply point symmetries (each point symmetry corresponds to nterms possible equations
         ! relating the terms to each other)
+        !
+        allocate(mask(nterms))
+        mask = .true.
+        ! <CRYSTAL_SYMMETRIES>
         do i = 1,nterms
             M1d = 0
             M1d(i) = 1
             M = reshape(M1d,shape(M))
             do j = 1, nsyms
+                !
+                ! Track number of symmetry equations for fun.
                 nequations = nequations + nterms
-                ! RM shows how the M has been permuted by the symmetry operation j save the permutation obtained with RM
-                ! as a row-vectors in T(nsyms,nterms)  Nye, J.F. "Physical properties of crystals: their representation
-                ! by tensors and matrices"
-                T(j,1:nterms) = pack( transform_tensor(M=M,R=ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
+                !
+                ! Save the action of the symmetry operations as row-vectors in T(nsyms,nterms) 
+                ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
+                T(j,1:nterms) = matmul( kron_pow(ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas),tensor_rank) , M1d)
+                !
+                ! Apply a mask to make this faster. Once the term is connected to an orbit, all other orbits follow
+                ! immediately. There is no need to reapply the point symmetries to the term on which the mapping occurs
+                do k = 1, nterms
+                    if (abs(T(j,k)).gt.tiny) then
+                        mask(k) = .false.
+                    endif
+                enddo
+                !
             enddo
             ! save an augmented matrix A
             A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
@@ -532,6 +643,7 @@ contains
         logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
         logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
         logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
+        logical , allocatable :: mask(:)            !> mask to speed up the symmetry determination process
         integer :: i, j, k, n
         integer :: nequations
         !
@@ -547,19 +659,34 @@ contains
         !
         A = 0
         nequations = 0
-        ! <CRYSTAL_SYMMETRIES>
+        !
         ! apply point symmetries (each point symmetry corresponds to nterms possible equations
         ! relating the terms to each other)
+        !
+        allocate(mask(nterms))
+        mask = .true.
+        ! <CRYSTAL_SYMMETRIES>
         do i = 1,nterms
             M1d = 0
             M1d(i) = 1
             M = reshape(M1d,shape(M))
             do j = 1, nsyms
+                !
+                ! Track number of symmetry equations for fun.
                 nequations = nequations + nterms
-                ! RM shows how the M has been permuted by the symmetry operation j save the permutation obtained with RM
-                ! as a row-vectors in T(nsyms,nterms)  Nye, J.F. "Physical properties of crystals: their representation
-                ! by tensors and matrices"
-                T(j,1:nterms) = pack( transform_tensor(M=M,R=ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
+                !
+                ! Save the action of the symmetry operations as row-vectors in T(nsyms,nterms) 
+                ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
+                T(j,1:nterms) = matmul( kron_pow(ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas),tensor_rank) , M1d)
+                !
+                ! Apply a mask to make this faster. Once the term is connected to an orbit, all other orbits follow
+                ! immediately. There is no need to reapply the point symmetries to the term on which the mapping occurs
+                do k = 1, nterms
+                    if (abs(T(j,k)).gt.tiny) then
+                        mask(k) = .false.
+                    endif
+                enddo
+                !
             enddo
             ! save an augmented matrix A
             A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
@@ -634,6 +761,7 @@ contains
         logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
         logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
         logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
+        logical , allocatable :: mask(:)            !> mask to speed up the symmetry determination process
         integer :: i, j, k, l, n
         integer :: nequations
         !
@@ -652,22 +780,40 @@ contains
         !
         ! apply point symmetries (each point symmetry corresponds to nterms possible equations
         ! relating the terms to each other)
-        do i = 1,nterms
-            M1d = 0
-            M1d(i) = 1
-            M = reshape(M1d,shape(M))
-            do j = 1, nsyms
-                nequations = nequations + nterms
-                ! RM shows how the M has been permuted by the symmetry operation j
-                ! save the permutation obtained with RM as a row-vectors in T(nsyms,nterms) 
-                ! T(j,1:nterms) = pack( transform_tensor(M=M,R=pg%R(:,:,j)),.true.)
-                ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
-                T(j,1:nterms) = pack( transform_tensor(M=M,R=ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
-            enddo
-            ! save an augmented matrix A
-            A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
-            A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(2-1)) = 0.0_dp
-            A([1:nsyms]+nsyms*(i-1),         i+nterms*(2-1)) = 1.0_dp
+        !
+        allocate(mask(nterms))
+        mask = .true.
+        do i = 1, nterms
+            if (mask(i)) then
+                !
+                M1d = 0
+                M1d(i) = 1
+                M = reshape(M1d,shape(M))
+                do j = 1, nsyms
+                    !
+                    ! Track number of symmetry equations for fun.
+                    nequations = nequations + nterms
+                    !
+                    ! Save the action of the symmetry operations as row-vectors in T(nsyms,nterms) 
+                    ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
+                    T(j,1:nterms) = matmul( kron_pow(ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas),tensor_rank) , M1d)
+                    !
+                    ! Apply a mask to make this faster. Once the term is connected to an orbit, all other orbits follow
+                    ! immediately. There is no need to reapply the point symmetries to the term on which the mapping occurs
+                    do k = 1, nterms
+                        if (abs(T(j,k)).gt.tiny) then
+                            mask(k) = .false.
+                        endif
+                    enddo
+                    !
+                enddo
+                !
+                ! Save the augmented matrix A
+                A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
+                A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(2-1)) = 0.0_dp
+                A([1:nsyms]+nsyms*(i-1),         i+nterms*(2-1)) = 1.0_dp
+                !
+            endif
         enddo
         ! reduce to row echlon form
         call rref(A)
@@ -675,6 +821,7 @@ contains
         ! now apply intrinsic symmetries, which are fundamental properties of the
         ! elastic/stress/strain tensors and, therefore, independent of the crystal
         ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 5 and 6
+        !
         n = nterms
         do l = 1,3
         do k = 1,3
@@ -726,117 +873,6 @@ contains
             is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
         !
     end subroutine symmetry_adapted_elasticity
-
-    pure function  transform_tensor_first_rank(M,R)  result(RM)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: M(:)
-        real(dp), intent(in) :: R(:,:)
-        real(dp) :: RM(size(M,1))
-        integer :: i,ip
-        !
-        ! for a first-rank tensor M, this operation is equivalent to RM = R*M
-        !
-        RM = 0
-        !
-        do i = 1,3
-        do ip = 1,3
-            RM(i) = RM(i) + R(i,ip)*M(ip)
-        enddo
-        enddo
-        !
-    end function   transform_tensor_first_rank
-
-    pure function  transform_tensor_second_rank(M,R) result(RM)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: M(:,:)
-        real(dp), intent(in) :: R(:,:)
-        real(dp) :: RM(size(M,1),size(M,2))
-        integer :: i,j,ip,jp
-        !
-        ! for a second-rank tensor M, this operation is equivalent to RM = R*M*R^T
-        ! Eq 13.9 Wootten, p 478 row major order accessed faster
-        !
-        RM = 0
-        !
-        do j = 1,3
-        do i = 1,3
-            do jp = 1,3
-            do ip = 1,3
-                RM(i,j) = RM(i,j) + R(i,ip)*R(j,jp)*M(ip,jp)
-            enddo
-            enddo
-        enddo
-        enddo
-        !
-    end function   transform_tensor_second_rank
-
-    pure function  transform_tensor_third_rank(M,R)  result(RM)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: M(:,:,:)
-        real(dp), intent(in) :: R(3,3)
-        real(dp) :: RM(size(M,1),size(M,2),size(M,3))
-        integer  :: i,j,k,ip,jp,kp
-        !
-        ! for a second-rank tensor M, this operation is equivalent to RM = R*M*R^T
-        ! Eq 13.9 Wootten, p 478 row major order accessed faster
-        !
-        RM = 0
-        !
-        do k = 1,3
-        do j = 1,3
-        do i = 1,3
-            do kp = 1,3
-            do jp = 1,3
-            do ip = 1,3
-                RM(i,j,k) = RM(i,j,k) + R(i,ip)*R(j,jp)*R(k,kp)*M(ip,jp,kp)
-            enddo
-            enddo
-            enddo
-        enddo
-        enddo
-        enddo
-        !
-    end function   transform_tensor_third_rank
-
-    pure function  transform_tensor_fourth_rank(M,R) result(RM)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: M(:,:,:,:)
-        real(dp), intent(in) :: R(3,3)
-        real(dp) :: RM(size(M,1),size(M,2),size(M,3),size(M,4))
-        integer  :: i,j,k,l,ip,jp,kp,lp
-        !
-        ! for a second-rank tensor M, this operation is equivalent to RM = R*M*R^T
-        ! Eq 13.9 Wootten, p 478 row major order accessed faster
-        !
-        RM = 0
-        !
-        do l = 1,3
-        do k = 1,3
-        do j = 1,3
-        do i = 1,3
-            do lp = 1,3
-            do kp = 1,3
-            do jp = 1,3
-            do ip = 1,3
-                RM(i,j,k,l) = RM(i,j,k,l) + R(i,ip)*R(j,jp)*R(k,kp)*R(l,lp)*M(ip,jp,kp,lp)
-            enddo
-            enddo
-            enddo
-            enddo
-        enddo
-        enddo
-        enddo
-        enddo
-        !
-    end function   transform_tensor_fourth_rank
 
     subroutine     parse_symmetry_equations(LHS,RHS,is_zero,is_independent,is_dependent,verbosity)
         !
@@ -1324,7 +1360,7 @@ contains
             !
             if (opts%verbosity.ge.1) then 
                 write(*,'(5x)',advance='no') 
-                write(*,'(2a5)',advance='no') trim(uc%symbs(uc%atype(i))), trim(uc%symbs(uc%atype(j)))
+                write(*,'(2a5)',advance='no') trim(uc%symb(uc%atype(i))), trim(uc%symb(uc%atype(j)))
                 write(*,'(3f10.2)',advance='no') v
                 write(*,'(f10.2)',advance='no') norm2(v)
                 write(*,'(f10.2)',advance='no') norm2(matmul(uc%bas,v))
@@ -1488,124 +1524,118 @@ contains
             endif
         enddo
         !
-        contains
-        function       cc_nelements(cc_identifier) result(nelements)
-            !
-            implicit none
-            !
-            integer, intent(in)  :: cc_identifier(:)
-            integer, allocatable :: nelements(:)
-            integer :: nclasses
-            integer :: i
-            !
-            nclasses = maxval(cc_identifier)
-            !
-            allocate(nelements(nclasses))
-            !
-            do i = 1, nclasses
-                nelements(i) = count(i.eq.cc_identifier)
-            enddo
-        end function   cc_nelements
-
-        function       cc_member(cc_identifier) result(member)
-            !
-            implicit none
-            !
-            integer, allocatable, intent(in) :: cc_identifier(:)
-            integer, allocatable :: nelements(:) ! number of elements in each class
-            integer, allocatable :: member(:,:) ! members(nclass,maxval(nelements))
-            integer :: i, j, k
-            integer :: nsyms
-            integer :: nclasses
-            !
-            nsyms = size(cc_identifier,1)
-            !
-            nclasses = maxval(cc_identifier)
-            !
-            nelements = cc_nelements(cc_identifier)
-            !
-            allocate(member(nclasses,maxval(nelements)))
-            member = 0
-            do i = 1, nclasses
-                k=0
-                do j = 1, nsyms
-                    if (cc_identifier(j).eq.i) then
-                        k=k+1
-                        member(i,k) = j
-                    endif
-                enddo
-            enddo
-        end function   cc_member
-
-        function       cc_constant_table(A) result(D)
-            !
-            ! determines characters which simultaneously diagonalizes i square matrices A(:,:,i)
-            ! only possible if A(:,:,i) commute with each other. Assumes all dimensions of A are the same.
-            !
-            implicit none
-            !
-            real(dp), intent(in) :: A(:,:,:)
-            real(dp), allocatable :: V(:,:) ! these two should match in this particular situation (character table determination from class multiplication coefficients)
-            integer , allocatable :: D(:,:) ! these two should match in this particular situation (character table determination from class multiplication coefficients)
-            real(dp), allocatable :: M(:,:)
-            integer , allocatable :: p(:)
-            integer , allocatable :: small(:)
-            integer :: n, i
-            !
-            call am_print('WARNING','The procedure used to determine the character table does not allow for complex character')
-            !
-            n = size(A,3)
-            p = primes(n)
-            !
-            ! matrix pencil based on sqrt(primes)
-            ! all this does is lift the degeneracy of eigenvalues if necessary
-            allocate(M(n,n))
-            M = 0
-            do i = 1,n
-                M = M + p(i)**0.5*A(:,:,i)
-            enddo
-            !
-            ! get left and right eigenvectors: transpose(VL)*A*VR = D
-            call am_dgeev(A=M,VR=V)
-            !
-            ! check that matrices have been diagonalized properly and save eigenvalues
-            allocate(d(n,n))
-            do i = 1, n
-                !
-                M = matmul(inv(V),matmul(A(:,:,i),V))
-                ! tiny may be too small a criteria here... should probably use a value which scales with the size of the matrix.
-                if (any( abs(diag(diag(M))-M).gt. (tiny*n**2) )) then
-                    call am_print('ERROR','Unable to perform simultaneous matrix diagonalization. Check that whether they commute.')
-                    call am_print('M',M)
-                    call am_print('diag(M)',diag(M))
-                    call am_print('diag(diag(M))',diag(diag(M)))
-                    call am_print('abs(diag(diag(M))-M)',abs(diag(diag(M))-M))
-                    call am_print('sum of error',sum(abs(diag(diag(M))-M)))
-                    stop
+    contains
+    function       cc_nelements(cc_identifier) result(nelements)
+        !
+        implicit none
+        !
+        integer, intent(in)  :: cc_identifier(:)
+        integer, allocatable :: nelements(:)
+        integer :: nclasses
+        integer :: i
+        !
+        nclasses = maxval(cc_identifier)
+        !
+        allocate(nelements(nclasses))
+        !
+        do i = 1, nclasses
+            nelements(i) = count(i.eq.cc_identifier)
+        enddo
+    end function   cc_nelements
+    function       cc_member(cc_identifier) result(member)
+        !
+        implicit none
+        !
+        integer, allocatable, intent(in) :: cc_identifier(:)
+        integer, allocatable :: nelements(:) ! number of elements in each class
+        integer, allocatable :: member(:,:) ! members(nclass,maxval(nelements))
+        integer :: i, j, k
+        integer :: nsyms
+        integer :: nclasses
+        !
+        nsyms = size(cc_identifier,1)
+        !
+        nclasses = maxval(cc_identifier)
+        !
+        nelements = cc_nelements(cc_identifier)
+        !
+        allocate(member(nclasses,maxval(nelements)))
+        member = 0
+        do i = 1, nclasses
+            k=0
+            do j = 1, nsyms
+                if (cc_identifier(j).eq.i) then
+                    k=k+1
+                    member(i,k) = j
                 endif
-                !
-                ! save diagonal elements as row vectors
-                D(:,i) = nint(diag( M ))
-                !
             enddo
+        enddo
+    end function   cc_member
+    function       cc_constant_table(A) result(D)
+        !
+        ! determines characters which simultaneously diagonalizes i square matrices A(:,:,i)
+        ! only possible if A(:,:,i) commute with each other. Assumes all dimensions of A are the same.
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:,:)
+        real(dp), allocatable :: V(:,:) ! these two should match in this particular situation (character table determination from class multiplication coefficients)
+        integer , allocatable :: D(:,:) ! these two should match in this particular situation (character table determination from class multiplication coefficients)
+        real(dp), allocatable :: M(:,:)
+        integer , allocatable :: p(:)
+        integer , allocatable :: small(:)
+        integer :: n, i
+        !
+        call am_print('WARNING','The procedure used to determine the character table does not allow for complex character')
+        !
+        n = size(A,3)
+        p = primes(n)
+        !
+        ! matrix pencil based on sqrt(primes)
+        ! all this does is lift the degeneracy of eigenvalues if necessary
+        allocate(M(n,n))
+        M = 0
+        do i = 1,n
+            M = M + p(i)**0.5*A(:,:,i)
+        enddo
+        !
+        ! get left and right eigenvectors: transpose(VL)*A*VR = D
+        call am_dgeev(A=M,VR=V)
+        !
+        ! check that matrices have been diagonalized properly and save eigenvalues
+        allocate(d(n,n))
+        do i = 1, n
             !
-            ! normalize each row of V to the smallest value in that row
-            allocate(small(n))
-            small = minloc( abs(V) , dim=1, mask = abs(V).gt.tiny )
-            do i = 1, n
-                V(:,i)=V(:,i)/V(small(i),i)
-            enddo
-            V = nint(transpose(V))
+            M = matmul(inv(V),matmul(A(:,:,i),V))
+            ! tiny may be too small a criteria here... should probably use a value which scales with the size of the matrix.
+            if (any( abs(diag(diag(M))-M).gt. (tiny*n**2) )) then
+                call am_print('ERROR','Unable to perform simultaneous matrix diagonalization. Check that whether they commute.')
+                call am_print('M',M)
+                call am_print('diag(M)',diag(M))
+                call am_print('diag(diag(M))',diag(diag(M)))
+                call am_print('abs(diag(diag(M))-M)',abs(diag(diag(M))-M))
+                call am_print('sum of error',sum(abs(diag(diag(M))-M)))
+                stop
+            endif
             !
-            ! at this point V and D should be identical. The elements are to within +/- sign.
-            ! Return D which is more robust than V. 
+            ! save diagonal elements as row vectors
+            D(:,i) = nint(diag( M ))
             !
-        end function   cc_constant_table
-
+        enddo
+        !
+        ! normalize each row of V to the smallest value in that row
+        allocate(small(n))
+        small = minloc( abs(V) , dim=1, mask = abs(V).gt.tiny )
+        do i = 1, n
+            V(:,i)=V(:,i)/V(small(i),i)
+        enddo
+        V = nint(transpose(V))
+        !
+        ! at this point V and D should be identical. The elements are to within +/- sign.
+        ! Return D which is more robust than V. 
+        !
+    end function   cc_constant_table
     end subroutine determine_character_table
-
-
-
 
     subroutine     stabilizers(bg,sg,v,opts)
         !
@@ -2186,19 +2216,18 @@ contains
             CT = CT(indices,:)
         endif
         !
-        contains
-            function     get_matching_element_index_in_list(list,elem) result(i)
-                !
-                implicit none
-                real(dp), intent(in) :: list(:,:,:)
-                real(dp), intent(in) :: elem(:,:)
-                integer :: i
-                !
-                do i = 1,size(list,3)
-                    if (all(abs(list(:,:,i)-elem).lt.tiny)) return
-                enddo
-            end function get_matching_element_index_in_list
+    contains
+    function       get_matching_element_index_in_list(list,elem) result(i)
         !
+        implicit none
+        real(dp), intent(in) :: list(:,:,:)
+        real(dp), intent(in) :: elem(:,:)
+        integer :: i
+        !
+        do i = 1,size(list,3)
+            if (all(abs(list(:,:,i)-elem).lt.tiny)) return
+        enddo
+    end function   get_matching_element_index_in_list
     end function   cayley_table
 
     !

@@ -1042,16 +1042,15 @@
         do i = 1, prim%natoms
             prim%atype(i) = 0
             search_for_atom : do j = 1, uc%natoms
-                if ( all(abs(prim%tau(1:3,i)-modulo(uc%tau(1:3,j)-tau_ref+opts%sym_prec,1.0_dp)+opts%sym_prec).lt.opts%sym_prec) ) then
+                if ( all(abs(prim%tau(1:3,i)-modulo( matmul(uc2prim,uc%tau(1:3,j)-tau_ref)+opts%sym_prec,1.0_dp)+opts%sym_prec).lt.opts%sym_prec) ) then
                     prim%atype(i) = uc%atype(j)
-                    exit search_for_atom
                     ! 
-                    ! create list which shows which atoms have been transfered to the primitive cell
-                    !
+                    ! create list showing which atoms have been transfered to the primitive cell
                     if (present(oopts_uc2prim)) then
                         oopts_uc2prim(i) = j
                     endif
                     !
+                    exit search_for_atom
                 endif
             enddo search_for_atom
             if (prim%atype(i).eq.0) then
