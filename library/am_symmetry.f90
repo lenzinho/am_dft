@@ -34,6 +34,8 @@ module am_symmetry
         procedure :: sort
         procedure :: create
         !
+        procedure :: symmetry_adapted_tensor
+        !
         procedure :: symmetry_adapted_2nd_order_force_constants
         procedure :: symmetry_adapted_conducitvity
         procedure :: symmetry_adapted_thermoelectricity
@@ -376,6 +378,131 @@ contains
     ! functions which operate on tensors or make symmetry-adapted tensors
     !
 
+    subroutine     symmetry_adapted_tensor(pg,uc,opts,property)
+        !
+        class(am_class_symmetry), intent(in) :: pg
+        type(am_class_unit_cell), intent(in) :: uc
+        type(am_class_options), intent(in) :: opts
+        character(*), intent(in) :: property
+        !
+        integer  :: nterms                          !> nterms the number of terms
+        integer  :: nsyms                           !> nsyms number of symmetry elements
+        integer  :: tensor_rank                     !> tensor_rank rank of tensor matrix M, determined automatically by code
+        integer , allocatable :: member(:,:)   
+        real(dp), allocatable :: M(:)
+        real(dp), allocatable :: R(:,:)
+        real(dp), allocatable :: S(:,:,:)           !> intrinsic symmetries
+        real(dp), allocatable :: A(:,:)             !> A(nsyms*nterms,2*nterms) augmented matrix equation
+        real(dp), allocatable :: LHS(:,:)           !> LHS(nterms,nterms) left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
+        real(dp), allocatable :: RHS(:,:)           !> RHS(nterms,nterms) right hand side of augmented matrix equation
+        logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
+        logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
+        logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
+        logical , allocatable :: mask(:)            !> mask to speed up the symmetry determination process
+        integer :: i, j
+        integer :: nequations
+        !
+        ! ... Wooten page 449; sflag specifies whether the neighboring indices are symmetric with respect to each other. NEED TO IMPLEMENT STILL. 
+        if     (index(property,'pyroelectricity')        .ne.0) then; tensor_rank = 1 ! P_{i}     = p_{i} \Delta T
+        elseif (index(property,'electric susceptibility').ne.0) then; tensor_rank = 2 ! P_{i}     = \alpha_{ij}  E_{j}
+        elseif (index(property,'magnetic susceptibility').ne.0) then; tensor_rank = 2 ! M_{i}     = \mu_{ij}     H_{j}
+        elseif (index(property,'electric conductivity')  .ne.0) then; tensor_rank = 2 ! J_{i}     = \sigma_{ij}  E_{i}
+        elseif (index(property,'electric resistivity')   .ne.0) then; tensor_rank = 2 ! E_{i}     = \rho_{ij}    J_{j}
+        elseif (index(property,'thermal conductivity')   .ne.0) then; tensor_rank = 2 ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
+        elseif (index(property,'thermal expansion')      .ne.0) then; tensor_rank = 2 ! \eps_{ij} = \alpha_{ij}  \Delta T
+        elseif (index(property,'seebeck')                .ne.0) then; tensor_rank = 2 ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
+        elseif (index(property,'peltier')                .ne.0) then; tensor_rank = 2 ! q_{i}     = \pi_{ij}     J_{j}
+        elseif (index(property,'hall')                   .ne.0) then; tensor_rank = 3 ! E_{i}     = h_{ijk}      J_{j} H_{k} 
+        elseif (index(property,'piezoelectricity')       .ne.0) then; tensor_rank = 3 ! P_{i}     = d_{ijk}      \sigma_{jk}
+        elseif (index(property,'piezomagnetic')          .ne.0) then; tensor_rank = 3 ! M_{i}     = Q_{ijk}      \sigma_{jk}
+        elseif (index(property,'elasticity')             .ne.0) then; tensor_rank = 4 ! 
+        elseif (index(property,'piezo-optic')            .ne.0) then; tensor_rank = 4 ! 
+        elseif (index(property,'kerr')                   .ne.0) then; tensor_rank = 4 ! 
+        elseif (index(property,'electrostriction')       .ne.0) then; tensor_rank = 4 ! 
+        elseif (index(property,'third-order elasticity') .ne.0) then; tensor_rank = 6 ! 
+        endif
+        !
+        if (opts%verbosity.ge.1) call am_print_title('Determining symmetry-adapted tensor: '//trim(property))
+        !
+        nsyms = size(pg%R,3)
+        nterms = 3**tensor_rank
+        !
+        ! members(nclass,maxval(nelements))
+        member = cc_member(pg%cc_identifier)
+        !
+        ! initialize A (if this is not done, it will not work. I don't know why...)
+        allocate(A(2*nterms,2*nterms)) ! augmented matrix
+        A = 0
+        A([1:nterms],[1:nterms]+nterms*0) = eye(nterms)
+        A([1:nterms],[1:nterms]+nterms*1) = eye(nterms)
+        !
+        allocate(R(nterms,nterms))
+        R = 0
+        !
+        nequations = 0
+        !
+        !
+        ! crystal symmetries
+        do j = 1, size(member,1) ! loop over classes instead...
+            i=member(j,1)
+            ! Track number of symmetry equations for fun
+            nequations = nequations + nterms
+            !
+            R = kron_pow(ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),tensor_rank)
+            ! Save the action of the symmetry operations as row-vectors in T(nsyms,nterms) 
+            ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
+            A([1:nterms]+nterms,[1:nterms]+nterms*(1-1)) = eye(nterms)
+            A([1:nterms]+nterms,[1:nterms]+nterms*(2-1)) = R
+            ! reduced to row echlon form
+            call rref(A)
+            ! debug flags
+            if (opts%verbosity.ge.2) then
+                call am_print('R',R,filename='debug_R'//trim(int2char(i))//'.txt',permission='w')
+                call am_print('A',A,filename='debug_A'//trim(int2char(i))//'.txt',permission='w')
+            endif
+        enddo
+        !
+        ! intrinsic symmetries
+        allocate(S(nterms,nterms,100))
+        j=0
+        if     (index(property,'conductivity').ne.0 &
+         & .or. index(property,'resistivity' ).ne.0) then
+            j=j+1; S(:,:,j) = T_op(3)               ! s_ij  = s_ji
+        elseif (index(property,'elasticicity').ne.0) then
+            j=j+1; S(:,:,j) = kron(eye(9),T_op(3))  ! cijkl = cjikl
+            j=j+1; S(:,:,j) = kron(T_op(3),eye(9))  ! cijkl = cjilk
+            j=j+1; S(:,:,j) = kron(T_op(3),T_op(3)) ! cijkl = cjilk
+        endif
+        do i = 1, j
+            nequations = nequations+nterms
+            A(nterms+[1:nterms],[1:nterms]+nterms*0) = eye(nterms)
+            A(nterms+[1:nterms],[1:nterms]+nterms*1) = S(:,:,i)
+            call rref(A)
+            if (opts%verbosity.ge.2) call am_print('I',S(:,:,i),filename='debug_I'//trim(int2char(j))//'.txt',permission='w')
+        enddo
+        !
+        ! call am_print_sparse('A = [LHS|RHS]',A(1:nterms,:),' ... ')
+        ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS
+        ! should be the identity matrix, which, together with the RHS, completely 
+        ! specifies all relationships between variables. 
+        allocate(LHS(nterms,nterms))
+        allocate(RHS(nterms,nterms))
+        LHS = A(1:nterms,1:nterms)
+        RHS = A(1:nterms,[1:nterms]+nterms)
+        !
+        if ( any(abs(LHS-eye(nterms)).gt.tiny) ) then
+            call am_print('ERROR','Unable to reduce matrix to row echlon form.')
+            call am_print_sparse('spy(LHS)',LHS)
+            stop
+        endif
+        !
+        call am_print('number of symmetry equations',nequations,' ... ')
+        !
+        call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
+            is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
+
+    end subroutine symmetry_adapted_tensor
+
     subroutine     symmetry_adapted_conducitvity(pg,uc,opts)
         !
         class(am_class_symmetry), intent(in) :: pg
@@ -514,8 +641,8 @@ contains
     subroutine     symmetry_adapted_thermoelectricity(pg,uc,opts)
         !
         ! Onsager’s Principle requires that the electric resistivity and thermal conductivity tensors be symmetric, but
-        ! this does not hold for the Seebeck, Peltier (thermoelectric) coefficients which relate two different flows.
-        ! Thus there are, at most, nine coefficients to be determined rather than six.
+        ! this does not hold for the Seebeck, Peltier (thermoelectric)  which relate two different flows.
+        ! Thus there are, at most, nine  to be determined rather than six.
         !
         ! Newnham "Properties of Materials"
         !
@@ -756,6 +883,7 @@ contains
         integer , allocatable :: member(:,:)   
         real(dp), allocatable :: M(:)
         real(dp), allocatable :: R(:,:)
+        real(dp), allocatable :: S(:,:,:)           !> intrinsic symmetries
         real(dp), allocatable :: T(:,:)             !> T(nsyms,nterms) permutation matrx containing rows vectors describing how M is rotated by a point symmetry R
         real(dp), allocatable :: A(:,:)             !> A(nsyms*nterms,2*nterms) augmented matrix equation
         real(dp), allocatable :: LHS(:,:)           !> LHS(nterms,nterms) left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
@@ -784,9 +912,13 @@ contains
         !
         nequations = 0
         !
-        ! crystal symmetries
+        ! initialize A (if this is not done, it will not work. I don't know why...)
+        !
         A([1:nterms],[1:nterms]+nterms*0) = eye(nterms)
         A([1:nterms],[1:nterms]+nterms*1) = eye(nterms)
+        !
+        ! crystal symmetries
+        !
         do j = 1, size(member,1) ! loop over classes instead...
             i=member(j,1)
             ! Track number of symmetry equations for fun
@@ -795,8 +927,8 @@ contains
             R = kron_pow(ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),tensor_rank)
             ! Save the action of the symmetry operations as row-vectors in T(nsyms,nterms) 
             ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
-            A([1:nterms]+nterms,[1:nterms]+nterms*(1-1)) = R
-            A([1:nterms]+nterms,[1:nterms]+nterms*(2-1)) = eye(nterms)
+            A([1:nterms]+nterms,[1:nterms]+nterms*(1-1)) = eye(nterms)
+            A([1:nterms]+nterms,[1:nterms]+nterms*(2-1)) = R
             ! reduced to row echlon form
             call rref(A)
             ! debug flags
@@ -805,35 +937,22 @@ contains
                 call am_print('A',A,filename='debug_A'//trim(int2char(i))//'.txt',permission='w')
             endif
         enddo
+        !
         ! intrinsic symmetries
-        ! cijkl = cjikl
-        nequations = nequations+nterms
-        R = kron(eye(9),T_op(3))
-        A(nterms+[1:nterms],[1:nterms]+nterms*0) = R
-        A(nterms+[1:nterms],[1:nterms]+nterms*1) = eye(nterms)
-        call rref(A)
-        if (opts%verbosity.ge.2) call am_print('I',A,filename='debug_I'//trim(int2char(1))//'.txt',permission='w')
-        ! cijkl = cijlk
-        nequations = nequations+nterms
-        R = kron(eye(9),T_op(3))
-        A(nterms+[1:nterms],[1:nterms]+nterms*0) = R
-        A(nterms+[1:nterms],[1:nterms]+nterms*1) = eye(nterms)
-        call rref(A)
-        if (opts%verbosity.ge.2) call am_print('I',A,filename='debug_I'//trim(int2char(2))//'.txt',permission='w')
-        ! cijkl = cjilk
-        nequations = nequations+nterms
-        R = kron(T_op(3),T_op(3))
-        A(nterms+[1:nterms],[1:nterms]+nterms*0) = R
-        A(nterms+[1:nterms],[1:nterms]+nterms*1) = eye(nterms)
-        call rref(A)
-        if (opts%verbosity.ge.2) call am_print('I',A,filename='debug_I'//trim(int2char(3))//'.txt',permission='w')
-        ! cijkl = cijkl
-        nequations = nequations+nterms
-        R = eye(nterms)
-        A(nterms+[1:nterms],[1:nterms]+nterms*0) = R
-        A(nterms+[1:nterms],[1:nterms]+nterms*1) = eye(nterms)
-        call rref(A)
-        if (opts%verbosity.ge.2) call am_print('I',A,filename='debug_I'//trim(int2char(4))//'.txt',permission='w')
+        !
+        j=0
+        allocate(S(nterms,nterms,100))
+        j=j+1; S(:,:,j) = kron(eye(9),eye(9))   ! cijkl = cijkl
+        j=j+1; S(:,:,j) = kron(eye(9),T_op(3))  ! cijkl = cjikl
+        j=j+1; S(:,:,j) = kron(T_op(3),eye(9))  ! cijkl = cjilk
+        j=j+1; S(:,:,j) = kron(T_op(3),T_op(3)) ! cijkl = cjilk
+        do i = 1, j
+            nequations = nequations+nterms
+            A(nterms+[1:nterms],[1:nterms]+nterms*0) = eye(nterms)
+            A(nterms+[1:nterms],[1:nterms]+nterms*1) = S(:,:,i)
+            call rref(A)
+            if (opts%verbosity.ge.2) call am_print('I',S(:,:,i),filename='debug_I'//trim(int2char(j))//'.txt',permission='w')
+        enddo
         !
         ! call am_print_sparse('A = [LHS|RHS]',A(1:nterms,:),' ... ')
         ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS
@@ -925,7 +1044,7 @@ contains
                         write(*,'(5x,a1,a,a1)',advance='no') 'a',trim(int2char(i)),'='
                         do j = 1,nterms
                             if (abs(RHS(i,j)).gt.tiny) then
-                                write(*,'(a,a,a)',advance='no') trim(dbl2charSP(RHS(i,j),5)), '*a', trim(int2char(j))
+                                write(*,'(a,a,a)',advance='no') trim(dbl2charSP(RHS(i,j),7)), '*a', trim(int2char(j))
                             endif
                         enddo
                         write(*,*)
@@ -1521,7 +1640,7 @@ contains
         integer :: nirreps  ! just to make things clearer; always equal to nclasses
         integer, allocatable :: nelements(:) ! number of elements in each class
         integer, allocatable :: member(:,:) ! members(nclass,maxval(nelements))
-        integer, allocatable :: H(:,:,:) ! class multiplication coefficients
+        integer, allocatable :: H(:,:,:) ! class multiplication 
         integer, allocatable :: CCT(:,:) ! class constant table which becomes character table (can be complex!)
         integer, allocatable :: irrep_dim(:) ! rep dimensions
         integer, allocatable :: indices(:)
@@ -1561,7 +1680,7 @@ contains
         ! construct cayley table for quick access to symmetry multiplication
         CT = cayley_table(rep=rep,flags=flags)
         !
-        ! get class mutliplication coefficients
+        ! get class mutliplication 
         allocate(H(nclasses,nclasses,nclasses))
         do i = 1,nclasses
         do j = 1,nclasses
@@ -1711,8 +1830,8 @@ contains
         implicit none
         !
         real(dp), intent(in) :: A(:,:,:)
-        real(dp), allocatable :: V(:,:) ! these two should match in this particular situation (character table determination from class multiplication coefficients)
-        integer , allocatable :: D(:,:) ! these two should match in this particular situation (character table determination from class multiplication coefficients)
+        real(dp), allocatable :: V(:,:) ! these two should match in this particular situation (character table determination from class multiplication )
+        integer , allocatable :: D(:,:) ! these two should match in this particular situation (character table determination from class multiplication )
         real(dp), allocatable :: M(:,:)
         integer , allocatable :: p(:)
         integer , allocatable :: small(:)
