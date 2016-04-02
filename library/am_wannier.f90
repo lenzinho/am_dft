@@ -146,7 +146,7 @@ contains
 			kernel = exp(+cmplx_i*twopi*transpose(RdotK))
 			! notice, no normalization factor in revese operation!
 		case default
-			call am_print('ERROR','FFT option unknown.',' >>> ')
+			call am_print('ERROR','FFT option unknown.',flags='E')
 			stop
 		end select
 		!

@@ -68,7 +68,7 @@ module am_stopwatch
             write(stdout,'(1x,3a)') 'WARNING: name = ',trim(tag),' not found in io_stopwatch' 
         case default
             write(stdout,*) ' Name = ',trim(tag),' mode = ',mode
-            call am_print('ERROR','Value of mode not recognised in io_stopwatch',' >>> ')
+            call am_print('ERROR','Value of mode not recognised in io_stopwatch',flags='E')
             stop
         end select
     end subroutine stopwatch

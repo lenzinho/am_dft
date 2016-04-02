@@ -55,7 +55,7 @@
 #include "am_helpers_matlab.inc"
 
     !
-    ! CONVERT DATA TYPES
+    ! CONVERT DATA TYPES 
     !
 
     function      int2char(int,iopt_sign) result(string)
@@ -187,11 +187,11 @@
         !
         !
         if (size(A,1).ne.size(B,1)) then
-            call am_print('ERROR','Size mismatch: A and B.',' >>> ')
+            call am_print('ERROR','Size mismatch: A and B.',flags='E')
             stop
         endif
         if (size(A,2).ne.size(B,2)) then
-            call am_print('ERROR','Size mismatch: A and B.',' >>> ')
+            call am_print('ERROR','Size mismatch: A and B.',flags='E')
             stop
         endif
         !
@@ -234,81 +234,8 @@
     end subroutine am_print_two_matrices_side_by_side
 
     !
-    ! open files
-    !
-
-    integer function unit_number(filename)
-        !> Borrowed from Olle
-        character(len=*),intent(in) :: filename
-        !
-        integer :: unit, i=100
-        logical :: file_open
-
-        inquire(file=filename,number=unit,opened=file_open)
-        if ( file_open .eqv. .true. ) then
-            unit_number=unit
-        else
-            do
-                inquire(unit=i,opened=file_open)
-                if ( file_open .eqv. .false. ) then
-                    unit_number=i
-                    exit
-                endif
-                i=i+1
-                if ( i == 1000 ) then
-                    write(*,*) 'No available units between 100 and 1000. Are you sure you want that'
-                    write(*,*) 'many open files?'
-                endif
-            enddo
-        endif
-    end function   unit_number
-
-    integer function open_file(rw,filename)
-        !> Borrowed from Olle
-        implicit none
-        !
-        character(len=*),intent(in) :: filename
-        character(len=*),intent(in) :: rw !> read/write
-        integer :: unit, status
-        !
-        status=0
-        !
-        unit=unit_number(filename)
-        select case(trim(rw))
-        case('r')
-            open(unit=unit, file=filename, status='old', action='read',iostat=status)
-            open_file=unit
-        case('w')
-            open(unit=unit, file=filename, status='replace', action='write',iostat=status)
-            open_file=unit
-            case default
-            write(*,*) "Please open the file with either 'r' or 'w', not something in between"
-            stop
-        end select
-        !
-        if ( status .ne. 0 ) then
-            write(*,*) 'Could not open ',filename
-            stop
-        endif
-    end function   open_file 
-
-    !
     ! matrix functions
     !
-
-    pure function  eye(n)
-        !> nxn identity matrix
-        implicit none
-        !
-        integer, intent(in) :: n
-        real(dp), dimension(n,n) :: eye
-        integer :: i
-        !
-        eye=0.0_dp
-        do i = 1, n
-            eye(i,i) = 1.0_dp
-        enddo
-    end function   eye
 
     pure function  mesh_grid(n) result(grid_points)
         !> 
@@ -351,79 +278,6 @@
             - a(1,3)*a(2,2)*a(3,1)
         !
     end function   det_3x3_dbl
-
-    subroutine     rref(matrix)
-        !
-        implicit none
-        !
-        real(dp), intent(inout) :: matrix(:,:)
-        real(dp), allocatable :: trow(:)
-        integer :: pivot, norow, nocolumn
-        integer :: r, i
-        !
-        pivot = 1
-        norow = size(matrix, 1)
-        nocolumn = size(matrix, 2)
-        !
-        allocate(trow(nocolumn))
-        !
-        do r = 1, norow
-        if ( nocolumn <= pivot ) exit
-        i = r
-        do while (abs(matrix(i,pivot)).lt.tiny)
-            i = i + 1
-            if ( norow == i ) then
-                i = r
-                pivot = pivot + 1
-                if ( nocolumn == pivot ) return
-            end if
-        end do
-        ! swap rows i and r
-        trow = matrix(i, :)
-        matrix(i, :) = matrix(r, :)
-        matrix(r, :) = trow
-        !
-        matrix(r, :) = matrix(r, :) / matrix(r, pivot)
-        do i = 1, norow
-            if ( i /= r ) matrix(i, :) = matrix(i, :) - matrix(r, :) * matrix(i, pivot) 
-        end do
-        pivot = pivot + 1
-        end do
-        deallocate(trow)
-    end subroutine rref
-
-
-!     function      kronecker_product(A,B) result(C)
-!         ! NEED TO CONFIRM THAT THIS WORKS...
-!         implicit none
-!         !
-!         real(dp), intent(in) :: A(:,:)
-!         real(dp), intent(in) :: B(:,:)
-!         real(dp), allocatable :: C(:,:)
-!         integer :: An, Am, Bn, Bm, Ai, Aj, Bi, Bj, Ci, Cj
-!         !
-!         An = size(A,1)
-!         Am = size(A,2)
-!         Bn = size(B,1)
-!         Bm = size(B,2)
-!         !
-!         allocate(C(An*Bn,Am*Bm))
-!         !
-!         Ci=0
-!         do Ai=1,An
-!         do Bi=1,Bn
-!             Ci=Ci+1
-!             Cj=0
-!             do Aj=1,Am
-!             do Bj=1,Bm
-!                 Cj=Cj+1
-!                 C(Ci,Cj) = A(Ai,Aj)*B(Bi,Bj)
-!             enddo
-!             enddo
-!         enddo
-!         enddo
-!         !
-!     end function  kronecker_product
 
     !
     ! generic math functions

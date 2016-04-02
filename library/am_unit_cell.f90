@@ -293,12 +293,12 @@
         endif
         !
         if (nstrains .le. 1) then
-            call am_print('ERROR','More than one strain point is required.',' >>> ')
+            call am_print('ERROR','More than one strain point is required.',flags='E')
             stop
         endif
         !
         if (strain_max .gt. 0.1) then
-            call am_print('ERROR','Strain value too large.',' >>> ')
+            call am_print('ERROR','Strain value too large.',flags='E')
             stop
         endif
         !
@@ -325,7 +325,7 @@
             case(40); dc='EEd000'
             case(41); dc='Ee0000'
             case default
-            call am_print('ERROR','Deformation code not found. Select one of the following:',' >>> ')
+            call am_print('ERROR','Deformation code not found. Select one of the following:',flags='E')
             write(*,'(5x,a)') "  0 =>  ( eta,  eta,  eta,    0,    0,    0)  | volume strain "
             write(*,'(5x,a)') "  1 =>  ( eta,    0,    0,    0,    0,    0)  | linear strain along x "
             write(*,'(5x,a)') "  2 =>  (   0,  eta,    0,    0,    0,    0)  | linear strain along y "
@@ -380,7 +380,7 @@
                     case('c'); e(j)=-5.0_dp*eta
                     case('s'); e(j)=-6.0_dp*eta
                     case default
-                        call am_print('ERROR','Deformation not allowed',' >>> ')
+                        call am_print('ERROR','Deformation not allowed',flags='E')
                         stop
                 end select
             enddo
@@ -417,7 +417,7 @@
                 eps_matrix = eta_matrix - 0.5_dp*matmul(eps_matrix,eps_matrix)
                 if ( all(abs(eps_matrix).gt.10.0_dp) ) then
                     ! if this is the case then a differen method for solving for eps is required than iteration.
-                    call am_print('ERROR','eps too large; possibly because it is diverging with each iteration: deformation may be too large.',' >>> ')
+                    call am_print('ERROR','eps too large; possibly because it is diverging with each iteration: deformation may be too large.',flags='E')
                     call am_print('eps (true strain matrix)',eps_matrix)
                     stop
                 endif
@@ -568,7 +568,7 @@
         end select
         !
         if (lattice_code.eq.0) then
-            call am_print('ERROR','Unable to identify lattice type.',' >>> ')
+            call am_print('ERROR','Unable to identify lattice type.',flags='E')
             call am_print('number of symmetry operations',nsyms)
             call am_print('primitive basis',bas)
             call am_print('metric tensor',M)
@@ -909,15 +909,15 @@
         character(*), intent(in) :: file_output_poscar
         !
         if (uc%nspecies.lt.1) then
-            call am_print('ERROR','Number of atomic species < 1.', ' >>> ')
+            call am_print('ERROR','Number of atomic species < 1.',flags='E')
             stop
         endif
         if (uc%natoms.lt.1) then
-            call am_print('ERROR','Number of atoms < 1.', ' >>> ')
+            call am_print('ERROR','Number of atoms < 1.',flags='E')
             stop
         endif
         if (len(trim(uc%symb(1))).eq.0) then
-            call am_print('ERROR','Atomic symbols not defined.', ' >>> ')
+            call am_print('ERROR','Atomic symbols not defined.',flags='E')
             stop
         endif
         !
@@ -979,7 +979,7 @@
             if ( any(cross_product(T(1:3,i),T(1:3,j)) .gt. tiny) ) exit
         enddo
         if (any([i,j].eq.0)) then
-            call am_print('ERROR','No pair of non-collinear lattice vectors found',' >>> ')
+            call am_print('ERROR','No pair of non-collinear lattice vectors found',flags='E')
             stop
         endif
         ! ... selecting smallest primitive vector which produces a non-zero cell volume as third vector
@@ -987,7 +987,7 @@
             if ( abs(primitive_volume(bas=T(1:3,[i,j,k]),skip_volume_check=.true.)) .gt. tiny ) exit
         enddo
         if (any([i,j,k].eq.0)) then
-            call am_print('ERROR','No primitive basis found',' >>> ')
+            call am_print('ERROR','No primitive basis found',flags='E')
             stop
         endif
         prim%bas = T(1:3,[i,j,k])
@@ -1054,7 +1054,7 @@
                 endif
             enddo search_for_atom
             if (prim%atype(i).eq.0) then
-                call am_print('ERROR','Unable to identify atom in reduced cell',' >>> ')
+                call am_print('ERROR','Unable to identify atom in reduced cell',flags='E')
                 call am_print('atom #',i)
                 call am_print('coordinate of reference atom',tau_ref)
                 call am_print('atomic coordinate of unidentified atoms',prim%tau(1:3,i))
@@ -1109,7 +1109,7 @@
         endif
         !
         if ((mod(det(bscfp)+opts%sym_prec,1.0_dp)-opts%sym_prec).gt.opts%sym_prec) then
-            call am_print('ERROR','The determinant of the supercell basis in primitive fractional coordinates must be an integer.',' >>> ')
+            call am_print('ERROR','The determinant of the supercell basis in primitive fractional coordinates must be an integer.',flags='E')
             stop
         endif
         !

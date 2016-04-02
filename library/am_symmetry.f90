@@ -129,7 +129,7 @@ contains
         endif
         !
         if (ps_identifier .eq. 0) then
-            call am_print('ERROR','Unable to identify point symmetry.',' >>> ')
+            call am_print('ERROR','Unable to identify point symmetry.',flags='E')
             call am_print('R (frac)',R)
             call am_print('tr (frac)',tr)
             call am_print('det (frac)',det)
@@ -492,14 +492,14 @@ contains
     end subroutine symmetry_adapted_conducitvity
 
     pure function  transpositional_operator(n) result(M)
-        !
+        ! c_ij -> c_ji in the flattened basis
         implicit none
         !
         integer, intent(in) :: n
         real(dp), allocatable :: M(:,:)
         integer  :: i, j
         !
-        allocate(M(n**2,n**2))
+        allocate(M(n**3,n**3))
         M=0
         !
         do i = 1, n
@@ -917,7 +917,7 @@ contains
         if (verbosity.ge.1) call am_print('number of dependent terms',nterms_dependent,' ... ')
         !
         if (nterms_zero+nterms_independent+nterms_dependent.ne.nterms) then
-            call am_print('ERROR','The number of terms which are independent, null, and dependent do not add to the total number of terms.',' >>> ')
+            call am_print('ERROR','The number of terms which are independent, null, and dependent do not add to the total number of terms.',flags='E')
             stop
         endif
         !
@@ -984,7 +984,7 @@ contains
         case(9);  schoenflies = 's_4'
         case(10); schoenflies = 's_3'
         case default
-            call am_print('ERROR','Schoenflies code unknown.',' >>> ')
+            call am_print('ERROR','Schoenflies code unknown.',flags='E')
             stop
         end select
     end function   decode_pointsymmetry
@@ -1030,7 +1030,7 @@ contains
                 case(31); point_group_name = 't_d'
                 case(32); point_group_name = 'o_h'
             case default
-                call am_print('ERROR','Schoenflies code for point-group unknown.',' >>> ')
+                call am_print('ERROR','Schoenflies code for point-group unknown.',flags='E')
                 call am_print('pg_identifier',pg_identifier)
                 stop
             end select
@@ -1094,14 +1094,14 @@ contains
         ns3 = count(ps_identifier.eq.10) ! 's_3'
         !
         if (ni.gt.1) then
-            call am_print('ERROR','More than one inversion operator found.',' >>> ')
+            call am_print('ERROR','More than one inversion operator found.',flags='E')
             stop
         endif
         !
         if (ne.gt.1) then
-            call am_print('ERROR','More than one identity operator found.',' >>> ')
+            call am_print('ERROR','More than one identity operator found.',flags='E')
         elseif (ne.eq.0) then
-            call am_print('ERROR','No identity operator found.',' >>> ')
+            call am_print('ERROR','No identity operator found.',flags='E')
             stop
         endif
         !
@@ -1146,7 +1146,7 @@ contains
             if (ns4.eq.6) then; pg_identifier=31; return; endif
             endif
         ! if it makes it this far, it means nothing matches. return an error immediately. 
-        call am_print('ERROR','Unable to identify point group', ' >>> ')
+        call am_print('ERROR','Unable to identify point group',flags='E')
             write(*,'(" ... ",a)') 'number of symmetry operators'
             write(*,'(5x,a5,i5)') 'e  ', ne
             write(*,'(5x,a5,i5)') 'c_2', nc2
@@ -1333,7 +1333,7 @@ contains
         enddo
         !
         if (k.ne.npairs) then
-            call am_print('ERROR','Inconsistent number of atom pairs. Something is wrong internally.',' >>> ')
+            call am_print('ERROR','Inconsistent number of atom pairs. Something is wrong internally.',flags='E')
             call am_print('number of atom pairs', k, ' ... ')
             stop
         endif
@@ -1586,7 +1586,7 @@ contains
         integer , allocatable :: small(:)
         integer :: n, i
         !
-        call am_print('WARNING','The procedure used to determine the character table does not allow for complex character')
+        call am_print('WARNING','The procedure used to determine the character table does not allow for complex character',flags='W')
         !
         n = size(A,3)
         p = primes(n)
@@ -1609,7 +1609,7 @@ contains
             M = matmul(inv(V),matmul(A(:,:,i),V))
             ! tiny may be too small a criteria here... should probably use a value which scales with the size of the matrix.
             if (any( abs(diag(diag(M))-M).gt. (tiny*n**2) )) then
-                call am_print('ERROR','Unable to perform simultaneous matrix diagonalization. Check that whether they commute.')
+                call am_print('ERROR','Unable to perform simultaneous matrix diagonalization. Check that whether they commute.',flags='E')
                 call am_print('M',M)
                 call am_print('diag(M)',diag(M))
                 call am_print('diag(diag(M))',diag(diag(M)))
@@ -2079,7 +2079,7 @@ contains
                     endif
                 enddo
                 if (found.eq..false.) then
-                    call am_print('ERROR','Unable to find matching atom.',' >>> ')
+                    call am_print('ERROR','Unable to find matching atom.',flags='E')
                     call am_print('tau (all atoms)',transpose(uc%tau))
                     call am_print('tau',uc%tau(:,j))
                     call am_print('R',sg%R(:,:,i))
@@ -2298,7 +2298,7 @@ contains
         ! consistency checks
         ! 1)
         if (any(cc_identifier.eq.0)) then
-            call am_print('ERROR','Not every element in the group has been asigned a conjugacy class.',' >>> ')
+            call am_print('ERROR','Not every element in the group has been asigned a conjugacy class.',flags='E')
             stop
         endif
         !
@@ -2412,7 +2412,7 @@ contains
 !         if (opts%verbosity.ge.1) call am_print('symmetries in subgroup',H%nsyms)
 !         !
 !         if (modulo(G%nsyms,H%nsyms).ne.0) then
-!             call am_print('ERROR','Symmetry subgroup order is not a factor of the group order.',' >>> ')
+!             call am_print('ERROR','Symmetry subgroup order is not a factor of the group order.',flags='E')
 !             stop
 !         endif
 !         !
@@ -2449,7 +2449,7 @@ contains
 !         if (opts%verbosity.ge.1) call am_print('symmetries in coset subgroup',C%nsyms)
 !         !
 !         if (modulo(G%nsyms,C%nsyms).ne.0) then
-!             call am_print('ERROR','Coset symmetry subgroup order is not a factor of the group order.',' >>> ')
+!             call am_print('ERROR','Coset symmetry subgroup order is not a factor of the group order.',flags='E')
 !             stop
 !         endif
 !         !

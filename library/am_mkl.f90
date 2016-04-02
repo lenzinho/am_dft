@@ -65,7 +65,7 @@ contains
         lda  = m
         !
         if (m.ne.n) then
-            call am_print('ERROR','Matrix is not square.',' >>> ')
+            call am_print('ERROR','Matrix is not square.',flags='E')
             call am_print('shape(A)',shape(A))
             stop
         endif

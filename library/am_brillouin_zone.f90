@@ -234,7 +234,7 @@ contains
         w = size(unique(kpoint_orbit(R,kpoint),sym_prec),2)
         !
         if ( modulo(nsyms,w).ne.0) then
-            call am_print('ERROR','Weight is not a factor of the number of symmetry operation',' >>> ')
+            call am_print('ERROR','Weight is not a factor of the number of symmetry operation',flags='E')
             call am_print('kpoint (fractional)',kpoint)
             call am_print('weight (integer)',w)
             call am_print('number of symmetry operations',nsyms)
@@ -469,7 +469,7 @@ contains
         !$OMP END PARALLEL
         if (opts%verbosity.ge.1) then
             if (.not.nint(sum(ibz%w)).eq.bz%nkpts) then
-                call am_print('WARNING','The sum of irreducible weights does not equal the number of k-points in the full zone.',' >>> ')
+                call am_print('WARNING','The sum of irreducible weights does not equal the number of k-points in the full zone.',flags='E')
                 ! This could mean that:
                 ! 1) there was an internal error. this has been occuring when an even MP mesh is requested
                 ! 2) the full bz mesh is not a MP mesh
@@ -546,7 +546,7 @@ contains
             w = size(korbit,2)
             ! check that weight is a factor of the number of symmetry operations
             if ( modulo(pg%nsyms,w) .ne. 0 ) then
-                call am_print('ERROR','Weight is not a factor of the number of symmetry operation',' >>> ')
+                call am_print('ERROR','Weight is not a factor of the number of symmetry operation',flags='E')
                 call am_print('kpoint',bz%kpt(:,i))
                 call am_print('weight',w)
                 call am_print('number of symmetry operations',pg%nsyms)
@@ -854,9 +854,9 @@ contains
         if (xi(2).gt.xi(3)) then; xi([2,3]) = xi([3,2]); endif
         x1=xi(1); x2=xi(2); x3=xi(3); x4=xi(4)
         !
-        ! if (x1.gt.x2) then; call am_print('ERROR','Sorting failed.',' >>> '); stop; endif
-        ! if (x2.gt.x3) then; call am_print('ERROR','Sorting failed.',' >>> '); stop; endif
-        ! if (x3.gt.x4) then; call am_print('ERROR','Sorting failed.',' >>> '); stop; endif
+        ! if (x1.gt.x2) then; call am_print('ERROR','Sorting failed.',flags='E'); stop; endif
+        ! if (x2.gt.x3) then; call am_print('ERROR','Sorting failed.',flags='E'); stop; endif
+        ! if (x3.gt.x4) then; call am_print('ERROR','Sorting failed.',flags='E'); stop; endif
         !
         bracket = 0
         if     (x.lt.x1) then; bracket = 1 !; call am_print('bracket',xi-x)
@@ -865,7 +865,7 @@ contains
         elseif (x.lt.x4) then; bracket = 4 !; call am_print('bracket',xi-x)
         elseif (x.gt.x4) then; bracket = 5 !; call am_print('bracket',xi-x)
         else
-            call am_print('ERROR','Unable to bracket.',' >>> ')
+            call am_print('ERROR','Unable to bracket.',flags='E')
             stop
         endif
         !
@@ -903,7 +903,7 @@ contains
                     w(4) = 1.0_dp
                     f    = 0.0_dp
                 case default
-                    call am_print('ERROR','Error computing tetrahedron weight.',' >>> ')
+                    call am_print('ERROR','Error computing tetrahedron weight.',flags='E')
                     call am_print('x',x)
                     call am_print('xc',[x1,x2,x3,x4])
                     call am_print('w',w)
@@ -943,7 +943,7 @@ contains
                     w(4) = 0.0_dp
                     f    = 0.0_dp
                 case default
-                    call am_print('ERROR','Error computing tetrahedron weight.',' >>> ')
+                    call am_print('ERROR','Error computing tetrahedron weight.',flags='E')
                     call am_print('x',x)
                     call am_print('xc',[x1,x2,x3,x4])
                     call am_print('w',w)
@@ -951,11 +951,11 @@ contains
                     stop                        
                 end select
             case default
-                call am_print('ERROR','Integration type not valid',' >>> ')
+                call am_print('ERROR','Integration type not valid',flags='E')
                 stop
         end select
         if (any(isnan(w))) then
-            call am_print('ERROR','NaN weight returned.',' >>> ')
+            call am_print('ERROR','NaN weight returned.',flags='E')
             call am_print('integration_type',integration_type)
             call am_print('bracket',bracket)
             call am_print('xc',[x1,x2,x3,x4])
@@ -1014,16 +1014,16 @@ contains
         if (present(iopt_bz)) then
             !
             if (abs(bz_tmp%nkpts-iopt_bz%nkpts).gt.tiny) then
-                call am_print('ERROR','mismatched number of kpoints with IBZKPT',' >>> ')
+                call am_print('ERROR','mismatched number of kpoints with IBZKPT',flags='E')
                 stop
             endif
             if (any(abs(bz_tmp%kpt-iopt_bz%kpt).gt.tiny)) then
-                call am_print('ERROR','mismatched kpoint coordinates with IBZKPT file',' >>> ')
+                call am_print('ERROR','mismatched kpoint coordinates with IBZKPT file',flags='E')
                 stop
             endif
             !
             if (any(abs(bz_tmp%w-iopt_bz%w).gt.tiny)) then
-                call am_print('ERROR','mismatched kpoint weight with IBZKPT file',' >>> ')
+                call am_print('ERROR','mismatched kpoint weight with IBZKPT file',flags='E')
                 call am_print('bz_tmp%w and iopt_bz%w',reshape([bz_tmp%w,iopt_bz%w],[bz_tmp%nkpts,2]))
                 stop
             endif
