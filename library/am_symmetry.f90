@@ -35,14 +35,7 @@ module am_symmetry
         procedure :: create
         !
         procedure :: symmetry_adapted_tensor
-        !
         procedure :: symmetry_adapted_2nd_order_force_constants
-        procedure :: symmetry_adapted_conducitvity
-        procedure :: symmetry_adapted_thermoelectricity
-        procedure :: symmetry_adapted_elasticity
-        procedure :: symmetry_adapted_pizeoelectricity
-        !
-        procedure :: symmetry_adapted_elasticity_V1
         !
         procedure :: determine_character_table
         procedure :: action_table_get
@@ -402,27 +395,41 @@ contains
         integer :: i, j
         integer :: nequations
         !
-        ! ... Wooten page 449; sflag specifies whether the neighboring indices are symmetric with respect to each other. NEED TO IMPLEMENT STILL. 
-        if     (index(property,'pyroelectricity')        .ne.0) then; tensor_rank = 1 ! P_{i}     = p_{i} \Delta T
-        elseif (index(property,'electric susceptibility').ne.0) then; tensor_rank = 2 ! P_{i}     = \alpha_{ij}  E_{j}
-        elseif (index(property,'magnetic susceptibility').ne.0) then; tensor_rank = 2 ! M_{i}     = \mu_{ij}     H_{j}
-        elseif (index(property,'electric conductivity')  .ne.0) then; tensor_rank = 2 ! J_{i}     = \sigma_{ij}  E_{i}
-        elseif (index(property,'electric resistivity')   .ne.0) then; tensor_rank = 2 ! E_{i}     = \rho_{ij}    J_{j}
-        elseif (index(property,'thermal conductivity')   .ne.0) then; tensor_rank = 2 ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
-        elseif (index(property,'thermal expansion')      .ne.0) then; tensor_rank = 2 ! \eps_{ij} = \alpha_{ij}  \Delta T
-        elseif (index(property,'seebeck')                .ne.0) then; tensor_rank = 2 ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
-        elseif (index(property,'peltier')                .ne.0) then; tensor_rank = 2 ! q_{i}     = \pi_{ij}     J_{j}
-        elseif (index(property,'hall')                   .ne.0) then; tensor_rank = 3 ! E_{i}     = h_{ijk}      J_{j} H_{k} 
-        elseif (index(property,'piezoelectricity')       .ne.0) then; tensor_rank = 3 ! P_{i}     = d_{ijk}      \sigma_{jk}
-        elseif (index(property,'piezomagnetic')          .ne.0) then; tensor_rank = 3 ! M_{i}     = Q_{ijk}      \sigma_{jk}
-        elseif (index(property,'elasticity')             .ne.0) then; tensor_rank = 4 ! 
-        elseif (index(property,'piezo-optic')            .ne.0) then; tensor_rank = 4 ! 
-        elseif (index(property,'kerr')                   .ne.0) then; tensor_rank = 4 ! 
-        elseif (index(property,'electrostriction')       .ne.0) then; tensor_rank = 4 ! 
-        elseif (index(property,'third-order elasticity') .ne.0) then; tensor_rank = 6 ! 
-        endif
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining symmetry-adapted tensor: '//trim(property))
+        !
+        ! ... Wooten page 449; sflag specifies whether the neighboring indices are symmetric with respect to each other. NEED TO IMPLEMENT STILL. 
+        ! N = no intrinsic symmetry on this pair of indices
+        ! S = symmetric pair of indices
+        ! A = antisymmetric pair of indices
+        if     (index(property,'pyroelectricity')        .ne.0) then; tensor_rank = 1 !    ! P_{i}     = p_{i} \Delta T
+        !
+        elseif (index(property,'electric susceptibility').ne.0) then; tensor_rank = 2 ! S  ! P_{i}     = \alpha_{ij}  E_{j}
+        elseif (index(property,'magnetic susceptibility').ne.0) then; tensor_rank = 2 ! S  ! M_{i}     = \mu_{ij}     H_{j}
+        elseif (index(property,'thermal expansion')      .ne.0) then; tensor_rank = 2 ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
+        !
+        ! Onsager’s Principle requires that the electric resistivity and thermal conductivity tensors be symmetric.
+        ! This does not hold for the Seebeck and Peltier (thermoelectric) tensors which relate two different flows. Thus
+        ! there are, at most, nine independent parameters rather than six. [Newnham "Properties of Materials"]
+        elseif (index(property,'electric conductivity')  .ne.0) then; tensor_rank = 2 ! S  ! J_{i}     = \sigma_{ij}  E_{i}
+        elseif (index(property,'electric resistivity')   .ne.0) then; tensor_rank = 2 ! S  ! E_{i}     = \rho_{ij}    J_{j}
+        elseif (index(property,'thermal conductivity')   .ne.0) then; tensor_rank = 2 ! S  ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
+        elseif (index(property,'thermoelectricity')      .ne.0) then; tensor_rank = 2 ! N  ! 
+        elseif (index(property,'seebeck')                .ne.0) then; tensor_rank = 2 ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
+        elseif (index(property,'peltier')                .ne.0) then; tensor_rank = 2 ! N  ! q_{i}     = \pi_{ij}     J_{j}
+        !
+        elseif (index(property,'hall')                   .ne.0) then; tensor_rank = 3 !    ! E_{i}     = h_{ijk}      J_{j} H_{k} 
+        elseif (index(property,'piezoelectricity')       .ne.0) then; tensor_rank = 3 !    ! P_{i}     = d_{ijk}      \sigma_{jk}
+        elseif (index(property,'piezomagnetic')          .ne.0) then; tensor_rank = 3 !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
+        elseif (index(property,'elasticity')             .ne.0) then; tensor_rank = 4 !    ! 
+        elseif (index(property,'piezo-optic')            .ne.0) then; tensor_rank = 4 !    ! 
+        elseif (index(property,'kerr')                   .ne.0) then; tensor_rank = 4 !    ! 
+        elseif (index(property,'electrostriction')       .ne.0) then; tensor_rank = 4 !    ! 
+        elseif (index(property,'third-order elasticity') .ne.0) then; tensor_rank = 6 !    ! 
+        else
+            call am_print('ERROR','Unknown property',flags='E')
+            stop
+        endif
         !
         nsyms = size(pg%R,3)
         nterms = 3**tensor_rank
@@ -468,7 +475,10 @@ contains
         if     (index(property,'conductivity').ne.0 &
          & .or. index(property,'resistivity' ).ne.0) then
             j=j+1; S(:,:,j) = T_op(3)               ! s_ij  = s_ji
-        elseif (index(property,'elasticicity').ne.0) then
+        elseif (index(property,'piezoelectricity').ne.0) then
+            j=j+1; S(:,:,j) = kron(T_op(3),eye(3))  ! d_ijk = d_ikj
+        elseif (index(property,'elasticity').ne.0) then
+            ! note: eye(9) = kron(eye(3),eye(3))
             j=j+1; S(:,:,j) = kron(eye(9),T_op(3))  ! cijkl = cjikl
             j=j+1; S(:,:,j) = kron(T_op(3),eye(9))  ! cijkl = cjilk
             j=j+1; S(:,:,j) = kron(T_op(3),T_op(3)) ! cijkl = cjilk
@@ -500,125 +510,7 @@ contains
         !
         call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
             is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
-
     end subroutine symmetry_adapted_tensor
-
-    subroutine     symmetry_adapted_conducitvity(pg,uc,opts)
-        !
-        class(am_class_symmetry), intent(in) :: pg
-        type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_options), intent(in) :: opts
-        !
-        real(dp) :: M(3,3)                          !> IMPORTANT: M is the original tensor before the permutation (shape of tensor is very important!)
-        real(dp) :: RM(3,3)                         !> rotated/permuted matrix M
-        integer  :: nterms                          !> nterms the number of terms
-        integer  :: nsyms                           !> nsyms number of symmetry elements
-        integer  :: tensor_rank                     !> tensor_rank rank of tensor matrix M, determined automatically by code
-        real(dp), allocatable :: M1d(:)             !> M1d(nterms) an array which is used to build the matrix M
-        real(dp), allocatable :: T(:,:)             !> T(nsyms,nterms) permutation matrx containing rows vectors describing how M is rotated by a point symmetry R
-        real(dp), allocatable :: A(:,:)             !> A(nsyms*nterms,2*nterms) augmented matrix equation
-        real(dp), allocatable :: LHS(:,:)           !> LHS(nterms,nterms) left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
-        real(dp), allocatable :: RHS(:,:)           !> RHS(nterms,nterms) right hand side of augmented matrix equation
-        logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
-        logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
-        logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
-        logical , allocatable :: mask(:)            !> mask to speed up the symmetry determination process
-        integer :: i, j, k, n
-        integer :: nequations
-        !
-        if (opts%verbosity.ge.1) call am_print_title('Determining conductivity tensor symmetry')
-        !
-        tensor_rank = size(shape(M))
-        nsyms = size(pg%R,3)
-        nterms = 3**tensor_rank
-        !
-        allocate(M1d(nterms))
-        allocate(T(nsyms,nterms))
-        allocate(A(nsyms*nterms,2*nterms)) ! augmented matrix
-        !
-        A = 0
-        nequations = 0
-        !
-        ! apply point symmetries (each point symmetry corresponds to nterms possible equations
-        ! relating the terms to each other)
-        !
-        allocate(mask(nterms))
-        mask = .true.
-        ! <CRYSTAL_SYMMETRIES>
-        do i = 1,nterms
-            M1d = 0
-            M1d(i) = 1
-            M = reshape(M1d,shape(M))
-            do j = 1, nsyms
-                ! Track number of symmetry equations for fun.
-                nequations = nequations + nterms
-                ! Save the action of the symmetry operations as row-vectors in T(nsyms,nterms) 
-                ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
-                T(j,1:nterms) = matmul( kron_pow(ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas),tensor_rank) , M1d)
-                ! Apply a mask to make this faster. Once the term is connected to an orbit, all other orbits follow
-                ! immediately. There is no need to reapply the point symmetries to the term on which the mapping occurs
-                do k = 1, nterms
-                    if (abs(T(j,k)).gt.tiny) then
-                        mask(k) = .false.
-                    endif
-                enddo
-                !
-            enddo
-            ! save an augmented matrix A
-            A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
-            A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(2-1)) = 0.0_dp
-            A([1:nsyms]+nsyms*(i-1),         i+nterms*(2-1)) = 1.0_dp
-        enddo
-        ! reduce to row echlon form to incorporate crystal symmetries
-        call rref(A)
-        ! </CRYSTAL_SYMMETRIES>
-        !
-        ! <INTRINSIC_SYMMETRIES>
-        ! Now apply intrinsic symmetries, which are fundamental properties of the elastic/stress/strain tensors and,
-        ! therefore, independent of the crystal Nye, J.F. "Physical properties of crystals: their representation by
-        ! tensors and matrices". p 30. Note: Conductivity tensor is a symmetric second-rank tensor. (see p 22 and 227)
-        ! Thermoelectric tensor is an anti-symmetric second-rank tensor. Also see p 194 Eq 4, which proves that the
-        ! thermal and electrical conductivities are symmetric tensors explicitly.
-        n = nterms
-        k=0
-        do j = 1,3
-        do i = 1,3
-            ! sigma_ij = sigma_ji ! permute indices
-            nequations = nequations+1
-            n  = n+1
-            M  = 0.0_dp
-            RM = 0.0_dp
-            M(i,j) = 1.0_dp
-            RM(j,i) = 1.0_dp
-            A(n,[1:nterms]+nterms*(1-1))=pack( M , .true. ) ! RHS
-            A(n,[1:nterms]+nterms*(2-1))=pack( RM, .true. ) ! LHS
-            k=k+1
-            T(k,1:nterms) = pack(M,.true.)
-        enddo
-        enddo
-        ! reduce to echlon form once again to incorporate the intrinsic symmetries
-        call rref(A)
-        ! </INTRINSIC_SYMMETRIES>
-        !
-        ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS should be the identity matrix,
-        ! which, together with the RHS, completely specifies all relationships between variables.
-        allocate(LHS(nterms,nterms))
-        allocate(RHS(nterms,nterms))
-        LHS = A(1:nterms,1:nterms)
-        RHS = A(1:nterms,[1:nterms]+nterms)
-        !
-        if ( any(abs(LHS-eye(nterms)).gt.tiny) ) then
-            call am_print('ERROR','Unable to reduce matrix to row echlon form.')
-            call am_print_sparse('spy(LHS)',LHS)
-            stop
-        endif
-        !
-        call am_print('number of symmetry equations',nequations,' ... ')
-        !
-        call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
-            is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
-        !
-    end subroutine symmetry_adapted_conducitvity
 
     pure function  T_op(n) result(M)
         ! c_ij -> c_ji in the flattened basis
@@ -637,344 +529,6 @@ contains
         enddo
         enddo
     end function   T_op
-
-    subroutine     symmetry_adapted_thermoelectricity(pg,uc,opts)
-        !
-        ! Onsager’s Principle requires that the electric resistivity and thermal conductivity tensors be symmetric, but
-        ! this does not hold for the Seebeck, Peltier (thermoelectric)  which relate two different flows.
-        ! Thus there are, at most, nine  to be determined rather than six.
-        !
-        ! Newnham "Properties of Materials"
-        !
-        class(am_class_symmetry), intent(in) :: pg
-        type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_options), intent(in) :: opts
-        !
-        real(dp) :: M(3,3)                          !> IMPORTANT: M is the original tensor before the permutation (shape of tensor is very important!)
-        integer  :: nterms                          !> nterms the number of terms
-        integer  :: nsyms                           !> nsyms number of symmetry elements
-        integer  :: tensor_rank                     !> tensor_rank rank of tensor matrix M, determined automatically by code
-        real(dp), allocatable :: M1d(:)             !> M1d(nterms) an array which is used to build the matrix M
-        real(dp), allocatable :: T(:,:)             !> T(nsyms,nterms) permutation matrx containing rows vectors describing how M is rotated by a point symmetry R
-        real(dp), allocatable :: A(:,:)             !> A(nsyms*nterms,2*nterms) augmented matrix equation
-        real(dp), allocatable :: LHS(:,:)           !> LHS(nterms,nterms) left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
-        real(dp), allocatable :: RHS(:,:)           !> RHS(nterms,nterms) right hand side of augmented matrix equation
-        logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
-        logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
-        logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
-        logical , allocatable :: mask(:)            !> mask to speed up the symmetry determination process
-        integer :: i, j, k
-        integer :: nequations
-        !
-        if (opts%verbosity.ge.1) call am_print_title('Determining thermoelectric tensor symmetry')
-        !
-        tensor_rank = size(shape(M))
-        nsyms = size(pg%R,3)
-        nterms = 3**tensor_rank
-        !
-        allocate(M1d(nterms))
-        allocate(T(nsyms,nterms))
-        allocate(A(nsyms*nterms,2*nterms)) ! augmented matrix
-        !
-        A = 0
-        nequations = 0
-        !
-        ! apply point symmetries (each point symmetry corresponds to nterms possible equations
-        ! relating the terms to each other)
-        !
-        allocate(mask(nterms))
-        mask = .true.
-        ! <CRYSTAL_SYMMETRIES>
-        do i = 1,nterms
-            M1d = 0
-            M1d(i) = 1
-            M = reshape(M1d,shape(M))
-            do j = 1, nsyms
-                !
-                ! Track number of symmetry equations for fun.
-                nequations = nequations + nterms
-                !
-                ! Save the action of the symmetry operations as row-vectors in T(nsyms,nterms) 
-                ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
-                T(j,1:nterms) = matmul( kron_pow(ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas),tensor_rank) , M1d)
-                !
-                ! Apply a mask to make this faster. Once the term is connected to an orbit, all other orbits follow
-                ! immediately. There is no need to reapply the point symmetries to the term on which the mapping occurs
-                do k = 1, nterms
-                    if (abs(T(j,k)).gt.tiny) then
-                        mask(k) = .false.
-                    endif
-                enddo
-                !
-            enddo
-            ! save an augmented matrix A
-            A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
-            A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(2-1)) = 0.0_dp
-            A([1:nsyms]+nsyms*(i-1),         i+nterms*(2-1)) = 1.0_dp
-        enddo
-        ! reduce to row echlon form to incorporate crystal symmetries
-        call rref(A)
-        ! </CRYSTAL_SYMMETRIES>
-        !
-        ! <INTRINSIC_SYMMETRIES>
-        !
-        ! THERMOELECTIRCITY TENSOR HAS NO INTRINSIC SYMMETRY. Nye p 227, Eq 47.
-        !
-        ! Now apply intrinsic symmetries, which are fundamental properties of the elastic/stress/strain tensors and,
-        ! therefore, independent of the crystal Nye, J.F. "Physical properties of crystals: their representation by
-        ! tensors and matrices". p 30. Note: Conductivity tensor is a symmetric second-rank tensor. (see p 22 and 227)
-        ! Also see p 194 Eq 4, which proves that the thermal and electrical conductivities are symmetric tensors
-        ! explicitly.
-        ! </INTRINSIC_SYMMETRIES>
-        !
-        ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS should be the identity matrix,
-        ! which, together with the RHS, completely specifies all relationships between variables.
-        allocate(LHS(nterms,nterms))
-        allocate(RHS(nterms,nterms))
-        LHS = A(1:nterms,1:nterms)
-        RHS = A(1:nterms,[1:nterms]+nterms)
-        !
-        if ( any(abs(LHS-eye(nterms)).gt.tiny) ) then
-            call am_print('ERROR','Unable to reduce matrix to row echlon form.')
-            call am_print_sparse('spy(LHS)',LHS)
-            stop
-        endif
-        !
-        call am_print('number of symmetry equations',nequations,' ... ')
-        !
-        call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
-            is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
-        !
-    end subroutine symmetry_adapted_thermoelectricity
-
-    subroutine     symmetry_adapted_pizeoelectricity(pg,uc,opts)
-        !
-        ! Thus piezoelectricity transforms as a polar third rank tensor. d'_imn = a_ij a_mk a_nl d_jkl. In general there
-        ! are 33 = 27 tensor components, but because the stress tensor is symmetric (Xij = Xji), only 18 of the
-        ! components are independent. 
-        !
-        ! Piezoelectric tensor is zero for crystals with inversion symmetry; i.e. the effect only exists in noncentrosymmetric crystals!
-        !
-        class(am_class_symmetry), intent(in) :: pg
-        type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_options), intent(in) :: opts
-        !
-        real(dp) :: M(3,3,3)                        !> IMPORTANT: M is the original tensor before the permutation (shape of tensor is very important!)
-        real(dp) :: RM(3,3,3)                       !> rotated/permuted matrix M
-        integer  :: nterms                          !> nterms the number of terms
-        integer  :: nsyms                           !> nsyms number of symmetry elements
-        integer  :: tensor_rank                     !> tensor_rank rank of tensor matrix M, determined automatically by code
-        real(dp), allocatable :: M1d(:)             !> M1d(nterms) an array which is used to build the matrix M
-        real(dp), allocatable :: T(:,:)             !> T(nsyms,nterms) permutation matrx containing rows vectors describing how M is rotated by a point symmetry R
-        real(dp), allocatable :: A(:,:)             !> A(nsyms*nterms,2*nterms) augmented matrix equation
-        real(dp), allocatable :: LHS(:,:)           !> LHS(nterms,nterms) left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
-        real(dp), allocatable :: RHS(:,:)           !> RHS(nterms,nterms) right hand side of augmented matrix equation
-        logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
-        logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
-        logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
-        logical , allocatable :: mask(:)            !> mask to speed up the symmetry determination process
-        integer :: i, j, k, n
-        integer :: nequations
-        !
-        if (opts%verbosity.ge.1) call am_print_title('Determining piezoelectric tensor symmetry')
-        !
-        tensor_rank = size(shape(M))
-        nsyms = size(pg%R,3)
-        nterms = 3**tensor_rank
-        !
-        allocate(M1d(nterms))
-        allocate(T(nsyms,nterms))
-        allocate(A(nsyms*nterms,2*nterms)) ! augmented matrix
-        !
-        A = 0
-        nequations = 0
-        !
-        ! apply point symmetries (each point symmetry corresponds to nterms possible equations
-        ! relating the terms to each other)
-        !
-        allocate(mask(nterms))
-        mask = .true.
-        ! <CRYSTAL_SYMMETRIES>
-        do i = 1,nterms
-            M1d = 0
-            M1d(i) = 1
-            M = reshape(M1d,shape(M))
-            do j = 1, nsyms
-                !
-                ! Track number of symmetry equations for fun.
-                nequations = nequations + nterms
-                !
-                ! Save the action of the symmetry operations as row-vectors in T(nsyms,nterms) 
-                ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
-                T(j,1:nterms) = matmul( kron_pow(ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas),tensor_rank) , M1d)
-                !
-                ! Apply a mask to make this faster. Once the term is connected to an orbit, all other orbits follow
-                ! immediately. There is no need to reapply the point symmetries to the term on which the mapping occurs
-                do k = 1, nterms
-                    if (abs(T(j,k)).gt.tiny) then
-                        mask(k) = .false.
-                    endif
-                enddo
-                !
-            enddo
-            ! save an augmented matrix A
-            A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
-            A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(2-1)) = 0.0_dp
-            A([1:nsyms]+nsyms*(i-1),         i+nterms*(2-1)) = 1.0_dp
-        enddo
-        ! reduce to row echlon form to incorporate crystal symmetries
-        call rref(A)
-        ! </CRYSTAL_SYMMETRIES>
-        !
-        ! <INTRINSIC_SYMMETRIES>
-        ! Now apply intrinsic symmetries, which are fundamental properties, independent of crystal symmetries. Nye, J.F.
-        ! "Physical properties of crystals: their representation by tensors and matrices". For the intrinsic
-        ! thermoelectric tensor, see p 130. The two last indices, when permuted, leave the tensor invariant because
-        ! these indices correspond to the electrical conductivity tensor which is also invariant under such
-        ! permutations.
-        n = nterms
-        do k = 1,3
-        do j = 1,3
-        do i = 1,3
-            ! d_ijk = d_ikj ! permute indices; Nye p 111, Eq 4
-            nequations = nequations+1
-            n  = n+1
-            M  = 0.0_dp
-            RM = 0.0_dp
-             M(i,j,k) = 1.0_dp
-            RM(i,k,j) = 1.0_dp
-            A(n,[1:nterms]+nterms*(1-1))= pack( M , .true. ) ! RHS
-            A(n,[1:nterms]+nterms*(2-1))= pack( RM, .true. ) ! LHS
-        enddo
-        enddo
-        enddo
-        call rref(A)
-        ! </INTRINSIC_SYMMETRIES>
-        !
-        ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS should be the identity matrix,
-        ! which, together with the RHS, completely specifies all relationships between variables.
-        allocate(LHS(nterms,nterms))
-        allocate(RHS(nterms,nterms))
-        LHS = A(1:nterms,1:nterms)
-        RHS = A(1:nterms,[1:nterms]+nterms)
-        !
-        if ( any(abs(LHS-eye(nterms)).gt.tiny) ) then
-            call am_print('ERROR','Unable to reduce matrix to row echlon form.')
-            call am_print_sparse('spy(LHS)',LHS)
-            stop
-        endif
-        !
-        call am_print('number of symmetry equations',nequations,' ... ')
-        !
-        call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
-            is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
-        !
-    end subroutine symmetry_adapted_pizeoelectricity
-
-    subroutine     symmetry_adapted_elasticity(pg,uc,opts)
-        !
-        class(am_class_symmetry), intent(in) :: pg
-        type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_options), intent(in) :: opts
-        !
-        integer  :: nterms                          !> nterms the number of terms
-        integer  :: nsyms                           !> nsyms number of symmetry elements
-        integer  :: tensor_rank                     !> tensor_rank rank of tensor matrix M, determined automatically by code
-        integer , allocatable :: member(:,:)   
-        real(dp), allocatable :: M(:)
-        real(dp), allocatable :: R(:,:)
-        real(dp), allocatable :: S(:,:,:)           !> intrinsic symmetries
-        real(dp), allocatable :: T(:,:)             !> T(nsyms,nterms) permutation matrx containing rows vectors describing how M is rotated by a point symmetry R
-        real(dp), allocatable :: A(:,:)             !> A(nsyms*nterms,2*nterms) augmented matrix equation
-        real(dp), allocatable :: LHS(:,:)           !> LHS(nterms,nterms) left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
-        real(dp), allocatable :: RHS(:,:)           !> RHS(nterms,nterms) right hand side of augmented matrix equation
-        logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
-        logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
-        logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
-        logical , allocatable :: mask(:)            !> mask to speed up the symmetry determination process
-        integer :: i, j, k, l, n
-        integer :: nequations
-        !
-        if (opts%verbosity.ge.1) call am_print_title('Determining elasticity tensor')
-        !
-        tensor_rank = 4
-        nsyms = size(pg%R,3)
-        nterms = 3**tensor_rank
-        !
-        ! members(nclass,maxval(nelements))
-        member = cc_member(pg%cc_identifier)
-        !
-        allocate(A(2*nterms,2*nterms)) ! augmented matrix
-        A = 0
-        !
-        allocate(R(nterms,nterms))
-        R = 0
-        !
-        nequations = 0
-        !
-        ! initialize A (if this is not done, it will not work. I don't know why...)
-        !
-        A([1:nterms],[1:nterms]+nterms*0) = eye(nterms)
-        A([1:nterms],[1:nterms]+nterms*1) = eye(nterms)
-        !
-        ! crystal symmetries
-        !
-        do j = 1, size(member,1) ! loop over classes instead...
-            i=member(j,1)
-            ! Track number of symmetry equations for fun
-            nequations = nequations + nterms
-            !
-            R = kron_pow(ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),tensor_rank)
-            ! Save the action of the symmetry operations as row-vectors in T(nsyms,nterms) 
-            ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
-            A([1:nterms]+nterms,[1:nterms]+nterms*(1-1)) = eye(nterms)
-            A([1:nterms]+nterms,[1:nterms]+nterms*(2-1)) = R
-            ! reduced to row echlon form
-            call rref(A)
-            ! debug flags
-            if (opts%verbosity.ge.2) then
-                call am_print('R',R,filename='debug_R'//trim(int2char(i))//'.txt',permission='w')
-                call am_print('A',A,filename='debug_A'//trim(int2char(i))//'.txt',permission='w')
-            endif
-        enddo
-        !
-        ! intrinsic symmetries
-        !
-        j=0
-        allocate(S(nterms,nterms,100))
-        j=j+1; S(:,:,j) = kron(eye(9),eye(9))   ! cijkl = cijkl
-        j=j+1; S(:,:,j) = kron(eye(9),T_op(3))  ! cijkl = cjikl
-        j=j+1; S(:,:,j) = kron(T_op(3),eye(9))  ! cijkl = cjilk
-        j=j+1; S(:,:,j) = kron(T_op(3),T_op(3)) ! cijkl = cjilk
-        do i = 1, j
-            nequations = nequations+nterms
-            A(nterms+[1:nterms],[1:nterms]+nterms*0) = eye(nterms)
-            A(nterms+[1:nterms],[1:nterms]+nterms*1) = S(:,:,i)
-            call rref(A)
-            if (opts%verbosity.ge.2) call am_print('I',S(:,:,i),filename='debug_I'//trim(int2char(j))//'.txt',permission='w')
-        enddo
-        !
-        ! call am_print_sparse('A = [LHS|RHS]',A(1:nterms,:),' ... ')
-        ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS
-        ! should be the identity matrix, which, together with the RHS, completely 
-        ! specifies all relationships between variables. 
-        allocate(LHS(nterms,nterms))
-        allocate(RHS(nterms,nterms))
-        LHS = A(1:nterms,1:nterms)
-        RHS = A(1:nterms,[1:nterms]+nterms)
-        !
-        if ( any(abs(LHS-eye(nterms)).gt.tiny) ) then
-            call am_print('ERROR','Unable to reduce matrix to row echlon form.')
-            call am_print_sparse('spy(LHS)',LHS)
-            stop
-        endif
-        !
-        call am_print('number of symmetry equations',nequations,' ... ')
-        !
-        call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
-            is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
-        !
-    end subroutine symmetry_adapted_elasticity
 
     subroutine     parse_symmetry_equations(LHS,RHS,is_zero,is_independent,is_dependent,verbosity)
         !
@@ -1062,154 +616,6 @@ contains
         endif
         !
     end subroutine parse_symmetry_equations
-
-
-
-    subroutine     symmetry_adapted_elasticity_V1(pg,uc,opts)
-        !
-        class(am_class_symmetry), intent(in) :: pg
-        type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_options), intent(in) :: opts
-        !
-        real(dp) :: M(3,3,3,3)                      !> IMPORTANT: M is the original tensor before the permutation (shape of tensor is very important!)
-        real(dp) :: RM(3,3,3,3)                     !> rotated/permuted matrix M
-        integer  :: nterms                          !> nterms the number of terms
-        integer  :: nsyms                           !> nsyms number of symmetry elements
-        integer  :: tensor_rank                     !> tensor_rank rank of tensor matrix M, determined automatically by code
-        real(dp), allocatable :: M1d(:)             !> M1d(nterms) an array which is used to build the matrix M
-        real(dp), allocatable :: T(:,:)             !> T(nsyms,nterms) permutation matrx containing rows vectors describing how M is rotated by a point symmetry R
-        real(dp), allocatable :: A(:,:)             !> A(nsyms*nterms,2*nterms) augmented matrix equation
-        real(dp), allocatable :: LHS(:,:)           !> LHS(nterms,nterms) left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
-        real(dp), allocatable :: RHS(:,:)           !> RHS(nterms,nterms) right hand side of augmented matrix equation
-        logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
-        logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
-        logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
-        integer :: i, j, k, l, n
-        integer :: nequations
-        !
-        if (opts%verbosity.ge.1) call am_print_title('Determining elasticity tensor')
-        !
-        tensor_rank = size(shape(M))
-        nsyms = size(pg%R,3)
-        nterms = 3**tensor_rank
-        !
-        allocate(M1d(nterms))
-        allocate(T(nsyms,nterms))
-        allocate(A(nsyms*nterms,2*nterms)) ! augmented matrix
-        !
-        A = 0
-        nequations = 0
-        !
-        ! apply point symmetries (each point symmetry corresponds to nterms possible equations
-        ! relating the terms to each other)
-        do i = 1,nterms
-            M1d = 0
-            M1d(i) = 1
-            M = reshape(M1d,shape(M))
-            do j = 1, nsyms
-                nequations = nequations + nterms
-                ! RM shows how the M has been permuted by the symmetry operation j
-                ! save the permutation obtained with RM as a row-vectors in T(nsyms,nterms) 
-                ! T(j,1:nterms) = pack( transform_tensor(M=M,R=pg%R(:,:,j)),.true.)
-                ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
-                T(j,1:nterms) = pack( transform_tensor(M=M,R=ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas)) ,.true.)
-            enddo
-            ! save an augmented matrix A
-            A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
-            A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(2-1)) = 0.0_dp
-            A([1:nsyms]+nsyms*(i-1),         i+nterms*(2-1)) = 1.0_dp
-        enddo
-        ! reduce to row echlon form
-        call rref(A)
-        !
-        ! now apply intrinsic symmetries, which are fundamental properties of the
-        ! elastic/stress/strain tensors and, therefore, independent of the crystal
-        ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 5 and 6
-        n = nterms
-        do l = 1,3
-        do k = 1,3
-        do j = 1,3
-        do i = 1,3
-            ! cijkl = cjikl ! permute first pair of indicies
-            nequations = nequations+1
-            n  = n+1
-            M  = 0.0_dp
-            RM = 0.0_dp
-             M(i,j,l,k) = 1.0_dp
-            RM(j,i,l,k) = 1.0_dp
-            A(n,[1:nterms]+nterms*(1-1))= pack( M , .true. ) ! RHS
-            A(n,[1:nterms]+nterms*(2-1))= pack( RM, .true. ) ! LHS
-            ! cijkl = cijlk ! permute last  pair of indicies
-            nequations = nequations+1
-            n  = n+1
-            M  = 0.0_dp; 
-            RM = 0.0_dp
-             M(i,j,k,l) = 1.0_dp
-            RM(i,j,l,k) = 1.0_dp
-            A(n,[1:nterms]+nterms*(1-1))= pack( M , .true. ) ! RHS
-            A(n,[1:nterms]+nterms*(2-1))= pack( RM, .true. ) ! LHS
-        enddo
-        enddo
-        enddo
-        enddo
-        ! reduce to echlon form once again to incorporate the intrinsic symmetries.
-        call rref(A)
-        !
-        ! call am_print_sparse('A = [LHS|RHS]',A(1:nterms,:),' ... ')
-        ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS
-        ! should be the identity matrix, which, together with the RHS, completely 
-        ! specifies all relationships between variables. 
-        allocate(LHS(nterms,nterms))
-        allocate(RHS(nterms,nterms))
-        LHS = A(1:nterms,1:nterms)
-        RHS = A(1:nterms,[1:nterms]+nterms)
-        !
-        if ( any(abs(LHS-eye(nterms)).gt.tiny) ) then
-            call am_print('ERROR','Unable to reduce matrix to row echlon form.')
-            call am_print_sparse('spy(LHS)',LHS)
-            stop
-        endif
-        !
-        call am_print('number of symmetry equations',nequations,' ... ')
-        !
-        call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
-            is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
-        !
-        contains
-            pure function  transform_tensor(M,R) result(RM)
-                !
-                implicit none
-                !
-                real(dp), intent(in) :: M(:,:,:,:)
-                real(dp), intent(in) :: R(3,3)
-                real(dp) :: RM(size(M,1),size(M,2),size(M,3),size(M,4))
-                integer  :: i,j,k,l,ip,jp,kp,lp
-                !
-                ! for a second-rank tensor M, this operation is equivalent to RM = R*M*R^T
-                ! Eq 13.9 Wootten, p 478 row major order accessed faster
-                !
-                RM = 0
-                !
-                do l = 1,3
-                do k = 1,3
-                do j = 1,3
-                do i = 1,3
-                    do lp = 1,3
-                    do kp = 1,3
-                    do jp = 1,3
-                    do ip = 1,3
-                        RM(i,j,k,l) = RM(i,j,k,l) + R(i,ip)*R(j,jp)*R(k,kp)*R(l,lp)*M(ip,jp,kp,lp)
-                    enddo
-                    enddo
-                    enddo
-                    enddo
-                enddo
-                enddo
-                enddo
-                enddo
-                !
-            end function   transform_tensor
-    end subroutine symmetry_adapted_elasticity_V1
 
     !
     ! schoenflies decode
