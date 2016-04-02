@@ -1,4 +1,3 @@
-
     pure function  centertitle(title,length) result(title_centered)
         !
         implicit none
@@ -49,7 +48,7 @@
         !
 #include 'am_print_header.inc'
         !
-        write(unit=fid,fmt='(a,a," = ")') emph, trim(name)
+        if (fid.eq.6) write(unit=fid,fmt='(a,a," = ")') emph, trim(name)
         write(unit=fid,fmt='(5x,a,a,a)') ,'+', repeat('-',size(A,2)), '+'
         !
         do i = 1, size(A,1)
@@ -81,7 +80,7 @@
         !
 #include 'am_print_header.inc'
         !
-        write(unit=fid,fmt='(a,a," = ")') emph, trim(name)
+        if (fid.eq.6) write(unit=fid,fmt='(a,a," = ")') emph, trim(name)
         write(unit=fid,fmt='(5x,a,a,a)') ,'+', repeat('-',size(A,2)), '+'
         !
         do i = 1, size(A,1)
@@ -140,7 +139,7 @@
         !
 #include 'am_print_header.inc'
         !
-        write(unit=fid,fmt='(a,a," = ",a)') emph, name, int2char(A)
+        if (fid.eq.6) write(unit=fid,fmt='(a,a," = ",a)') emph, name, int2char(A)
         !
 #include 'am_print_footer.inc'
         !
@@ -154,7 +153,7 @@
         !
 #include 'am_print_header.inc'
         !
-        write(unit=fid,fmt='(a,a," = ",a)') emph, name, A
+        if (fid.eq.6) write(unit=fid,fmt='(a,a," = ",a)') emph, name, A
         !
 #include 'am_print_footer.inc'
         !
@@ -169,7 +168,7 @@
         !
 #include 'am_print_header.inc'
         !
-        write(unit=fid,fmt='(a,a," = ")') emph, trim(name)
+        if (fid.eq.6) write(unit=fid,fmt='(a,a," = ")') emph, trim(name)
         do i = 1, size(A,1)
             write(unit=fid,fmt="(5x,300l)") ( A(i,j), j = 1, size(A,2) )
         enddo
@@ -187,7 +186,7 @@
         !
 #include 'am_print_header.inc'
         !
-        write(unit=fid,fmt='(a,a," = ")') emph, trim(name)
+        if (fid.eq.6) write(unit=fid,fmt='(a,a," = ")') emph, trim(name)
         do i = 1, size(A,1)
             write(unit=fid,fmt='(5x)',advance='no')
             do j = 1, size(A,2)
@@ -209,7 +208,7 @@
         !
 #include 'am_print_header.inc'
         !
-        write(unit=fid,fmt='(a,a," = ",a)') emph, name
+        if (fid.eq.6) write(unit=fid,fmt='(a,a," = ",a)') emph, name
         do i = 1, size(A,1)
             write(unit=fid,fmt="(5x,100f15.5)") ( A(i,j), j = 1, size(A,2) )
         enddo
@@ -227,7 +226,7 @@
         !
 #include 'am_print_header.inc'
         !
-        write(unit=fid,fmt='(a,a," = ",a)') emph, name
+        if (fid.eq.6) write(unit=fid,fmt='(a,a," = ",a)') emph, name
         do i = 1, size(A,1)
             write(unit=fid,fmt="(5x,300i4)") ( A(i,j), j = 1, size(A,2) )
         enddo
@@ -245,7 +244,7 @@
         !
 #include 'am_print_header.inc'
         !
-        write(unit=fid,fmt='(a,a," = ",a)') emph, name
+        if (fid.eq.6) write(unit=fid,fmt='(a,a," = ",a)') emph, name
         write(unit=fid,fmt="(5x,100f15.5)") ( A(i), i = 1, size(A,1) )
         !
 #include 'am_print_footer.inc'
@@ -261,7 +260,7 @@
         !
 #include 'am_print_header.inc'
         !
-        write(unit=fid,fmt='(a,a," = ",a)') emph, name
+        if (fid.eq.6) write(unit=fid,fmt='(a,a," = ",a)') emph, name
         write(unit=fid,fmt="(5x,300i4)") ( A(i), i = 1, size(A,1) )
         !
 #include 'am_print_footer.inc'

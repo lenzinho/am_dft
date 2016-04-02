@@ -329,9 +329,10 @@
         implicit none
         !
         integer, intent(in) :: n
-        real(dp), dimension(n,n) :: eye
+        real(dp), dimension(:,:), allocatable :: eye
         integer :: i
         !
+        allocate(eye(n,n))
         eye=0.0_dp
         do i = 1, n
             eye(i,i) = 1.0_dp
@@ -377,3 +378,4 @@
         end do
         deallocate(trow)
     end subroutine  rref
+

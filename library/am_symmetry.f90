@@ -491,7 +491,7 @@ contains
         !
     end subroutine symmetry_adapted_conducitvity
 
-    pure function  transpositional_operator(n) result(M)
+    pure function  T_op(n) result(M)
         ! c_ij -> c_ji in the flattened basis
         implicit none
         !
@@ -499,7 +499,7 @@ contains
         real(dp), allocatable :: M(:,:)
         integer  :: i, j
         !
-        allocate(M(n**3,n**3))
+        allocate(M(n**2,n**2))
         M=0
         !
         do i = 1, n
@@ -507,7 +507,7 @@ contains
            M(i+n*(j-1),j+n*(i-1)) = 1.0_dp
         enddo
         enddo
-    end function   transpositional_operator
+    end function   T_op
 
     subroutine     symmetry_adapted_thermoelectricity(pg,uc,opts)
         !
@@ -748,12 +748,11 @@ contains
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
         !
-        real(dp) :: M(3,3,3,3)                      !> IMPORTANT: M is the original tensor before the permutation (shape of tensor is very important!)
-        real(dp) :: RM(3,3,3,3)                     !> rotated/permuted matrix M
         integer  :: nterms                          !> nterms the number of terms
         integer  :: nsyms                           !> nsyms number of symmetry elements
         integer  :: tensor_rank                     !> tensor_rank rank of tensor matrix M, determined automatically by code
-        real(dp), allocatable :: M1d(:)             !> M1d(nterms) an array which is used to build the matrix M
+        real(dp), allocatable :: M(:)
+        real(dp), allocatable :: R(:,:)
         real(dp), allocatable :: T(:,:)             !> T(nsyms,nterms) permutation matrx containing rows vectors describing how M is rotated by a point symmetry R
         real(dp), allocatable :: A(:,:)             !> A(nsyms*nterms,2*nterms) augmented matrix equation
         real(dp), allocatable :: LHS(:,:)           !> LHS(nterms,nterms) left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
@@ -767,89 +766,64 @@ contains
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining elasticity tensor')
         !
-        tensor_rank = size(shape(M))
+        tensor_rank = 4
         nsyms = size(pg%R,3)
         nterms = 3**tensor_rank
         !
-        allocate(M1d(nterms))
-        allocate(T(nsyms,nterms))
-        allocate(A(nsyms*nterms,2*nterms)) ! augmented matrix
-        !
+        allocate(A(2*nterms,2*nterms)) ! augmented matrix
         A = 0
+        !
+        allocate(R(nterms,nterms))
+        R = 0
+        !
         nequations = 0
         !
-        ! apply point symmetries (each point symmetry corresponds to nterms possible equations
-        ! relating the terms to each other)
-        !
-        allocate(mask(nterms))
-        mask = .true.
-        do i = 1, nterms
-            if (mask(i)) then
-                !
-                M1d = 0
-                M1d(i) = 1
-                M = reshape(M1d,shape(M))
-                do j = 1, nsyms
-                    !
-                    ! Track number of symmetry equations for fun.
-                    nequations = nequations + nterms
-                    !
-                    ! Save the action of the symmetry operations as row-vectors in T(nsyms,nterms) 
-                    ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
-                    T(j,1:nterms) = matmul( kron_pow(ps_frac2cart(R_frac=pg%R(:,:,j),bas=uc%bas),tensor_rank) , M1d)
-                    !
-                    ! Apply a mask to make this faster. Once the term is connected to an orbit, all other orbits follow
-                    ! immediately. There is no need to reapply the point symmetries to the term on which the mapping occurs
-                    do k = 1, nterms
-                        if (abs(T(j,k)).gt.tiny) then
-                            mask(k) = .false.
-                        endif
-                    enddo
-                    !
-                enddo
-                !
-                ! Save the augmented matrix A
-                A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
-                A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(2-1)) = 0.0_dp
-                A([1:nsyms]+nsyms*(i-1),         i+nterms*(2-1)) = 1.0_dp
-                !
-            endif
-        enddo
-        ! reduce to row echlon form
+        ! crystal symmetries
+        A([1:nterms],[1:nterms]+nterms*0) = eye(nterms)
+        A([1:nterms],[1:nterms]+nterms*1) = eye(nterms)
         call rref(A)
+        do i = 1, nsyms
+            ! Track number of symmetry equations for fun
+            nequations = nequations + nterms
+            !
+            R = kron_pow(ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),tensor_rank)
+            ! Save the action of the symmetry operations as row-vectors in T(nsyms,nterms) 
+            ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
+            A([1:nterms]+nterms,[1:nterms]+nterms*(1-1)) = R
+            A([1:nterms]+nterms,[1:nterms]+nterms*(2-1)) = eye(nterms)
+            ! reduced to row echlon form
+            call am_print('R',R,filename='debug_R'//trim(int2char(i))//'.txt',permission='w')
+            call am_print('B',A,filename='debug_B'//trim(int2char(i))//'.txt',permission='w')
+            call rref(A)
+            call am_print('A',A,filename='debug_A'//trim(int2char(i))//'.txt',permission='w')
+            ! call am_print('R',R,filename='debug_R'//trim(int2char(i))//'.txt',permission='w')
+            ! call am_print('A',A,filename='debug_A'//trim(int2char(i))//'.txt',permission='w')
+        enddo
         !
         ! now apply intrinsic symmetries, which are fundamental properties of the
         ! elastic/stress/strain tensors and, therefore, independent of the crystal
         ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 5 and 6
-        !
-        n = nterms
-        do l = 1,3
-        do k = 1,3
-        do j = 1,3
-        do i = 1,3
-            ! cijkl = cjikl ! permute first pair of indicies
-            nequations = nequations+1
-            n  = n+1
-            M  = 0.0_dp
-            RM = 0.0_dp
-             M(i,j,l,k) = 1.0_dp
-            RM(j,i,l,k) = 1.0_dp
-            A(n,[1:nterms]+nterms*(1-1))= pack( M , .true. ) ! RHS
-            A(n,[1:nterms]+nterms*(2-1))= pack( RM, .true. ) ! LHS
-            ! cijkl = cijlk ! permute last  pair of indicies
-            nequations = nequations+1
-            n  = n+1
-            M  = 0.0_dp; 
-            RM = 0.0_dp
-             M(i,j,k,l) = 1.0_dp
-            RM(i,j,l,k) = 1.0_dp
-            A(n,[1:nterms]+nterms*(1-1))= pack( M , .true. ) ! RHS
-            A(n,[1:nterms]+nterms*(2-1))= pack( RM, .true. ) ! LHS
-        enddo
-        enddo
-        enddo
-        enddo
-        ! reduce to echlon form once again to incorporate the intrinsic symmetries.
+        ! cijkl = cjikl
+        nequations = nequations+nterms
+        call am_print('nterms+[1:nterms]',nterms+[1:nterms])
+        call am_print('[1:nterms]+nterms*0)',[1:nterms]+nterms*0)
+        A(nterms+[1:nterms],[1:nterms]+nterms*0) = kron(eye(9),T_op(3))
+        A(nterms+[1:nterms],[1:nterms]+nterms*1) = eye(nterms)
+        call rref(A)
+        ! cijkl = cijlk
+        nequations = nequations+nterms
+        A(nterms+[1:nterms],[1:nterms]+nterms*0) = kron(eye(9),T_op(3))
+        A(nterms+[1:nterms],[1:nterms]+nterms*1) = eye(nterms)
+        call rref(A)
+        ! cijkl = cjilk
+        nequations = nequations+nterms
+        A(nterms+[1:nterms],[1:nterms]+nterms*0) = kron(T_op(3),T_op(3))
+        A(nterms+[1:nterms],[1:nterms]+nterms*1) = eye(nterms)
+        call rref(A)
+        ! cijkl = cijkl
+        nequations = nequations+nterms
+        A(nterms+[1:nterms],[1:nterms]+nterms*0) = eye(nterms)
+        A(nterms+[1:nterms],[1:nterms]+nterms*1) = eye(nterms)
         call rref(A)
         !
         ! call am_print_sparse('A = [LHS|RHS]',A(1:nterms,:),' ... ')

@@ -15,7 +15,11 @@
         endif
         !
         if (present(filename)) then
-            fid = fopen(filename=filename,permission=permission)
+            if (present(permission)) then
+                fid = fopen(filename=filename,permission=permission)
+            else
+                fid = fopen(filename=filename,permission='w')
+            endif
         else
             fid = 6
         endif
