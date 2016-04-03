@@ -8,44 +8,9 @@ module am_mkl
 
 contains
 
-    ! invert square matrix
+    ! inverse of square matrix
     
     function       inv(A) result(Ainv)
-        !
-        ! 1) factorize: dgetrf( m, n, a, lda, ipiv, info )
-        ! The routine computes the LU factorization of a general m-by-n matrix A as A = P*L*U, where P is a permutation
-        ! matrix, L is lower triangular with unit diagonal elements (lower trapezoidal if m > n) and U is upper
-        ! triangular (upper trapezoidal if m < n). The routine uses partial pivoting, with row interchanges.
-        !
-        !  m    INTEGER. The number of rows in the matrix A (m ≥ 0).
-        !  n    INTEGER. The number of columns in A; n ≥ 0.
-        !  a    REAL for sgetrf
-        !       DOUBLE PRECISION for dgetrf
-        !       COMPLEX for cgetrf
-        !       DOUBLE COMPLEX for zgetrf.
-        !       Array, DIMENSION (lda,*). Contains the matrix A. The second dimension of a must be at least max(1, n).
-        !  lda  INTEGER. Leading dimension of array A.
-        !
-        ! 2) invert
-        !
-        !
-        !
-        !
-        !
-        !
-        ! NOTE: Input arguments such as array dimensions are not required in Fortran 95 and are skipped from the calling
-        ! sequence. Array dimensions are reconstructed from the user data that must exactly follow the required array
-        ! shape.
-        !
-        ! NOTE: Argument info is declared as optional in the Fortran 95 interface. If it is present in the calling
-        ! sequence, the value assigned to info is interpreted as follows:
-        !     - If this value is more than -1000, its meaning is the same as in the FORTRAN 77 routine.
-        !     - If this value is equal to -1000, it means that there is not enough WORK memory.
-        !     - If this value is equal to -1001, incompatible arguments are present in the calling sequence.
-        ! 
-        ! NOTE: Another type of generic arguments that are skipped in the Fortran 95 interface are arguments that
-        ! represent workspace arrays (such as WORK, rwork, and so on). The only exception are cases when workspace
-        ! arrays return significant information on output.
         !
         use am_helpers
         !
@@ -61,57 +26,92 @@ contains
         n = size(A,2)
         allocate(ipiv(n))
         allocate(Ainv(n,n))
+        allocate(WORK(lwmax))
         Ainv = A
         lda  = m
         !
-        if (m.ne.n) then
-            call am_print('ERROR','Matrix is not square.',flags='E')
-            call am_print('shape(A)',shape(A))
-            stop
-        endif
-        !
-        ! 1) factorize 
-        !
-        ! call dgetrf( m, n, a, lda, ipiv, info )
+        ! factorize 
         call dgetrf( m, n, ainv, lda, ipiv, info )
         if (info.ne.0) then
-            call am_print('ERROR','Internal problem with factorization.')
-            call am_print('A',A)
-            call am_print('Ainv',Ainv)
-            call am_print('info',info)
+            call am_print('ERROR',info)
             stop
         endif
         !
-        ! 2) get the inverse
-        !
-        ! call dgetri( n, a, lda, ipiv, WORK, lwork, info )
-        !
-        ! 2a) query optimal workspace
-        !
-        ! lwork INTEGER. The size of the WORK array; lwork ≥ n.
-        !       If lwork = -1, then a workspace query is assumed; the routine only calculates the optimal size of the WORK
-        !       array, returns this value as the first entry of the WORK array, and no error message related to lwork is
-        !       issued by xerbla.
-        allocate(WORK(1))
+        ! querery workspace
         lwork=-1
         call dgetri( n, ainv, lda, ipiv, WORK, lwork, info )
+        lwork = min( lwmax, int( WORK( 1 ) ) )
         !
-        ! 2b) perform inversion
+        ! get inverse
         !
-        lwork = nint(WORK(1))
-        deallocate(WORK)
-        allocate(WORK(lwork))
         call dgetri( n, ainv, lda, ipiv, WORK, lwork, info )
-        !
         if (info.ne.0) then
-            call am_print('ERROR','Internal problem with inversion.')
-            call am_print('A',A)
-            call am_print('Ainv',Ainv)
-            call am_print('info',info)
+            call am_print('ERROR',info)
             stop
         endif
         !
     end function   inv
+
+    function       pinv(A) result(Ainv)
+        !
+        implicit none
+        !
+        real(dp), intent(in)  :: A(:,:)
+        real(dp), allocatable :: B(:,:)
+        real(dp), allocatable :: Ainv(:,:)
+        real(dp), allocatable :: S(:) ! singular values of A
+        real(dp), allocatable :: C(:,:)
+        real(dp), allocatable :: WORK(:)
+        real(dp) :: rcond
+        integer :: m, n, sz, i, j
+        integer :: lda, ldb, nrhs
+        integer :: info
+        integer :: lwork
+        integer :: rank ! effective rank of A: the number of singular values which are greater than rcond*s(1).
+        !
+        rcond = 1.0D-8
+        !
+        m = size(A,1)
+        n = size(A,2)
+        lda  = m
+        !
+        allocate(C,source=A)
+        allocate(WORK(lwmax))
+        allocate(S(max(1,min(m,n))))
+        !
+        ! copy variables
+        !
+        sz = max(m,n)
+        allocate(B(sz,sz))
+        do i = 1, sz
+        do j = 1, sz
+            if (i.eq.j) then
+                B(i,j) = 1.0_dp
+            else
+                B(i,j) = 0.0_dp
+            endif
+        enddo
+        enddo
+        ldb  = sz
+        nrhs = sz
+        !
+        ! query the optimal workspace
+        lwork = -1
+        call dgelss(m, n, nrhs, C, lda, B, ldb, S, rcond, rank, WORK, lwork, info)
+        lwork = min(lwmax,int(WORK(1)))
+        !
+        ! solve the least squares problem min( norm2(B - Ax) ) for the x of minimum norm.
+        call dgelss(m, n, nrhs, C, lda, B, ldb, S, rcond, rank, WORK, lwork, info)
+        !
+        ! check for convergence
+        if (info.gt.0) then
+            write(*,*) 'algorithm failed', info
+            stop
+        end if
+        !
+        allocate(Ainv,source=B(1:n,1:m))
+        !
+    end function   pinv
 
     ! diagonalize real symmetric square matrix
 
@@ -402,12 +402,12 @@ contains
 
     ! solve Ax = B by SVD decomposition
 
-    subroutine     am_dgelss(A,X,B,S)
+    subroutine     am_dgelss(A,X,B)
         !
         real(dp), intent(in) :: A(:,:)
         real(dp), intent(in) :: B(:,:)
         real(dp), intent(out), allocatable :: X(:,:)
-        real(dp), intent(out), allocatable :: S(:) ! singular values of A
+        real(dp), allocatable :: S(:) ! singular values of A
         real(dp), allocatable :: CA(:,:)
         real(dp), allocatable :: WORK(:)
         real(dp) :: rcond
@@ -450,5 +450,6 @@ contains
             stop
         end if
     end subroutine am_dgelss
+
 
 end module

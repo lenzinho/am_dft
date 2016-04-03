@@ -16,15 +16,18 @@ module am_symmetry
     public :: get_kpoint_compatible_symmetries
     public :: ps_frac2cart
     !
-
-    type am_class_symmetry
-        integer :: nsyms                  !> number of point symmetries
+    type am_class_abstract_group
+        integer :: nsyms
+        integer , allocatable :: cc_identifier(:) !> indices assiging each element to a conjugacy class
+    end type am_class_abstract_group
+    !
+    type, extends(am_class_abstract_group) :: am_class_symmetry 
+        !
         real(dp), allocatable :: R(:,:,:) !> symmetry elements (operate on fractional atomic basis)
         real(dp), allocatable :: T(:,:)   !> symmetry elements (operate on fractional atomic basis)
         !
         integer , allocatable :: ps_identifier(:) !> indices labeling point symmetries according to their actions (see decode_pointsymmetry)
         integer               :: pg_identifier    !>
-        integer , allocatable :: cc_identifier(:) !> indices assiging each element to a conjugacy class
         !
     contains
         procedure :: point_group
@@ -40,7 +43,13 @@ module am_symmetry
         procedure :: determine_character_table
         procedure :: action_table_get
         procedure :: stabilizers
-    end type
+    end type am_class_symmetry
+    !
+    type, extends(am_class_abstract_group) :: am_class_permutation_rep
+        !
+        integer, allocatable :: rep(:,:) ! rep(:,nsyms)
+        !
+    end type am_class_permutation_rep
 
 contains
 
@@ -50,6 +59,14 @@ contains
 
     pure function  ps_frac2cart(R_frac,bas) result(R)
         !
+        ! The values which are possible are: cos(pi/n), sin(pi/n) for n = 1, 2, 3, 6 Symmetry and
+        ! Condensed Matter Physics: A Computational Approach. 1 edition. Cambridge, UK ; New York:
+        ! Cambridge University Press, 2008. page 275.
+        !
+        !           n  =      1         2         3         6
+        !    sin(pi/n) =   0.0000    1.0000    0.8660    0.5000
+        !    cos(pi/n) =  -1.0000    0.0000    0.5000    0.8660
+        !
         use am_unit_cell, only : reciprocal_basis
         !
         implicit none
@@ -57,9 +74,29 @@ contains
         real(dp), intent(in) :: R_frac(3,3)
         real(dp), intent(in) :: bas(3,3)
         real(dp) :: R(3,3)
+        ! real(dp) :: wdv(7) ! used to correct rouding errors
+        ! integer :: i, j, k
+        ! !
+        ! wdv(1)=+0.0_dp
+        ! wdv(2)=+1.0_dp
+        ! wdv(3)=-1.0_dp
+        ! wdv(4)=+0.86602540378443862 !  sqrt(3.0_dp)/2.0_dp
+        ! wdv(5)=-0.86602540378443862 ! -sqrt(3.0_dp)/2.0_dp
+        ! wdv(6)=+0.5_dp
+        ! wdv(7)=-0.5_dp
         !
         R = matmul(bas,matmul(R_frac,reciprocal_basis(bas)))
         !
+        ! do i = 1,3
+        ! do j = 1,3
+        !     do k = 1,7
+        !     if (abs(wdv(k)-R(i,j)).lt.tiny) then
+        !         R(i,j) = wdv(k)
+        !         exit
+        !     endif
+        !     enddo
+        ! enddo
+        ! enddo
     end function   ps_frac2cart
 
     pure function  ps_cart2frac(R,bas) result(R_frac)
@@ -73,6 +110,9 @@ contains
         real(dp) :: R_frac(3,3)
         !
         R_frac = matmul(reciprocal_basis(bas),matmul(R,bas))
+        !
+        ! correct rounding errors
+        ! R_frac = real(nint(R_frac),dp)
         !
     end function   ps_cart2frac
 
@@ -148,7 +188,6 @@ contains
         type(am_class_options), intent(in) :: opts
         !
         integer  :: npairs
-        real(dp) :: metric(3,3)
         type(am_class_unit_cell) :: prim
         type(am_class_options) :: notalk
         real(dp), allocatable  :: d(:)
@@ -169,10 +208,8 @@ contains
         logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
         logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
         logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
-        logical , allocatable :: mask(:)            !> to speed up the symmetry determination process
-        integer :: i, j, k, l, n
+        integer :: i, j, k, n
         integer :: nequations
-        integer :: rank_of_T
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining symmetry-adapted 2nd order force constants')
         !
@@ -378,123 +415,150 @@ contains
         type(am_class_options), intent(in) :: opts
         character(*), intent(in) :: property
         !
+        integer  :: ndim
         integer  :: nterms                          !> nterms the number of terms
-        integer  :: nsyms                           !> nsyms number of symmetry elements
         integer  :: tensor_rank                     !> tensor_rank rank of tensor matrix M, determined automatically by code
-        integer , allocatable :: member(:,:)   
-        real(dp), allocatable :: M(:)
+        integer , allocatable :: member(:,:)
         real(dp), allocatable :: R(:,:)
         real(dp), allocatable :: S(:,:,:)           !> intrinsic symmetries
-        real(dp), allocatable :: A(:,:)             !> A(nsyms*nterms,2*nterms) augmented matrix equation
+        real(dp), allocatable :: A(:,:)             !> A(2*nterms,2*nterms) augmented matrix equation
         real(dp), allocatable :: LHS(:,:)           !> LHS(nterms,nterms) left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
         real(dp), allocatable :: RHS(:,:)           !> RHS(nterms,nterms) right hand side of augmented matrix equation
         logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
         logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
         logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
-        logical , allocatable :: mask(:)            !> mask to speed up the symmetry determination process
-        integer :: i, j
+        character(10) :: axial
+        integer :: i, j, k
         integer :: nequations
         !
-        !
         if (opts%verbosity.ge.1) call am_print_title('Determining symmetry-adapted tensor: '//trim(property))
+        !
+        ! << - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - >>
         !
         ! ... Wooten page 449; sflag specifies whether the neighboring indices are symmetric with respect to each other. NEED TO IMPLEMENT STILL. 
         ! N = no intrinsic symmetry on this pair of indices
         ! S = symmetric pair of indices
         ! A = antisymmetric pair of indices
+        !
+        ! Tensors transferm differently whether they are axial or polar:
+        ! POLAR :  T_{i,j,k,l,...} =        sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
+        ! AXIAL :  T_{i,j,k,l,...} = det(R) sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
+        ! Thus, all axial tensors of even rank and polar tensors of odd rank are null are null.  Wooten p 485. Eq. 13.21. 
+        !
         if     (index(property,'pyroelectricity')        .ne.0) then; tensor_rank = 1 !    ! P_{i}     = p_{i} \Delta T
         !
-        elseif (index(property,'electric susceptibility').ne.0) then; tensor_rank = 2 ! S  ! P_{i}     = \alpha_{ij}  E_{j}
-        elseif (index(property,'magnetic susceptibility').ne.0) then; tensor_rank = 2 ! S  ! M_{i}     = \mu_{ij}     H_{j}
-        elseif (index(property,'thermal expansion')      .ne.0) then; tensor_rank = 2 ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
+        ! << - - - - - - - - - - - - - - - - - - - - - - - SECOND-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - >>
         !
         ! Onsager’s Principle requires that the electric resistivity and thermal conductivity tensors be symmetric.
         ! This does not hold for the Seebeck and Peltier (thermoelectric) tensors which relate two different flows. Thus
         ! there are, at most, nine independent parameters rather than six. [Newnham "Properties of Materials"]
-        elseif (index(property,'electric conductivity')  .ne.0) then; tensor_rank = 2 ! S  ! J_{i}     = \sigma_{ij}  E_{i}
-        elseif (index(property,'electric resistivity')   .ne.0) then; tensor_rank = 2 ! S  ! E_{i}     = \rho_{ij}    J_{j}
-        elseif (index(property,'thermal conductivity')   .ne.0) then; tensor_rank = 2 ! S  ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
-        elseif (index(property,'thermoelectricity')      .ne.0) then; tensor_rank = 2 ! N  ! 
-        elseif (index(property,'seebeck')                .ne.0) then; tensor_rank = 2 ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
-        elseif (index(property,'peltier')                .ne.0) then; tensor_rank = 2 ! N  ! q_{i}     = \pi_{ij}     J_{j}
         !
-        elseif (index(property,'hall')                   .ne.0) then; tensor_rank = 3 !    ! E_{i}     = h_{ijk}      J_{j} H_{k} 
-        elseif (index(property,'piezoelectricity')       .ne.0) then; tensor_rank = 3 !    ! P_{i}     = d_{ijk}      \sigma_{jk}
-        elseif (index(property,'piezomagnetic')          .ne.0) then; tensor_rank = 3 !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
-        elseif (index(property,'elasticity')             .ne.0) then; tensor_rank = 4 !    ! 
+        elseif (index(property,'electric susceptibility').ne.0) then; tensor_rank = 2; axial = 'polar' ! S  ! P_{i}     = \alpha_{ij}  E_{j}
+        elseif (index(property,'magnetic susceptibility').ne.0) then; tensor_rank = 2; axial = 'axial' ! S  ! M_{i}     = \mu_{ij}     H_{j}
+        elseif (index(property,'magneto-electric')       .ne.0) then; tensor_rank = 2; axial = 'axial' 
+        elseif (index(property,'thermal expansion')      .ne.0) then; tensor_rank = 2; axial = 'polar' ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
+        elseif (index(property,'electric conductivity')  .ne.0) then; tensor_rank = 2; axial = 'polar' ! S  ! J_{i}     = \sigma_{ij}  E_{i}
+        elseif (index(property,'electric resistivity')   .ne.0) then; tensor_rank = 2; axial = 'polar' ! S  ! E_{i}     = \rho_{ij}    J_{j}
+        elseif (index(property,'thermal conductivity')   .ne.0) then; tensor_rank = 2; axial = 'polar' ! S  ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
+        elseif (index(property,'thermoelectricity')      .ne.0) then; tensor_rank = 2; axial = 'polar' ! N  ! 
+        elseif (index(property,'seebeck')                .ne.0) then; tensor_rank = 2; axial = 'polar' ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
+        elseif (index(property,'peltier')                .ne.0) then; tensor_rank = 2; axial = 'polar' ! N  ! q_{i}     = \pi_{ij}     J_{j}
+        !
+        ! << - - - - - - - - - - - - - - - - - - - - - - - THIRD-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - ->>
+        !
+        elseif (index(property,'hall')                   .ne.0) then; tensor_rank = 3;                 !    ! E_{i}     = h_{ijk}      J_{j} H_{k} 
+        elseif (index(property,'piezoelectricity')       .ne.0) then; tensor_rank = 3; axial = 'polar' !    ! P_{i}     = d_{ijk}      \sigma_{jk}
+        elseif (index(property,'piezomagnetic')          .ne.0) then; tensor_rank = 3; axial = 'axial' !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
+        !
+        ! << - - - - - - - - - - - - - - - - - - - - - - - FOURTH-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - >>
+        !
+        elseif (index(property,'elasticity')             .ne.0) then; tensor_rank = 4; axial = 'polar' !    ! 
         elseif (index(property,'piezo-optic')            .ne.0) then; tensor_rank = 4 !    ! 
         elseif (index(property,'kerr')                   .ne.0) then; tensor_rank = 4 !    ! 
         elseif (index(property,'electrostriction')       .ne.0) then; tensor_rank = 4 !    ! 
-        elseif (index(property,'third-order elasticity') .ne.0) then; tensor_rank = 6 !    ! 
+        !
+        ! << - - - - - - - - - - - - - - - - - - - - - - - SXITH-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - ->>
+        !
+        elseif (index(property,'third-order elasticity') .ne.0) then; tensor_rank = 6; axial = 'polar' !    ! 
+        !
+        ! << - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - >>
+        !
         else
             call am_print('ERROR','Unknown property',flags='E')
             stop
         endif
         !
-        nsyms = size(pg%R,3)
-        nterms = 3**tensor_rank
+        ! << - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - >>
         !
+        ndim = 3
+        nterms = ndim**tensor_rank
+        !
+        ! get conjugacy class members
         ! members(nclass,maxval(nelements))
         member = cc_member(pg%cc_identifier)
         !
-        ! initialize A (if this is not done, it will not work. I don't know why...)
+        ! initialize A with an extra row and column. otherwise RREF breaks. so stupid.
         allocate(A(2*nterms,2*nterms)) ! augmented matrix
         A = 0
-        A([1:nterms],[1:nterms]+nterms*0) = eye(nterms)
-        A([1:nterms],[1:nterms]+nterms*1) = eye(nterms)
         !
-        allocate(R(nterms,nterms))
-        R = 0
-        !
+        ! start counter for number of equations
         nequations = 0
         !
-        !
         ! crystal symmetries
-        do j = 1, size(member,1) ! loop over classes instead...
+        !
+        do j = 1, size(member,1) ! loop over classes
+            ! track number of symmetry equations for fun
+            nequations = nequations + nterms*count(member(j,:).ne.0)
+            ! get index of class representative 
             i=member(j,1)
-            ! Track number of symmetry equations for fun
-            nequations = nequations + nterms
-            !
-            R = kron_pow(ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),tensor_rank)
-            ! Save the action of the symmetry operations as row-vectors in T(nsyms,nterms) 
+            ! construct symmetry operator in the flattend basis
             ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
-            A([1:nterms]+nterms,[1:nterms]+nterms*(1-1)) = eye(nterms)
-            A([1:nterms]+nterms,[1:nterms]+nterms*(2-1)) = R
-            ! reduced to row echlon form
+            R = kron_pow(ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),tensor_rank)
+            ! if the quantity corresponds to an axial tensor
+            if (index(axial,'axial').ne.0) R = det(pg%R(:,:,i)) * R
+            ! Save the action of the symmetry operations
+            A([1:nterms]+nterms,[1:nterms]+nterms*(1-1)) = R
+            A([1:nterms]+nterms,[1:nterms]+nterms*(2-1)) = eye(nterms)
+            ! reduced row echelon form to incorporate effect of symmetry
+            if (opts%verbosity.ge.2) call am_print('B',A,filename='debug_B'//trim(int2char(i))//'.txt',permission='w')
+            ! THIS RREF IS NOT WORKING PROPERLY!!! 
             call rref(A)
             ! debug flags
             if (opts%verbosity.ge.2) then
+                call am_print('ps',ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),filename='debug_ps'//trim(int2char(i))//'.txt',permission='w')
                 call am_print('R',R,filename='debug_R'//trim(int2char(i))//'.txt',permission='w')
                 call am_print('A',A,filename='debug_A'//trim(int2char(i))//'.txt',permission='w')
             endif
         enddo
         !
         ! intrinsic symmetries
+        !
         allocate(S(nterms,nterms,100))
-        j=0
-        if     (index(property,'conductivity').ne.0 &
-         & .or. index(property,'resistivity' ).ne.0) then
-            j=j+1; S(:,:,j) = T_op(3)               ! s_ij  = s_ji
+        k=0
+        if     (index(property,'conductivity'    ).ne.0 &
+         & .or. index(property,'resistivity'     ).ne.0 &
+         & .or. index(property,'voigt'           ).ne.0) then
+            k=k+1; S(:,:,k) = T_op(ndim)                     ! s_ij  = s_ji
         elseif (index(property,'piezoelectricity').ne.0) then
-            j=j+1; S(:,:,j) = kron(T_op(3),eye(3))  ! d_ijk = d_ikj
-        elseif (index(property,'elasticity').ne.0) then
-            ! note: eye(9) = kron(eye(3),eye(3))
-            j=j+1; S(:,:,j) = kron(eye(9),T_op(3))  ! cijkl = cjikl
-            j=j+1; S(:,:,j) = kron(T_op(3),eye(9))  ! cijkl = cjilk
-            j=j+1; S(:,:,j) = kron(T_op(3),T_op(3)) ! cijkl = cjilk
+            k=k+1; S(:,:,k) = kron(T_op(ndim),eye(ndim))     ! d_ijk = d_ikj
+        elseif (index(property,'elasticity'      ).ne.0) then
+            k=k+1; S(:,:,k) = eye(nterms)                    ! cijkl = cijkl
+            k=k+1; S(:,:,k) = kron(eye(ndim**2),T_op(ndim))  ! cijkl = cjikl
+            k=k+1; S(:,:,k) = kron(T_op(ndim),eye(ndim**2))  ! cijkl = cjilk
+            k=k+1; S(:,:,k) = kron(T_op(ndim),T_op(ndim))    ! cijkl = cjilk
         endif
-        do i = 1, j
+        !
+        do i = 1, k
             nequations = nequations+nterms
             A(nterms+[1:nterms],[1:nterms]+nterms*0) = eye(nterms)
             A(nterms+[1:nterms],[1:nterms]+nterms*1) = S(:,:,i)
             call rref(A)
-            if (opts%verbosity.ge.2) call am_print('I',S(:,:,i),filename='debug_I'//trim(int2char(j))//'.txt',permission='w')
+            if (opts%verbosity.ge.2) call am_print('I',S(:,:,i),filename='debug_I'//trim(int2char(i))//'.txt',permission='w')
         enddo
         !
-        ! call am_print_sparse('A = [LHS|RHS]',A(1:nterms,:),' ... ')
-        ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS
-        ! should be the identity matrix, which, together with the RHS, completely 
-        ! specifies all relationships between variables. 
+        ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS should be the identity matrix,
+        ! which, together with the RHS, completely  specifies all relationships between variables.
+        !
         allocate(LHS(nterms,nterms))
         allocate(RHS(nterms,nterms))
         LHS = A(1:nterms,1:nterms)
@@ -510,6 +574,7 @@ contains
         !
         call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
             is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
+        !
     end subroutine symmetry_adapted_tensor
 
     pure function  T_op(n) result(M)
@@ -1051,7 +1116,6 @@ contains
         integer, allocatable :: irrep_dim(:) ! rep dimensions
         integer, allocatable :: indices(:)
         real(dp) :: wrk
-
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining character table')
         !
@@ -1098,7 +1162,7 @@ contains
         !
         ! determine eigenvector which simultaneously diagonalize i Hjk(:,:) matrices
         ! CCT(nirreps,nclasses)
-        CCT = cc_constant_table(real(H,dp))
+        CCT = class_constant_table(real(H,dp))
         !
         ! get dimensions of representations using Eq. 4.53, p 91 of Wooten
         ! Note: The absolute square is the result of the conjugate multiplication
@@ -1180,118 +1244,72 @@ contains
             endif
         enddo
         !
-    end subroutine determine_character_table
-
-    function       cc_nelements(cc_identifier) result(nelements)
-        !
-        implicit none
-        !
-        integer, intent(in)  :: cc_identifier(:)
-        integer, allocatable :: nelements(:)
-        integer :: nclasses
-        integer :: i
-        !
-        nclasses = maxval(cc_identifier)
-        !
-        allocate(nelements(nclasses))
-        !
-        do i = 1, nclasses
-            nelements(i) = count(i.eq.cc_identifier)
-        enddo
-    end function   cc_nelements
-    function       cc_member(cc_identifier) result(member)
-        !
-        implicit none
-        !
-        integer, allocatable, intent(in) :: cc_identifier(:)
-        integer, allocatable :: nelements(:) ! number of elements in each class
-        integer, allocatable :: member(:,:) ! members(nclass,maxval(nelements))
-        integer :: i, j, k
-        integer :: nsyms
-        integer :: nclasses
-        !
-        nsyms = size(cc_identifier,1)
-        !
-        nclasses = maxval(cc_identifier)
-        !
-        nelements = cc_nelements(cc_identifier)
-        !
-        allocate(member(nclasses,maxval(nelements)))
-        member = 0
-        do i = 1, nclasses
-            k=0
-            do j = 1, nsyms
-                if (cc_identifier(j).eq.i) then
-                    k=k+1
-                    member(i,k) = j
-                endif
+        contains
+        function       class_constant_table(A) result(D)
+            !
+            ! determines characters which simultaneously diagonalizes i square matrices A(:,:,i)
+            ! only possible if A(:,:,i) commute with each other. Assumes all dimensions of A are the same.
+            !
+            implicit none
+            !
+            real(dp), intent(in) :: A(:,:,:)
+            real(dp), allocatable :: V(:,:) ! these two should match in this particular situation (character table determination from class multiplication )
+            integer , allocatable :: D(:,:) ! these two should match in this particular situation (character table determination from class multiplication )
+            real(dp), allocatable :: M(:,:)
+            integer , allocatable :: p(:)
+            integer , allocatable :: small(:)
+            integer :: n, i
+            !
+            call am_print('WARNING','The procedure used to determine the character table does not allow for complex character',flags='W')
+            !
+            n = size(A,3)
+            p = primes(n)
+            !
+            ! matrix pencil based on sqrt(primes)
+            ! all this does is lift the degeneracy of eigenvalues if necessary
+            allocate(M(n,n))
+            M = 0
+            do i = 1,n
+                M = M + p(i)**0.5*A(:,:,i)
             enddo
-        enddo
-    end function   cc_member
-    function       cc_constant_table(A) result(D)
-        !
-        ! determines characters which simultaneously diagonalizes i square matrices A(:,:,i)
-        ! only possible if A(:,:,i) commute with each other. Assumes all dimensions of A are the same.
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: A(:,:,:)
-        real(dp), allocatable :: V(:,:) ! these two should match in this particular situation (character table determination from class multiplication )
-        integer , allocatable :: D(:,:) ! these two should match in this particular situation (character table determination from class multiplication )
-        real(dp), allocatable :: M(:,:)
-        integer , allocatable :: p(:)
-        integer , allocatable :: small(:)
-        integer :: n, i
-        !
-        call am_print('WARNING','The procedure used to determine the character table does not allow for complex character',flags='W')
-        !
-        n = size(A,3)
-        p = primes(n)
-        !
-        ! matrix pencil based on sqrt(primes)
-        ! all this does is lift the degeneracy of eigenvalues if necessary
-        allocate(M(n,n))
-        M = 0
-        do i = 1,n
-            M = M + p(i)**0.5*A(:,:,i)
-        enddo
-        !
-        ! get left and right eigenvectors: transpose(VL)*A*VR = D
-        call am_dgeev(A=M,VR=V)
-        !
-        ! check that matrices have been diagonalized properly and save eigenvalues
-        allocate(d(n,n))
-        do i = 1, n
             !
-            M = matmul(inv(V),matmul(A(:,:,i),V))
-            ! tiny may be too small a criteria here... should probably use a value which scales with the size of the matrix.
-            if (any( abs(diag(diag(M))-M).gt. (tiny*n**2) )) then
-                call am_print('ERROR','Unable to perform simultaneous matrix diagonalization. Check that whether they commute.',flags='E')
-                call am_print('M',M)
-                call am_print('diag(M)',diag(M))
-                call am_print('diag(diag(M))',diag(diag(M)))
-                call am_print('abs(diag(diag(M))-M)',abs(diag(diag(M))-M))
-                call am_print('sum of error',sum(abs(diag(diag(M))-M)))
-                stop
-            endif
+            ! get left and right eigenvectors: transpose(VL)*A*VR = D
+            call am_dgeev(A=M,VR=V)
             !
-            ! save diagonal elements as row vectors
-            D(:,i) = nint(diag( M ))
+            ! check that matrices have been diagonalized properly and save eigenvalues
+            allocate(d(n,n))
+            do i = 1, n
+                !
+                M = matmul(inv(V),matmul(A(:,:,i),V))
+                ! tiny may be too small a criteria here... should probably use a value which scales with the size of the matrix.
+                if (any( abs(diag(diag(M))-M).gt. (tiny*n**2) )) then
+                    call am_print('ERROR','Unable to perform simultaneous matrix diagonalization. Check that whether they commute.',flags='E')
+                    call am_print('M',M)
+                    call am_print('diag(M)',diag(M))
+                    call am_print('diag(diag(M))',diag(diag(M)))
+                    call am_print('abs(diag(diag(M))-M)',abs(diag(diag(M))-M))
+                    call am_print('sum of error',sum(abs(diag(diag(M))-M)))
+                    stop
+                endif
+                !
+                ! save diagonal elements as row vectors
+                D(:,i) = nint(diag( M ))
+                !
+            enddo
             !
-        enddo
-        !
-        ! normalize each row of V to the smallest value in that row
-        allocate(small(n))
-        small = minloc( abs(V) , dim=1, mask = abs(V).gt.tiny )
-        do i = 1, n
-            V(:,i)=V(:,i)/V(small(i),i)
-        enddo
-        V = nint(transpose(V))
-        !
-        ! at this point V and D should be identical. The elements are to within +/- sign.
-        ! Return D which is more robust than V. 
-        !
-    end function   cc_constant_table
+            ! normalize each row of V to the smallest value in that row
+            allocate(small(n))
+            small = minloc( abs(V) , dim=1, mask = abs(V).gt.tiny )
+            do i = 1, n
+                V(:,i)=V(:,i)/V(small(i),i)
+            enddo
+            V = nint(transpose(V))
+            !
+            ! at this point V and D should be identical. The elements are to within +/- sign.
+            ! Return D which is more robust than V. 
+            !
+        end function   class_constant_table
+    end subroutine determine_character_table
 
     subroutine     stabilizers(bg,sg,v,opts)
         !
@@ -1807,7 +1825,7 @@ contains
     end function   rep_regular
 
     !
-    ! procedures which operate on representations
+    ! procedures which operate on matrix representations
     !
 
     function       apply_conjugation(center_matrix,side_matrix) result(C)
@@ -1872,23 +1890,19 @@ contains
             CT = CT(indices,:)
         endif
         !
-    contains
-    function       get_matching_element_index_in_list(list,elem) result(i)
-        !
-        implicit none
-        real(dp), intent(in) :: list(:,:,:)
-        real(dp), intent(in) :: elem(:,:)
-        integer :: i
-        !
-        do i = 1,size(list,3)
-            if (all(abs(list(:,:,i)-elem).lt.tiny)) return
-        enddo
-    end function   get_matching_element_index_in_list
+        contains
+        function       get_matching_element_index_in_list(list,elem) result(i)
+            !
+            implicit none
+            real(dp), intent(in) :: list(:,:,:)
+            real(dp), intent(in) :: elem(:,:)
+            integer :: i
+            !
+            do i = 1,size(list,3)
+                if (all(abs(list(:,:,i)-elem).lt.tiny)) return
+            enddo
+        end function   get_matching_element_index_in_list
     end function   cayley_table
-
-    !
-    ! functions which operate on conjugacy classes
-    !
 
     function       cc_get(rep,flags) result(cc_identifier)
         !
@@ -2007,6 +2021,57 @@ contains
         end subroutine relabel_based_on_occurances
     end function   cc_get
 
+    ! 
+    ! functions which operate on conjugate classes identifiers
+    ! 
+
+    function       cc_nelements(cc_identifier) result(nelements)
+        !
+        implicit none
+        !
+        integer, intent(in)  :: cc_identifier(:)
+        integer, allocatable :: nelements(:)
+        integer :: nclasses
+        integer :: i
+        !
+        nclasses = maxval(cc_identifier)
+        !
+        allocate(nelements(nclasses))
+        !
+        do i = 1, nclasses
+            nelements(i) = count(i.eq.cc_identifier)
+        enddo
+    end function   cc_nelements
+
+    function       cc_member(cc_identifier) result(member)
+        !
+        implicit none
+        !
+        integer, allocatable, intent(in) :: cc_identifier(:)
+        integer, allocatable :: nelements(:) ! number of elements in each class
+        integer, allocatable :: member(:,:) ! members(nclass,maxval(nelements))
+        integer :: i, j, k
+        integer :: nsyms
+        integer :: nclasses
+        !
+        nsyms = size(cc_identifier,1)
+        !
+        nclasses = maxval(cc_identifier)
+        !
+        nelements = cc_nelements(cc_identifier)
+        !
+        allocate(member(nclasses,maxval(nelements)))
+        member = 0
+        do i = 1, nclasses
+            k=0
+            do j = 1, nsyms
+                if (cc_identifier(j).eq.i) then
+                    k=k+1
+                    member(i,k) = j
+                endif
+            enddo
+        enddo
+    end function   cc_member
     !
     ! functions which operate on kpoints
     !
@@ -2036,7 +2101,205 @@ contains
         !
     end function   get_kpoint_compatible_symmetries
 
+    !
+    ! symmetry adapt
+    !
 
+!     subroutine     symmetry_adapted_permutation_representation(pg,uc,opts,property)
+!         !
+!         class(am_class_symmetry), intent(in) :: pg
+!         type(am_class_unit_cell), intent(in) :: uc
+!         type(am_class_options), intent(in) :: opts
+!         character(*), intent(in) :: property
+!         !
+!         integer  :: ndim
+!         integer  :: nterms                          !> nterms the number of terms
+!         integer  :: tensor_rank                     !> tensor_rank rank of tensor matrix M, determined automatically by code
+!         integer, allocatable :: P
+!         integer :: i, j
+!         integer :: nequations
+!         !
+!         if (opts%verbosity.ge.1) call am_print_title('Determining symmetry-adapted tensor: '//trim(property))
+!         !
+!         ! << - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - >>
+!         !
+!         ! ... Wooten page 449; sflag specifies whether the neighboring indices are symmetric with respect to each other. NEED TO IMPLEMENT STILL. 
+!         ! N = no intrinsic symmetry on this pair of indices
+!         ! S = symmetric pair of indices
+!         ! A = antisymmetric pair of indices
+!         !
+!         if     (index(property,'pyroelectricity')        .ne.0) then; tensor_rank = 1 !    ! P_{i}     = p_{i} \Delta T
+!         !
+!         ! << - - - - - - - - - - - - - - - - - - - - - - - SECOND-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - >>
+!         !
+!         ! Onsager’s Principle requires that the electric resistivity and thermal conductivity tensors be symmetric.
+!         ! This does not hold for the Seebeck and Peltier (thermoelectric) tensors which relate two different flows. Thus
+!         ! there are, at most, nine independent parameters rather than six. [Newnham "Properties of Materials"]
+!         !
+!         elseif (index(property,'electric susceptibility').ne.0) then; tensor_rank = 2 ! S  ! P_{i}     = \alpha_{ij}  E_{j}
+!         elseif (index(property,'magnetic susceptibility').ne.0) then; tensor_rank = 2 ! S  ! M_{i}     = \mu_{ij}     H_{j}
+!         elseif (index(property,'thermal expansion')      .ne.0) then; tensor_rank = 2 ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
+!         elseif (index(property,'electric conductivity')  .ne.0) then; tensor_rank = 2 ! S  ! J_{i}     = \sigma_{ij}  E_{i}
+!         elseif (index(property,'electric resistivity')   .ne.0) then; tensor_rank = 2 ! S  ! E_{i}     = \rho_{ij}    J_{j}
+!         elseif (index(property,'thermal conductivity')   .ne.0) then; tensor_rank = 2 ! S  ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
+!         elseif (index(property,'thermoelectricity')      .ne.0) then; tensor_rank = 2 ! N  ! 
+!         elseif (index(property,'seebeck')                .ne.0) then; tensor_rank = 2 ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
+!         elseif (index(property,'peltier')                .ne.0) then; tensor_rank = 2 ! N  ! q_{i}     = \pi_{ij}     J_{j}
+!         !
+!         ! << - - - - - - - - - - - - - - - - - - - - - - - THIRD-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - ->>
+!         !
+!         elseif (index(property,'hall')                   .ne.0) then; tensor_rank = 3 !    ! E_{i}     = h_{ijk}      J_{j} H_{k} 
+!         elseif (index(property,'piezoelectricity')       .ne.0) then; tensor_rank = 3 !    ! P_{i}     = d_{ijk}      \sigma_{jk}
+!         elseif (index(property,'piezomagnetic')          .ne.0) then; tensor_rank = 3 !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
+!         !
+!         ! << - - - - - - - - - - - - - - - - - - - - - - - FOURTH-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - >>
+!         !
+!         elseif (index(property,'elasticity')             .ne.0) then; tensor_rank = 4 !    ! 
+!         elseif (index(property,'piezo-optic')            .ne.0) then; tensor_rank = 4 !    ! 
+!         elseif (index(property,'kerr')                   .ne.0) then; tensor_rank = 4 !    ! 
+!         elseif (index(property,'electrostriction')       .ne.0) then; tensor_rank = 4 !    ! 
+!         !
+!         ! << - - - - - - - - - - - - - - - - - - - - - - - SXITH-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - ->>
+!         !
+!         elseif (index(property,'third-order elasticity') .ne.0) then; tensor_rank = 6 !    ! 
+!         !
+!         ! << - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - >>
+!         !
+!         else
+!             call am_print('ERROR','Unknown property',flags='E')
+!             stop
+!         endif
+!         !
+!         ! << - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - >>
+!         !
+!         ndim = 3
+!         nterms = ndim**tensor_rank
+!         !
+!         identity = [1:nterms]
+!         !
+!         allocate(P(nterms,pg%nsyms+5))
+!         n=0
+!         !
+!         ! add identity as first element
+!         n=n+1; P(:,n) = identity
+!         !
+!         ! construct permutations of intrinsic symmetries
+!         if     (index(property,'conductivity').ne.0 &
+!          & .or. index(property,'resistivity' ).ne.0 &
+!          & .or. index(property,'voigt'       ).ne.0) then
+!             n=n+1; P(:,n) = matmul( T_op(ndim)                   , identity ) ! s_ij  = s_ji
+!         elseif (index(property,'piezoelectricity').ne.0) then
+!             n=n+1; P(:,n) = matmul( kron(T_op(ndim),eye(ndim))   , identity ) ! d_ijk = d_ikj
+!         elseif (index(property,'elasticity').ne.0) then
+!             n=n+1; P(:,n) = matmul( kron(eye(ndim**2),T_op(ndim)), identity ) ! cijkl = cjikl
+!             n=n+1; P(:,n) = matmul( kron(T_op(ndim),eye(ndim**2)), identity ) ! cijkl = cjilk
+!             n=n+1; P(:,n) = matmul( kron(T_op(ndim),T_op(ndim))  , identity ) ! cijkl = cjilk
+!         endif
+!         !
+!         ! construct permutations of crystal symmetries
+!         do j = 1, pg%nsyms
+!             n=n+1
+!             P(:,n) = matmul( kron_pow(ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),tensor_rank), identity )
+!         enddo
+!         !
+!         call am_print('number of elements in P',size(P,2))
+!         call propagate_repp(P)
+!         call am_print('number of elements in P',size(P,2))
+
+!         contains
+!         pure subroutine propagate_repp(repp)
+!             !
+!             implicit none
+!             !
+!             integer, intent(inout) :: repp(:,:) ! A(nterms,nsyms)
+!             integer, allocatable:: B(:,:) ! A(nterms,nsyms*nsyms)
+!             integer :: nterms
+!             integer :: nsyms
+!             !
+!             nterms=size(repp,1)
+!             nsyms=size(repp,2)
+!             !
+!             allocate(B(nterms,nsyms**2))
+!             !
+!             k=0
+!             for i = 1, nsyms
+!             for j = 1, nsyms
+!                 k=k+1
+!                 ! appy permutation i to j
+!                 B(:,k) = repp(repp(:,j),i)
+!             enddo
+!             enddo
+!             !
+!             repp = unique(B)
+!             !
+!         end subroutine  propagate_repp
+!         function     cayley_table_repp(repp,flags) result(CT)
+!         !
+!         implicit none
+!         !
+!         real(dp), intent(in) :: rep(:,:) ! repp(nterms,nsyms)
+!         character(*), intent(in) :: flags ! 'reg' sorts rows to put identity along diagonals (useful for constructing regular representation), 'seitz' reduces translational part to primitive cell
+!         integer, allocatable :: CT(:,:)
+!         integer, allocatable :: identity(:)
+!         integer :: nterms
+!         integer :: nsyms
+!         integer  :: i, j
+!         !
+
+!         real(dp) :: W(size(repp,1),size(repp,2))
+!         integer, allocatable :: sortmat(:,:)
+!         !
+!         nterms=size(repp,1)
+!         nsyms=size(repp,2)
+!         !
+!         allocate(identity(nterms))
+!         identity = [1:nterms]
+!         !
+!         ! before doing anything, confirm that first element is the identity
+!         if (any(repp(:,1).ne.identity)) then
+!             call am_print('ERROR','First element of rep is not the identity.')
+!             call am_print('first element of repp',repp(:,1))
+!             stop
+!         endif
+!         !
+!         allocate(CT(nsyms,nsyms))
+!         !
+!         do i = 1, nsyms
+!         do j = 1, nsyms
+!             !
+!             W = repp(repp(:,j),i)
+!             !
+!             CT(i,j) = get_matching_element_index_in_list(list=repp,elem=W)
+!             !
+!         enddo
+!         enddo
+!         !
+!         ! if 'reg' flagged, re-order rows so that identities are along diagonal
+!         if (index(flags,'reg').ne.0) then
+!             !
+!             allocate(sortmat(n,n))
+!             allocate(indices(n))
+!             indices = [1:n]
+!             sortmat = 0
+!             where (CT.eq.1) sortmat = 1
+!             indices = matmul(sortmat,indices)
+!             CT = CT(indices,:)
+!         endif
+!         !
+!         contains
+!         function       get_matching_element_index_in_list(list,elem) result(i)
+!             !
+!             implicit none
+!             integer, intent(in) :: list(:,:)
+!             integer, intent(in) :: elem(:)
+!             integer :: i
+!             !
+!             do i = 1,size(list,3)
+!                 if (all(list(:,i).eq.elem)) return
+!             enddo
+!         end function   get_matching_element_index_in_list
+!         end function cayley_table_repp
+!     end subroutine symmetry_adapted_permutation_representation
 
 !     subroutine     coset(C,H,G,index,coset_type)
 !         !
