@@ -15,13 +15,13 @@ clean:
 	rm -f $(OBJS) *.mod *.o *.i90
 
 %: %.o
-	$(FC) $(FFLAGS) $(DEBUG) -o $@ $^ $(LDFLAGS)
+	$(FC) $(FFLAGS) $(LFLAGS) $(DEBUG) -o $@ $^ $(LDFLAGS)
 
 %.o: %.f90
-	$(FC) $(FFLAGS) $(DEBUG) -c $<
+	$(FC) $(FFLAGS) $(LFLAGS) $(DEBUG) -c $<
 
 %.o: %.F90
-	$(FC) $(FFLAGS) $(DEBUG) -c $<
+	$(FC) $(FFLAGS) $(LFLAGS) $(DEBUG) -c $<
 
 
 

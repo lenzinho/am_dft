@@ -428,7 +428,7 @@ contains
         logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
         logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
         integer , allocatable :: indices(:)
-        character(10) :: axial
+        character(10) :: flags
         integer :: i, j, k
         integer :: nequations
         !
@@ -454,33 +454,33 @@ contains
         ! This does not hold for the Seebeck and Peltier (thermoelectric) tensors which relate two different flows. Thus
         ! there are, at most, nine independent parameters rather than six. [Newnham "Properties of Materials"]
         !
-        elseif (index(property,'electric susceptibility').ne.0) then; tensor_rank = 2; axial = 'polar' ! S  ! P_{i}     = \alpha_{ij}  E_{j}
-        elseif (index(property,'magnetic susceptibility').ne.0) then; tensor_rank = 2; axial = 'axial' ! S  ! M_{i}     = \mu_{ij}     H_{j}
-        elseif (index(property,'magneto-electric')       .ne.0) then; tensor_rank = 2; axial = 'axial' 
-        elseif (index(property,'thermal expansion')      .ne.0) then; tensor_rank = 2; axial = 'polar' ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
-        elseif (index(property,'electric conductivity')  .ne.0) then; tensor_rank = 2; axial = 'polar' ! S  ! J_{i}     = \sigma_{ij}  E_{i}
-        elseif (index(property,'electric resistivity')   .ne.0) then; tensor_rank = 2; axial = 'polar' ! S  ! E_{i}     = \rho_{ij}    J_{j}
-        elseif (index(property,'thermal conductivity')   .ne.0) then; tensor_rank = 2; axial = 'polar' ! S  ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
-        elseif (index(property,'thermoelectricity')      .ne.0) then; tensor_rank = 2; axial = 'polar' ! N  ! 
-        elseif (index(property,'seebeck')                .ne.0) then; tensor_rank = 2; axial = 'polar' ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
-        elseif (index(property,'peltier')                .ne.0) then; tensor_rank = 2; axial = 'polar' ! N  ! q_{i}     = \pi_{ij}     J_{j}
+        elseif (index(property,'electric susceptibility').ne.0) then; tensor_rank = 2; flags = 'polar' ! S  ! P_{i}     = \alpha_{ij}  E_{j}
+        elseif (index(property,'magnetic susceptibility').ne.0) then; tensor_rank = 2; flags = 'axial' ! S  ! M_{i}     = \mu_{ij}     H_{j}
+        elseif (index(property,'magneto-electric')       .ne.0) then; tensor_rank = 2; flags = 'axial' 
+        elseif (index(property,'thermal expansion')      .ne.0) then; tensor_rank = 2; flags = 'polar' ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
+        elseif (index(property,'electric conductivity')  .ne.0) then; tensor_rank = 2; flags = 'polar' ! S  ! J_{i}     = \sigma_{ij}  E_{i}
+        elseif (index(property,'electric resistivity')   .ne.0) then; tensor_rank = 2; flags = 'polar' ! S  ! E_{i}     = \rho_{ij}    J_{j}
+        elseif (index(property,'thermal conductivity')   .ne.0) then; tensor_rank = 2; flags = 'polar' ! S  ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
+        elseif (index(property,'thermoelectricity')      .ne.0) then; tensor_rank = 2; flags = 'polar' ! N  ! 
+        elseif (index(property,'seebeck')                .ne.0) then; tensor_rank = 2; flags = 'polar' ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
+        elseif (index(property,'peltier')                .ne.0) then; tensor_rank = 2; flags = 'polar' ! N  ! q_{i}     = \pi_{ij}     J_{j}
         !
         ! << - - - - - - - - - - - - - - - - - - - - - - - THIRD-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - ->>
         !
         elseif (index(property,'hall')                   .ne.0) then; tensor_rank = 3;                 !    ! E_{i}     = h_{ijk}      J_{j} H_{k} 
-        elseif (index(property,'piezoelectricity')       .ne.0) then; tensor_rank = 3; axial = 'polar' !    ! P_{i}     = d_{ijk}      \sigma_{jk}
-        elseif (index(property,'piezomagnetic')          .ne.0) then; tensor_rank = 3; axial = 'axial' !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
+        elseif (index(property,'piezoelectricity')       .ne.0) then; tensor_rank = 3; flags = 'polar' !    ! P_{i}     = d_{ijk}      \sigma_{jk}
+        elseif (index(property,'piezomagnetic')          .ne.0) then; tensor_rank = 3; flags = 'axial' !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
         !
         ! << - - - - - - - - - - - - - - - - - - - - - - - FOURTH-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - >>
         !
-        elseif (index(property,'elasticity')             .ne.0) then; tensor_rank = 4; axial = 'polar' !    ! 
+        elseif (index(property,'elasticity')             .ne.0) then; tensor_rank = 4; flags = 'polar' !    ! 
         elseif (index(property,'piezo-optic')            .ne.0) then; tensor_rank = 4 !    ! 
         elseif (index(property,'kerr')                   .ne.0) then; tensor_rank = 4 !    ! 
         elseif (index(property,'electrostriction')       .ne.0) then; tensor_rank = 4 !    ! 
         !
         ! << - - - - - - - - - - - - - - - - - - - - - - - SXITH-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - ->>
         !
-        elseif (index(property,'third-order elasticity') .ne.0) then; tensor_rank = 6; axial = 'polar' !    ! 
+        elseif (index(property,'third-order elasticity') .ne.0) then; tensor_rank = 6; flags = 'polar' !    ! 
         !
         ! << - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - >>
         !
@@ -521,7 +521,7 @@ contains
             ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
             R = kron_pow(ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),tensor_rank)
             ! if the quantity corresponds to an axial tensor
-            if (index(axial,'axial').ne.0) R = det(pg%R(:,:,i)) * R
+            if (index(flags,'axial').ne.0) R = det(pg%R(:,:,i)) * R
             ! Save the action of the symmetry operations
             A(2*nterms+indices,0*nterms+indices) = R
             A(2*nterms+indices,1*nterms+indices) = eye(nterms)
@@ -551,9 +551,6 @@ contains
             endif
         enddo
         !
-        ! call RREF to effectively apply a grand-schmit orthonoramlziation.
-        call rref(A)
-        !
         ! intrinsic symmetries
         !
         allocate(S(nterms,nterms,100))
@@ -561,23 +558,27 @@ contains
         if     (index(property,'conductivity'    ).ne.0 &
          & .or. index(property,'resistivity'     ).ne.0 &
          & .or. index(property,'voigt'           ).ne.0) then
-            k=k+1; S(:,:,k) = T_op(ndim)                     ! s_ij  = s_ji
+            k=k+1; S(:,:,k) = T_hat(ndim)                     ! s_ij  = s_ji
         elseif (index(property,'piezoelectricity').ne.0) then
-            k=k+1; S(:,:,k) = kron(T_op(ndim),eye(ndim))     ! d_ijk = d_ikj
+            k=k+1; S(:,:,k) = kron(T_hat(ndim),eye(ndim))     ! d_ijk = d_ikj
         elseif (index(property,'elasticity'      ).ne.0) then
-            k=k+1; S(:,:,k) = eye(nterms)                    ! cijkl = cijkl
-            k=k+1; S(:,:,k) = kron(eye(ndim**2),T_op(ndim))  ! cijkl = cjikl
-            k=k+1; S(:,:,k) = kron(T_op(ndim),eye(ndim**2))  ! cijkl = cjilk
-            k=k+1; S(:,:,k) = kron(T_op(ndim),T_op(ndim))    ! cijkl = cjilk
+            k=k+1; S(:,:,k) = eye(nterms)                     ! cijkl = cijkl
+            k=k+1; S(:,:,k) = kron(eye(ndim**2),T_hat(ndim))  ! cijkl = cjikl
+            k=k+1; S(:,:,k) = kron(T_hat(ndim),eye(ndim**2))  ! cijkl = cjilk
+            k=k+1; S(:,:,k) = kron(T_hat(ndim),T_hat(ndim))   ! cijkl = cjilk
         endif
         !
         do i = 1, k
             nequations = nequations+nterms
-            A(2*nterms+indices,0*nterms+indices) = eye(nterms)
-            A(2*nterms+indices,1*nterms+indices) = S(:,:,i)
-            call rref(A)
-            if (opts%verbosity.ge.2) call am_print('I',S(:,:,i),filename='debug_I'//trim(int2char(i))//'.txt',permission='w')
+            A(2*nterms+indices,0*nterms+indices) = S(:,:,i)
+            A(2*nterms+indices,1*nterms+indices) = eye(nterms)
+            call lu(A)
+            ! if (opts%verbosity.ge.2) call am_print('I',S(:,:,i),filename='debug_I'//trim(int2char(i))//'.txt',permission='w')
         enddo
+        !
+        ! Apply Gram-Schmidt orthogonalization by converting A into reduced row echelon form
+        !
+        call rref(A)
         !
         ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS should be the identity matrix,
         ! which, together with the RHS, completely  specifies all relationships between variables.
@@ -599,24 +600,6 @@ contains
             is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
         !
     end subroutine symmetry_adapted_tensor
-
-    pure function  T_op(n) result(M)
-        ! c_ij -> c_ji in the flattened basis
-        implicit none
-        !
-        integer, intent(in) :: n
-        real(dp), allocatable :: M(:,:)
-        integer  :: i, j
-        !
-        allocate(M(n**2,n**2))
-        M=0
-        !
-        do i = 1, n
-        do j = 1, n
-           M(i+n*(j-1),j+n*(i-1)) = 1.0_dp
-        enddo
-        enddo
-    end function   T_op
 
     subroutine     parse_symmetry_equations(LHS,RHS,is_zero,is_independent,is_dependent,verbosity)
         !
@@ -704,6 +687,24 @@ contains
         endif
         !
     end subroutine parse_symmetry_equations
+
+    pure function  T_hat(n) result(M)
+        ! c_ij -> c_ji in the flattened basis
+        implicit none
+        !
+        integer, intent(in) :: n
+        real(dp), allocatable :: M(:,:)
+        integer  :: i, j
+        !
+        allocate(M(n**2,n**2))
+        M=0
+        !
+        do i = 1, n
+        do j = 1, n
+           M(i+n*(j-1),j+n*(i-1)) = 1.0_dp
+        enddo
+        enddo
+    end function   T_hat
 
     !
     ! schoenflies decode
@@ -1851,24 +1852,16 @@ contains
     ! procedures which operate on matrix representations
     !
 
-    function       apply_conjugation(center_matrix,side_matrix) result(C)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: side_matrix(:,:)
-        real(dp), intent(in) :: center_matrix(:,:)
-        real(dp) :: C(size(side_matrix,1),size(side_matrix,2))
-        !
-        C = matmul(side_matrix,matmul(center_matrix,inv(side_matrix)))
-        !
-    end function   apply_conjugation
-
     function       cayley_table(rep,flags) result(CT)
+        !
+        ! flag options:
+        !  reg    -  sorts rows to put identity along diagonals (useful for constructing regular representation)
+        !  seitz  -  reduces translational part to primitive cell
         !
         implicit none
         !
         real(dp), intent(in) :: rep(:,:,:) ! list of 2D reps...
-        character(*), intent(in) :: flags ! 'reg' sorts rows to put identity along diagonals (useful for constructing regular representation), 'seitz' reduces translational part to primitive cell
+        character(*), intent(in) :: flags
         integer, allocatable :: CT(:,:)
         real(dp) :: W(size(rep,1),size(rep,2))
         integer, allocatable :: sortmat(:,:)
@@ -2042,6 +2035,17 @@ contains
             reverse_sort(sorted_indices)=[1:n]
             list=list_relabled(reverse_sort)
         end subroutine relabel_based_on_occurances
+        function       apply_conjugation(center_matrix,side_matrix) result(C)
+            !
+            implicit none
+            !
+            real(dp), intent(in) :: side_matrix(:,:)
+            real(dp), intent(in) :: center_matrix(:,:)
+            real(dp) :: C(size(side_matrix,1),size(side_matrix,2))
+            !
+            C = matmul(side_matrix,matmul(center_matrix,inv(side_matrix)))
+            !
+        end function   apply_conjugation
     end function   cc_get
 
     ! 
@@ -2095,6 +2099,7 @@ contains
             enddo
         enddo
     end function   cc_member
+
     !
     ! functions which operate on kpoints
     !
@@ -2127,202 +2132,6 @@ contains
     !
     ! symmetry adapt
     !
-
-!     subroutine     symmetry_adapted_permutation_representation(pg,uc,opts,property)
-!         !
-!         class(am_class_symmetry), intent(in) :: pg
-!         type(am_class_unit_cell), intent(in) :: uc
-!         type(am_class_options), intent(in) :: opts
-!         character(*), intent(in) :: property
-!         !
-!         integer  :: ndim
-!         integer  :: nterms                          !> nterms the number of terms
-!         integer  :: tensor_rank                     !> tensor_rank rank of tensor matrix M, determined automatically by code
-!         integer, allocatable :: P
-!         integer :: i, j
-!         integer :: nequations
-!         !
-!         if (opts%verbosity.ge.1) call am_print_title('Determining symmetry-adapted tensor: '//trim(property))
-!         !
-!         ! << - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - >>
-!         !
-!         ! ... Wooten page 449; sflag specifies whether the neighboring indices are symmetric with respect to each other. NEED TO IMPLEMENT STILL. 
-!         ! N = no intrinsic symmetry on this pair of indices
-!         ! S = symmetric pair of indices
-!         ! A = antisymmetric pair of indices
-!         !
-!         if     (index(property,'pyroelectricity')        .ne.0) then; tensor_rank = 1 !    ! P_{i}     = p_{i} \Delta T
-!         !
-!         ! << - - - - - - - - - - - - - - - - - - - - - - - SECOND-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - >>
-!         !
-!         ! Onsager’s Principle requires that the electric resistivity and thermal conductivity tensors be symmetric.
-!         ! This does not hold for the Seebeck and Peltier (thermoelectric) tensors which relate two different flows. Thus
-!         ! there are, at most, nine independent parameters rather than six. [Newnham "Properties of Materials"]
-!         !
-!         elseif (index(property,'electric susceptibility').ne.0) then; tensor_rank = 2 ! S  ! P_{i}     = \alpha_{ij}  E_{j}
-!         elseif (index(property,'magnetic susceptibility').ne.0) then; tensor_rank = 2 ! S  ! M_{i}     = \mu_{ij}     H_{j}
-!         elseif (index(property,'thermal expansion')      .ne.0) then; tensor_rank = 2 ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
-!         elseif (index(property,'electric conductivity')  .ne.0) then; tensor_rank = 2 ! S  ! J_{i}     = \sigma_{ij}  E_{i}
-!         elseif (index(property,'electric resistivity')   .ne.0) then; tensor_rank = 2 ! S  ! E_{i}     = \rho_{ij}    J_{j}
-!         elseif (index(property,'thermal conductivity')   .ne.0) then; tensor_rank = 2 ! S  ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
-!         elseif (index(property,'thermoelectricity')      .ne.0) then; tensor_rank = 2 ! N  ! 
-!         elseif (index(property,'seebeck')                .ne.0) then; tensor_rank = 2 ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
-!         elseif (index(property,'peltier')                .ne.0) then; tensor_rank = 2 ! N  ! q_{i}     = \pi_{ij}     J_{j}
-!         !
-!         ! << - - - - - - - - - - - - - - - - - - - - - - - THIRD-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - ->>
-!         !
-!         elseif (index(property,'hall')                   .ne.0) then; tensor_rank = 3 !    ! E_{i}     = h_{ijk}      J_{j} H_{k} 
-!         elseif (index(property,'piezoelectricity')       .ne.0) then; tensor_rank = 3 !    ! P_{i}     = d_{ijk}      \sigma_{jk}
-!         elseif (index(property,'piezomagnetic')          .ne.0) then; tensor_rank = 3 !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
-!         !
-!         ! << - - - - - - - - - - - - - - - - - - - - - - - FOURTH-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - >>
-!         !
-!         elseif (index(property,'elasticity')             .ne.0) then; tensor_rank = 4 !    ! 
-!         elseif (index(property,'piezo-optic')            .ne.0) then; tensor_rank = 4 !    ! 
-!         elseif (index(property,'kerr')                   .ne.0) then; tensor_rank = 4 !    ! 
-!         elseif (index(property,'electrostriction')       .ne.0) then; tensor_rank = 4 !    ! 
-!         !
-!         ! << - - - - - - - - - - - - - - - - - - - - - - - SXITH-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - ->>
-!         !
-!         elseif (index(property,'third-order elasticity') .ne.0) then; tensor_rank = 6 !    ! 
-!         !
-!         ! << - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - >>
-!         !
-!         else
-!             call am_print('ERROR','Unknown property',flags='E')
-!             stop
-!         endif
-!         !
-!         ! << - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - >>
-!         !
-!         ndim = 3
-!         nterms = ndim**tensor_rank
-!         !
-!         identity = [1:nterms]
-!         !
-!         allocate(P(nterms,pg%nsyms+5))
-!         n=0
-!         !
-!         ! add identity as first element
-!         n=n+1; P(:,n) = identity
-!         !
-!         ! construct permutations of intrinsic symmetries
-!         if     (index(property,'conductivity').ne.0 &
-!          & .or. index(property,'resistivity' ).ne.0 &
-!          & .or. index(property,'voigt'       ).ne.0) then
-!             n=n+1; P(:,n) = matmul( T_op(ndim)                   , identity ) ! s_ij  = s_ji
-!         elseif (index(property,'piezoelectricity').ne.0) then
-!             n=n+1; P(:,n) = matmul( kron(T_op(ndim),eye(ndim))   , identity ) ! d_ijk = d_ikj
-!         elseif (index(property,'elasticity').ne.0) then
-!             n=n+1; P(:,n) = matmul( kron(eye(ndim**2),T_op(ndim)), identity ) ! cijkl = cjikl
-!             n=n+1; P(:,n) = matmul( kron(T_op(ndim),eye(ndim**2)), identity ) ! cijkl = cjilk
-!             n=n+1; P(:,n) = matmul( kron(T_op(ndim),T_op(ndim))  , identity ) ! cijkl = cjilk
-!         endif
-!         !
-!         ! construct permutations of crystal symmetries
-!         do j = 1, pg%nsyms
-!             n=n+1
-!             P(:,n) = matmul( kron_pow(ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),tensor_rank), identity )
-!         enddo
-!         !
-!         call am_print('number of elements in P',size(P,2))
-!         call propagate_repp(P)
-!         call am_print('number of elements in P',size(P,2))
-
-!         contains
-!         pure subroutine propagate_repp(repp)
-!             !
-!             implicit none
-!             !
-!             integer, intent(inout) :: repp(:,:) ! A(nterms,nsyms)
-!             integer, allocatable:: B(:,:) ! A(nterms,nsyms*nsyms)
-!             integer :: nterms
-!             integer :: nsyms
-!             !
-!             nterms=size(repp,1)
-!             nsyms=size(repp,2)
-!             !
-!             allocate(B(nterms,nsyms**2))
-!             !
-!             k=0
-!             for i = 1, nsyms
-!             for j = 1, nsyms
-!                 k=k+1
-!                 ! appy permutation i to j
-!                 B(:,k) = repp(repp(:,j),i)
-!             enddo
-!             enddo
-!             !
-!             repp = unique(B)
-!             !
-!         end subroutine  propagate_repp
-!         function     cayley_table_repp(repp,flags) result(CT)
-!         !
-!         implicit none
-!         !
-!         real(dp), intent(in) :: rep(:,:) ! repp(nterms,nsyms)
-!         character(*), intent(in) :: flags ! 'reg' sorts rows to put identity along diagonals (useful for constructing regular representation), 'seitz' reduces translational part to primitive cell
-!         integer, allocatable :: CT(:,:)
-!         integer, allocatable :: identity(:)
-!         integer :: nterms
-!         integer :: nsyms
-!         integer  :: i, j
-!         !
-
-!         real(dp) :: W(size(repp,1),size(repp,2))
-!         integer, allocatable :: sortmat(:,:)
-!         !
-!         nterms=size(repp,1)
-!         nsyms=size(repp,2)
-!         !
-!         allocate(identity(nterms))
-!         identity = [1:nterms]
-!         !
-!         ! before doing anything, confirm that first element is the identity
-!         if (any(repp(:,1).ne.identity)) then
-!             call am_print('ERROR','First element of rep is not the identity.')
-!             call am_print('first element of repp',repp(:,1))
-!             stop
-!         endif
-!         !
-!         allocate(CT(nsyms,nsyms))
-!         !
-!         do i = 1, nsyms
-!         do j = 1, nsyms
-!             !
-!             W = repp(repp(:,j),i)
-!             !
-!             CT(i,j) = get_matching_element_index_in_list(list=repp,elem=W)
-!             !
-!         enddo
-!         enddo
-!         !
-!         ! if 'reg' flagged, re-order rows so that identities are along diagonal
-!         if (index(flags,'reg').ne.0) then
-!             !
-!             allocate(sortmat(n,n))
-!             allocate(indices(n))
-!             indices = [1:n]
-!             sortmat = 0
-!             where (CT.eq.1) sortmat = 1
-!             indices = matmul(sortmat,indices)
-!             CT = CT(indices,:)
-!         endif
-!         !
-!         contains
-!         function       get_matching_element_index_in_list(list,elem) result(i)
-!             !
-!             implicit none
-!             integer, intent(in) :: list(:,:)
-!             integer, intent(in) :: elem(:)
-!             integer :: i
-!             !
-!             do i = 1,size(list,3)
-!                 if (all(list(:,i).eq.elem)) return
-!             enddo
-!         end function   get_matching_element_index_in_list
-!         end function cayley_table_repp
-!     end subroutine symmetry_adapted_permutation_representation
 
 !     subroutine     coset(C,H,G,index,coset_type)
 !         !

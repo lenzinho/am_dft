@@ -9,6 +9,49 @@ module am_mkl
 
 contains
 
+    ! get determinant by LU facorization
+
+    function      det(A) result(d)
+        ! 
+        use am_helpers
+        !
+        implicit none
+        !
+        real(dp), intent(in)  :: A(:,:)
+        real(dp) :: d
+        real(dp), allocatable :: C(:,:)
+        integer , allocatable :: ipiv(:)
+        integer :: m, n, info
+        integer :: i 
+        !
+        m = size(A,1)
+        n = size(A,2)
+        if (m.ne.n) then
+          call am_print('ERROR','Determinant is only defined for square matrices',flags='E')
+          stop
+        endif
+        allocate(ipiv(m))
+        !
+        ! remove numerical singularites by regularization
+        allocate(C,source=A)
+        do i = 1, m
+            C(i,i) = C(i,i) + eps
+        enddo
+        !
+        ! perform LU factorization
+        call dgetrf( m, m, C, m, ipiv, info )
+        if (info.ne.0) then
+            call am_print('ERROR',info,flags='E')
+            stop
+        endif
+        !
+        ! get determinant
+        d=1.0_dp
+        do i = 1, m
+            d = d*C(i,i)
+        enddo
+    end function  det
+
     ! LU decomposition
 
     subroutine     lu(A)
@@ -59,6 +102,7 @@ contains
         real(dp), allocatable :: Ainv(:,:)
         real(dp), allocatable :: WORK(:)
         integer  :: m, n, info, lwork
+        integer :: i
         !
         m = size(A,1)
         n = size(A,2)
@@ -495,5 +539,56 @@ contains
         end if
     end subroutine am_dgelss
 
+    ! LU decomposition
+
+    subroutine     am_dgetrf(A,L,U)
+        ! NOT YET TESTED.
+        use am_helpers
+        !
+        implicit none
+        !
+        real(dp), intent(in)  :: A(:,:)
+        real(dp), allocatable :: L(:,:)
+        real(dp), allocatable :: U(:,:)
+        integer , allocatable :: ipiv(:)
+        integer :: m, n, info
+        integer :: i, j 
+        !
+        m = size(A,1)
+        n = size(A,2)
+        allocate(ipiv(max(1,min(m,n))))
+        !
+        ! copy A and remove numerical singularites by regularization
+        allocate(U,source=A)
+        do i = 1, min(n,m)
+            U(i,i) = U(i,i) + eps
+        enddo
+        !
+        ! perform LU factorization
+        call dgetrf( m, n, U, m, ipiv, info )
+        if (info.ne.0) then
+            call am_print('ERROR',info,flags='E')
+            stop
+        endif
+        !
+        ! return lower triangular matrix L
+        allocate(L,source=U)
+        do j = 1, n
+        do i = 1, min(i,m)
+            if (i.eq.j) then
+                U(i,j) = 1.0_dp
+            else
+                U(i,j) = 0.0_dp
+            endif
+        enddo
+        enddo
+        !
+        ! return upper triangular matrix U
+        do i = 1, m
+        do j = 1, min(i-1,n)
+            U(i,j) = 0.0_dp
+        enddo
+        enddo
+    end subroutine am_dgetrf
 
 end module

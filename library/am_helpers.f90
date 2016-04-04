@@ -30,10 +30,6 @@
         module procedure linspace_double, linspace_integer
     end interface ! linspace
     !
-    interface det
-        module procedure det_3x3_dbl
-    end interface ! det
-    !
     interface issubset
         module procedure issubset_vec, issubset_mat
     end interface ! issubset
@@ -263,22 +259,6 @@
         enddo
     end function   mesh_grid
 
-    pure function  det_3x3_dbl(a) result(det)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: a(3,3)
-        real(dp) :: det
-        !
-        det = a(1,1)*a(2,2)*a(3,3) &
-            - a(1,1)*a(2,3)*a(3,2) &
-            - a(1,2)*a(2,1)*a(3,3) &
-            + a(1,2)*a(2,3)*a(3,1) &
-            + a(1,3)*a(2,1)*a(3,2) &
-            - a(1,3)*a(2,2)*a(3,1)
-        !
-    end function   det_3x3_dbl
-
     !
     ! generic math functions 
     !
@@ -426,7 +406,6 @@
         enddo
         enddo        
     end function  are_different
-
 
 
     end module
