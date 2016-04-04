@@ -339,4 +339,63 @@
         enddo
     end function  eye
 
+    pure function eye_nxm(n,m) result(id)
+        !> nxm identity matrix
+        implicit none
+        !
+        integer, intent(in) :: n, m
+        real(dp), dimension(:,:), allocatable :: id
+        integer :: i
+        !
+        allocate(id(n,m))
+        id=0.0_dp
+        do i = 1, min(n,m)
+            id(i,i) = 1.0_dp
+        enddo
+    end function  eye_nxm
+
+    pure subroutine rref(matrix)
+        !
+        ! note: algorithm on roseta code is broken.
+        ! this has been fixed by:
+        ! 1) changed: "(n.lt.pivot)" and "(pivot.gt.n)"
+        ! 2) changed: "(i.gt.m)"
+        !
+        implicit none
+        !
+        real(dp), intent(inout) :: matrix(:,:)
+        real(dp), allocatable :: temp(:)
+        integer :: pivot, m, n
+        integer :: r, i
+        !
+        pivot = 1
+        m=size(matrix,1)
+        n=size(matrix,2)
+        !
+        allocate(temp(n))
+        !
+        do r = 1, m
+        if (n.lt.pivot) exit
+        i = r
+        do while (abs(matrix(i,pivot)).lt.tiny)
+            i=i+1
+            if (i.gt.m) then
+                i=r
+                pivot=pivot+1
+                if (pivot.gt.n) return
+            end if
+        end do
+        ! swap rows i and r
+        temp = matrix(i,:)
+        matrix(i,:) = matrix(r,:)
+        matrix(r,:) = temp
+        !
+        matrix(r,:) = matrix(r,:)/matrix(r,pivot)
+        do i = 1, m
+            if (i.ne.r) matrix(i,:)=matrix(i,:)-matrix(r,:)*matrix(i,pivot)
+        end do
+        pivot = pivot + 1
+        end do
+        deallocate(temp)
+    end subroutine  rref
 

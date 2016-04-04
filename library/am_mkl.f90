@@ -2,11 +2,49 @@ module am_mkl
     !
     use am_constants
     !
-    integer, parameter :: lwmax = 1000
+    integer , parameter :: lwmax = 1000
+    real(dp), parameter :: eps = 1.0D-14 ! used for regularization
     !
     public
 
 contains
+
+    ! LU decomposition
+
+    subroutine     lu(A)
+        ! returns the upper triangular matrix U
+        use am_helpers
+        !
+        implicit none
+        !
+        real(dp), intent(inout)  :: A(:,:)
+        integer , allocatable :: ipiv(:)
+        integer :: m, n, info
+        integer :: i, j 
+        !
+        m = size(A,1)
+        n = size(A,2)
+        allocate(ipiv(max(1,min(m,n))))
+        !
+        ! remove numerical singularites by regularization
+        do i = 1, min(n,m)
+            A(i,i) = A(i,i) + eps
+        enddo
+        !
+        ! perform LU factorization
+        call dgetrf( m, n, A, m, ipiv, info )
+        if (info.ne.0) then
+            call am_print('ERROR',info,flags='E')
+            stop
+        endif
+        !
+        ! return upper triangular matrix U
+        do i = 1, m
+        do j = 1, min(i-1,n)
+            A(i,j) = 0.0_dp
+        enddo
+        enddo
+    end subroutine lu
 
     ! inverse of square matrix
     
@@ -20,31 +58,38 @@ contains
         integer,  allocatable :: ipiv(:)
         real(dp), allocatable :: Ainv(:,:)
         real(dp), allocatable :: WORK(:)
-        integer  :: m, n, lda, info, lwork
+        integer  :: m, n, info, lwork
         !
         m = size(A,1)
         n = size(A,2)
+        if (m.ne.n) then
+            call am_print('ERROR','n /= m',flags='E')
+            stop
+        endif
+        !
         allocate(ipiv(n))
-        allocate(Ainv(n,n))
         allocate(WORK(lwmax))
-        Ainv = A
-        lda  = m
+        !
+        ! copy A and remove numerical singularites by regularization
+        allocate(Ainv,source=A)
+        do i = 1, min(n,m)
+            Ainv(i,i) = Ainv(i,i) + eps
+        enddo
         !
         ! factorize 
-        call dgetrf( m, n, ainv, lda, ipiv, info )
+        call dgetrf( m, n, Ainv, m, ipiv, info )
         if (info.ne.0) then
             call am_print('ERROR',info)
             stop
         endif
         !
-        ! querery workspace
+        ! query workspace
         lwork=-1
-        call dgetri( n, ainv, lda, ipiv, WORK, lwork, info )
+        call dgetri( n, Ainv, m, ipiv, WORK, lwork, info )
         lwork = min( lwmax, int( WORK( 1 ) ) )
         !
         ! get inverse
-        !
-        call dgetri( n, ainv, lda, ipiv, WORK, lwork, info )
+        call dgetri( n, Ainv, m, ipiv, WORK, lwork, info )
         if (info.ne.0) then
             call am_print('ERROR',info)
             stop
@@ -64,7 +109,7 @@ contains
         real(dp), allocatable :: WORK(:)
         real(dp) :: rcond
         integer :: m, n, sz, i, j
-        integer :: lda, ldb, nrhs
+        integer :: ldb, nrhs
         integer :: info
         integer :: lwork
         integer :: rank ! effective rank of A: the number of singular values which are greater than rcond*s(1).
@@ -73,7 +118,6 @@ contains
         !
         m = size(A,1)
         n = size(A,2)
-        lda  = m
         !
         allocate(C,source=A)
         allocate(WORK(lwmax))
@@ -97,11 +141,11 @@ contains
         !
         ! query the optimal workspace
         lwork = -1
-        call dgelss(m, n, nrhs, C, lda, B, ldb, S, rcond, rank, WORK, lwork, info)
+        call dgelss(m, n, nrhs, C, m, B, ldb, S, rcond, rank, WORK, lwork, info)
         lwork = min(lwmax,int(WORK(1)))
         !
         ! solve the least squares problem min( norm2(B - Ax) ) for the x of minimum norm.
-        call dgelss(m, n, nrhs, C, lda, B, ldb, S, rcond, rank, WORK, lwork, info)
+        call dgelss(m, n, nrhs, C, m, B, ldb, S, rcond, rank, WORK, lwork, info)
         !
         ! check for convergence
         if (info.gt.0) then

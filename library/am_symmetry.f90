@@ -427,6 +427,7 @@ contains
         logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
         logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
         logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
+        integer , allocatable :: indices(:)
         character(10) :: axial
         integer :: i, j, k
         integer :: nequations
@@ -497,9 +498,14 @@ contains
         ! members(nclass,maxval(nelements))
         member = cc_member(pg%cc_identifier)
         !
-        ! initialize A with an extra row and column. otherwise RREF breaks. so stupid.
-        allocate(A(2*nterms,2*nterms)) ! augmented matrix
+        ! initialize A. 
+        ! using LU factorization instead of applying rref in order to incorporate effect of symmetry on tensor at each step.
+        ! LU needs two additional work spaces.
+        allocate(A(3*nterms,2*nterms)) ! augmented matrix
         A = 0
+        !
+        allocate(indices(nterms))
+        indices = [1:nterms]
         !
         ! start counter for number of equations
         nequations = 0
@@ -517,12 +523,26 @@ contains
             ! if the quantity corresponds to an axial tensor
             if (index(axial,'axial').ne.0) R = det(pg%R(:,:,i)) * R
             ! Save the action of the symmetry operations
-            A([1:nterms]+nterms,[1:nterms]+nterms*(1-1)) = R
-            A([1:nterms]+nterms,[1:nterms]+nterms*(2-1)) = eye(nterms)
-            ! reduced row echelon form to incorporate effect of symmetry
-            if (opts%verbosity.ge.2) call am_print('B',A,filename='debug_B'//trim(int2char(i))//'.txt',permission='w')
-            ! THIS RREF IS NOT WORKING PROPERLY!!! 
-            call rref(A)
+            A(2*nterms+indices,0*nterms+indices) = R
+            A(2*nterms+indices,1*nterms+indices) = eye(nterms)
+            ! At this point A is an augmented matrix of the form
+            !
+            !        [ A1 , B1 ]
+            !   A =  [ A2 , B2 ]
+            !        [ A3 , I  ]
+            !
+            ! in which the square matrix [A1,B1;A2,B2] is an augmented upper triangular matrix corresponding to 2*nterms
+            ! coupled equations which describe how the terms are interrelated. The last augmented matrix [A3,I]
+            ! describes how the tensor rotates under the most recently considered symmetry operation R. In order
+            ! incorporate the effect of symmetry operation R on the set of linearly coupled 2*nterms equations, LU
+            ! factorization is performed. By doing so, the augmented matrix A is converted into its factored upper
+            ! triangular matrix U, which, by definition, only occupies rows corresponding to the smallest dimension of
+            ! the matrix [either row or column, i.e. min(m,n)]. For this case, it occupies the top 2x2 augmented blocks.
+            ! This is also why the symmetry equations are added as components in the [A3,I] block -- so they don't
+            ! overlap with U.
+            !
+            ! perform LU factorization (saving only U) to incorporate effect
+            call lu(A)
             ! debug flags
             if (opts%verbosity.ge.2) then
                 call am_print('ps',ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),filename='debug_ps'//trim(int2char(i))//'.txt',permission='w')
@@ -530,6 +550,9 @@ contains
                 call am_print('A',A,filename='debug_A'//trim(int2char(i))//'.txt',permission='w')
             endif
         enddo
+        !
+        ! call RREF to effectively apply a grand-schmit orthonoramlziation.
+        call rref(A)
         !
         ! intrinsic symmetries
         !
@@ -550,8 +573,8 @@ contains
         !
         do i = 1, k
             nequations = nequations+nterms
-            A(nterms+[1:nterms],[1:nterms]+nterms*0) = eye(nterms)
-            A(nterms+[1:nterms],[1:nterms]+nterms*1) = S(:,:,i)
+            A(2*nterms+indices,0*nterms+indices) = eye(nterms)
+            A(2*nterms+indices,1*nterms+indices) = S(:,:,i)
             call rref(A)
             if (opts%verbosity.ge.2) call am_print('I',S(:,:,i),filename='debug_I'//trim(int2char(i))//'.txt',permission='w')
         enddo
@@ -561,8 +584,8 @@ contains
         !
         allocate(LHS(nterms,nterms))
         allocate(RHS(nterms,nterms))
-        LHS = A(1:nterms,1:nterms)
-        RHS = A(1:nterms,[1:nterms]+nterms)
+        LHS = A(0*nterms+indices,0*nterms+indices)
+        RHS = A(0*nterms+indices,1*nterms+indices)
         !
         if ( any(abs(LHS-eye(nterms)).gt.tiny) ) then
             call am_print('ERROR','Unable to reduce matrix to row echlon form.')
