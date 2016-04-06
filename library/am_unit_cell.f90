@@ -732,12 +732,12 @@
         !
         implicit none
         ! function i/o
-        real(dp), intent(in)           :: tau(:,:) !> tau(3,natoms) fractional atomic basis
+        real(dp), intent(in)           :: tau(:,:)      !> tau(3,natoms) fractional atomic basis
         integer , intent(in), optional :: iopt_atype(:) !> atype(natoms) list identify type of atom
         real(dp), intent(in), optional :: iopt_R(3,3)
         real(dp), intent(in), optional :: iopt_T(3)
         real(dp), intent(in), optional :: iopt_sym_prec
-        logical , intent(in), optional :: iopt_exact ! if present, do not apply mod. ; useful for determining stabilizers
+        logical , intent(in), optional :: iopt_exact    ! if present, do not apply mod. ; useful for determining stabilizers
         integer , allocatable :: atype(:)
         real(dp) :: R(3,3)
         real(dp) :: T(3)
@@ -941,7 +941,7 @@
         class(am_class_unit_cell), intent(inout) :: prim
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
-        integer , allocatable, optional :: oopts_uc2prim(:) ! lists the indices of the uc atoms which are in prim (note that their coordinates may not match)
+        integer , allocatable, optional :: oopts_uc2prim(:) ! oopts_uc2prim(prim%natoms) lists the indices of the uc atoms which are in prim (note that the coordinates of the atoms in the primitive cell do not necessairly match the coordinates of the corresponding atoms in the original cell)
         integer , allocatable :: indices(:)
         real(dp), allocatable :: T(:,:)
         real(dp) :: uc2prim(3,3)
@@ -1291,7 +1291,6 @@
                 m = m + 1
                 wrkspace(1:3,1:3,m)=R(1:3,1:3,i)
                 wrkspace(1:3,4,m)=T_shifted
-                !wrkspace(1:3,4,m)=T(1:3,j)
                 wrkspace(4,4,m)=1.0_dp
             endif
         enddo

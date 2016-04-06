@@ -12,7 +12,6 @@ module am_symmetry
     !
     public :: am_class_symmetry
     public :: determine_symmetry
-    public :: bond_group
     public :: get_kpoint_compatible_symmetries
     public :: ps_frac2cart
     !
@@ -22,33 +21,32 @@ module am_symmetry
     end type am_class_abstract_group
     !
     type, extends(am_class_abstract_group) :: am_class_symmetry 
-        !
         real(dp), allocatable :: R(:,:,:) !> symmetry elements (operate on fractional atomic basis)
         real(dp), allocatable :: T(:,:)   !> symmetry elements (operate on fractional atomic basis)
-        !
-        integer , allocatable :: ps_identifier(:) !> indices labeling point symmetries according to their actions (see decode_pointsymmetry)
-        integer               :: pg_identifier    !>
-        !
+        integer , allocatable :: ps_identifier(:) !> integers which identiy point symmetries (see decode_pointsymmetry)
+        integer               :: pg_identifier    !> integer which identifies the point group
     contains
-        procedure :: point_group
-        procedure :: space_group
-        procedure :: stdout
-        procedure :: name_symmetries
-        procedure :: sort
+        !
         procedure :: create
+        procedure :: space_group
+        procedure :: point_group
+        procedure :: rotational_group
+        procedure :: stabilizer_group
+        !
+        procedure :: name_symmetries
+        procedure :: stdout
+        procedure :: sort
+        !
+        procedure :: get_atom_pairs
         !
         procedure :: symmetry_adapted_tensor
-        procedure :: symmetry_adapted_2nd_order_force_constants
         !
         procedure :: determine_character_table
-        procedure :: action_table_get
-        procedure :: stabilizers
+        procedure :: action_table
     end type am_class_symmetry
     !
     type, extends(am_class_abstract_group) :: am_class_permutation_rep
-        !
         integer, allocatable :: rep(:,:) ! rep(:,nsyms)
-        !
     end type am_class_permutation_rep
 
 contains
@@ -176,197 +174,331 @@ contains
     end function   ps_schoenflies
 
     !
+    ! schoenflies decode
+    !
+
+    function       decode_pointsymmetry(ps_identifier) result(schoenflies)
+        !
+        implicit none
+        !
+        integer, intent(in) :: ps_identifier
+        character(len=string_length_schoenflies) :: schoenflies
+        !
+        select case (ps_identifier)
+        case(1);  schoenflies = 'e'
+        case(2);  schoenflies = 'c_2'
+        case(3);  schoenflies = 'c_3'
+        case(4);  schoenflies = 'c_4'
+        case(5);  schoenflies = 'c_6'
+        case(6);  schoenflies = 'i'
+        case(7);  schoenflies = 's_2'
+        case(8);  schoenflies = 's_6'
+        case(9);  schoenflies = 's_4'
+        case(10); schoenflies = 's_3'
+        case default
+            call am_print('ERROR','Schoenflies code unknown.',flags='E')
+            stop
+        end select
+    end function   decode_pointsymmetry
+
+    function       decode_pointgroup(pg_identifier) result(point_group_name)
+        !
+        implicit none
+        !
+        integer, intent(in) :: pg_identifier
+        character(string_length_schoenflies) :: point_group_name
+        !
+        select case (pg_identifier)
+                case(1); point_group_name = 'c_1'
+                case(2); point_group_name = 's_2'
+                case(3); point_group_name = 'c_2'
+                case(4); point_group_name = 'c_1h'
+                case(5); point_group_name = 'c_2h'
+                case(6); point_group_name = 'd_2'
+                case(7); point_group_name = 'c_2v'
+                case(8); point_group_name = 'd_2h'
+                case(9); point_group_name = 'c_3'
+                case(10); point_group_name = 's_6'
+                case(11); point_group_name = 'd_3'
+                case(12); point_group_name = 'c_3v'
+                case(13); point_group_name = 'd_3d'
+                case(14); point_group_name = 'c_4'
+                case(15); point_group_name = 's_4'
+                case(16); point_group_name = 'c_4h'
+                case(17); point_group_name = 'd_4'
+                case(18); point_group_name = 'c_4v'
+                case(19); point_group_name = 'd_2d'
+                case(20); point_group_name = 'd_4h'
+                case(21); point_group_name = 'c_6'
+                case(22); point_group_name = 'c_3h'
+                case(23); point_group_name = 'c_6h'
+                case(24); point_group_name = 'd_6'
+                case(25); point_group_name = 'c_6v'
+                case(26); point_group_name = 'd_3h'
+                case(27); point_group_name = 'd_6h'
+                case(28); point_group_name = 't'
+                case(29); point_group_name = 't_h'
+                case(30); point_group_name = 'o'
+                case(31); point_group_name = 't_d'
+                case(32); point_group_name = 'o_h'
+            case default
+                call am_print('ERROR','Schoenflies code for point-group unknown.',flags='E')
+                call am_print('pg_identifier',pg_identifier)
+                stop
+            end select
+    end function   decode_pointgroup
+
+    function       point_group_schoenflies(ps_identifier) result(pg_identifier)
+        !>
+        !> Refs:
+        !>
+        !> Applied Group Theory: For Physicists and Chemists. Reissue edition.
+        !> Mineola, New York: Dover Publications, 2015. page 20.
+        !>
+        !> Casas, Ignasi, and Juan J. Pérez. “Modification to Flow Chart to
+        !> Determine Point Groups.” Journal of Chemical Education 69, no. 1
+        !> (January 1, 1992): 83. doi:10.1021/ed069p83.2.
+        !>
+        !> Breneman, G. L. “Crystallographic Symmetry Point Group Notation
+        !> Flow Chart.” Journal of Chemical Education 64, no. 3 (March 1, 1987):
+        !> 216. doi:10.1021/ed064p216.
+        !>
+        !> Adapted from VASP
+        !>
+        !>   pg_identifier --> point_group_name
+        !>     1 --> c_1       9 --> c_3      17 --> d_4      25 --> c_6v
+        !>     2 --> s_2      10 --> s_6      18 --> c_4v     26 --> d_3h
+        !>     3 --> c_2      11 --> d_3      19 --> d_2d     27 --> d_6h
+        !>     4 --> c_1h     12 --> c_3v     20 --> d_4h     28 --> t
+        !>     5 --> c_2h     13 --> d_3d     21 --> c_6      29 --> t_h
+        !>     6 --> d_2      14 --> c_4      22 --> c_3h     30 --> o
+        !>     7 --> c_2v     15 --> s_4      23 --> c_6h     31 --> t_d
+        !>     8 --> d_2h     16 --> c_4h     24 --> d_6      32 --> o_h
+        !>
+        implicit none
+        !
+        integer, intent(in) :: ps_identifier(:)
+        integer :: nsyms
+        integer :: ni, nc2, nc3, nc4, nc6, ns2, ns6, ns4, ns3, ne
+        integer :: pg_identifier
+        !
+        pg_identifier = 0
+        !
+        ! trivial cases first
+        !
+        nsyms = size(ps_identifier)
+        if     (nsyms .eq. 1 ) then; pg_identifier=1;  return
+        elseif (nsyms .eq. 48) then; pg_identifier=32; return
+        elseif (nsyms .eq. 16) then; pg_identifier=20; return
+        elseif (nsyms .eq. 3 ) then; pg_identifier=9;  return
+        endif
+        !
+        ni=0; nc2=0; nc3=0; nc4=0; nc6=0; ns2=0; ns6=0; ns4=0; ns3=0
+        ne  = count(ps_identifier.eq.1)  ! 'e' identity
+        nc2 = count(ps_identifier.eq.2)  ! 'c_2'
+        nc3 = count(ps_identifier.eq.3)  ! 'c_3'
+        nc4 = count(ps_identifier.eq.4)  ! 'c_4'
+        nc6 = count(ps_identifier.eq.5)  ! 'c_6'
+        ni  = count(ps_identifier.eq.6)  ! 'i' inversion
+        ns2 = count(ps_identifier.eq.7)  ! 's_2'
+        ns6 = count(ps_identifier.eq.8)  ! 's_6'
+        ns4 = count(ps_identifier.eq.9)  ! 's_4'
+        ns3 = count(ps_identifier.eq.10) ! 's_3'
+        !
+        if (ni.gt.1) then
+            call am_print('ERROR','More than one inversion operator found.',flags='E')
+            stop
+        endif
+        !
+        if (ne.gt.1) then
+            call am_print('ERROR','More than one identity operator found.',flags='E')
+        elseif (ne.eq.0) then
+            call am_print('ERROR','No identity operator found.',flags='E')
+            stop
+        endif
+        !
+        if (nsyms.eq.2)   then
+            if (ni.eq.1)  then; pg_identifier=2;  return; endif
+            if (nc2.eq.1) then; pg_identifier=3;  return; endif
+            if (ns2.eq.1) then; pg_identifier=4;  return; endif
+        endif
+        if (nsyms.eq.4)   then
+            if (ni.eq.1)  then; pg_identifier=5;  return; endif
+            if (nc2.eq.3) then; pg_identifier=6;  return; endif
+            if (ns2.eq.2) then; pg_identifier=7;  return; endif
+            if (nc4.eq.1) then; pg_identifier=14; return; endif
+            if (ns4.eq.2) then; pg_identifier=15; return; endif
+        endif
+        if (nsyms.eq.6)   then
+            if (ni.eq.1)  then; pg_identifier=10; return; endif
+            if (nc2.eq.3) then; pg_identifier=11; return; endif
+            if (ns2.eq.3) then; pg_identifier=12; return; endif
+            if (nc2.eq.1) then; pg_identifier=21; return; endif
+            if (ns2.eq.1) then; pg_identifier=22; return; endif
+        endif
+        if (nsyms.eq.8)  then
+            if (ns2.eq.3) then; pg_identifier=8;  return; endif
+            if (ns2.eq.1) then; pg_identifier=16; return; endif
+            if (ns2.eq.0) then; pg_identifier=17; return; endif
+            if (ns2.eq.4) then; pg_identifier=18; return; endif
+            if (ns2.eq.2) then; pg_identifier=19; return; endif
+        endif
+        if (nsyms.eq.12)  then
+            if (ns2.eq.3) then; pg_identifier=13; return; endif
+            if (ns2.eq.1) then; pg_identifier=23; return; endif
+            if (nc2.eq.7) then; pg_identifier=24; return; endif
+            if (ns2.eq.6) then; pg_identifier=25; return; endif
+            if (ns2.eq.4) then; pg_identifier=26; return; endif
+            if (nc3.eq.8) then; pg_identifier=28; return; endif
+        endif
+        if (nsyms.eq.24)  then
+            if (nc6.eq.2) then; pg_identifier=27; return; endif
+            if (ni.eq.1)  then; pg_identifier=29; return; endif
+            if (nc4.eq.6) then; pg_identifier=30; return; endif
+            if (ns4.eq.6) then; pg_identifier=31; return; endif
+            endif
+        ! if it makes it this far, it means nothing matches. return an error immediately. 
+        call am_print('ERROR','Unable to identify point group',flags='E')
+            write(*,'(" ... ",a)') 'number of symmetry operators'
+            write(*,'(5x,a5,i5)') 'e  ', ne
+            write(*,'(5x,a5,i5)') 'c_2', nc2
+            write(*,'(5x,a5,i5)') 'c_3', nc3
+            write(*,'(5x,a5,i5)') 'c_4', nc4
+            write(*,'(5x,a5,i5)') 'c_6', nc6
+            write(*,'(5x,a5,i5)') 'i  ', ni
+            write(*,'(5x,a5,i5)') 's_2', ns2
+            write(*,'(5x,a5,i5)') 's_6', ns6
+            write(*,'(5x,a5,i5)') 's_4', ns4
+            write(*,'(5x,a5,i5)') 's_3', ns3
+            stop
+    end function   point_group_schoenflies
+
+    !
     ! functions for determining symmetry-adapted second-order force consants
     !
 
-    subroutine     symmetry_adapted_2nd_order_force_constants(sg,uc,opts)
+    subroutine     get_atom_pairs(pg,uc,opts)
         !
         use am_rank_and_sort
         !
-        class(am_class_symmetry), intent(in) :: sg
+        class(am_class_symmetry), intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
         !
-        integer  :: npairs
-        type(am_class_unit_cell) :: prim
-        type(am_class_options) :: notalk
-        real(dp), allocatable  :: d(:)
-        integer , allocatable  :: p(:,:)
-        integer , allocatable  :: uc2prim(:)
-        integer , allocatable  :: indices(:)
+        integer :: npairs
+        type(am_class_symmetry)  :: rg ! rotational group (space symmetries which have translational part set to zero and are still compatbile with the atomic basis)
+        type(am_class_symmetry)  :: vg ! bond group
+        type(am_class_unit_cell) :: prim ! primitive cell, only determine pairs for which atleast one atom is in the primitive cell
+        type(am_class_options) :: notalk ! supress verbosity
+        real(dp), allocatable  :: d(:)   ! d(npairs) array containing distances between atoms
+        integer , allocatable  :: p(:,:) ! p(2,npairs) array identiying which atoms are in the pair
+        integer , allocatable  :: uc2prim(:) ! i
+        integer , allocatable  :: indices(:) ! 
+        integer , allocatable  :: PM(:,:) ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
+        integer  :: select_primitive_atom
         real(dp) :: v(3)
+        integer :: i,j,n,k
         !
-        real(dp), allocatable :: M(:,:,:,:)         !> IMPORTANT: M is the original tensor before the permutation (shape of tensor is very important!)
-        integer , allocatable :: PM(:,:)            !> PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
-        integer  :: nterms                          !> nterms the number of terms
-        integer  :: nsyms                           !> nsyms number of symmetry elements
-        real(dp), allocatable :: M1d(:)             !> M1d(nterms) an array which is used to build the matrix M
-        real(dp), allocatable :: T(:,:)             !> T(nsyms,nterms) permutation matrx containing rows vectors describing how M is rotated by a point symmetry R
-        real(dp), allocatable :: A(:,:)             !> A(nsyms*nterms,2*nterms) augmented matrix equation
-        real(dp), allocatable :: LHS(:,:)           !> LHS(nterms,nterms) left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
-        real(dp), allocatable :: RHS(:,:)           !> RHS(nterms,nterms) right hand side of augmented matrix equation
-        logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
-        logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
-        logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
-        integer :: i, j, k, n
-        integer :: nequations
+        ! set notalk option
+        notalk = opts 
+        notalk%verbosity = 0
         !
-        if (opts%verbosity.ge.1) call am_print_title('Determining symmetry-adapted 2nd order force constants')
+        ! print title
+        if (opts%verbosity.ge.1) call am_print_title('Determining nearest-neighbor atomic shells')
         !
         call am_print('total number of atoms',uc%natoms,' ... ')
         !
-        ! get atoms in primitive cell
-        notalk = opts 
-        notalk%verbosity = 0
+        ! get atoms in primitive cell and indices of atoms in the original cell which represent all identical atoms in the primitive cell
         call prim%reduce_to_primitive(uc=uc,oopts_uc2prim=uc2prim,opts=notalk)
-        call am_print('number of primitive cell',prim%natoms,' ... ')
+        call am_print('primitive cell atoms',prim%natoms,' ... ')
         !
+        ! get atoms within a distance of an atom in the primitive cell
+        ! select_primitive_atom = 1
+        ! sphere% 
+
+        ! I THINK THAT A PROBLEM HERE, WHICH EXPLAINS WHY THE NUMBER OF ATOMS LEFT UNPERMUTED IN PM DOES NOT MATCH THE
+        ! STABILIZER GROUP IS BECAUSE ON PERIODIC BOUNDARY CONDITIONS: ELEMENTS AT THE FAR EDGE OF THE CELL ARE BEING
+        ! PERMUTED TO EQUIVALENT SITES TO BECOME NEAREST NEIGHBORS TO THE ATOMS IN THE PRIMITIVE CELL.
+
+        ! get point symmetries which are compatible with the atomic basis (essentially keeps rotational part of space symmetries which are able to map all atoms onto each other)
+        call rg%rotational_group(uc=uc,pg=pg,opts=opts)
+        call rg%action_table(uc=uc,iopt_fname='outfile.action_rotational_group',opts=opts)
+        !
+        ! get permutation map which shows how space symmetries permute atomic positions
+        ! PM(uc%natoms,sg%nsyms)
+        PM = action_atom_permutation(sg=rg,uc=uc,opts=opts)
+        !
+        ! get total possible pair of atoms involving primitive cell atoms
         npairs = uc%natoms*prim%natoms
-        call am_print('number of pairs formed with primitive cell atoms',npairs,' ... ')
+        call am_print('total pairs formed with primitive cell atoms',npairs,' ... ')
         !
         ! get distances between atoms in primitive cell and in unit cell
-        allocate(d(npairs)) ! distances
+        allocate(d(npairs))   ! distances
         allocate(p(2,npairs)) ! pairs
         k=0
         do n = 1, prim%natoms
             i = uc2prim(n)
             do j = 1, uc%natoms
                 k=k+1
-                ! get distance between atoms (length of bond)
-                v = matmul(uc%bas,uc%tau(:,i)-uc%tau(:,j))
-                d(k) = norm2(v)
-                ! pair indices
+                ! get bond distance (fractional)
+                v = uc%tau(:,i)-uc%tau(:,j)
+                ! store distance in cartesian coordiantes
+                d(k) = norm2(matmul(uc%bas,v))
+                ! store pair indices
                 p(1,k) = i
                 p(2,k) = j
             enddo
         enddo
         !
-        ! sort based on distance
+        ! sort pairs based on distance
         allocate(indices(npairs))
         call rank(d,indices)
-        d=d(indices)
         p(1,:)=p(1,indices)
         p(2,:)=p(2,indices)
         !
+        !
+        if (opts%verbosity.ge.1) then 
+            write(*,'(5x,a5,2(a10,a30),a10,a10)') 'i-j', '|v_cart|', centertitle('v (cart)',30), '|v_frac|', centertitle('v (frac)',30), 'group'
+            write(*,'(5x,a5,2(a10,a30),a10,a10)') ' '//repeat('-',4), ' '//repeat('-',9), ' '//repeat('-',29),&
+            & ' '//repeat('-',9), ' '//repeat('-',29), ' '//repeat('-',9)
+        endif
+        do k = 1, npairs
+            i = p(1,k)
+            j = p(2,k)
+            ! bond vector
+            v = uc%tau(:,i)-uc%tau(:,j)
+            ! get stabilizer of vector (bond group), symmetries which leave bond invariant
+            call vg%stabilizer_group(pg=pg,v=v,opts=notalk)
+            !
+            if (opts%verbosity.ge.1) then 
+                write(*,'(5x)'    ,advance='no') 
+                write(*,'(a5)'    ,advance='no') trim(trim(uc%symb(uc%atype(i)))//'-'//trim(uc%symb(uc%atype(j))))
+                write(*,'(f10.3)' ,advance='no') norm2(matmul(uc%bas,v))
+                write(*,'(3f10.3)',advance='no') matmul(uc%bas,v)
+                write(*,'(f10.3)' ,advance='no') norm2(v)
+                write(*,'(3f10.3)',advance='no') v
+                write(*,'(a10)'   ,advance='no') trim(decode_pointgroup(vg%pg_identifier))
+                write(*,*)
+            endif
+            !
+        enddo
+        !
+
+        !
         ! write to stdout
-        if (opts%verbosity.ge.1) then
-            write(*,'(a5,a10,a10,a10)') ' ... ', 'pairs', 'distance'
-            write(*,'(5x,a10,a10,a10)') repeat('-',9), repeat('-',9)
-            do k = 1, npairs
-                if (d(k).gt.tiny) then
-                if (d(k).gt.d(k-1)) then
-                    write(*,'(5x,a5,a5,f10.5,i10)') trim(uc%symb(uc%atype(p(1,k)))), trim(uc%symb(uc%atype(p(2,k)))), d(k) 
-                endif
-                endif
-            enddo
-        endif
-        !
-        ! now begin the symmetry determination 
-        ! determine force constants for all bonds connecting primitive atoms to atoms within a user-specified real-space cutoff distance
-        !
-        ! permutation map shows how symmetry operations map what atoms to what... 
-        PM = action_atom_permutation(sg=sg,uc=uc,opts=opts)
-        call am_print('PM',PM)
-        !
-        stop
-        !
-        nsyms = size(sg%R,3)
-        !
-        allocate(M(3,3,prim%natoms,uc%natoms))
-        nterms = product(shape(M))
-        !
-        allocate(M1d(nterms))
-        allocate(T(nsyms,nterms))
-        allocate(A(nsyms*nterms,2*nterms))
-        !
-        A = 0
-        nequations = 0
-        !
-!         !$OMP PARALLEL PRIVATE(i,j,M,M1d,T) SHARED(A,uc,sg,PM,nequations)
-!         !$OMP DO
-!         do i = 1,nterms
-!             write(*,*) i/real(nterms)
-!             !
-!             M1d = 0
-!             M1d(i) = 1
-!             M = reshape(M1d,shape(M))
-!             do j = 1, nsyms
-!                 !
-!                 ! each point symmetry corresponds to nterms possible equations among terms
-!                 !
-!                 nequations = nequations + nterms
-!                 !
-!                 ! apply transformation
-!                 !
-!                 T(j,1:nterms) = pack( transform_2nd_order_force_constants(&
-!                     M=M,R=ps_frac2cart(R_frac=sg%R(:,:,j),bas=uc%bas),PM=PM(:,j)) ,.true.)
-!                 !
+!         if (opts%verbosity.ge.1) then
+!             write(*,'(a5,a10,a10,a10)') ' ... ', 'pairs', 'distance'
+!             write(*,'(5x,a10,a10,a10)') repeat('-',9), repeat('-',9)
+!             do k = 1, npairs
+!                 if (d(k).gt.tiny) then
+!                 if (d(k).gt.d(k-1)) then
+!                     write(*,'(5x,a5,a5,f10.5,i10)') trim(uc%symb(uc%atype(p(1,k)))), trim(uc%symb(uc%atype(p(2,k)))), d(k) 
+!                 endif
+!                 endif
 !             enddo
-!             ! save an augmented matrix A
-!             A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(1-1)) = T(1:nsyms,1:nterms)
-!             A([1:nsyms]+nsyms*(i-1),[1:nterms]+nterms*(2-1)) = 0.0_dp
-!             A([1:nsyms]+nsyms*(i-1),         i+nterms*(2-1)) = 1.0_dp
-!         enddo
-!         !$OMP END DO
-!         !$OMP END PARALLEL
-!         !
-!         ! reduce to row echlon form
-!         call rref(A)
+!         endif
         !
-        !         ! now apply intrinsic symmetries, which are fundamental properties of the
-        !         ! elastic/stress/strain tensors and, therefore, independent of the crystal
-        !         ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 5 and 6
-        !         n = nterms
-        !         do l = 1,3
-        !         do k = 1,3
-        !         do j = 1,3
-        !         do i = 1,3
-        !             ! cijkl = cjikl ! permute first pair of indicies
-        !             nequations = nequations+1
-        !             n  = n+1
-        !             M  = 0.0_dp
-        !             RM = 0.0_dp
-        !              M(i,j,l,k) = 1.0_dp
-        !             RM(j,i,l,k) = 1.0_dp
-        !             A(n,[1:nterms]+nterms*(1-1))= pack( M , .true. ) ! RHS
-        !             A(n,[1:nterms]+nterms*(2-1))= pack( RM, .true. ) ! LHS
-        !             ! cijkl = cijlk ! permute last  pair of indicies
-        !             nequations = nequations+1
-        !             n  = n+1
-        !             M  = 0.0_dp; 
-        !             RM = 0.0_dp
-        !              M(i,j,k,l) = 1.0_dp
-        !             RM(i,j,l,k) = 1.0_dp
-        !             A(n,[1:nterms]+nterms*(1-1))= pack( M , .true. ) ! RHS
-        !             A(n,[1:nterms]+nterms*(2-1))= pack( RM, .true. ) ! LHS
-        !         enddo
-        !         enddo
-        !         enddo
-        !         enddo
-        !         ! reduce to echlon form once again to incorporate the intrinsic symmetries.
-        !         call rref(A)
-        !
-        ! call am_print_sparse('A = [LHS|RHS]',A(1:nterms,:),' ... ')
-        ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS
-        ! should be the identity matrix, which, together with the RHS, completely 
-        ! specifies all relationships between variables. 
-        allocate(LHS(nterms,nterms))
-        allocate(RHS(nterms,nterms))
-        LHS = A(1:nterms,1:nterms)
-        RHS = A(1:nterms,[1:nterms]+nterms)
-        !
-        if ( any(abs(LHS-eye(nterms)).gt.tiny) ) then
-            call am_print('ERROR','Unable to reduce matrix to row echlon form.')
-            call am_print_sparse('spy(LHS)',LHS)
-            stop
-        endif
-        !
-        call am_print('number of symmetry equations',nequations,' ... ')
-        !
-        call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
-            is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
-        !
-    end subroutine symmetry_adapted_2nd_order_force_constants
+    end subroutine get_atom_pairs
 
     pure function  transform_2nd_order_force_constants(M,R,PM) result(RM)
         !
@@ -454,6 +586,7 @@ contains
         ! This does not hold for the Seebeck and Peltier (thermoelectric) tensors which relate two different flows. Thus
         ! there are, at most, nine independent parameters rather than six. [Newnham "Properties of Materials"]
         !
+        elseif (index(property,'pair force-constants')   .ne.0) then; tensor_rank = 2; flags = 'polar' ! second-order force-constants
         elseif (index(property,'electric susceptibility').ne.0) then; tensor_rank = 2; flags = 'polar' ! S  ! P_{i}     = \alpha_{ij}  E_{j}
         elseif (index(property,'magnetic susceptibility').ne.0) then; tensor_rank = 2; flags = 'axial' ! S  ! M_{i}     = \mu_{ij}     H_{j}
         elseif (index(property,'magneto-electric')       .ne.0) then; tensor_rank = 2; flags = 'axial' 
@@ -707,207 +840,7 @@ contains
     end function   T_hat
 
     !
-    ! schoenflies decode
-    !
-
-    function       decode_pointsymmetry(ps_identifier) result(schoenflies)
-        !
-        implicit none
-        !
-        integer, intent(in) :: ps_identifier
-        character(len=string_length_schoenflies) :: schoenflies
-        !
-        select case (ps_identifier)
-        case(1);  schoenflies = 'e'
-        case(2);  schoenflies = 'c_2'
-        case(3);  schoenflies = 'c_3'
-        case(4);  schoenflies = 'c_4'
-        case(5);  schoenflies = 'c_6'
-        case(6);  schoenflies = 'i'
-        case(7);  schoenflies = 's_2'
-        case(8);  schoenflies = 's_6'
-        case(9);  schoenflies = 's_4'
-        case(10); schoenflies = 's_3'
-        case default
-            call am_print('ERROR','Schoenflies code unknown.',flags='E')
-            stop
-        end select
-    end function   decode_pointsymmetry
-
-    function       decode_pointgroup(pg_identifier) result(point_group_name)
-        !
-        implicit none
-        !
-        integer, intent(in) :: pg_identifier
-        character(string_length_schoenflies) :: point_group_name
-        !
-        select case (pg_identifier)
-                case(1); point_group_name = 'c_1'
-                case(2); point_group_name = 's_2'
-                case(3); point_group_name = 'c_2'
-                case(4); point_group_name = 'c_1h'
-                case(5); point_group_name = 'c_2h'
-                case(6); point_group_name = 'd_2'
-                case(7); point_group_name = 'c_2v'
-                case(8); point_group_name = 'd_2h'
-                case(9); point_group_name = 'c_3'
-                case(10); point_group_name = 's_6'
-                case(11); point_group_name = 'd_3'
-                case(12); point_group_name = 'c_3v'
-                case(13); point_group_name = 'd_3d'
-                case(14); point_group_name = 'c_4'
-                case(15); point_group_name = 's_4'
-                case(16); point_group_name = 'c_4h'
-                case(17); point_group_name = 'd_4'
-                case(18); point_group_name = 'c_4v'
-                case(19); point_group_name = 'd_2d'
-                case(20); point_group_name = 'd_4h'
-                case(21); point_group_name = 'c_6'
-                case(22); point_group_name = 'c_3h'
-                case(23); point_group_name = 'c_6h'
-                case(24); point_group_name = 'd_6'
-                case(25); point_group_name = 'c_6v'
-                case(26); point_group_name = 'd_3h'
-                case(27); point_group_name = 'd_6h'
-                case(28); point_group_name = 't'
-                case(29); point_group_name = 't_h'
-                case(30); point_group_name = 'o'
-                case(31); point_group_name = 't_d'
-                case(32); point_group_name = 'o_h'
-            case default
-                call am_print('ERROR','Schoenflies code for point-group unknown.',flags='E')
-                call am_print('pg_identifier',pg_identifier)
-                stop
-            end select
-    end function   decode_pointgroup
-
-    function       point_group_schoenflies(ps_identifier) result(pg_identifier)
-        !>
-        !> Refs:
-        !>
-        !> Applied Group Theory: For Physicists and Chemists. Reissue edition.
-        !> Mineola, New York: Dover Publications, 2015. page 20.
-        !>
-        !> Casas, Ignasi, and Juan J. Pérez. “Modification to Flow Chart to
-        !> Determine Point Groups.” Journal of Chemical Education 69, no. 1
-        !> (January 1, 1992): 83. doi:10.1021/ed069p83.2.
-        !>
-        !> Breneman, G. L. “Crystallographic Symmetry Point Group Notation
-        !> Flow Chart.” Journal of Chemical Education 64, no. 3 (March 1, 1987):
-        !> 216. doi:10.1021/ed064p216.
-        !>
-        !> Adapted from VASP
-        !>
-        !>   pg_identifier --> point_group_name
-        !>     1 --> c_1       9 --> c_3      17 --> d_4      25 --> c_6v
-        !>     2 --> s_2      10 --> s_6      18 --> c_4v     26 --> d_3h
-        !>     3 --> c_2      11 --> d_3      19 --> d_2d     27 --> d_6h
-        !>     4 --> c_1h     12 --> c_3v     20 --> d_4h     28 --> t
-        !>     5 --> c_2h     13 --> d_3d     21 --> c_6      29 --> t_h
-        !>     6 --> d_2      14 --> c_4      22 --> c_3h     30 --> o
-        !>     7 --> c_2v     15 --> s_4      23 --> c_6h     31 --> t_d
-        !>     8 --> d_2h     16 --> c_4h     24 --> d_6      32 --> o_h
-        !>
-        implicit none
-        !
-        integer, intent(in) :: ps_identifier(:)
-        integer :: nsyms
-        integer :: ni, nc2, nc3, nc4, nc6, ns2, ns6, ns4, ns3, ne
-        integer :: pg_identifier
-        !
-        pg_identifier = 0
-        !
-        ! trivial cases first
-        !
-        nsyms = size(ps_identifier)
-        if     (nsyms .eq. 1 ) then; pg_identifier=1;  return
-        elseif (nsyms .eq. 48) then; pg_identifier=32; return
-        elseif (nsyms .eq. 16) then; pg_identifier=20; return
-        elseif (nsyms .eq. 3 ) then; pg_identifier=9;  return
-        endif
-        !
-        ni=0; nc2=0; nc3=0; nc4=0; nc6=0; ns2=0; ns6=0; ns4=0; ns3=0
-        ne  = count(ps_identifier.eq.1)  ! 'e' identity
-        nc2 = count(ps_identifier.eq.2)  ! 'c_2'
-        nc3 = count(ps_identifier.eq.3)  ! 'c_3'
-        nc4 = count(ps_identifier.eq.4)  ! 'c_4'
-        nc6 = count(ps_identifier.eq.5)  ! 'c_6'
-        ni  = count(ps_identifier.eq.6)  ! 'i' inversion
-        ns2 = count(ps_identifier.eq.7)  ! 's_2'
-        ns6 = count(ps_identifier.eq.8)  ! 's_6'
-        ns4 = count(ps_identifier.eq.9)  ! 's_4'
-        ns3 = count(ps_identifier.eq.10) ! 's_3'
-        !
-        if (ni.gt.1) then
-            call am_print('ERROR','More than one inversion operator found.',flags='E')
-            stop
-        endif
-        !
-        if (ne.gt.1) then
-            call am_print('ERROR','More than one identity operator found.',flags='E')
-        elseif (ne.eq.0) then
-            call am_print('ERROR','No identity operator found.',flags='E')
-            stop
-        endif
-        !
-        if (nsyms.eq.2)   then
-            if (ni.eq.1)  then; pg_identifier=2;  return; endif
-            if (nc2.eq.1) then; pg_identifier=3;  return; endif
-            if (ns2.eq.1) then; pg_identifier=4;  return; endif
-        endif
-        if (nsyms.eq.4)   then
-            if (ni.eq.1)  then; pg_identifier=5;  return; endif
-            if (nc2.eq.3) then; pg_identifier=6;  return; endif
-            if (ns2.eq.2) then; pg_identifier=7;  return; endif
-            if (nc4.eq.1) then; pg_identifier=14; return; endif
-            if (ns4.eq.2) then; pg_identifier=15; return; endif
-        endif
-        if (nsyms.eq.6)   then
-            if (ni.eq.1)  then; pg_identifier=10; return; endif
-            if (nc2.eq.3) then; pg_identifier=11; return; endif
-            if (ns2.eq.3) then; pg_identifier=12; return; endif
-            if (nc2.eq.1) then; pg_identifier=21; return; endif
-            if (ns2.eq.1) then; pg_identifier=22; return; endif
-        endif
-        if (nsyms.eq.8)  then
-            if (ns2.eq.3) then; pg_identifier=8;  return; endif
-            if (ns2.eq.1) then; pg_identifier=16; return; endif
-            if (ns2.eq.0) then; pg_identifier=17; return; endif
-            if (ns2.eq.4) then; pg_identifier=18; return; endif
-            if (ns2.eq.2) then; pg_identifier=19; return; endif
-        endif
-        if (nsyms.eq.12)  then
-            if (ns2.eq.3) then; pg_identifier=13; return; endif
-            if (ns2.eq.1) then; pg_identifier=23; return; endif
-            if (nc2.eq.7) then; pg_identifier=24; return; endif
-            if (ns2.eq.6) then; pg_identifier=25; return; endif
-            if (ns2.eq.4) then; pg_identifier=26; return; endif
-            if (nc3.eq.8) then; pg_identifier=28; return; endif
-        endif
-        if (nsyms.eq.24)  then
-            if (nc6.eq.2) then; pg_identifier=27; return; endif
-            if (ni.eq.1)  then; pg_identifier=29; return; endif
-            if (nc4.eq.6) then; pg_identifier=30; return; endif
-            if (ns4.eq.6) then; pg_identifier=31; return; endif
-            endif
-        ! if it makes it this far, it means nothing matches. return an error immediately. 
-        call am_print('ERROR','Unable to identify point group',flags='E')
-            write(*,'(" ... ",a)') 'number of symmetry operators'
-            write(*,'(5x,a5,i5)') 'e  ', ne
-            write(*,'(5x,a5,i5)') 'c_2', nc2
-            write(*,'(5x,a5,i5)') 'c_3', nc3
-            write(*,'(5x,a5,i5)') 'c_4', nc4
-            write(*,'(5x,a5,i5)') 'c_6', nc6
-            write(*,'(5x,a5,i5)') 'i  ', ni
-            write(*,'(5x,a5,i5)') 's_2', ns2
-            write(*,'(5x,a5,i5)') 's_6', ns6
-            write(*,'(5x,a5,i5)') 's_4', ns4
-            write(*,'(5x,a5,i5)') 's_3', ns3
-            stop
-    end function   point_group_schoenflies
-
-    !
-    ! functions which operate on sg
+    ! very high level routines which operate on sg
     !
 
     subroutine     determine_symmetry(uc,sg,pg,opts)
@@ -948,11 +881,14 @@ contains
         seitz = space_symmetries_from_basis(uc=uc,opts=opts)
         if (opts%verbosity.ge.1) call am_print('number of space group symmetries found',size(seitz,3),' ... ') 
         !
-        ! create space group instance
+        ! put identity first
+        call put_identity_first(rep=seitz)
+        !
+        ! create space group instance (puts identity first)
         call sg%create(R=seitz(1:3,1:3,:),T=seitz(1:3,4,:))
         !
-        ! determine conjugacy classes for representation
-        sg%cc_identifier = cc_get(rep=seitz,flags='seitz')
+        ! determine conjugacy classes (needs identity first)
+        sg%cc_identifier = get_conjugacy_classes(rep=seitz,flags='seitz')
         !
         ! sort space group symmetries based on parameters
         call sg%sort(sort_parameter=sg%T(1,:),iopt_direction='ascend')
@@ -964,7 +900,7 @@ contains
         call sg%name_symmetries(opts=notalk)
         !
         ! write action table
-        call sg%action_table_get(uc=uc,iopt_fname='outfile.action_space_group',opts=opts)
+        call sg%action_table(uc=uc,iopt_fname='outfile.action_space_group',opts=opts)
         !
         ! get character table
         call sg%determine_character_table(opts=opts)
@@ -996,12 +932,12 @@ contains
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining point group symmetries')
         !
-        ! create point group instance
+        ! create point group instance (puts identity first, inversion second)
         call pg%create(R=unique(sg%R))
         if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,' ... ')
         !
-        ! determine conjugacy classes for representation
-        pg%cc_identifier = cc_get(rep=pg%R,flags='')
+        ! determine conjugacy classes (needs identity first, inversion second)
+        pg%cc_identifier = get_conjugacy_classes(rep=pg%R)
         !
         ! sort point group symmetries based on parameters
         allocate(sort_parameter(pg%nsyms))
@@ -1024,7 +960,7 @@ contains
         ! write action table 
         ! currently not working for nonsymorphic space groups. (i.e. those which necessairly have a translational component)
         ! actually it may just not be possible to do this for such a group because permutations linking atoms simply do not exist if only the rotational part is considered. the translational part is essential. an example is TiSe2.
-        ! call pg%action_table_get(uc=uc,iopt_fname='outfile.action_point_group',opts=opts)
+        ! call pg%action_table(uc=uc,iopt_fname='outfile.action_point_group',opts=opts)
         !
         ! write to stdout and to file
         ! if (opts%verbosity.ge.1) call pg%stdout(iopt_uc=uc)
@@ -1032,90 +968,84 @@ contains
         !
     end subroutine point_group
 
-    subroutine     bond_group(sg,uc,opts)
+    subroutine     rotational_group(rg,uc,pg,opts)
+        ! get point symmetries which are compatible with the atomic basis (essentially keeps rotational part of space symmetries which are able to map all atoms onto each other)
+        implicit none
+        ! subroutine i/o
+        class(am_class_symmetry), intent(inout) :: rg
+        type(am_class_symmetry) , intent(in) :: pg
+        type(am_class_unit_cell), intent(in) :: uc
+        type(am_class_options)  , intent(in) :: opts
+        type(am_class_options) :: notalk
+        real(dp), allocatable :: wrkspace(:,:,:)
+        integer :: i, m
         !
-        use am_rank_and_sort, only : rank
+        notalk=opts
+        notalk%verbosity = 0
+        !
+        allocate(wrkspace(3,3,pg%nsyms))
+        m=0
+        do i = 1, pg%nsyms
+            if ( is_symmetry_valid(tau=uc%tau,iopt_atype=uc%atype, &
+               & iopt_R=pg%R(1:3,1:3,i),iopt_sym_prec=opts%sym_prec)) then
+                m = m + 1
+                wrkspace(1:3,1:3,m)=pg%R(1:3,1:3,i)
+            endif
+        enddo
+        !
+        call rg%create(R=wrkspace(1:3,1:3,1:m))
+        !
+        ! determine conjugacy classes (needs identity first)
+        rg%cc_identifier = get_conjugacy_classes(rep=rg%R)
+        !
+        ! name the (im-)proper part of space symmetry
+        call rg%name_symmetries(opts=notalk)
+        !
+        ! name "point group" - NOTE: not really a point group because translational components of space symmetries were ignored in the genereation process
+        ! this would be the name of the group, if the group were symmorphic (in which case it will match the real point group name)... 
+        rg%pg_identifier = point_group_schoenflies(rg%ps_identifier)
+        !
+    end subroutine rotational_group
+
+    subroutine     stabilizer_group(vg,pg,v,opts)
         !
         implicit none
         !
-        type(am_class_symmetry) , intent(in) :: sg ! space group
-        type(am_class_unit_cell), intent(in) :: uc ! unit cell
+        class(am_class_symmetry), intent(inout) :: vg ! stabilizer group associated with vector v
+        type(am_class_symmetry) , intent(in) :: pg   ! space group
+        real(dp)                , intent(in) :: v(3) ! vector which is stabilized (should be same units as R, which is fractional)
         type(am_class_options)  , intent(in) :: opts
-        type(am_class_symmetry) :: bg ! bond group
-        type(am_class_symmetry), allocatable :: pg(:,:) ! point group of bond
-        type(am_class_options) :: notalk
-        integer  :: i, j, k
-        real(dp) :: v(3)
-        integer, allocatable :: indices(:)
-        integer, allocatable :: pair(:,:)
-        real(dp),allocatable :: paird(:)
-        integer :: npairs
+        integer, allocatable :: indicies(:)
+        logical, allocatable :: mask(:)
+        integer :: i
         !
-        notalk = opts
-        notalk%verbosity = 0
+        allocate(mask(pg%nsyms))
+        mask = .false.
         !
-        if (opts%verbosity.ge.1) call am_print_title('Determining bond symmetries')
-        !
-        npairs=floor(uc%natoms/2.0_dp)*(uc%natoms+1)+modulo(uc%natoms,2)*nint(uc%natoms/2.0_dp)
-        if (opts%verbosity.ge.1) call am_print('number of atom pairs', npairs, ' ... ')
-        !
-        ! sort atom pairs based on distance
-        !
-        allocate(paird(npairs))
-        allocate(pair(2,npairs))
-        k=0
-        do i = 1, uc%natoms
-        do j = 1, i
-            k=k+1
-            ! get pair 
-            pair(1,k) = i
-            pair(2,k) = j
-            ! bond vector
-            v = uc%tau(:,i)-uc%tau(:,j)
-            ! get distance between atoms (length of bond)
-            paird(k) = norm2(matmul(uc%bas,v))
-        enddo
-        enddo
-        !
-        if (k.ne.npairs) then
-            call am_print('ERROR','Inconsistent number of atom pairs. Something is wrong internally.',flags='E')
-            call am_print('number of atom pairs', k, ' ... ')
-            stop
-        endif
-        !
-        !
-        !
-        allocate(indices(npairs))
-        call rank(paird,indices)
-        pair(:,:) = pair(:,indices)
-        paird(:)  = paird(indices)
-        !
-        allocate(pg(uc%natoms,uc%natoms))
-        !
-        if (opts%verbosity.ge.1) write(*,'(5x,2a5,3a10,a10,a10,a10)') 'i', 'j', 'v_x','v_y','v_z', '|v_frac|', '|v_cart|', 'group'
-        do k = 1, npairs
-            i = pair(1,k)
-            j = pair(2,k)
-            ! bond vector
-            v = uc%tau(:,i)-uc%tau(:,j)
-            ! get stabilizer of bond (group), symmetries which leave bond invariant
-            call bg%stabilizers(sg=sg,v=v,opts=notalk)
-            ! determine symmetry of bond
-            call pg(i,j)%point_group(uc=uc,sg=bg,opts=notalk)
-            !
-            if (opts%verbosity.ge.1) then 
-                write(*,'(5x)',advance='no') 
-                write(*,'(2a5)',advance='no') trim(uc%symb(uc%atype(i))), trim(uc%symb(uc%atype(j)))
-                write(*,'(3f10.2)',advance='no') v
-                write(*,'(f10.2)',advance='no') norm2(v)
-                write(*,'(f10.2)',advance='no') norm2(matmul(uc%bas,v))
-                write(*,'(a10)',advance='no') trim(decode_pointgroup(pg(i,j)%pg_identifier))
-                write(*,*)
+        do i = 1, pg%nsyms
+            ! mark symmetries which leaves vector strictly invariant (not even modulo a lattice vector)
+            if (is_symmetry_valid(tau=reshape(v,[3,1]),iopt_R=pg%R(:,:,i),&
+                iopt_exact=.true.,iopt_sym_prec=opts%sym_prec)) then
+                mask(i) = .true.
             endif
-            !
         enddo
         !
-    end subroutine bond_group
+        allocate(indicies(pg%nsyms))
+        indicies=[1:pg%nsyms]
+        ! create group
+        call vg%create(R=pg%R(:,:,pack(indicies,mask)))
+        ! determine conjugacy classes (needs identity first, inversion second)
+        vg%cc_identifier = get_conjugacy_classes(rep=vg%R)
+        ! name point symmetries
+        call vg%name_symmetries(opts=opts)
+        ! name point group
+        vg%pg_identifier = point_group_schoenflies(vg%ps_identifier)
+        !
+    end subroutine stabilizer_group
+
+    !
+    ! medium level routines which operate on sg
+    !
 
     subroutine     determine_character_table(sg,opts)
         !
@@ -1126,7 +1056,7 @@ contains
         class(am_class_symmetry), intent(inout) :: sg
         type(am_class_options)  , intent(in) :: opts
         real(dp), allocatable :: rep(:,:,:)
-        real(dp), allocatable :: CT(:,:)
+        integer , allocatable :: cayley_table(:,:)
         character(100) :: flags
         integer :: i, j, k
         !
@@ -1139,6 +1069,7 @@ contains
         integer, allocatable :: CCT(:,:) ! class constant table which becomes character table (can be complex!)
         integer, allocatable :: irrep_dim(:) ! rep dimensions
         integer, allocatable :: indices(:)
+        integer  :: index_of_class_containing_inversion
         real(dp) :: wrk
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining character table')
@@ -1154,9 +1085,12 @@ contains
         !
         nsyms = size(rep,3)
         !
+        ! construct cayley table for quick access to symmetry multiplication
+        cayley_table = get_cayley_table(rep=rep,flags=flags)
+        !
         ! identify which class symmetry belongs to
         ! cc_identifier(nsyms)
-        sg%cc_identifier = cc_get(rep=rep,flags=flags)
+        sg%cc_identifier = get_conjugacy_classes(rep=rep,flags=flags)
         !
         ! get number of classes
         nclasses = maxval(sg%cc_identifier)
@@ -1171,20 +1105,18 @@ contains
         member = cc_member(sg%cc_identifier)
         ! call am_print('class memebers',member,' ... ')
         !
-        ! construct cayley table for quick access to symmetry multiplication
-        CT = cayley_table(rep=rep,flags=flags)
-        !
-        ! get class mutliplication 
+        ! get class coefficients (thenumber of times class k appears in the pdocut o class j and k )
+        ! Wooten p 35, Eq 2.10; p 40, Example 2.8; p 89, Example 4.6
         allocate(H(nclasses,nclasses,nclasses))
         do i = 1,nclasses
         do j = 1,nclasses
         do k = 1,nclasses
-            H(j,k,i) = count( pack( CT(member(i,1:nelements(i)),member(j,1:nelements(j))) , .true. ) .eq. member(k,1) )
+            H(j,k,i) = count( pack( cayley_table(member(i,1:nelements(i)),member(j,1:nelements(j))) , .true. ) .eq. member(k,1) )
         enddo
         enddo
         enddo
         !
-        ! determine eigenvector which simultaneously diagonalize i Hjk(:,:) matrices
+        ! determine eigenvector which simultaneously diagonalizes i Hjk(:,:) matrices
         ! CCT(nirreps,nclasses)
         CCT = class_constant_table(real(H,dp))
         !
@@ -1210,10 +1142,17 @@ contains
         enddo
         enddo
         !
-        ! sort irreps based on dimension
+        ! sort irreps
         allocate(indices(nirreps))
-        indices = [1:nirreps]
+        ! sort irreps based on dimension
         call rank(irrep_dim,indices)
+        irrep_dim = irrep_dim(indices)
+        do j = 1,nclasses
+            CCT(:,j) = CCT(indices,j)
+        enddo
+        ! sort irreps based on inversion (requires inversion class to be second)
+        index_of_class_containing_inversion = 2
+        call rank(-sign(1,CCT(:,index_of_class_containing_inversion)),indices)
         irrep_dim = irrep_dim(indices)
         do j = 1,nclasses
             CCT(:,j) = CCT(indices,j)
@@ -1238,6 +1177,12 @@ contains
             write(*,'(5x,a10)',advance='no') 'class rep'
             do i = 1, nclasses
                 write(*,'(i5)',advance='no') member(i,1)
+            enddo
+            write(*,*)
+            !
+            write(*,'(5x,a10)',advance='no') ' '
+            do i = 1, nclasses
+                write(*,'(a5)',advance='no') trim(decode_pointsymmetry(sg%ps_identifier(member(i,1))))
             enddo
             write(*,*)
             !
@@ -1273,15 +1218,15 @@ contains
             !
             ! determines characters which simultaneously diagonalizes i square matrices A(:,:,i)
             ! only possible if A(:,:,i) commute with each other. Assumes all dimensions of A are the same.
+            ! 
             !
             implicit none
             !
-            real(dp), intent(in) :: A(:,:,:)
+            real(dp), intent(in)  :: A(:,:,:)
             real(dp), allocatable :: V(:,:) ! these two should match in this particular situation (character table determination from class multiplication )
             integer , allocatable :: D(:,:) ! these two should match in this particular situation (character table determination from class multiplication )
             real(dp), allocatable :: M(:,:)
             integer , allocatable :: p(:)
-            integer , allocatable :: small(:)
             integer :: n, i
             !
             call am_print('WARNING','The procedure used to determine the character table does not allow for complex character',flags='W')
@@ -1321,11 +1266,9 @@ contains
                 !
             enddo
             !
-            ! normalize each row of V to the smallest value in that row
-            allocate(small(n))
-            small = minloc( abs(V) , dim=1, mask = abs(V).gt.tiny )
+            ! normalize each eigencolumn to the element of the column (that is, the first element, i.e. row, corresponds to the class containing the identity element)
             do i = 1, n
-                V(:,i)=V(:,i)/V(small(i),i)
+                V(:,i)=V(:,i)/V(1,i)
             enddo
             V = nint(transpose(V))
             !
@@ -1335,47 +1278,160 @@ contains
         end function   class_constant_table
     end subroutine determine_character_table
 
-    subroutine     stabilizers(bg,sg,v,opts)
+    subroutine     name_symmetries(sg,opts)
         !
         implicit none
         !
-        class(am_class_symmetry), intent(inout) :: bg ! bond group
-        type(am_class_symmetry) , intent(in) :: sg ! space group
+        class(am_class_symmetry) , intent(inout) :: sg
+        type(am_class_options), intent(in) :: opts
+        integer :: i
+        !
+        if (allocated(sg%ps_identifier)) deallocate(sg%ps_identifier)
+        allocate(sg%ps_identifier(sg%nsyms))
+        !
+        do i = 1, sg%nsyms
+            sg%ps_identifier(i) = ps_schoenflies(sg%R(:,:,i))
+        enddo
+        !
+        if (opts%verbosity.ge.1) then
+            call am_print('number of e   point symmetries',count(sg%ps_identifier.eq.1),' ... ')
+            call am_print('number of c_2 point symmetries',count(sg%ps_identifier.eq.2),' ... ')
+            call am_print('number of c_3 point symmetries',count(sg%ps_identifier.eq.3),' ... ')
+            call am_print('number of c_4 point symmetries',count(sg%ps_identifier.eq.4),' ... ')
+            call am_print('number of c_6 point symmetries',count(sg%ps_identifier.eq.5),' ... ')
+            call am_print('number of i   point symmetries',count(sg%ps_identifier.eq.6),' ... ')
+            call am_print('number of s_2 point symmetries',count(sg%ps_identifier.eq.7),' ... ')
+            call am_print('number of s_6 point symmetries',count(sg%ps_identifier.eq.8),' ... ')
+            call am_print('number of s_4 point symmetries',count(sg%ps_identifier.eq.9),' ... ')
+            call am_print('number of s_3 point symmetries',count(sg%ps_identifier.eq.10),' ... ')
+        endif
+        !
+    end subroutine name_symmetries
+
+    function       action_atom_permutation(sg,uc,opts) result(PM)
+        !
+        ! PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
+        !
+        implicit none
+        !
+        type(am_class_symmetry) , intent(in) :: sg
+        type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options)  , intent(in) :: opts
-        real(dp), intent(in) :: v(3) ! bond vector
-        logical, allocatable :: mask(:)
-        integer :: i, j
+        integer, allocatable :: P(:,:,:)
+        integer, allocatable :: PM(:,:)
+        integer :: i
         !
-        allocate(mask(sg%nsyms))
-        mask = .false.
+        P = rep_permutation(sg=sg,uc=uc,opts=opts)
         !
-        do i = 1, sg%nsyms
-            ! take symmetry which leaves vector invariant (not even modulo a lattice vector). effectively, the
-            ! symmetries which is able to map a point onto itself. ignoring translations here: is this correct?
-            ! probablly not... need to confirm... one of the problems with the translations is that they are, for example, all
-            ! positive, so while they move one atom up, the cannever move one atom back...
-            if (is_symmetry_valid(tau=reshape(v,[3,1]),iopt_R=sg%R(:,:,i),&
-                iopt_exact=.true.,iopt_sym_prec=opts%sym_prec)) then
-                mask(i) = .true.
-            endif
+        allocate(PM(uc%natoms,sg%nsyms))
+        PM = 0
+        do i = 1,sg%nsyms
+            PM(:,i) = matmul(P(:,:,i),[1:uc%natoms])
         enddo
         !
-        bg%nsyms = count(mask)
-        if (allocated(bg%R)) deallocate(bg%R)
-        if (allocated(bg%T)) deallocate(bg%T)
-        allocate(bg%R(3,3,bg%nsyms))
-        allocate(bg%T(3,bg%nsyms))
+    end function   action_atom_permutation
+
+    subroutine     create(sg,R,T)
         !
-        j=0
+        implicit none
+        !
+        class(am_class_symmetry), intent(inout) :: sg
+        real(dp), intent(in), optional :: R(:,:,:)
+        real(dp), intent(in), optional :: T(:,:)
+        real(dp) :: id(3,3)
+        integer  :: i
+        !
+        if (present(T).and.present(R)) then
+        if (size(R,3).ne.size(T,2)) then
+            call am_print('ERROR','R and T dimensions do not match.')
+            call am_print('shape(R)',shape(R))
+            call am_print('shape(T)',shape(T))
+            stop
+        endif
+        endif
+        !
+        if (present(R)) then
+            sg%nsyms = size(R,3)
+            if (allocated(sg%R)) deallocate(sg%R)
+            allocate(sg%R(3,3,sg%nsyms))
+            do i = 1, sg%nsyms
+                sg%R(:,:,i) = R(:,:,i)
+            enddo
+        endif
+        !
+        if (present(T)) then
+            sg%nsyms = size(T,2)
+            if (allocated(sg%T)) deallocate(sg%T)
+            allocate(sg%T(3,sg%nsyms))
+            do i = 1, sg%nsyms
+                sg%T(:,i) = T(:,i)
+            enddo
+        endif
+        !
+        ! put identity first
+        !
+        id = eye(3)
         do i = 1, sg%nsyms
-            if (mask(i)) then
-                j=j+1
-                bg%R(:,:,j)=sg%R(:,:,i)
-                bg%T(:,j)=sg%T(:,i)
+            if (present(R)) then
+                if (present(T)) then
+                    ! R and T
+                    if (all(abs(sg%R(:,:,i)-id).lt.tiny)) then
+                    if (all(abs(sg%T(:,i)).lt.tiny)) then
+                        sg%R(:,:,i) = sg%R(:,:,1)
+                        sg%T(:,i)   = sg%T(:,1)
+                        sg%R(:,:,1) = id
+                        sg%T(:,1)   = real([0,0,0],dp)
+                    endif
+                    endif
+                else
+                    ! just R
+                    if (all(abs(sg%R(:,:,i)-id).lt.tiny)) then
+                        sg%R(:,:,i) = sg%R(:,:,1)
+                        sg%R(:,:,1) = id
+                    endif
+                endif
+            else
+                ! just T
+                if (all(abs(sg%T(:,i)).lt.tiny)) then
+                    sg%T(:,i) = sg%T(:,1)
+                    sg%T(:,1) = real([0,0,0],dp)
+                endif
             endif
         enddo
+    end subroutine create
+
+    subroutine     sort(sg,sort_parameter,iopt_direction)
         !
-    end subroutine stabilizers
+        ! iopt_direction = 'ascend'/'descend', only first character is important
+        !
+        use am_rank_and_sort
+        !
+        implicit none
+        !
+        class(am_class_symmetry) , intent(inout) :: sg
+        character(*), intent(in), optional :: iopt_direction
+        integer , allocatable :: sorted_indices(:)
+        real(dp) :: sort_parameter(:)
+        character(1) :: direction
+        !
+        if (present(iopt_direction)) then
+            direction = iopt_direction(1:1)
+        else 
+            direction = 'a'
+        endif
+        !
+        allocate(sorted_indices(sg%nsyms))
+        !
+        call rank(sort_parameter,sorted_indices)
+        !
+        if (direction.eq.'d') sorted_indices = sorted_indices(sg%nsyms:1:-1)
+        !
+        if (allocated(sg%R)) sg%R = sg%R(:,:,sorted_indices)
+        if (allocated(sg%T)) sg%T = sg%T(:,sorted_indices)
+        if (allocated(sg%ps_identifier)) sg%ps_identifier = sg%ps_identifier(sorted_indices)
+        if (allocated(sg%cc_identifier)) sg%cc_identifier = sg%cc_identifier(sorted_indices)
+        !
+    end subroutine sort
 
     subroutine     stdout(sg,iopt_uc,iopt_filename)
         !
@@ -1470,60 +1526,7 @@ contains
         !
     end subroutine stdout
 
-    subroutine     name_symmetries(sg,opts)
-        !
-        implicit none
-        !
-        class(am_class_symmetry) , intent(inout) :: sg
-        type(am_class_options), intent(in) :: opts
-        integer :: i
-        !
-        if (allocated(sg%ps_identifier)) deallocate(sg%ps_identifier)
-        allocate(sg%ps_identifier(sg%nsyms))
-        !
-        do i = 1, sg%nsyms
-            sg%ps_identifier(i) = ps_schoenflies(sg%R(:,:,i))
-        enddo
-        !
-        if (opts%verbosity.ge.1) then
-            call am_print('number of e   point symmetries',count(sg%ps_identifier.eq.1),' ... ')
-            call am_print('number of c_2 point symmetries',count(sg%ps_identifier.eq.2),' ... ')
-            call am_print('number of c_3 point symmetries',count(sg%ps_identifier.eq.3),' ... ')
-            call am_print('number of c_4 point symmetries',count(sg%ps_identifier.eq.4),' ... ')
-            call am_print('number of c_6 point symmetries',count(sg%ps_identifier.eq.5),' ... ')
-            call am_print('number of i   point symmetries',count(sg%ps_identifier.eq.6),' ... ')
-            call am_print('number of s_2 point symmetries',count(sg%ps_identifier.eq.7),' ... ')
-            call am_print('number of s_6 point symmetries',count(sg%ps_identifier.eq.8),' ... ')
-            call am_print('number of s_4 point symmetries',count(sg%ps_identifier.eq.9),' ... ')
-            call am_print('number of s_3 point symmetries',count(sg%ps_identifier.eq.10),' ... ')
-        endif
-        !
-    end subroutine name_symmetries
-
-    function       action_atom_permutation(sg,uc,opts) result(PM)
-        !
-        ! PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
-        !
-        implicit none
-        !
-        type(am_class_symmetry) , intent(in) :: sg
-        type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_options)  , intent(in) :: opts
-        integer, allocatable :: P(:,:,:)
-        integer, allocatable :: PM(:,:)
-        integer :: i
-        !
-        P = rep_permutation(sg=sg,uc=uc,opts=opts)
-        !
-        allocate(PM(uc%natoms,sg%nsyms))
-        PM = 0
-        do i = 1,sg%nsyms
-            PM(:,i) = matmul(P(:,:,i),[1:uc%natoms])
-        enddo
-        !
-    end function   action_atom_permutation
-
-    subroutine     action_table_get(sg,uc,iopt_fname,opts)
+    subroutine     action_table(sg,uc,iopt_fname,opts)
         !
         implicit none
         !
@@ -1617,7 +1620,7 @@ contains
                         ! for fractional R; its elements will always be an integer...
                         ! inverse here because f(Rr) = R^-1 * f(r)
                         R=inv(sg%R(:,:,i))
-                        if (R(j,k).ne.0) then
+                        if (abs(R(j,k)).gt.tiny) then
                             buffer = trim(buffer)//trim(int2char(nint(R(j,k)),'SP'))//xyz(j:j)
                         endif
                     enddo
@@ -1643,78 +1646,7 @@ contains
             enddo
             !
         close(fid)
-    end subroutine action_table_get
-
-    subroutine     create(sg,R,T)
-        !
-        implicit none
-        !
-        class(am_class_symmetry), intent(inout) :: sg
-        real(dp), intent(in), optional :: R(:,:,:)
-        real(dp), intent(in), optional :: T(:,:)
-        integer  :: i
-        !
-        if (present(T).and.present(R)) then
-        if (size(R,3).ne.size(T,2)) then
-            call am_print('ERROR','R and T dimensions do not match.')
-            call am_print('shape(R)',shape(R))
-            call am_print('shape(T)',shape(T))
-            stop
-        endif
-        endif
-        !
-        if (present(R)) then
-            sg%nsyms = size(R,3)
-            if (allocated(sg%R)) deallocate(sg%R)
-            allocate(sg%R(3,3,sg%nsyms))
-            do i = 1, sg%nsyms
-                sg%R(:,:,i) = R(:,:,i)
-            enddo
-        endif
-        !
-        if (present(T)) then
-            sg%nsyms = size(T,2)
-            if (allocated(sg%T)) deallocate(sg%T)
-            allocate(sg%T(3,sg%nsyms))
-            do i = 1, sg%nsyms
-                sg%T(:,i) = T(:,i)
-            enddo
-        endif
-        !
-    end subroutine create
-
-    subroutine     sort(sg,sort_parameter,iopt_direction)
-        !
-        ! iopt_direction = 'ascend'/'descend', only first character is important
-        !
-        use am_rank_and_sort
-        !
-        implicit none
-        !
-        class(am_class_symmetry) , intent(inout) :: sg
-        character(*), intent(in), optional :: iopt_direction
-        integer , allocatable :: sorted_indices(:)
-        real(dp) :: sort_parameter(:)
-        character(1) :: direction
-        !
-        if (present(iopt_direction)) then
-            direction = iopt_direction(1:1)
-        else 
-            direction = 'a'
-        endif
-        !
-        allocate(sorted_indices(sg%nsyms))
-        !
-        call rank(sort_parameter,sorted_indices)
-        !
-        if (direction.eq.'d') sorted_indices = sorted_indices(sg%nsyms:1:-1)
-        !
-        if (allocated(sg%R)) sg%R = sg%R(:,:,sorted_indices)
-        if (allocated(sg%T)) sg%T = sg%T(:,sorted_indices)
-        if (allocated(sg%ps_identifier)) sg%ps_identifier = sg%ps_identifier(sorted_indices)
-        if (allocated(sg%cc_identifier)) sg%cc_identifier = sg%cc_identifier(sorted_indices)
-        !
-    end subroutine sort
+    end subroutine action_table
 
     !
     ! procedures which create representations
@@ -1831,19 +1763,19 @@ contains
         real(dp), intent(in) :: rep(:,:,:)
         character(*), intent(in) :: flags ! can be nothing flags='' at call
         integer, allocatable :: reg_rep(:,:,:)
-        integer, allocatable :: CT(:,:)
-        integer  :: n
-        integer  :: i
+        integer, allocatable :: cayley_table(:,:)
+        integer :: n
+        integer :: i
         !
         ! obtain cayley table
-        CT = cayley_table(rep=rep,flags=flags//'reg')
+        cayley_table = get_cayley_table(rep=rep,flags=flags//'reg')
         !
         ! construct regular representation from cayley table
         n = size(rep,3)
         allocate(reg_rep(n,n,n))
         reg_rep = 0
         do i = 1, n
-            where (CT.eq.i) reg_rep(:,:,i) = 1
+            where (cayley_table.eq.i) reg_rep(:,:,i) = 1
         enddo
         !
     end function   rep_regular
@@ -1852,7 +1784,7 @@ contains
     ! procedures which operate on matrix representations
     !
 
-    function       cayley_table(rep,flags) result(CT)
+    function       get_cayley_table(rep,flags) result(cayley_table)
         !
         ! flag options:
         !  reg    -  sorts rows to put identity along diagonals (useful for constructing regular representation)
@@ -1861,11 +1793,11 @@ contains
         implicit none
         !
         real(dp), intent(in) :: rep(:,:,:) ! list of 2D reps...
-        character(*), intent(in) :: flags
-        integer, allocatable :: CT(:,:)
-        real(dp) :: W(size(rep,1),size(rep,2))
+        character(*), intent(in), optional :: flags
+        integer, allocatable :: cayley_table(:,:)
         integer, allocatable :: sortmat(:,:)
         integer, allocatable :: indices(:)
+        real(dp) :: W(size(rep,1),size(rep,2)) ! workspace
         integer  :: n
         integer  :: i, j
         !
@@ -1878,7 +1810,7 @@ contains
         !
         n=size(rep,3)
         !
-        allocate(CT(n,n))
+        allocate(cayley_table(n,n))
         !
         do i = 1, n
         do j = 1, n
@@ -1886,25 +1818,37 @@ contains
             W = matmul(rep(:,:,i),rep(:,:,j))
             !
             ! if 'seitz' flagged, reduce translational part to primitive cell 
+            if (present(flags)) then
             if (index(flags,'seitz').ne.0) then
                 W(1:3,4) = modulo(W(1:3,4)+tiny,1.0_dp)-tiny
             endif
+            endif
             !
-            CT(i,j) = get_matching_element_index_in_list(list=rep,elem=W)
+            cayley_table(i,j) = get_matching_element_index_in_list(list=rep,elem=W)
         enddo
         enddo
         !
         ! if 'reg' flagged, re-order rows so that identities are along diagonal
+        if (present(flags)) then
         if (index(flags,'reg').ne.0) then
             !
             allocate(sortmat(n,n))
             allocate(indices(n))
             indices = [1:n]
             sortmat = 0
-            where (CT.eq.1) sortmat(:,:) = 1
+            where (cayley_table.eq.1) sortmat(:,:) = 1
             indices = matmul(sortmat(:,:),indices)
-            CT = CT(indices,:)
+            cayley_table = cayley_table(indices,:)
         endif
+        endif
+        !
+        ! quick consitency check. not comprehensive
+        do i = 1, n
+            if (sum(cayley_table(:,i)).ne.sum(cayley_table(:,1))) then
+                call am_print('ERROR','Cayley table sums along rows/columns are not consistent.')
+                stop
+            endif
+        enddo
         !
         contains
         function       get_matching_element_index_in_list(list,elem) result(i)
@@ -1918,52 +1862,82 @@ contains
                 if (all(abs(list(:,:,i)-elem).lt.tiny)) return
             enddo
         end function   get_matching_element_index_in_list
-    end function   cayley_table
+    end function   get_cayley_table
 
-    function       cc_get(rep,flags) result(cc_identifier)
-        !
-        ! AX = XB conjugacy
-        ! if rep and rep are conjugate pairs for some other element X in the group, then they are in the same class
+    subroutine     put_identity_first(rep)
         !
         implicit none
         !
-        real(dp), intent(in) :: rep(:,:,:)    ! list of matrices representing group reps
-        character(*), intent(in) :: flags     ! can be 'seitz', in which case the translational part is reduced to zero
-        real(dp), allocatable :: celem(:,:,:) ! conjugate elements
-        integer , allocatable :: cc_identifier(:)
-        integer  :: i, j, k, n, nclasses
+        real(dp), intent(inout) :: rep(:,:,:)
+        real(dp), allocatable :: id(:,:)
+        integer :: i, nsyms
         !
-        n = size(rep,3)
+        nsyms = size(rep,3)
+        id = eye(size(rep,1))
+        do i = 1, nsyms
+            if (all((abs(rep(:,:,i)-id)).lt.tiny)) then
+                rep(:,:,i) = rep(:,:,1)
+                rep(:,:,1) = id
+            endif
+        enddo
+        ! 
+    end subroutine put_identity_first
+
+    function       get_conjugacy_classes(rep,flags) result(cc_identifier)
+        !
+        ! for AX = XB, if elements A and B are conjugate pairs for some other element X in the group, then they are in the same class
+        !
+        use am_rank_and_sort
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: rep(:,:,:)
+        character(*), intent(in), optional :: flags
+        integer, allocatable :: cayley_table(:,:) ! cayley table
+        integer, allocatable :: sinv(:) ! sinv(nsyms) index of the inverse of symmetry element i
+        integer, allocatable :: cc_identifier(:)
+        integer, allocatable :: celem(:)
+        ! integer, allocatable :: class_member(:,:) ! used to sort based on determinant
+        ! integer, allocatable :: indices(:)        ! used to sort based on determinant
+        ! integer, allocatable :: relabel_indices(:)! used to sort based on determinant
+        ! real(dp),allocatable :: ccdet(:)          ! used to sort based on determinant
+        integer :: i, j, k
+        integer :: nsyms
+        integer :: nclasses
+        !
+        nsyms = size(rep,3)
+        !
+        ! get cayley table
+        if (present(flags)) then
+            cayley_table = get_cayley_table(rep=rep,flags=flags)
+        else
+            cayley_table = get_cayley_table(rep=rep)
+        endif
         !
         ! allocate space for conjugacy class
-        allocate(cc_identifier(n))
+        allocate(cc_identifier(nsyms))
         cc_identifier = 0
         !
+        ! get element inverse
+        sinv = get_inverse_indices(cayley_table)
+        !
         ! allocate space for conjugate elements
-        allocate(celem(size(rep,1),size(rep,2),n))
+        allocate(celem(nsyms))
         !
         ! determine conjugacy classes
         k = 0
-        do i = 1, n
+        do i = 1, nsyms
         if (cc_identifier(i).eq.0) then
-            !
-            ! conjugate each element with all other group elements
             k=k+1
-            do j = 1, n
-                celem(:,:,j) = apply_conjugation( center_matrix=rep(:,:,i), side_matrix=rep(:,:,j) )
-                if (index(flags,'seitz').ne.0) then
-                    celem(1:3,4,j) = modulo(celem(1:3,4,j)+tiny,1.0_dp)-tiny
-                endif
+            ! conjugate each element with all other group elements
+            ! A = X(j) * B * X(j)^-1
+            do j = 1, nsyms
+                celem(j) = cayley_table(j,cayley_table(i,sinv(j)))
             enddo
-            !
             ! for each subgroup element created by conjugation find the corresponding index of the element in the group
             ! in order to save the class identifier number
-            do j = 1, n
-            if (cc_identifier(j).eq.0) then
-            if (issubset( group=celem, element=rep(:,:,j) )) then
-                cc_identifier(j) = k
-            endif
-            endif
+            do j = 1, nsyms
+                cc_identifier( celem(j) ) = k
             enddo
             !
         endif
@@ -1973,16 +1947,30 @@ contains
         ! relabel classes based on number of elements in each class
         call relabel_based_on_occurances(cc_identifier)
         !
-        ! make sure identity is in the first class
-        do i = 1, n
-            if (all(abs(rep(:,:,i)-eye(n)).lt.tiny)) then
-                where (cc_identifier.eq.1) cc_identifier = cc_identifier(i)
-                cc_identifier(i)=1
-            endif
-        enddo
+        ! relabel classes based on det of class representative
+        ! class_member = cc_member(cc_identifier)
+        ! allocate(ccdet(nclasses)) 
+        ! do i = 1,nclasses
+        !     ccdet(i) = det( rep(:,:,class_member(i,1)) )
+        ! enddo
+        ! !
+        ! allocate(indices(nclasses))
+        ! call rank(ccdet,indices)
+        ! !
+        ! allocate(relabel_indices(nclasses))
+        ! do i = 1, nclasses
+        !     relabel_indices(indices(i)) = i
+        ! enddo
+        ! do i = 1, nsyms
+        !     cc_identifier(i) = relabel_indices( cc_identifier(i) )
+        ! enddo
         !
-        ! consistency checks
-        ! 1)
+        ! make sure the identity is in the first class
+        ! cc_identifier(i=1) is the class of the first element (the identity); swap it's location with whaterver elements are in the first class
+        where (cc_identifier.eq.1) cc_identifier = cc_identifier(1)
+        cc_identifier(1)=1
+        !
+        ! check that classes are disjoint and complete
         if (any(cc_identifier.eq.0)) then
             call am_print('ERROR','Not every element in the group has been asigned a conjugacy class.',flags='E')
             stop
@@ -2001,28 +1989,28 @@ contains
             integer , allocatable :: reverse_sort(:)
             integer , allocatable :: sorted_indices(:)
             integer , allocatable :: list_relabled(:)
-            integer :: n, i, j
+            integer :: nsyms, i, j
             !
-            n = size(list,1)
+            nsyms = size(list,1)
             !
-            allocate(occurances(n))
-            do i = 1, n
+            allocate(occurances(nsyms))
+            do i = 1, nsyms
                 occurances(i) = count(list(i).eq.list)
             enddo
             !
             ! this quick and dirty procedure lifts degeneracies
             !
-            allocate(sorted_indices(n))
-            allocate(A_sorted(n))
+            allocate(sorted_indices(nsyms))
+            allocate(A_sorted(nsyms))
             call rank((1+maxval(list))*occurances+list,sorted_indices)
             A_sorted = list(sorted_indices)
             !
-            allocate(list_relabled(n))
+            allocate(list_relabled(nsyms))
             list_relabled = 0
             !
             j=1
             list_relabled(1) = 1
-            do i = 2, n
+            do i = 2, nsyms
                 if (A_sorted(i).ne.A_sorted(i-1)) then
                     j=j+1
                 endif
@@ -2031,44 +2019,37 @@ contains
             !
             ! return everything to the original order at call
             !
-            allocate(reverse_sort(n))
-            reverse_sort(sorted_indices)=[1:n]
+            allocate(reverse_sort(nsyms))
+            reverse_sort(sorted_indices)=[1:nsyms]
             list=list_relabled(reverse_sort)
         end subroutine relabel_based_on_occurances
-        function       apply_conjugation(center_matrix,side_matrix) result(C)
-            !
-            implicit none
-            !
-            real(dp), intent(in) :: side_matrix(:,:)
-            real(dp), intent(in) :: center_matrix(:,:)
-            real(dp) :: C(size(side_matrix,1),size(side_matrix,2))
-            !
-            C = matmul(side_matrix,matmul(center_matrix,inv(side_matrix)))
-            !
-        end function   apply_conjugation
-    end function   cc_get
+    end function   get_conjugacy_classes
+
+    !
+    ! procedures which operate on cayley table 
+    ! (the idea should be to get the rep, transform it to the cayley table and perform as many operations on the cayley table as necessary)
+
+    pure function  get_inverse_indices(cayley_table) result(indices)
+        ! returns the indices of the inverse elements given the cayley table.
+        ! requires identity as first element
+        implicit none
+        !
+        integer, intent(in) :: cayley_table(:,:)
+        integer, allocatable :: indices(:)
+        integer, allocatable :: P(:,:)
+        !
+        indices = [1:size(cayley_table,1)]
+        !
+        allocate(P,source=cayley_table)
+        where (P.ne.1) P = 0
+        !
+        indices = matmul(P,indices)
+        !
+    end function   get_inverse_indices
 
     ! 
     ! functions which operate on conjugate classes identifiers
     ! 
-
-    function       cc_nelements(cc_identifier) result(nelements)
-        !
-        implicit none
-        !
-        integer, intent(in)  :: cc_identifier(:)
-        integer, allocatable :: nelements(:)
-        integer :: nclasses
-        integer :: i
-        !
-        nclasses = maxval(cc_identifier)
-        !
-        allocate(nelements(nclasses))
-        !
-        do i = 1, nclasses
-            nelements(i) = count(i.eq.cc_identifier)
-        enddo
-    end function   cc_nelements
 
     function       cc_member(cc_identifier) result(member)
         !
@@ -2099,6 +2080,24 @@ contains
             enddo
         enddo
     end function   cc_member
+
+    function       cc_nelements(cc_identifier) result(nelements)
+        !
+        implicit none
+        !
+        integer, intent(in)  :: cc_identifier(:)
+        integer, allocatable :: nelements(:)
+        integer :: nclasses
+        integer :: i
+        !
+        nclasses = maxval(cc_identifier)
+        !
+        allocate(nelements(nclasses))
+        !
+        do i = 1, nclasses
+            nelements(i) = count(i.eq.cc_identifier)
+        enddo
+    end function   cc_nelements
 
     !
     ! functions which operate on kpoints

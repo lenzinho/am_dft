@@ -759,13 +759,13 @@ module am_vasp_io
             enddo
             !
             if (verbosity.ge.1) then
-                write(*,'(" ... ",a)') "atomic positions (fractional)"
+                write(*,'(" ... ",a)') "atomic positions (fractional, cartesian)"
                 m = 0
                 do i = 1, nspecies
                     do j = 1, natoms_per_species(i)
                         !
                         m = m + 1
-                        write(*,'(5x,a5,a3,3f13.8)') int2char(m), symb(atype(m)), tau(1:3,m)
+                        write(*,'(5x,a5,a3,3f13.8,5x,3f13.8)') int2char(m), symb(atype(m)), tau(1:3,m), matmul(bas,tau(1:3,m))
                         !
                     enddo
                 enddo
