@@ -24,7 +24,7 @@
         integer  :: nspecies !> number of unique atomic species
         character(len=:), allocatable :: symb(:) !> symb(nspecies) symbols of unique atomic species
         real(dp), allocatable :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates 
-        integer , allocatable :: atype(:) !> index indentifying the atomic species for each atom
+        integer , allocatable :: atype(:) !> atype(natoms) index indentifying the atomic species for each atom
     contains
         procedure :: load_poscar
         procedure :: reduce_to_primitive
@@ -1323,34 +1323,34 @@
         !
     end subroutine copy
    
-    subroutine     filter(cp,uc,indices)
+    subroutine     filter(uc,indices)
         !
         implicit none
         !
-        class(am_class_unit_cell), intent(inout) :: cp
-        type(am_class_unit_cell) , intent(in) :: uc
-        integer, allocatable :: indices(:)
+        class(am_class_unit_cell), intent(inout) :: uc
+        integer , allocatable, intent(in) :: indices(:)
+        real(dp), allocatable :: tau(:,:)
+        integer , allocatable :: atype(:)
         integer :: i
         !
-        cp%natoms   = count(indices.ne.0)
-        cp%bas      = uc%bas
-        cp%nspecies = uc%nspecies
+        ! create temporary variables
+        allocate(tau,source=uc%tau)
+        allocate(atype,source=uc%atype)
         !
-        if (allocated(cp%tau  )) deallocate(cp%tau  )
-        if (allocated(cp%atype)) deallocate(cp%atype)
-        if (allocated(cp%symb )) deallocate(cp%symb )
+        ! count how many atoms should be passed
+        uc%natoms = count(indices.ne.0)
         !
-        allocate(cp%tau(3,cp%natoms))
-        do i = 1,cp%natoms
-            cp%tau(:,i) = uc%tau(:,indices(i))
+        deallocate(uc%tau)
+        allocate(uc%tau(3,uc%natoms))
+        do i = 1, uc%natoms
+            uc%tau(:,i)=tau(:,indices(i))
         enddo
         !
-        allocate(cp%atype(cp%natoms))
-        do i = 1,cp%natoms
-            cp%atype(i) = uc%atype(indices(i))
+        deallocate(uc%atype)
+        allocate(uc%atype(uc%natoms))
+        do i = 1, uc%natoms
+            uc%atype(i)=atype(indices(i))
         enddo
-        !
-        allocate(cp%symb,source=uc%symb)
         !
     end subroutine filter
 

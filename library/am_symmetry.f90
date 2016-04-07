@@ -400,7 +400,7 @@ contains
         integer , allocatable :: indices(:) ! 
         integer , allocatable :: PM(:,:) ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
         logical , allocatable :: mask(:)
-        integer , allocatable :: indicies_of_atoms_inside_sphere(:)
+        integer , allocatable :: atoms_inside(:)
         type(am_class_unit_cell) :: temp
         integer  :: select_primitive_atom
         real(dp) :: sphere_center(3)
@@ -464,21 +464,26 @@ contains
         do i = 1,rg%nsyms
             rg%R(:,:,i) = matmul(uc%bas, matmul(rg%R(:,:,i),recbas) )
         enddo
-
         !
         ! get permutation map which shows how space symmetries permute atomic positions
         ! PM(sphere%natoms,sg%nsyms)
-        ! PM = symmetry_action(sg=rg,flags='exact',uc=sphere,opts=opts)
-        ! write action table
-        call am_print('tau',transpose(sphere%tau))
-        
-
+        call rg%symmetry_action(uc=sphere,oopt_PM=PM,flags='relax_pbc',iopt_fname='outfile.action_rotational_group_cart',opts=notalk)
+        ! elements with incomplete orbits should be ignored, since they do not have enough information to build full shells
+        allocate(atoms_inside(sphere%natoms))
+        atoms_inside = 0
+        j=0
+        do i = 1, sphere%natoms
+        if (all(PM(i,:).ne.0)) then
+            v=sphere%tau(:,i)
+            if (norm2(v).le.pair_cutoff) then
+                j = j + 1
+                atoms_inside(j) = i
+            endif
+        endif
+        enddo
+        call am_print('atoms_inside',atoms_inside)
+        call sphere%filter(indices=atoms_inside)
         call sphere%output_poscar(file_output_poscar='outfile.POSCAR.sphere')
-
-
-        call rg%symmetry_action(uc=sphere,flags='relax_pbc',iopt_fname='outfile.action_rotational_group',opts=notalk)
-
-
 
         stop
 
@@ -506,21 +511,10 @@ contains
         endif
         enddo
 
-        allocate(indicies_of_atoms_inside_sphere(sphere%natoms))
-        indicies_of_atoms_inside_sphere = 0
-        j = 0
-        do i = 1, sphere%natoms
-            if (norm2(sphere%tau(:,i)).le.pair_cutoff+opts%sym_prec) then
-                j = j + 1
-                indicies_of_atoms_inside_sphere(j) = i
-            endif
-        enddo
 
 
 
-
-
-        call temp%filter(uc=uc,indices=indicies_of_atoms_inside_sphere)
+        
 
 
         stop
