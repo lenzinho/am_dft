@@ -23,6 +23,7 @@ module am_options
         integer :: deformation_code
         real(dp):: maxstrain
         integer :: nstrains
+        real(dp):: pair_cutoff
 
     contains
         procedure :: defaults
@@ -57,6 +58,7 @@ module am_options
         opts%deformation_code = -1000
         opts%maxstrain = -1000
         opts%nstrains = -1000
+        opts%pair_cutoff = 1000
         !
     end subroutine  defaults
 
@@ -93,6 +95,13 @@ module am_options
                     opts%center  = .true.
                 case('-primitivize') ! convertes the unit cell from primitive to conventional
                     opts%primitivize = .true.
+                !
+                ! second order force constants 
+                !
+                case('-pair_cutoff')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*) opts%pair_cutoff
                 !
                 ! deformations
                 !

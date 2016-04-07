@@ -42,7 +42,7 @@ module am_symmetry
         procedure :: symmetry_adapted_tensor
         !
         procedure :: determine_character_table
-        procedure :: action_table
+        procedure :: symmetry_action
     end type am_class_symmetry
     !
     type, extends(am_class_abstract_group) :: am_class_permutation_rep
@@ -377,27 +377,35 @@ contains
     ! functions for determining symmetry-adapted second-order force consants
     !
 
-    subroutine     get_atom_pairs(pg,uc,opts)
+    subroutine     get_atom_pairs(pg,pair_cutoff,uc,opts)
+        !
+        ! this routine will do most things using "sphere" in cartesian coordinates! 
         !
         use am_rank_and_sort
         !
         class(am_class_symmetry), intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_options), intent(in) :: opts
+        type(am_class_options)  , intent(in) :: opts
+        real(dp), intent(inout) :: pair_cutoff
         !
-        integer :: npairs
+        integer  :: npairs, nshells
+        type(am_class_unit_cell) :: sphere ! sphere containing atoms up to a cutoff
         type(am_class_symmetry)  :: rg ! rotational group (space symmetries which have translational part set to zero and are still compatbile with the atomic basis)
         type(am_class_symmetry)  :: vg ! bond group
         type(am_class_unit_cell) :: prim ! primitive cell, only determine pairs for which atleast one atom is in the primitive cell
         type(am_class_options) :: notalk ! supress verbosity
-        real(dp), allocatable  :: d(:)   ! d(npairs) array containing distances between atoms
-        integer , allocatable  :: p(:,:) ! p(2,npairs) array identiying which atoms are in the pair
-        integer , allocatable  :: uc2prim(:) ! i
-        integer , allocatable  :: indices(:) ! 
-        integer , allocatable  :: PM(:,:) ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
+        real(dp), allocatable :: d(:)   ! d(npairs) array containing distances between atoms
+        integer , allocatable :: p(:,:) ! p(2,npairs) array identiying which atoms are in the pair
+        integer , allocatable :: uc2prim(:) ! i
+        integer , allocatable :: indices(:) ! 
+        integer , allocatable :: PM(:,:) ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
+        logical , allocatable :: mask(:)
+        integer , allocatable :: indicies_of_atoms_inside_sphere(:)
+        type(am_class_unit_cell) :: temp
         integer  :: select_primitive_atom
+        real(dp) :: sphere_center(3)
         real(dp) :: v(3)
-        integer :: i,j,n,k
+        integer :: i,j,n,k,jj
         !
         ! set notalk option
         notalk = opts 
@@ -407,54 +415,127 @@ contains
         if (opts%verbosity.ge.1) call am_print_title('Determining nearest-neighbor atomic shells')
         !
         call am_print('total number of atoms',uc%natoms,' ... ')
+        ! set pair cutoff radius (smaller than half the smallest cell dimension, larger than the smallest distance between atoms)
+        allocate(d(3))
+            do i = 1, 3
+                d(i) = norm2(uc%bas(:,i))/real(2,dp)
+            enddo
+            pair_cutoff = minval([d,pair_cutoff])
+        deallocate(d)
+        call am_print('pair cutoff radius',pair_cutoff,' ... ')
+        !
+        ! get point symmetries which are compatible with the atomic basis (essentially keeps rotational part of space
+        ! symmetries which are able to map all atoms onto each other. For a symorphic space group this is simply the
+        ! point group. For a non-symmorphic space group, symmetries which have a non-unique rotational part that are
+        ! coupled to a translational part are discarted.)
+        !
+        call rg%rotational_group(uc=uc,pg=pg,opts=opts)
         !
         ! get atoms in primitive cell and indices of atoms in the original cell which represent all identical atoms in the primitive cell
         call prim%reduce_to_primitive(uc=uc,oopts_uc2prim=uc2prim,opts=notalk)
-        call am_print('primitive cell atoms',prim%natoms,' ... ')
+        call am_print('total primitive cell atoms',prim%natoms,' ... ')
+        call am_print('representative atoms in primitive cell ',uc2prim,' ... ')
         !
-        ! get atoms within a distance of an atom in the primitive cell
-        ! select_primitive_atom = 1
-        ! sphere% 
-
-        ! I THINK THAT A PROBLEM HERE, WHICH EXPLAINS WHY THE NUMBER OF ATOMS LEFT UNPERMUTED IN PM DOES NOT MATCH THE
-        ! STABILIZER GROUP IS BECAUSE ON PERIODIC BOUNDARY CONDITIONS: ELEMENTS AT THE FAR EDGE OF THE CELL ARE BEING
-        ! PERMUTED TO EQUIVALENT SITES TO BECOME NEAREST NEIGHBORS TO THE ATOMS IN THE PRIMITIVE CELL.
-
-        ! get point symmetries which are compatible with the atomic basis (essentially keeps rotational part of space symmetries which are able to map all atoms onto each other)
-        call rg%rotational_group(uc=uc,pg=pg,opts=opts)
-        call rg%action_table(uc=uc,iopt_fname='outfile.action_rotational_group',opts=opts)
+        ! make a sphere containing atoms a maximum distance of a choosen atom; translate all atoms around the sphere.
+        ! this distance is the real-space cut-off radius used in the construction of second-order force constants
+        ! its value cannot exceed half the smallest dimension of the supercell.
+        !
+        ! create sphere instance
+        call sphere%copy(uc=uc)
+        ! center sphere cell on select atom
+        select_primitive_atom = uc2prim(1)
+        call am_print('centering on primitive cell atom ',select_primitive_atom,' ... ')
+        sphere_center = uc%tau(:,select_primitive_atom)
+        !
+        do i = 1, sphere%natoms
+            ! turn sphere into a block with select atom at the origin
+            sphere%tau(:,i) = sphere%tau(:,i) - sphere_center
+            ! put select atom at the center of the block
+            sphere%tau(:,i) = sphere%tau(:,i) + real([0.5,0.5,0.5],dp)
+            ! apply translational symmetry to get all atoms around the central atom
+            sphere%tau(:,i) = modulo(sphere%tau(:,i) + opts%sym_prec, 1.0_dp) - opts%sym_prec
+            ! shift sphere back to origin
+            sphere%tau(:,i) = sphere%tau(:,i) - real([0.5,0.5,0.5],dp)
+            ! convert everything to cartesian
+            ! sphere%tau(:,i) = matmul(sphere%bas,sphere%tau(:,i))
+        enddo
         !
         ! get permutation map which shows how space symmetries permute atomic positions
-        ! PM(uc%natoms,sg%nsyms)
-        PM = action_atom_permutation(sg=rg,uc=uc,opts=opts)
+        ! PM(sphere%natoms,sg%nsyms)
+        ! PM = symmetry_action(sg=rg,flags='exact',uc=sphere,opts=opts)
+        ! write action table
+        call rg%symmetry_action(uc=sphere,flags='relax_pbc',iopt_fname='outfile.action_rotational_group',opts=notalk)
+        stop
         !
-        ! get total possible pair of atoms involving primitive cell atoms
-        npairs = uc%natoms*prim%natoms
-        call am_print('total pairs formed with primitive cell atoms',npairs,' ... ')
-        !
-        ! get distances between atoms in primitive cell and in unit cell
+        ! get distances atoms relative to the central atom
+        allocate(mask(uc%natoms))
+        mask = .true.
         allocate(d(npairs))   ! distances
         allocate(p(2,npairs)) ! pairs
         k=0
-        do n = 1, prim%natoms
-            i = uc2prim(n)
-            do j = 1, uc%natoms
-                k=k+1
-                ! get bond distance (fractional)
-                v = uc%tau(:,i)-uc%tau(:,j)
-                ! store distance in cartesian coordiantes
-                d(k) = norm2(matmul(uc%bas,v))
-                ! store pair indices
-                p(1,k) = i
-                p(2,k) = j
-            enddo
+        do j = 1, sphere%natoms
+        if (mask(i)) then
+            k=k+1
+            ! get bond distance 
+            ! remember: 1) sphere is centered on atom of interest (bond vector is just coordinate of second atom)
+            !           2) coordinates have been converted to cartesian above
+            v = sphere%tau(:,j)
+            ! store distance in cartesian coordiantes
+            d(k) = norm2(v)
+!                     do jj = 1, rg%nsyms
+!                         mask(PM(j,jj)) = .false.
+!                     enddo
+        endif
+        enddo
+
+        allocate(indicies_of_atoms_inside_sphere(sphere%natoms))
+        indicies_of_atoms_inside_sphere = 0
+        j = 0
+        do i = 1, sphere%natoms
+            if (norm2(sphere%tau(:,i)).le.pair_cutoff+opts%sym_prec) then
+                j = j + 1
+                indicies_of_atoms_inside_sphere(j) = i
+            endif
+        enddo
+
+
+
+
+
+        call temp%filter(uc=uc,indices=indicies_of_atoms_inside_sphere)
+        call sphere%copy(uc=temp)
+        ! sphere
+        do i = 1, sphere%natoms
+            ! convert everything back to fractional
+            sphere%tau(:,i) = matmul(reciprocal_basis(sphere%bas),sphere%tau(:,i))
         enddo
         !
-        ! sort pairs based on distance
-        allocate(indices(npairs))
-        call rank(d,indices)
-        p(1,:)=p(1,indices)
-        p(2,:)=p(2,indices)
+        call sphere%output_poscar(file_output_poscar='outfile.POSCAR.sphere')
+
+        stop
+        !
+        ! get total possible pair of atoms involving primitive cell atoms
+        npairs = sphere%natoms*prim%natoms
+        call am_print('total pairs formed with primitive cell atoms',npairs,' ... ')
+        !
+
+
+
+
+
+
+
+
+        !
+        ! get total possible pair of atoms involving primitive cell atoms
+        nshells = k
+        call am_print('total pairs formed with primitive cell atoms',nshells,' ... ')
+        !
+        ! sort pairs based on shell distance
+        allocate(indices(nshells))
+        call rank(d(1:nshells),indices)
+        p(1,1:nshells)=p(1,indices)
+        p(2,1:nshells)=p(2,indices)
         !
         !
         if (opts%verbosity.ge.1) then 
@@ -462,19 +543,19 @@ contains
             write(*,'(5x,a5,2(a10,a30),a10,a10)') ' '//repeat('-',4), ' '//repeat('-',9), ' '//repeat('-',29),&
             & ' '//repeat('-',9), ' '//repeat('-',29), ' '//repeat('-',9)
         endif
-        do k = 1, npairs
+        do k = 1, nshells
             i = p(1,k)
             j = p(2,k)
             ! bond vector
-            v = uc%tau(:,i)-uc%tau(:,j)
+            v = sphere%tau(:,i)-sphere%tau(:,j)
             ! get stabilizer of vector (bond group), symmetries which leave bond invariant
             call vg%stabilizer_group(pg=pg,v=v,opts=notalk)
             !
             if (opts%verbosity.ge.1) then 
                 write(*,'(5x)'    ,advance='no') 
-                write(*,'(a5)'    ,advance='no') trim(trim(uc%symb(uc%atype(i)))//'-'//trim(uc%symb(uc%atype(j))))
-                write(*,'(f10.3)' ,advance='no') norm2(matmul(uc%bas,v))
-                write(*,'(3f10.3)',advance='no') matmul(uc%bas,v)
+                write(*,'(a5)'    ,advance='no') trim(trim(sphere%symb(sphere%atype(i)))//'-'//trim(sphere%symb(sphere%atype(j))))
+                write(*,'(f10.3)' ,advance='no') norm2(matmul(sphere%bas,v))
+                write(*,'(3f10.3)',advance='no') matmul(sphere%bas,v)
                 write(*,'(f10.3)' ,advance='no') norm2(v)
                 write(*,'(3f10.3)',advance='no') v
                 write(*,'(a10)'   ,advance='no') trim(decode_pointgroup(vg%pg_identifier))
@@ -900,7 +981,7 @@ contains
         call sg%name_symmetries(opts=notalk)
         !
         ! write action table
-        call sg%action_table(uc=uc,iopt_fname='outfile.action_space_group',opts=opts)
+        call sg%symmetry_action(uc=uc,flags='',iopt_fname='outfile.action_space_group',opts=opts)
         !
         ! get character table
         call sg%determine_character_table(opts=opts)
@@ -1308,28 +1389,141 @@ contains
         !
     end subroutine name_symmetries
 
-    function       action_atom_permutation(sg,uc,opts) result(PM)
+    subroutine     symmetry_action(sg,uc,flags,iopt_fname,oopt_PM,oopt_P,opts)
         !
         ! PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
         !
         implicit none
         !
-        type(am_class_symmetry) , intent(in) :: sg
+        class(am_class_symmetry) , intent(in) :: sg
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options)  , intent(in) :: opts
+        character(*)            , intent(in) :: flags ! if flags='relax_pbc', do not return atoms to primitive cell. if no matching atom is found, return index 0 for that orbit.
+        character(*), optional  , intent(in) :: iopt_fname
+        integer, optional, allocatable, intent(out) :: oopt_PM(:,:)
+        integer, optional, allocatable, intent(out) :: oopt_P(:,:,:)
         integer, allocatable :: P(:,:,:)
         integer, allocatable :: PM(:,:)
-        integer :: i
+        integer :: fid
+        character(10) :: buffer
+        character(3) :: xyz
+        integer :: i,j,k
+        real(dp) :: R(3,3)
         !
-        P = rep_permutation(sg=sg,uc=uc,opts=opts)
+        if (opts%verbosity.ge.1) call am_print_title('Determining symmetry action')
+        !
+        P = rep_permutation(sg=sg,uc=uc,flags=flags,opts=opts)
+        if (present(oopt_P)) allocate(oopt_P,source=P)
         !
         allocate(PM(uc%natoms,sg%nsyms))
+        !
         PM = 0
         do i = 1,sg%nsyms
             PM(:,i) = matmul(P(:,:,i),[1:uc%natoms])
         enddo
+        if (present(oopt_PM)) allocate(oopt_PM,source=PM)
         !
-    end function   action_atom_permutation
+        if (present(iopt_fname)) then 
+            !
+            fid = 1
+            open(unit=fid,file=trim(iopt_fname),status="replace",action='write')
+                !
+                write(fid,'(a)') 'Symmerties and coordinate reorientations are in fractional units.'
+                ! SYMMETRY NUMBER
+                write(fid,'(5x)',advance='no')
+                write(fid,'(a5)',advance='no') '#'
+                do i = 1, sg%nsyms
+                    write(fid,'(i10)',advance='no') i
+                enddo
+                write(fid,*)
+                ! CLASS IDENTIFIED
+                write(fid,'(5x)',advance='no')
+                write(fid,'(a5)',advance='no') 'class'
+                do i = 1, sg%nsyms
+                    write(fid,'(i10)',advance='no') sg%cc_identifier(i)
+                enddo
+                write(fid,*)
+                ! HEADER / SEPERATOR
+                write(fid,'(5x)',advance='no')
+                write(fid,'(5x)',advance='no')
+                do i = 1, sg%nsyms
+                    write(fid,'(a10)',advance='no') ' '//repeat('-',9)
+                enddo
+                write(fid,*)
+                ! POINT-SYMMMETRY IDENTIFIED
+                write(fid,'(5x)',advance='no')
+                write(fid,'(a5)',advance='no') 'SF'
+                do i = 1, sg%nsyms
+                    write(fid,'(a10)',advance='no') trim(decode_pointsymmetry(sg%ps_identifier(i)))
+                enddo
+                write(fid,*)
+                ! POINT SYMMETRY COMPONENTS (FRAC)
+                do i = 1,3
+                do j = 1,3
+                    write(fid,'(5x)',advance='no')
+                    write(fid,'(a5)',advance='no') adjustr('R'//trim(int2char(i))//trim(int2char(j)))
+                    do k = 1, sg%nsyms
+                        write(fid,'(f10.2)',advance='no') sg%R(i,j,k)
+                    enddo
+                    write(fid,*)
+                enddo
+                enddo
+                ! TRANSLATIONAL COMPONENTS (FRAC)
+                if (allocated(sg%T)) then
+                do j = 1,3
+                    write(fid,'(5x)',advance='no')
+                    write(fid,'(a5)',advance='no') adjustr('T'//trim(int2char(j)))
+                    do i = 1, sg%nsyms
+                        write(fid,'(f10.2)',advance='no') sg%T(j,i)
+                    enddo
+                    write(fid,*)
+                enddo
+                endif
+                ! ACTION TABLE (AXIS PERMUTATION)
+                write(fid,'(5x)',advance='no')
+                write(fid,'(a5)',advance='no') 'axes'
+                do i = 1, sg%nsyms
+                    write(fid,'(a10)',advance='no') ' '//repeat('-',9)
+                enddo
+                write(fid,*)
+                xyz = 'xyz'
+                do j = 1,3
+                    write(fid,'(5x)',advance='no')
+                    write(fid,'(a5)',advance='no') trim(xyz(j:j))
+                    do i = 1, sg%nsyms
+                        buffer=''
+                        do k = 1,3
+                            ! for fractional R; its elements will always be an integer...
+                            ! inverse here because f(Rr) = R^-1 * f(r)
+                            R=inv(sg%R(:,:,i))
+                            if (abs(R(j,k)).gt.tiny) then
+                                buffer = trim(buffer)//trim(int2char(nint(R(j,k)),'SP'))//xyz(j:j)
+                            endif
+                        enddo
+                        write(fid,'(a10)',advance='no') trim(buffer)
+                    enddo
+                    write(fid,*)
+                enddo
+                ! ACTION TABLE (ATOM PERMUTATION)
+                write(fid,'(5x)',advance='no')
+                write(fid,'(a5)',advance='no') 'atoms'
+                do i = 1, sg%nsyms
+                    write(fid,'(a10)',advance='no') ' '//repeat('-',9)
+                enddo
+                write(fid,*)
+                !
+                do j = 1, uc%natoms
+                    write(fid,'(5x)',advance='no')
+                    write(fid,'(i5)',advance='no') j
+                    do i = 1, sg%nsyms
+                        write(fid,'(i10)',advance='no') PM(j,i)
+                    enddo
+                    write(fid,*)
+                enddo
+                !
+            close(fid)
+        endif
+    end subroutine symmetry_action
 
     subroutine     create(sg,R,T)
         !
@@ -1526,128 +1720,6 @@ contains
         !
     end subroutine stdout
 
-    subroutine     action_table(sg,uc,iopt_fname,opts)
-        !
-        implicit none
-        !
-        class(am_class_symmetry), intent(inout) :: sg
-        type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_options)  , intent(in) :: opts
-        character(*), optional  , intent(in) :: iopt_fname
-        integer, allocatable :: PM(:,:)
-        integer :: fid
-        character(10) :: buffer
-        character(3) :: xyz
-        integer :: i,j,k
-        real(dp) :: R(3,3)
-        !
-        if (opts%verbosity.ge.1) call am_print_title('Determining action table')
-        !
-        PM = action_atom_permutation(sg=sg,uc=uc,opts=opts)
-        !
-        if (present(iopt_fname)) then 
-            fid = 1
-            open(unit=fid,file=trim(iopt_fname),status="replace",action='write')
-        else
-            fid = 6
-        endif
-            !
-            write(fid,'(a)') 'Symmerties and coordinate reorientations are in fractional units.'
-            ! SYMMETRY NUMBER
-            write(fid,'(5x)',advance='no')
-            write(fid,'(a5)',advance='no') '#'
-            do i = 1, sg%nsyms
-                write(fid,'(i10)',advance='no') i
-            enddo
-            write(fid,*)
-            ! CLASS IDENTIFIED
-            write(fid,'(5x)',advance='no')
-            write(fid,'(a5)',advance='no') 'class'
-            do i = 1, sg%nsyms
-                write(fid,'(i10)',advance='no') sg%cc_identifier(i)
-            enddo
-            write(fid,*)
-            ! HEADER / SEPERATOR
-            write(fid,'(5x)',advance='no')
-            write(fid,'(5x)',advance='no')
-            do i = 1, sg%nsyms
-                write(fid,'(a10)',advance='no') ' '//repeat('-',9)
-            enddo
-            write(fid,*)
-            ! POINT-SYMMMETRY IDENTIFIED
-            write(fid,'(5x)',advance='no')
-            write(fid,'(a5)',advance='no') 'SF'
-            do i = 1, sg%nsyms
-                write(fid,'(a10)',advance='no') trim(decode_pointsymmetry(sg%ps_identifier(i)))
-            enddo
-            write(fid,*)
-            ! POINT SYMMETRY COMPONENTS (FRAC)
-            do i = 1,3
-            do j = 1,3
-                write(fid,'(5x)',advance='no')
-                write(fid,'(a5)',advance='no') adjustr('R'//trim(int2char(i))//trim(int2char(j)))
-                do k = 1, sg%nsyms
-                    write(fid,'(f10.2)',advance='no') sg%R(i,j,k)
-                enddo
-                write(fid,*)
-            enddo
-            enddo
-            ! TRANSLATIONAL COMPONENTS (FRAC)
-            if (allocated(sg%T)) then
-            do j = 1,3
-                write(fid,'(5x)',advance='no')
-                write(fid,'(a5)',advance='no') adjustr('T'//trim(int2char(j)))
-                do i = 1, sg%nsyms
-                    write(fid,'(f10.2)',advance='no') sg%T(j,i)
-                enddo
-                write(fid,*)
-            enddo
-            endif
-            ! ACTION TABLE (AXIS PERMUTATION)
-            write(fid,'(5x)',advance='no')
-            write(fid,'(a5)',advance='no') 'axes'
-            do i = 1, sg%nsyms
-                write(fid,'(a10)',advance='no') ' '//repeat('-',9)
-            enddo
-            write(fid,*)
-            xyz = 'xyz'
-            do j = 1,3
-                write(fid,'(5x)',advance='no')
-                write(fid,'(a5)',advance='no') trim(xyz(j:j))
-                do i = 1, sg%nsyms
-                    buffer=''
-                    do k = 1,3
-                        ! for fractional R; its elements will always be an integer...
-                        ! inverse here because f(Rr) = R^-1 * f(r)
-                        R=inv(sg%R(:,:,i))
-                        if (abs(R(j,k)).gt.tiny) then
-                            buffer = trim(buffer)//trim(int2char(nint(R(j,k)),'SP'))//xyz(j:j)
-                        endif
-                    enddo
-                    write(fid,'(a10)',advance='no') trim(buffer)
-                enddo
-                write(fid,*)
-            enddo
-            ! ACTION TABLE (ATOM PERMUTATION)
-            write(fid,'(5x)',advance='no')
-            write(fid,'(a5)',advance='no') 'atoms'
-            do i = 1, sg%nsyms
-                write(fid,'(a10)',advance='no') ' '//repeat('-',9)
-            enddo
-            write(fid,*)
-            !
-            do j = 1, uc%natoms
-                write(fid,'(5x)',advance='no')
-                write(fid,'(i5)',advance='no') j
-                do i = 1, sg%nsyms
-                    write(fid,'(i10)',advance='no') PM(j,i)
-                enddo
-                write(fid,*)
-            enddo
-            !
-        close(fid)
-    end subroutine action_table
-
     !
     ! procedures which create representations
     !
@@ -1673,26 +1745,27 @@ contains
         !
     end function   rep_seitz
 
-    function       rep_permutation(sg,uc,opts) result(rep)
-       !
-       ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
-       !
-       implicit none
-       !
-       type(am_class_symmetry) , intent(in) :: sg
-       type(am_class_unit_cell), intent(in) :: uc
-       type(am_class_options)  , intent(in) :: opts
-       integer, allocatable :: rep(:,:,:)
-       real(dp) :: tau_rot(3)
-       integer :: i,j,k
-       logical :: found
-       !
-       allocate(rep(uc%natoms,uc%natoms,sg%nsyms))
-       rep = 0
-       !
-       do i = 1, sg%nsyms
-           ! determine the permutations of atomic indicies which results from each space symmetry operation
-           do j = 1,uc%natoms
+    function       rep_permutation(sg,uc,flags,opts) result(rep)
+        !
+        ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
+        !
+        implicit none
+        !
+        type(am_class_symmetry) , intent(in) :: sg
+        type(am_class_unit_cell), intent(in) :: uc
+        character(*)            , intent(in) :: flags
+        type(am_class_options)  , intent(in) :: opts
+        integer, allocatable :: rep(:,:,:)
+        real(dp) :: tau_rot(3)
+        integer :: i,j,k
+        logical :: found
+        !
+        allocate(rep(uc%natoms,uc%natoms,sg%nsyms))
+        rep = 0
+        !
+        do i = 1, sg%nsyms
+            ! determine the permutations of atomic indicies which results from each space symmetry operation
+            do j = 1,uc%natoms
                 found = .false.
                 ! apply rotational component
                 tau_rot = matmul(sg%R(:,:,i),uc%tau(:,j))
@@ -1708,6 +1781,9 @@ contains
                     exit ! break loop
                     endif
                 enddo
+                ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
+                ! to ensure atoms must permute onto each other
+                if (index(flags,'relax_pbc').eq.0) then
                 if (found.eq..false.) then
                     call am_print('ERROR','Unable to find matching atom.',flags='E')
                     call am_print('tau (all atoms)',transpose(uc%tau))
@@ -1717,32 +1793,37 @@ contains
                     call am_print('tau_rot',tau_rot)
                     stop
                 endif
-           enddo
-       enddo
-       !
-       ! check that each column and row of the rep sums to 1; i.e. rep(:,:,i) is orthonormal for all i.
-       !
-       do i = 1,sg%nsyms
-       do j = 1,uc%natoms
-           !
-           if (sum(rep(:,j,i)).ne.1) then
+                endif
+            enddo
+        enddo
+        !
+        ! check that each column and row of the rep sums to 1; i.e. rep(:,:,i) is orthonormal for all i.
+        !
+        ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
+        ! to ensure atoms must permute onto each other
+        if (index(flags,'relax_pbc').eq.0) then
+        do i = 1,sg%nsyms
+        do j = 1,uc%natoms
+            !
+            if (sum(rep(:,j,i)).ne.1) then
                call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
                call am_print('i',i)
                call am_print_sparse('spy(P_i)',rep(:,:,i))
                call am_print('rep',rep(:,:,i))
                stop
-           endif
-           !
-           if (sum(rep(j,:,i)).ne.1) then
+            endif
+            !
+            if (sum(rep(j,:,i)).ne.1) then
                call am_print('ERROR','Permutation matrix has a row which does not sum to 1.')
                call am_print('i',i)
                call am_print_sparse('spy(P_i)',rep(:,:,i))
                call am_print('rep',rep(:,:,i))
                stop
-           endif
-           !
-       enddo
-       enddo
+            endif
+            !
+        enddo
+        enddo
+        endif
        !
     end function   rep_permutation
 

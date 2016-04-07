@@ -31,6 +31,8 @@
         procedure :: expand_to_supercell
         procedure :: primitive_to_conventional
         procedure :: output_poscar
+        procedure :: copy
+        procedure :: filter
     end type am_class_unit_cell
 
     contains
@@ -1301,7 +1303,56 @@
         !
     end function   space_symmetries_from_basis
    
-    !
+    subroutine     copy(cp,uc)
+        !
+        implicit none
+        !
+        class(am_class_unit_cell), intent(inout) :: cp
+        type(am_class_unit_cell) , intent(in) :: uc
+        !
+        cp%natoms   = uc%natoms
+        cp%bas      = uc%bas
+        cp%nspecies = uc%nspecies
+        !
+        if (allocated(cp%tau  )) deallocate(cp%tau  )
+        if (allocated(cp%atype)) deallocate(cp%atype)
+        if (allocated(cp%symb )) deallocate(cp%symb )
+        allocate(cp%tau  , source = uc%tau  )
+        allocate(cp%atype, source = uc%atype)
+        allocate(cp%symb , source = uc%symb )
+        !
+    end subroutine copy
+   
+    subroutine     filter(cp,uc,indices)
+        !
+        implicit none
+        !
+        class(am_class_unit_cell), intent(inout) :: cp
+        type(am_class_unit_cell) , intent(in) :: uc
+        integer, allocatable :: indices(:)
+        integer :: i
+        !
+        cp%natoms   = count(indices.ne.0)
+        cp%bas      = uc%bas
+        cp%nspecies = uc%nspecies
+        !
+        if (allocated(cp%tau  )) deallocate(cp%tau  )
+        if (allocated(cp%atype)) deallocate(cp%atype)
+        if (allocated(cp%symb )) deallocate(cp%symb )
+        !
+        allocate(cp%tau(3,cp%natoms))
+        do i = 1,cp%natoms
+            cp%tau(:,i) = uc%tau(:,indices(i))
+        enddo
+        !
+        allocate(cp%atype(cp%natoms))
+        do i = 1,cp%natoms
+            cp%atype(i) = uc%atype(indices(i))
+        enddo
+        !
+        allocate(cp%symb,source=uc%symb)
+        !
+    end subroutine filter
 
 
 end module
