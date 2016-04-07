@@ -404,6 +404,8 @@ contains
         type(am_class_unit_cell) :: temp
         integer  :: select_primitive_atom
         real(dp) :: sphere_center(3)
+        real(dp), allocatable :: grid_points(:,:)
+        real(dp) :: recbas(3,3)
         real(dp) :: v(3)
         integer :: i,j,n,k,jj
         !
@@ -447,25 +449,41 @@ contains
         call am_print('centering on primitive cell atom ',select_primitive_atom,' ... ')
         sphere_center = uc%tau(:,select_primitive_atom)
         !
+        grid_points = mesh_grid([1,1,1])
+        grid_points = matmul(uc%bas,grid_points)
         do i = 1, sphere%natoms
             ! turn sphere into a block with select atom at the origin
-            sphere%tau(:,i) = sphere%tau(:,i) - sphere_center
-            ! put select atom at the center of the block
-            sphere%tau(:,i) = sphere%tau(:,i) + real([0.5,0.5,0.5],dp)
-            ! apply translational symmetry to get all atoms around the central atom
-            sphere%tau(:,i) = modulo(sphere%tau(:,i) + opts%sym_prec, 1.0_dp) - opts%sym_prec
-            ! shift sphere back to origin
-            sphere%tau(:,i) = sphere%tau(:,i) - real([0.5,0.5,0.5],dp)
-            ! convert everything to cartesian
-            ! sphere%tau(:,i) = matmul(sphere%bas,sphere%tau(:,i))
+            sphere%tau(:,i) = sphere%tau(:,i) - sphere_center + 10.0_dp
+            ! translate atoms to be as close to the origin as possible
+            sphere%tau(:,i) = reduce_to_wigner_seitz(pnt=sphere%tau(:,i),grid_points=grid_points,bas=uc%bas,sym_prec=opts%sym_prec)
+            ! convert to cartesian
+            sphere%tau(:,i) = matmul(uc%bas,sphere%tau(:,i))
         enddo
+        ! convert rg point symmetries to cartesian
+        recbas=reciprocal_basis(uc%bas)
+        do i = 1,rg%nsyms
+            rg%R(:,:,i) = matmul(uc%bas, matmul(rg%R(:,:,i),recbas) )
+        enddo
+
         !
         ! get permutation map which shows how space symmetries permute atomic positions
         ! PM(sphere%natoms,sg%nsyms)
         ! PM = symmetry_action(sg=rg,flags='exact',uc=sphere,opts=opts)
         ! write action table
+        call am_print('tau',transpose(sphere%tau))
+        
+
+        call sphere%output_poscar(file_output_poscar='outfile.POSCAR.sphere')
+
+
         call rg%symmetry_action(uc=sphere,flags='relax_pbc',iopt_fname='outfile.action_rotational_group',opts=notalk)
+
+
+
         stop
+
+
+
         !
         ! get distances atoms relative to the central atom
         allocate(mask(uc%natoms))
@@ -503,14 +521,7 @@ contains
 
 
         call temp%filter(uc=uc,indices=indicies_of_atoms_inside_sphere)
-        call sphere%copy(uc=temp)
-        ! sphere
-        do i = 1, sphere%natoms
-            ! convert everything back to fractional
-            sphere%tau(:,i) = matmul(reciprocal_basis(sphere%bas),sphere%tau(:,i))
-        enddo
-        !
-        call sphere%output_poscar(file_output_poscar='outfile.POSCAR.sphere')
+
 
         stop
         !
@@ -579,6 +590,48 @@ contains
 !             enddo
 !         endif
         !
+        contains
+        pure function  reduce_to_wigner_seitz(pnt,grid_points,bas,sym_prec) result(pnt_reduced)
+            !> reduces pnt (in fractional) to the first Brillouin zone (Wigner-Seitz cell, defined in cartesian coordinates)
+            !> cartesian pnt is returned! 
+            implicit none
+            !
+            real(dp), intent(in) :: pnt(3) !> fractional
+            real(dp), intent(in) :: bas(3,3) !> real space basis (column vectors)
+            real(dp), intent(in) :: grid_points(3,27) !> voronoi points (cartesian)
+            real(dp), intent(in) :: sym_prec
+            real(dp) :: pnt_cart(3) !> pnt cartesian
+            real(dp) :: G(3) !> reciprocal lattice vector
+            real(dp) :: P !> bragg plane condition
+            real(dp) :: pnt_reduced(3)
+            integer :: i ! loop variable
+            logical :: is_not_done
+            !
+            ! take pnt in fractional coordinates (will become cartesian later)
+            pnt_cart = pnt
+            ! reduce to reciprocal unit cell
+            pnt_cart = modulo(pnt_cart+sym_prec,1.0_dp)-sym_prec
+            ! convert to cartesian
+            pnt_cart = matmul(bas,pnt_cart)
+            ! reduce to Wigner-Seitz cell (aka first Brillouin zone) by translating the k-point
+            ! until the closest reciprocal lattice point is [0 0 0]
+            is_not_done = .true.
+            do while ( is_not_done )
+                is_not_done = .false.
+                do i = 1,27
+                    G = grid_points(:,i)
+                    P = 2*dot_product(pnt_cart,G) - dot_product(G,G)
+                    if ( P .gt. sym_prec ) then
+                        pnt_cart = pnt_cart - G
+                        is_not_done = .true.
+                    endif
+                enddo
+            end do
+            ! convert back to fractional
+            pnt_reduced = matmul(reciprocal_basis(bas),pnt_cart)
+            !
+        end function   reduce_to_wigner_seitz
+
     end subroutine get_atom_pairs
 
     pure function  transform_2nd_order_force_constants(M,R,PM) result(RM)
@@ -1772,7 +1825,9 @@ contains
                 ! apply translational component
                 if (allocated(sg%T)) tau_rot = tau_rot + sg%T(:,i)
                 ! reduce rotated+translated point to unit cell
-                tau_rot = modulo(tau_rot+opts%sym_prec,1.0_dp)-opts%sym_prec
+                if (index(flags,'relax_pbc').eq.0) then
+                    tau_rot = modulo(tau_rot+opts%sym_prec,1.0_dp)-opts%sym_prec
+                endif
                 ! find matching atom
                 do k = 1, uc%natoms
                     if (all(abs(tau_rot-uc%tau(:,k)).lt.opts%sym_prec)) then
