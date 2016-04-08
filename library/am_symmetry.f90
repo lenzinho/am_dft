@@ -17,7 +17,7 @@ module am_symmetry
     !
     type am_class_abstract_group
         integer :: nsyms
-        integer , allocatable :: cc_identifier(:) !> indices assiging each element to a conjugacy class
+        integer , allocatable :: identifier(:) !> indices assiging each element to a conjugacy class
     end type am_class_abstract_group
     !
     type, extends(am_class_abstract_group) :: am_class_symmetry 
@@ -388,26 +388,26 @@ contains
         type(am_class_options)  , intent(in) :: opts
         real(dp), intent(inout) :: pair_cutoff
         !
-        integer  :: npairs, nshells
         type(am_class_unit_cell) :: sphere ! sphere containing atoms up to a cutoff
         type(am_class_symmetry)  :: rg ! rotational group (space symmetries which have translational part set to zero and are still compatbile with the atomic basis)
         type(am_class_symmetry)  :: vg ! bond group
-        type(am_class_unit_cell) :: prim ! primitive cell, only determine pairs for which atleast one atom is in the primitive cell
+        type(am_class_unit_cell) :: pc ! primitive cell, only determine pairs for which atleast one atom is in the primitive cell
         type(am_class_options) :: notalk ! supress verbosity
         real(dp), allocatable :: d(:)   ! d(npairs) array containing distances between atoms
-        integer , allocatable :: p(:,:) ! p(2,npairs) array identiying which atoms are in the pair
-        integer , allocatable :: uc2prim(:) ! i
-        integer , allocatable :: indices(:) ! 
+        integer , allocatable :: uc2prim(:) ! indicates which supercell atoms are representing in the primitive cell
+        integer , allocatable :: indices(:) ! use for sorting 
         integer , allocatable :: PM(:,:) ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-        logical , allocatable :: mask(:)
-        integer , allocatable :: atoms_inside(:)
-        type(am_class_unit_cell) :: temp
-        integer  :: select_primitive_atom
-        real(dp) :: sphere_center(3)
-        real(dp), allocatable :: grid_points(:,:)
+        integer , allocatable :: atoms_inside(:) ! used to filter atoms inside pair cutoff radius
+        real(dp), allocatable :: grid_points(:,:) ! used for wigner-seitz reduction
+        integer , allocatable :: shell_nelements(:)
+        integer , allocatable :: shell_member(:,:)
+        integer , allocatable :: shell(:)
+        integer  :: select_primitive_atom ! used to select the primitive cell atom
+        integer  :: nshells !  number of shells
+        real(dp) :: sphere_center(3) ! used to center sphere
         real(dp) :: recbas(3,3)
         real(dp) :: v(3)
-        integer :: i,j,n,k,jj
+        integer  :: i,j,n,k,jj
         !
         ! set notalk option
         notalk = opts 
@@ -416,7 +416,6 @@ contains
         ! print title
         if (opts%verbosity.ge.1) call am_print_title('Determining nearest-neighbor atomic shells')
         !
-        call am_print('total number of atoms',uc%natoms,' ... ')
         ! set pair cutoff radius (smaller than half the smallest cell dimension, larger than the smallest distance between atoms)
         allocate(d(3))
             do i = 1, 3
@@ -430,12 +429,11 @@ contains
         ! symmetries which are able to map all atoms onto each other. For a symorphic space group this is simply the
         ! point group. For a non-symmorphic space group, symmetries which have a non-unique rotational part that are
         ! coupled to a translational part are discarted.)
-        !
         call rg%rotational_group(uc=uc,pg=pg,opts=opts)
         !
         ! get atoms in primitive cell and indices of atoms in the original cell which represent all identical atoms in the primitive cell
-        call prim%reduce_to_primitive(uc=uc,oopts_uc2prim=uc2prim,opts=notalk)
-        call am_print('total primitive cell atoms',prim%natoms,' ... ')
+        call pc%reduce_to_primitive(uc=uc,oopts_uc2prim=uc2prim,opts=notalk)
+        call am_print('total primitive cell atoms',pc%natoms,' ... ')
         call am_print('representative atoms in primitive cell ',uc2prim,' ... ')
         !
         ! make a sphere containing atoms a maximum distance of a choosen atom; translate all atoms around the sphere.
@@ -444,145 +442,139 @@ contains
         !
         ! create sphere instance
         call sphere%copy(uc=uc)
-        ! center sphere cell on select atom
+        ! elements with incomplete orbits should be ignored, since they do not have enough information to build full shells
+        allocate(atoms_inside(sphere%natoms))
+        atoms_inside = 0
+        ! determine sphere center by choosing an atom in the primitive cell, representative of atoms in the supercell
         select_primitive_atom = uc2prim(1)
         call am_print('centering on primitive cell atom ',select_primitive_atom,' ... ')
         sphere_center = uc%tau(:,select_primitive_atom)
-        !
+        ! generate grid points for wigner_seitz reduction
         grid_points = mesh_grid([1,1,1])
         grid_points = matmul(uc%bas,grid_points)
+        ! being sphere construction
+        j=0
         do i = 1, sphere%natoms
             ! turn sphere into a block with select atom at the origin
             sphere%tau(:,i) = sphere%tau(:,i) - sphere_center + 10.0_dp
             ! translate atoms to be as close to the origin as possible
             sphere%tau(:,i) = reduce_to_wigner_seitz(pnt=sphere%tau(:,i),grid_points=grid_points,bas=uc%bas,sym_prec=opts%sym_prec)
-            ! convert to cartesian
+            ! convert to atomic positions to cartesian coordinates
             sphere%tau(:,i) = matmul(uc%bas,sphere%tau(:,i))
+            ! take note of points within the predetermied pair cutoff radius
+            if (norm2(sphere%tau(:,i)).le.pair_cutoff) then
+                j=j+1
+                atoms_inside(j) = i
+            endif
         enddo
-        ! convert rg point symmetries to cartesian
+        ! convert rg point symmetries to cartesian coordinates (to match sphere%tau above which is also in cartesian)
+        ! one way to remember which to multiply on the left and right is to make form the identity; to convert V and R in fractional coordinates
+        ! to cartesian: V -> BV; R -> B*R*inv(B); because: V_rot_cart = B*R*inv(B) * B*V = B*R*I*V = B*R_frac*V_frac
         recbas=reciprocal_basis(uc%bas)
         do i = 1,rg%nsyms
             rg%R(:,:,i) = matmul(uc%bas, matmul(rg%R(:,:,i),recbas) )
         enddo
-        !
-        ! get permutation map which shows how space symmetries permute atomic positions
-        ! PM(sphere%natoms,sg%nsyms)
-        call rg%symmetry_action(uc=sphere,oopt_PM=PM,flags='relax_pbc',iopt_fname='outfile.action_rotational_group_cart',opts=notalk)
-        ! elements with incomplete orbits should be ignored, since they do not have enough information to build full shells
-        allocate(atoms_inside(sphere%natoms))
-        atoms_inside = 0
-        j=0
-        do i = 1, sphere%natoms
-        if (all(PM(i,:).ne.0)) then
-            v=sphere%tau(:,i)
-            if (norm2(v).le.pair_cutoff) then
-                j = j + 1
-                atoms_inside(j) = i
-            endif
-        endif
-        enddo
-        call am_print('atoms_inside',atoms_inside)
+        ! filter sphere keeping only atoms iniside pair cutoff raidus
         call sphere%filter(indices=atoms_inside)
-        call sphere%output_poscar(file_output_poscar='outfile.POSCAR.sphere')
-
-        stop
-
-
-
-        !
-        ! get distances atoms relative to the central atom
-        allocate(mask(uc%natoms))
-        mask = .true.
-        allocate(d(npairs))   ! distances
-        allocate(p(2,npairs)) ! pairs
-        k=0
-        do j = 1, sphere%natoms
-        if (mask(i)) then
-            k=k+1
-            ! get bond distance 
-            ! remember: 1) sphere is centered on atom of interest (bond vector is just coordinate of second atom)
-            !           2) coordinates have been converted to cartesian above
-            v = sphere%tau(:,j)
-            ! store distance in cartesian coordiantes
-            d(k) = norm2(v)
-!                     do jj = 1, rg%nsyms
-!                         mask(PM(j,jj)) = .false.
-!                     enddo
-        endif
+        ! if (opts%write_sphere) call sphere%output_poscar(file_output_poscar='outfile.POSCAR.sphere')
+        ! write action file and get permutation map PM(sphere%natoms,sg%nsyms) which shows how space symmetries permute atomic positions
+        call rg%symmetry_action(uc=sphere,oopt_PM=PM,flags='relax_pbc',iopt_fname='outfile.action_rotational_group_cart',opts=notalk)
+        ! get distance of atoms
+        allocate(d(sphere%natoms))
+        do i = 1, sphere%natoms
+            d(i) = norm2(sphere%tau(:,i))
         enddo
-
-
-
-
-        
-
-
-        stop
-        !
-        ! get total possible pair of atoms involving primitive cell atoms
-        npairs = sphere%natoms*prim%natoms
-        call am_print('total pairs formed with primitive cell atoms',npairs,' ... ')
-        !
-
-
-
-
-
-
-
-
-        !
-        ! get total possible pair of atoms involving primitive cell atoms
+        ! rank atoms according to their distances
+        allocate(indices(sphere%natoms))
+        call rank(d,indices)
+        ! get shells starting with closest atoms first
+        allocate(shell(sphere%natoms))
+        k=0
+        do jj = 1, sphere%natoms
+            i = indices(jj)
+            if (shell(i).eq.0) then
+                k=k+1
+                do j = 1, rg%nsyms
+                    shell(PM(i,j)) = k
+                enddo
+            endif
+        enddo
         nshells = k
-        call am_print('total pairs formed with primitive cell atoms',nshells,' ... ')
+        call am_print('number of shells',nshells)
+        ! get shell member
+        shell_member = member(shell)
+        ! get number of shell elements
+        shell_nelements = nelements(shell)
         !
-        ! sort pairs based on shell distance
-        allocate(indices(nshells))
-        call rank(d(1:nshells),indices)
-        p(1,1:nshells)=p(1,indices)
-        p(2,1:nshells)=p(2,indices)
-        !
-        !
-        if (opts%verbosity.ge.1) then 
-            write(*,'(5x,a5,2(a10,a30),a10,a10)') 'i-j', '|v_cart|', centertitle('v (cart)',30), '|v_frac|', centertitle('v (frac)',30), 'group'
-            write(*,'(5x,a5,2(a10,a30),a10,a10)') ' '//repeat('-',4), ' '//repeat('-',9), ' '//repeat('-',29),&
-            & ' '//repeat('-',9), ' '//repeat('-',29), ' '//repeat('-',9)
-        endif
-        do k = 1, nshells
-            i = p(1,k)
-            j = p(2,k)
-            ! bond vector
-            v = sphere%tau(:,i)-sphere%tau(:,j)
-            ! get stabilizer of vector (bond group), symmetries which leave bond invariant
-            call vg%stabilizer_group(pg=pg,v=v,opts=notalk)
+        recbas=reciprocal_basis(pc%bas)
+        if (opts%verbosity.ge.1) then
+            ! header
+            write(*,'(5x)',advance='no')
+            write(*,'(a5)',advance='no')  'shell'
+            write(*,'(a6)',advance='no')  'i-j'
+            write(*,'(a5)',advance='no') 'm'
+            write(*,'(a10)',advance='no') 'group'
+            write(*,'(a10)',advance='no') '|v(cart)|'
+            write(*,'(a30)',advance='no') centertitle('v(cart)',30)
+            write(*,'(a10)',advance='no') '|v(frac)|'
+            write(*,'(a30)',advance='no') centertitle('v(frac)',30)
+            write(*,*)
             !
-            if (opts%verbosity.ge.1) then 
+            write(*,'(5x)',advance='no')
+            write(*,'(a5)',advance='no')       repeat('-',5)
+            write(*,'(a6)',advance='no')  ' '//repeat('-',5)
+            write(*,'(a5)',advance='no')  ' '//repeat('-',4)
+            write(*,'(a10)',advance='no') ' '//repeat('-',9)
+            write(*,'(a10)',advance='no') ' '//repeat('-',9)
+            write(*,'(a30)',advance='no') ' '//repeat('-',29)
+            write(*,'(a10)',advance='no') ' '//repeat('-',9)
+            write(*,'(a30)',advance='no') ' '//repeat('-',29)
+            write(*,*)
+            !
+            do k = 1, nshells
+                ! pairs
+                i = select_primitive_atom
+                j = shell_member(k,1)
+                ! bond vector (select_primitive_atom is centered at zero by definition here)
+                v = sphere%tau(:,j)
+                ! get stabilizer of vector (bond group), symmetries which leave bond invariant
+                call vg%stabilizer_group(pg=rg,v=v,opts=notalk)
+                ! print to stdout
                 write(*,'(5x)'    ,advance='no') 
-                write(*,'(a5)'    ,advance='no') trim(trim(sphere%symb(sphere%atype(i)))//'-'//trim(sphere%symb(sphere%atype(j))))
-                write(*,'(f10.3)' ,advance='no') norm2(matmul(sphere%bas,v))
-                write(*,'(3f10.3)',advance='no') matmul(sphere%bas,v)
+                write(*,'(i5)'    ,advance='no') k
+                write(*,'(a6)'    ,advance='no') trim(trim(sphere%symb(sphere%atype(i)))//'-'//trim(sphere%symb(sphere%atype(j))))
+                write(*,'(i5)'    ,advance='no') shell_nelements(k)
+                write(*,'(a10)'   ,advance='no') trim(decode_pointgroup(vg%pg_identifier))
                 write(*,'(f10.3)' ,advance='no') norm2(v)
                 write(*,'(3f10.3)',advance='no') v
-                write(*,'(a10)'   ,advance='no') trim(decode_pointgroup(vg%pg_identifier))
+                write(*,'(f10.3)' ,advance='no') norm2(matmul(recbas,v))
+                write(*,'(3f10.3)',advance='no') matmul(recbas,v)
                 write(*,*)
-            endif
+                !
+                call vg%symmetry_adapted_tensor(uc=sphere,opts=opts,property='pair force-constants')
+                !
+            enddo
             !
-        enddo
+!             write(*,'(" ... ")',advance='no')
+!             write(*,'(a5)' ,advance='no')  'shell'
+!             write(*,'(a)',advance='no')  centertitle('members',column_width-10)
+!             write(*,*)
+!             !
+!             write(*,'(5x)',advance='no')
+!             write(*,'(a5)' ,advance='no') ' '//repeat('-',5)
+!             write(*,'(a)',advance='no') ' '//repeat('-',column_width-10)
+!             write(*,*)
+!             do k = 1, nshells
+!                 write(*,'(5x)',advance='no')
+!                 write(*,'(i5)'      ,advance='no') k
+!                 write(*,'(5x,100i4)',advance='no') shell_member(k,1:shell_nelements(k))
+!                 write(*,*)
+!                 !
+!             enddo
+            !
+        endif
         !
 
-        !
-        ! write to stdout
-!         if (opts%verbosity.ge.1) then
-!             write(*,'(a5,a10,a10,a10)') ' ... ', 'pairs', 'distance'
-!             write(*,'(5x,a10,a10,a10)') repeat('-',9), repeat('-',9)
-!             do k = 1, npairs
-!                 if (d(k).gt.tiny) then
-!                 if (d(k).gt.d(k-1)) then
-!                     write(*,'(5x,a5,a5,f10.5,i10)') trim(uc%symb(uc%atype(p(1,k)))), trim(uc%symb(uc%atype(p(2,k)))), d(k) 
-!                 endif
-!                 endif
-!             enddo
-!         endif
         !
         contains
         pure function  reduce_to_wigner_seitz(pnt,grid_points,bas,sym_prec) result(pnt_reduced)
@@ -625,7 +617,6 @@ contains
             pnt_reduced = matmul(reciprocal_basis(bas),pnt_cart)
             !
         end function   reduce_to_wigner_seitz
-
     end subroutine get_atom_pairs
 
     pure function  transform_2nd_order_force_constants(M,R,PM) result(RM)
@@ -678,7 +669,7 @@ contains
         integer  :: ndim
         integer  :: nterms                          !> nterms the number of terms
         integer  :: tensor_rank                     !> tensor_rank rank of tensor matrix M, determined automatically by code
-        integer , allocatable :: member(:,:)
+        integer , allocatable :: class_member(:,:)
         real(dp), allocatable :: R(:,:)
         real(dp), allocatable :: S(:,:,:)           !> intrinsic symmetries
         real(dp), allocatable :: A(:,:)             !> A(2*nterms,2*nterms) augmented matrix equation
@@ -756,8 +747,8 @@ contains
         nterms = ndim**tensor_rank
         !
         ! get conjugacy class members
-        ! members(nclass,maxval(nelements))
-        member = cc_member(pg%cc_identifier)
+        ! members(nclass,maxval(class_nelements))
+        class_member = member(pg%identifier)
         !
         ! initialize A. 
         ! using LU factorization instead of applying rref in order to incorporate effect of symmetry on tensor at each step.
@@ -773,11 +764,11 @@ contains
         !
         ! crystal symmetries
         !
-        do j = 1, size(member,1) ! loop over classes
+        do j = 1, size(class_member,1) ! loop over classes
             ! track number of symmetry equations for fun
-            nequations = nequations + nterms*count(member(j,:).ne.0)
+            nequations = nequations + nterms*count(class_member(j,:).ne.0)
             ! get index of class representative 
-            i=member(j,1)
+            i=class_member(j,1)
             ! construct symmetry operator in the flattend basis
             ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
             R = kron_pow(ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),tensor_rank)
@@ -1016,13 +1007,13 @@ contains
         call sg%create(R=seitz(1:3,1:3,:),T=seitz(1:3,4,:))
         !
         ! determine conjugacy classes (needs identity first)
-        sg%cc_identifier = get_conjugacy_classes(rep=seitz,flags='seitz')
+        sg%identifier = get_conjugacy_classes(rep=seitz,flags='seitz')
         !
         ! sort space group symmetries based on parameters
         call sg%sort(sort_parameter=sg%T(1,:),iopt_direction='ascend')
         call sg%sort(sort_parameter=sg%T(2,:),iopt_direction='ascend')
         call sg%sort(sort_parameter=sg%T(3,:),iopt_direction='ascend')
-        call sg%sort(sort_parameter=real(sg%cc_identifier,dp),iopt_direction='ascend')
+        call sg%sort(sort_parameter=real(sg%identifier,dp),iopt_direction='ascend')
         !
         ! name the (im-)proper part of space symmetry
         call sg%name_symmetries(opts=notalk)
@@ -1065,7 +1056,7 @@ contains
         if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,' ... ')
         !
         ! determine conjugacy classes (needs identity first, inversion second)
-        pg%cc_identifier = get_conjugacy_classes(rep=pg%R)
+        pg%identifier = get_conjugacy_classes(rep=pg%R)
         !
         ! sort point group symmetries based on parameters
         allocate(sort_parameter(pg%nsyms))
@@ -1073,7 +1064,7 @@ contains
         call pg%sort(sort_parameter=sort_parameter,iopt_direction='ascend')
         do i = 1, pg%nsyms; sort_parameter(i) = ps_determinant(pg%R(:,:,i)); enddo
         call pg%sort(sort_parameter=sort_parameter,iopt_direction='ascend')
-        call pg%sort(sort_parameter=real(pg%cc_identifier,dp),iopt_direction='ascend')
+        call pg%sort(sort_parameter=real(pg%identifier,dp),iopt_direction='ascend')
         !
         ! name point symmetries
         call pg%name_symmetries(opts=opts)
@@ -1124,7 +1115,7 @@ contains
         call rg%create(R=wrkspace(1:3,1:3,1:m))
         !
         ! determine conjugacy classes (needs identity first)
-        rg%cc_identifier = get_conjugacy_classes(rep=rg%R)
+        rg%identifier = get_conjugacy_classes(rep=rg%R)
         !
         ! name the (im-)proper part of space symmetry
         call rg%name_symmetries(opts=notalk)
@@ -1163,7 +1154,7 @@ contains
         ! create group
         call vg%create(R=pg%R(:,:,pack(indicies,mask)))
         ! determine conjugacy classes (needs identity first, inversion second)
-        vg%cc_identifier = get_conjugacy_classes(rep=vg%R)
+        vg%identifier = get_conjugacy_classes(rep=vg%R)
         ! name point symmetries
         call vg%name_symmetries(opts=opts)
         ! name point group
@@ -1191,8 +1182,8 @@ contains
         integer :: nsyms
         integer :: nclasses
         integer :: nirreps  ! just to make things clearer; always equal to nclasses
-        integer, allocatable :: nelements(:) ! number of elements in each class
-        integer, allocatable :: member(:,:) ! members(nclass,maxval(nelements))
+        integer, allocatable :: class_nelements(:) ! number of elements in each class
+        integer, allocatable :: class_member(:,:) ! members(nclass,maxval(class_nelements))
         integer, allocatable :: H(:,:,:) ! class multiplication 
         integer, allocatable :: CCT(:,:) ! class constant table which becomes character table (can be complex!)
         integer, allocatable :: irrep_dim(:) ! rep dimensions
@@ -1217,21 +1208,21 @@ contains
         cayley_table = get_cayley_table(rep=rep,flags=flags)
         !
         ! identify which class symmetry belongs to
-        ! cc_identifier(nsyms)
-        sg%cc_identifier = get_conjugacy_classes(rep=rep,flags=flags)
+        ! identifier(nsyms)
+        sg%identifier = get_conjugacy_classes(rep=rep,flags=flags)
         !
         ! get number of classes
-        nclasses = maxval(sg%cc_identifier)
+        nclasses = maxval(sg%identifier)
         ! if (opts%verbosity.ge.1) call am_print('conjugacy classes',nclasses,' ... ')
         !
         ! get number of elements in each class
-        ! nelements(nclasses)
-        nelements = cc_nelements(sg%cc_identifier)
+        ! class_nelements(nclasses)
+        class_nelements = nelements(sg%identifier)
         !
-        ! record indicies of each member element for each class (use the first member of class as class representative)
-        ! members(nclass,maxval(nelements)) 
-        member = cc_member(sg%cc_identifier)
-        ! call am_print('class memebers',member,' ... ')
+        ! record indicies of each class_member element for each class (use the first class_member of class as class representative)
+        ! members(nclass,maxval(class_nelements)) 
+        class_member = member(sg%identifier)
+        ! call am_print('class memebers',class_member,' ... ')
         !
         ! get class coefficients (thenumber of times class k appears in the pdocut o class j and k )
         ! Wooten p 35, Eq 2.10; p 40, Example 2.8; p 89, Example 4.6
@@ -1239,7 +1230,7 @@ contains
         do i = 1,nclasses
         do j = 1,nclasses
         do k = 1,nclasses
-            H(j,k,i) = count( pack( cayley_table(member(i,1:nelements(i)),member(j,1:nelements(j))) , .true. ) .eq. member(k,1) )
+            H(j,k,i) = count( pack( cayley_table(class_member(i,1:class_nelements(i)),class_member(j,1:class_nelements(j))) , .true. ) .eq. class_member(k,1) )
         enddo
         enddo
         enddo
@@ -1257,7 +1248,7 @@ contains
             ! sum on classes
             wrk = 0
             do j = 1, nclasses
-                wrk = wrk + abs(CCT(i,j))**2/real(nelements(j),dp)
+                wrk = wrk + abs(CCT(i,j))**2/real(class_nelements(j),dp)
             enddo
             ! compute irrep dimension
             irrep_dim(i) = nint((nsyms/wrk)**0.5)
@@ -1266,7 +1257,7 @@ contains
         ! convert class constant table into character table
         do i = 1, nirreps
         do j = 1, nclasses
-            CCT(i,j) = nint(irrep_dim(i)/real(nelements(j),dp)*CCT(i,j))
+            CCT(i,j) = nint(irrep_dim(i)/real(class_nelements(j),dp)*CCT(i,j))
         enddo
         enddo
         !
@@ -1298,19 +1289,19 @@ contains
             !
             write(*,'(5x,a10)',advance='no') 'elements'
             do i = 1, nclasses
-                write(*,'(i5)',advance='no') nelements(i)
+                write(*,'(i5)',advance='no') class_nelements(i)
             enddo
             write(*,*)
             !
             write(*,'(5x,a10)',advance='no') 'class rep'
             do i = 1, nclasses
-                write(*,'(i5)',advance='no') member(i,1)
+                write(*,'(i5)',advance='no') class_member(i,1)
             enddo
             write(*,*)
             !
             write(*,'(5x,a10)',advance='no') ' '
             do i = 1, nclasses
-                write(*,'(a5)',advance='no') trim(decode_pointsymmetry(sg%ps_identifier(member(i,1))))
+                write(*,'(a5)',advance='no') trim(decode_pointsymmetry(sg%ps_identifier(class_member(i,1))))
             enddo
             write(*,*)
             !
@@ -1332,10 +1323,10 @@ contains
         ! check that the number of elements ri in class Ci is a divisor of theorder of the group
         ! Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. Cambridge, UK?; New York: Cambridge University Press, 2008. p 35.
         do i = 1, nclasses
-            if (modulo(nsyms,nelements(i)).ne.0) then
+            if (modulo(nsyms,class_nelements(i)).ne.0) then
                 call am_print('ERROR','Number of elements in class subgroup is not a divisor of the order of the group.')
                 call am_print('class',i)
-                call am_print('elements in class',nelements(i))
+                call am_print('elements in class',class_nelements(i))
                 call am_print('elements in group',nsyms)
                 stop
             endif
@@ -1475,7 +1466,6 @@ contains
             fid = 1
             open(unit=fid,file=trim(iopt_fname),status="replace",action='write')
                 !
-                write(fid,'(a)') 'Symmerties and coordinate reorientations are in fractional units.'
                 ! SYMMETRY NUMBER
                 write(fid,'(5x)',advance='no')
                 write(fid,'(a5)',advance='no') '#'
@@ -1487,7 +1477,7 @@ contains
                 write(fid,'(5x)',advance='no')
                 write(fid,'(a5)',advance='no') 'class'
                 do i = 1, sg%nsyms
-                    write(fid,'(i10)',advance='no') sg%cc_identifier(i)
+                    write(fid,'(i10)',advance='no') sg%identifier(i)
                 enddo
                 write(fid,*)
                 ! HEADER / SEPERATOR
@@ -1670,7 +1660,7 @@ contains
         if (allocated(sg%R)) sg%R = sg%R(:,:,sorted_indices)
         if (allocated(sg%T)) sg%T = sg%T(:,sorted_indices)
         if (allocated(sg%ps_identifier)) sg%ps_identifier = sg%ps_identifier(sorted_indices)
-        if (allocated(sg%cc_identifier)) sg%cc_identifier = sg%cc_identifier(sorted_indices)
+        if (allocated(sg%identifier)) sg%identifier = sg%identifier(sorted_indices)
         !
     end subroutine sort
 
@@ -2013,7 +2003,7 @@ contains
         ! 
     end subroutine put_identity_first
 
-    function       get_conjugacy_classes(rep,flags) result(cc_identifier)
+    function       get_conjugacy_classes(rep,flags) result(identifier)
         !
         ! for AX = XB, if elements A and B are conjugate pairs for some other element X in the group, then they are in the same class
         !
@@ -2025,7 +2015,7 @@ contains
         character(*), intent(in), optional :: flags
         integer, allocatable :: cayley_table(:,:) ! cayley table
         integer, allocatable :: sinv(:) ! sinv(nsyms) index of the inverse of symmetry element i
-        integer, allocatable :: cc_identifier(:)
+        integer, allocatable :: identifier(:)
         integer, allocatable :: celem(:)
         ! integer, allocatable :: class_member(:,:) ! used to sort based on determinant
         ! integer, allocatable :: indices(:)        ! used to sort based on determinant
@@ -2045,8 +2035,8 @@ contains
         endif
         !
         ! allocate space for conjugacy class
-        allocate(cc_identifier(nsyms))
-        cc_identifier = 0
+        allocate(identifier(nsyms))
+        identifier = 0
         !
         ! get element inverse
         sinv = get_inverse_indices(cayley_table)
@@ -2057,7 +2047,7 @@ contains
         ! determine conjugacy classes
         k = 0
         do i = 1, nsyms
-        if (cc_identifier(i).eq.0) then
+        if (identifier(i).eq.0) then
             k=k+1
             ! conjugate each element with all other group elements
             ! A = X(j) * B * X(j)^-1
@@ -2067,7 +2057,7 @@ contains
             ! for each subgroup element created by conjugation find the corresponding index of the element in the group
             ! in order to save the class identifier number
             do j = 1, nsyms
-                cc_identifier( celem(j) ) = k
+                identifier( celem(j) ) = k
             enddo
             !
         endif
@@ -2075,10 +2065,10 @@ contains
         nclasses = k
         !
         ! relabel classes based on number of elements in each class
-        call relabel_based_on_occurances(cc_identifier)
+        call relabel_based_on_occurances(identifier)
         !
         ! relabel classes based on det of class representative
-        ! class_member = cc_member(cc_identifier)
+        ! class_member = member(identifier)
         ! allocate(ccdet(nclasses)) 
         ! do i = 1,nclasses
         !     ccdet(i) = det( rep(:,:,class_member(i,1)) )
@@ -2092,16 +2082,16 @@ contains
         !     relabel_indices(indices(i)) = i
         ! enddo
         ! do i = 1, nsyms
-        !     cc_identifier(i) = relabel_indices( cc_identifier(i) )
+        !     identifier(i) = relabel_indices( identifier(i) )
         ! enddo
         !
         ! make sure the identity is in the first class
-        ! cc_identifier(i=1) is the class of the first element (the identity); swap it's location with whaterver elements are in the first class
-        where (cc_identifier.eq.1) cc_identifier = cc_identifier(1)
-        cc_identifier(1)=1
+        ! identifier(i=1) is the class of the first element (the identity); swap it's location with whaterver elements are in the first class
+        where (identifier.eq.1) identifier = identifier(1)
+        identifier(1)=1
         !
         ! check that classes are disjoint and complete
-        if (any(cc_identifier.eq.0)) then
+        if (any(identifier.eq.0)) then
             call am_print('ERROR','Not every element in the group has been asigned a conjugacy class.',flags='E')
             stop
         endif
@@ -2181,53 +2171,53 @@ contains
     ! functions which operate on conjugate classes identifiers
     ! 
 
-    function       cc_member(cc_identifier) result(member)
+    function       member(identifier) result(class_member)
         !
         implicit none
         !
-        integer, allocatable, intent(in) :: cc_identifier(:)
-        integer, allocatable :: nelements(:) ! number of elements in each class
-        integer, allocatable :: member(:,:) ! members(nclass,maxval(nelements))
+        integer, allocatable, intent(in) :: identifier(:)
+        integer, allocatable :: class_nelements(:) ! number of elements in each class
+        integer, allocatable :: class_member(:,:) ! members(nclass,maxval(class_nelements))
         integer :: i, j, k
         integer :: nsyms
         integer :: nclasses
         !
-        nsyms = size(cc_identifier,1)
+        nsyms = size(identifier,1)
         !
-        nclasses = maxval(cc_identifier)
+        nclasses = maxval(identifier)
         !
-        nelements = cc_nelements(cc_identifier)
+        class_nelements = nelements(identifier)
         !
-        allocate(member(nclasses,maxval(nelements)))
-        member = 0
+        allocate(class_member(nclasses,maxval(class_nelements)))
+        class_member = 0
         do i = 1, nclasses
             k=0
             do j = 1, nsyms
-                if (cc_identifier(j).eq.i) then
+                if (identifier(j).eq.i) then
                     k=k+1
-                    member(i,k) = j
+                    class_member(i,k) = j
                 endif
             enddo
         enddo
-    end function   cc_member
+    end function   member
 
-    function       cc_nelements(cc_identifier) result(nelements)
+    function       nelements(identifier) result(class_nelements)
         !
         implicit none
         !
-        integer, intent(in)  :: cc_identifier(:)
-        integer, allocatable :: nelements(:)
+        integer, intent(in)  :: identifier(:)
+        integer, allocatable :: class_nelements(:)
         integer :: nclasses
         integer :: i
         !
-        nclasses = maxval(cc_identifier)
+        nclasses = maxval(identifier)
         !
-        allocate(nelements(nclasses))
+        allocate(class_nelements(nclasses))
         !
         do i = 1, nclasses
-            nelements(i) = count(i.eq.cc_identifier)
+            class_nelements(i) = count(i.eq.identifier)
         enddo
-    end function   cc_nelements
+    end function   nelements
 
     !
     ! functions which operate on kpoints
