@@ -54,21 +54,21 @@
     ! CONVERT DATA TYPES  
     !
 
-    function      int2char(int,iopt_sign) result(string)
+    function      int2char(int,iopt_sign) result(str)
         !
         implicit none
         !
         integer, intent(in) :: int
         character(len=*), intent(in), optional :: iopt_sign
-        character(100) :: string
+        character(100) :: str
         !
         if (.not.present(iopt_sign)) then
-            write(string,'(i)') int
-            string = trim( adjustl( string ) )
+            write(str,'(i)') int
+            str = trim( adjustl( str ) )
         else
             if (index(iopt_sign,'SP').ge.1) then 
-                write(string,'(SP,i)') int
-                string = trim( adjustl( string ) )
+                write(str,'(SP,i)') int
+                str = trim( adjustl( str ) )
             else
                 call am_print('ERROR','Unknown sign requested.')
                 stop
@@ -77,29 +77,45 @@
         !
     end function  int2char
     
-    function      dbl2char(dbl) result(string)
-        !
-        implicit none
-        !
-        real(dp) :: dbl
-        character(100) :: string
-        !
-        write(string,'(f)') dbl
-        string = trim( adjustl( string ) )
-        !
-    end function  dbl2char
-
-    function      dbl2charSP(dbl,iopt_len) result(string)
+    function      dbl2char(dbl,iopt_len) result(str)
         !
         implicit none
         !
         real(dp), intent(in) :: dbl
         integer, intent(in), optional :: iopt_len
-        character(100) :: string
+        character(:), allocatable :: str
+        character(100) :: buffer
         !
-        write(string,'(SP,f)') dbl
-        string = trim( adjustl( string ) )
-        if (present(iopt_len)) string = string(1:iopt_len)
+        if (present(iopt_len)) then
+            allocate(character(iopt_len) :: str)
+        else
+            allocate(character(100) :: str)
+        endif
+        !
+        write(buffer,'(f)') dbl
+        buffer = trim( adjustl( buffer ) )
+        str = buffer(1:len(str))
+        !
+    end function  dbl2char
+
+    function      dbl2charSP(dbl,iopt_len) result(str)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: dbl
+        integer, intent(in), optional :: iopt_len
+        character(:), allocatable :: str
+        character(100) :: buffer
+        !
+        if (present(iopt_len)) then
+            allocate(character(iopt_len) :: str)
+        else
+            allocate(character(100) :: str)
+        endif
+        !
+        write(buffer,'(SP,f)') dbl
+        buffer = trim( adjustl( buffer ) )
+        str = buffer(1:len(str))
         !
     end function  dbl2charSP
 
@@ -121,37 +137,37 @@
         !
     end function  dbl2frac
 
-    function      print_pretty(dbl) result(string)
+    function      print_pretty(dbl) result(str)
         !
         ! call it with trim
         !
         implicit none
         !
         real(dp), intent(in) :: dbl
-        character(len=column_width) :: string
+        character(len=column_width) :: str
         integer :: num_den(2)
         !
         !
         ! convert double to 0
         if (abs(dbl).lt.tiny) then
-            string='0'
+            str='0'
             return
         endif
         ! convert double to integer
         if (abs(nint(dbl)-dbl).lt.tiny) then
-            string=int2char(nint(dbl))
+            str=int2char(nint(dbl))
             return
         endif
         ! convert double to fraction
         num_den = dbl2frac(dbl)
         if (abs(num_den(2)).gt.tiny) then
         if (abs(num_den(1)/real(num_den(2),dp)-dbl).lt.tiny) then
-            write(string,'(a,a,a)') trim(int2char(num_den(1))), '/', trim(int2char(num_den(2)))
+            write(str,'(a,a,a)') trim(int2char(num_den(1))), '/', trim(int2char(num_den(2)))
             return
         endif
         endif
         ! do nothing
-        write(string,*) dbl
+        write(str,*) dbl
         !
     end function  print_pretty
 

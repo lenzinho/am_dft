@@ -1334,7 +1334,7 @@
         integer :: i
         !
         ! create temporary variables
-        allocate(tau,source=uc%tau)
+        allocate(tau   ,source=uc%tau )
         allocate(atype,source=uc%atype)
         !
         ! count how many atoms should be passed
