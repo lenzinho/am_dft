@@ -439,8 +439,6 @@ contains
         !
         ! this routine will do most things using "sphere" in cartesian coordinates! 
         !
-        use am_rank_and_sort
-        !
         class(am_class_shell)   , intent(inout) :: shell
         type(am_class_symmetry) , intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
@@ -454,9 +452,7 @@ contains
         type(am_class_symmetry)  :: vg ! bond group
         type(am_class_unit_cell) :: pc ! primitive cell, only determine pairs for which atleast one atom is in the primitive cell
         type(am_class_options) :: notalk ! supress verbosity
-        real(dp), allocatable :: d(:)   ! d(npairs) array containing distances between atoms
         integer , allocatable :: uc2prim(:) ! indicates which supercell atoms are representing in the primitive cell
-        integer , allocatable :: indices(:) ! use for sorting 
         integer , allocatable :: PM(:,:) ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
         real(dp), allocatable :: grid_points(:,:) ! used for wigner-seitz reduction
         integer , allocatable :: shell_nelements(:)
@@ -467,7 +463,7 @@ contains
         real(dp) :: sphere_center(3) ! used to center sphere
         real(dp) :: recbas(3,3)
         real(dp) :: v(3)
-        integer  :: i,ii,j,k,jj
+        integer  :: i,ii,j,jj
         integer  :: absolute_maximum_number_of_shells ! buffer just to organize things
         !
         absolute_maximum_number_of_shells = 100
@@ -483,37 +479,30 @@ contains
         grid_points = mesh_grid([1,1,1])
         grid_points = matmul(uc%bas,grid_points)
         !
-        ! set pair cutoff radius (smaller than half the smallest cell dimension, larger than the smallest distance between atoms)
-        allocate(d(3))
-            do i = 1, 3
-                d(i) = norm2(uc%bas(:,i))/real(2,dp)
-            enddo
-            pair_cutoff = minval([d,pair_cutoff])
-        deallocate(d)
-        call am_print('pair cutoff radius',pair_cutoff,' ... ')
-        !
         ! get atoms in primitive cell and indices of atoms in the original cell which represent all identical atoms in the primitive cell
         call pc%reduce_to_primitive(uc=uc,oopts_uc2prim=uc2prim,opts=notalk)
-        call am_print('total primitive cell atoms',pc%natoms,' ... ')
-        call am_print('representative atoms in primitive cell ',uc2prim,' ... ')
+        call am_print('primitive cell atoms ('//trim(int2char(pc%natoms))//')',uc2prim,' ... ')
+        !
+        ! set pair cutoff radius (smaller than half the smallest cell dimension, larger than the smallest distance between atoms)
+        pair_cutoff = minval([norm2(uc%bas(:,:),1)/real(2,dp), pair_cutoff])
+        call am_print('pair cutoff radius',pair_cutoff,' ... ')
         !
         ! allocate pair shell class 
         buffer%natoms = pc%natoms
         allocate(buffer%pair( buffer%natoms ,absolute_maximum_number_of_shells))
         allocate(buffer%nshells(buffer%natoms))
         !
+        !
         do ii = 1, pc%natoms
             !
             ! make a sphere containing atoms a maximum distance of a choosen atom; translate all atoms around the sphere.
             ! this distance is the real-space cut-off radius used in the construction of second-order force constants
-            ! its value cannot exceed half the smallest dimension of the supercell.
-            !
-            ! create sphere instance (sphere center determined by an atom in the primitive cell, representative of atoms in the supercell)
+            ! its value cannot exceed half the smallest dimension of the supercell
             select_primitive_atom = uc2prim(ii)
             sphere_center = uc%tau(:,select_primitive_atom)
             sphere = create_sphere(uc=uc, sphere_center=sphere_center, pair_cutoff=pair_cutoff )
             !
-            ! rg = local pg copy
+            ! create rotational group; essentially all space symmetries that have T = [0 0 0] and are compatible with the atomic basis
             call rg%rotational_group(uc=sphere,pg=pg,opts=opts)
             !
             ! convert to cartesian: point symmetries (rg) and atomic basis (sphere)
@@ -523,57 +512,20 @@ contains
                 call rg%symmetry_action(uc=sphere,oopt_PM=PM,flags='relax_pbc',iopt_fname='outfile.action_rotational_group_cart',opts=notalk)
                 ! call am_print('PM',PM)
                 !
-                ! get distance of atoms
-                if (allocated(d)) deallocate(d)
-                allocate(d(sphere%natoms))
-                do i = 1, sphere%natoms
-                    d(i) = norm2(sphere%tau(:,i))
-                enddo
+                ! get shell identifier
+                shell_identifier = identify_shells(sphere)
+                ! get number of shells
+                nshells = maxval(shell_identifier)
+                ! get shell members [shell representative is given by shell_member(:,1)]
+                shell_member = member(shell_identifier)
+                ! get number of shell elements
+                shell_nelements = nelements(shell_identifier)
                 !
-                ! rank atoms according to their distances
-                if (allocated(indices)) deallocate(indices)
-                allocate(indices(sphere%natoms))
-                call rank(d,indices)
-                !
-                ! get shells starting with closest atoms first
-                if (allocated(shell_identifier)) deallocate(shell_identifier)
-                allocate(shell_identifier(sphere%natoms))
-                shell_identifier=0
-                k=0
-                do jj = 1, sphere%natoms
-                    i = indices(jj)
-                    if (shell_identifier(i).eq.0) then
-                        k=k+1
-                        do j = 1, rg%nsyms
-                        if ((PM(i,j)).ne.0) then
-                            shell_identifier(PM(i,j)) = k
-                        endif
-                        enddo
-                    endif
-                enddo
-                nshells = k
                 !
                 if (opts%verbosity.ge.1) then
                 write(*,'(" ... atom ",a," at "   ,a,",",a,",",a,  " (cart) has ",a," nearest-neighbor shells")') &
                     & trim(int2char(select_primitive_atom)), (trim(dbl2char( sum(sphere%bas(i,:)*sphere_center(:)), 4)), i = 1,3 ), trim(int2char(nshells))
                 endif
-                !
-                ! get shell members [shell representative is given by shell_member(:,1)]
-                shell_member = member(shell_identifier)
-                !
-                ! get number of shell elements
-                shell_nelements = nelements(shell_identifier)
-                ! 
-                ! save things to buffer
-                buffer%nshells(ii) = nshells
-                do jj = 1, nshells
-                    buffer%pair(ii,jj)%nelements = shell_nelements(jj)
-                    !
-                    allocate( buffer%pair(ii,jj)%tau(3,shell_nelements(jj)) )
-                    do i = 1, shell_nelements(jj)
-                        buffer%pair(ii,jj)%tau(1:3,i) = sphere%tau(1:3,i)
-                    enddo
-                enddo
                 !
                 ! print header
                 if (opts%verbosity.ge.1) then
@@ -618,12 +570,23 @@ contains
                     write(*,'(3f10.3)',advance='no') matmul(recbas,v)
                     write(*,*)
                     endif
-                    ! save to buffer
-                    buffer%pair(ii,jj)%vg = vg
-                    ! buffer%pair(ii,jj)%vg = cr
                     !
                 enddo
                 !
+                ! save things to buffer
+                buffer%nshells(ii) = nshells
+                do jj = 1, nshells
+                    buffer%pair(ii,jj)%nelements = shell_nelements(jj)
+                    !
+                    allocate( buffer%pair(ii,jj)%tau(3,shell_nelements(jj)) )
+                    do i = 1, shell_nelements(jj)
+                        buffer%pair(ii,jj)%tau(1:3,i) = sphere%tau(1:3,i)
+                    enddo
+                    !
+                    buffer%pair(ii,jj)%vg = vg
+                    ! buffer%pair(ii,jj)%vg = cr
+                enddo
+            !
             ! convert back to fractional
             call convert(uc=sphere,sg=rg,flags='cart2frac')
             !
@@ -684,7 +647,6 @@ contains
             pnt_reduced = matmul(reciprocal_basis(bas),pnt_cart)
             !
         end function   reduce_to_wigner_seitz
-
         pure function  create_sphere(uc,sphere_center,pair_cutoff) result(sphere)
             !
             ! TO DO: INCLUDE EDGE POINTS
@@ -724,7 +686,49 @@ contains
             call sphere%filter(indices=atoms_inside(1:j))
             !
             ! call sphere%output_poscar(file_output_poscar='outfile.POSCAR.sphere'//trim(int2char(ii)))
-        end function create_sphere
+        end function   create_sphere
+        function       identify_shells(sphere) result(shell_identifier)
+            !
+            use am_rank_and_sort
+            !
+            !
+            implicit none
+            !
+            type(am_class_unit_cell) :: sphere
+            real(dp), allocatable :: d(:)   ! d(npairs) array containing distances between atoms
+            integer , allocatable :: indices(:)
+            integer , allocatable :: shell_identifier(:)
+            integer :: i, jj, j, k
+            !
+            ! get distance of atoms
+            allocate(d(sphere%natoms))
+            do i = 1, sphere%natoms
+                d(i) = norm2(sphere%tau(:,i))
+            enddo
+            !
+            ! rank atoms according to their distances
+            allocate(indices(sphere%natoms))
+            call rank(d,indices)
+            !
+            ! get shells starting with closest atoms first
+            allocate(shell_identifier(sphere%natoms))
+            shell_identifier=0
+            k=0
+            do jj = 1, sphere%natoms
+                i = indices(jj)
+                if (shell_identifier(i).eq.0) then
+                    k=k+1
+                    do j = 1, rg%nsyms
+                    if ((PM(i,j)).ne.0) then
+                        shell_identifier(PM(i,j)) = k
+                    endif
+                    enddo
+                endif
+            enddo
+            !
+        end function   identify_shells
+
+
     end subroutine get_pair_shells
 
     pure function  transform_2nd_order_force_constants(M,R,PM) result(RM)
