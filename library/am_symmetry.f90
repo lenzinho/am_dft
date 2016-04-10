@@ -15,6 +15,8 @@ module am_symmetry
     public :: get_kpoint_compatible_symmetries
     public :: ps_frac2cart
     !
+    public :: am_class_shell
+    !
     type am_class_abstract_group
         integer :: nsyms
         integer , allocatable :: cc_identifier(:) !> indices assiging each element to a conjugacy class
@@ -38,8 +40,6 @@ module am_symmetry
         procedure :: stdout
         procedure :: sort
         !
-        procedure :: get_atom_pairs
-        !
         procedure :: symmetry_adapted_tensor
         !
         procedure :: determine_character_table
@@ -49,6 +49,30 @@ module am_symmetry
     type, extends(am_class_abstract_group) :: am_class_permutation_rep
         integer, allocatable :: rep(:,:) ! rep(:,nsyms)
     end type am_class_permutation_rep
+
+    !
+    ! shells
+    !
+
+    type am_class_pair_shell
+        !
+        ! "prototypical/representative" atom in shell given by tau(1:3,1)
+        integer :: nelements
+        real(dp), allocatable   :: tau(:,:) ! tau(3,natoms in shell)
+        type(am_class_symmetry) :: vg ! "vector group" - symmetries which stabilize vector corresponding to the position of atom
+        type(am_class_symmetry) :: cr ! coset representative subset: symmerties which rotates atoms in the same shell onto each other
+        !
+    end type am_class_pair_shell
+
+    type am_class_shell
+        !
+        integer :: natoms ! number of shell elements
+        integer, allocatable :: nshells(:)
+        type(am_class_pair_shell), allocatable :: pair(:,:) ! pair(natoms,nshells(natoms))
+        !
+    contains
+        procedure :: get_pair_shells
+    end type am_class_shell
 
 contains
 
@@ -203,6 +227,39 @@ contains
     end function   decode_pointsymmetry
 
     function       decode_pointgroup(pg_identifier) result(point_group_name)
+        ! Hermann-Mauguin     Shubnikov[1]        Schoenflies     Orbifold    Coxeter 
+        ! 1                   1\                  C1              11          [ ]+    
+        ! -1                  \tilde{2}           S2 (=Ci)        ×           [2+,2+] 
+        ! 2                   2\                  C2              22          [2]+    
+        ! m                   m\                  C1h             *           [ ]     
+        ! 2/m                 2:m\                C2h             2*          [2,2+]  
+        ! 222                 2:2\                D2              222         [2,2]+  
+        ! mm2                 2 \cdot m\          C2v             *22         [2]     
+        ! mmm                 m \cdot 2:m\        D2h             *222        [2,2]   
+        ! 4                   4\                  C4              44          [4]+    
+        ! -4                  \tilde{4}           S4              2×          [2+,4+] 
+        ! 4/m                 4:m\                C4h             4*          [2,4+]  
+        ! 422                 4:2\                D4              422         [4,2]+  
+        ! 4mm                 4 \cdot m\          C4v             *44         [4]     
+        ! 42m                 \tilde{4}\cdot m    D2d             2*2         [2+,4]  
+        ! 4/mmm               m \cdot 4:m\        D4h             *422        [4,2]   
+        ! 3                   3\                  C3              33          [3]+    
+        ! -3                  \tilde{6}           S6 (=C3i)       3×          [2+,6+] 
+        ! 32                  3:2\                D3              322         [3,2]+  
+        ! 3m                  3 \cdot m\          C3v             *33         [3]     
+        ! -3m                 \tilde{6}\cdot m    D3d             2*3         [2+,6]  
+        ! 6                   6\                  C6              66          [6]+    
+        ! -6                  3:m\                C3h             3*          [2,3+]  
+        ! 6/m                 6:m\                C6h             6*          [2,6+]  
+        ! 622                 6:2\                D6              622         [6,2]+  
+        ! 6mm                 6 \cdot m\          C6v             *66         [6]     
+        ! 6m2                 m \cdot 3:m\        D3h             *322        [3,2]   
+        ! 6/mmm               m \cdot 6:m\        D6h             *622        [6,2]   
+        ! 23                  3/2\                T               332         [3,3]+  
+        ! m3                  \tilde{6}/2         Th              3*2         [3+,4]  
+        ! 432                 3/4\                O               432         [4,3]+  
+        ! 43m                 3/\tilde{4}         Td              *332        [3,3]   
+        ! m3m                 \tilde{6}/4         Oh              *432        [4,3]   
         !
         implicit none
         !
@@ -210,15 +267,15 @@ contains
         character(string_length_schoenflies) :: point_group_name
         !
         select case (pg_identifier)
-                case(1); point_group_name = 'c_1'
-                case(2); point_group_name = 's_2'
-                case(3); point_group_name = 'c_2'
-                case(4); point_group_name = 'c_1h'
-                case(5); point_group_name = 'c_2h'
-                case(6); point_group_name = 'd_2'
-                case(7); point_group_name = 'c_2v'
-                case(8); point_group_name = 'd_2h'
-                case(9); point_group_name = 'c_3'
+                case(1);  point_group_name = 'c_1'
+                case(2);  point_group_name = 's_2'
+                case(3);  point_group_name = 'c_2'
+                case(4);  point_group_name = 'c_1h'
+                case(5);  point_group_name = 'c_2h'
+                case(6);  point_group_name = 'd_2'
+                case(7);  point_group_name = 'c_2v'
+                case(8);  point_group_name = 'd_2h'
+                case(9);  point_group_name = 'c_3'
                 case(10); point_group_name = 's_6'
                 case(11); point_group_name = 'd_3'
                 case(12); point_group_name = 'c_3v'
@@ -378,61 +435,20 @@ contains
     ! functions for determining symmetry-adapted second-order force consants
     !
 
-
-    subroutine     convert(sg,uc,flags)
-        !
-        ! one way to remember which to multiply on the left and right is to make form the identity; to convert V and R
-        ! in fractional coordinates to cartesian: V -> BV; R -> B*R*inv(B); because: V_rot_cart = B*R*inv(B) * B*V =
-        ! B*R*I*V = B*R_frac*V_frac
-        !
-        implicit none
-        !
-        type(am_class_symmetry) , intent(inout) :: sg
-        type(am_class_unit_cell), intent(inout) :: uc
-        character(*), intent(in) :: flags
-        real(dp) :: recbas(3,3), bas(3,3)
-        integer :: i
-        !
-        if     (index(flags,'frac2cart').ne.0) then
-            bas    = uc%bas
-            recbas = reciprocal_basis(uc%bas)
-        elseif (index(flags,'cart2frac').ne.0) then
-            bas    = reciprocal_basis(uc%bas)
-            recbas = uc%bas
-        endif
-        !
-        ! atomic basis
-        do i = 1,uc%natoms
-            uc%tau(:,i) = matmul(bas,uc%tau(:,i))
-        enddo
-        !
-        ! rotational component
-        if (allocated(sg%R)) then
-        do i = 1,sg%nsyms
-            sg%R(:,:,i) = matmul(bas,matmul(sg%R(:,:,i),recbas))
-        enddo
-        endif
-        !
-        ! translational component
-        if (allocated(sg%T)) then
-        do i = 1,sg%nsyms
-            sg%T(:,i)   = matmul(bas,sg%T(:,i))
-        enddo
-        endif
-        !
-    end subroutine convert
-
-    subroutine     get_atom_pairs(pg,pair_cutoff,uc,opts)
+    subroutine     get_pair_shells(shell,pg,pair_cutoff,uc,opts)
         !
         ! this routine will do most things using "sphere" in cartesian coordinates! 
         !
         use am_rank_and_sort
         !
-        class(am_class_symmetry), intent(in) :: pg
+        class(am_class_shell)   , intent(inout) :: shell
+        type(am_class_symmetry) , intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options)  , intent(in) :: opts
         real(dp), intent(inout) :: pair_cutoff
         !
+        !
+        type(am_class_shell)     :: buffer
         type(am_class_unit_cell) :: sphere ! sphere containing atoms up to a cutoff
         type(am_class_symmetry)  :: rg ! rotational group (space symmetries which have translational part set to zero and are still compatbile with the atomic basis)
         type(am_class_symmetry)  :: vg ! bond group
@@ -442,17 +458,19 @@ contains
         integer , allocatable :: uc2prim(:) ! indicates which supercell atoms are representing in the primitive cell
         integer , allocatable :: indices(:) ! use for sorting 
         integer , allocatable :: PM(:,:) ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-        integer , allocatable :: atoms_inside(:) ! used to filter atoms inside pair cutoff radius
         real(dp), allocatable :: grid_points(:,:) ! used for wigner-seitz reduction
         integer , allocatable :: shell_nelements(:)
         integer , allocatable :: shell_member(:,:)
-        integer , allocatable :: shell(:)
+        integer , allocatable :: shell_identifier(:)
         integer  :: select_primitive_atom ! used to select the primitive cell atom
         integer  :: nshells !  number of shells
         real(dp) :: sphere_center(3) ! used to center sphere
         real(dp) :: recbas(3,3)
         real(dp) :: v(3)
-        integer  :: i,ii,j,n,k,jj
+        integer  :: i,ii,j,k,jj
+        integer  :: absolute_maximum_number_of_shells ! buffer just to organize things
+        !
+        absolute_maximum_number_of_shells = 100
         !
         ! print title
         if (opts%verbosity.ge.1) call am_print_title('Determining nearest-neighbor atomic shells')
@@ -479,47 +497,28 @@ contains
         call am_print('total primitive cell atoms',pc%natoms,' ... ')
         call am_print('representative atoms in primitive cell ',uc2prim,' ... ')
         !
-        ! make a sphere containing atoms a maximum distance of a choosen atom; translate all atoms around the sphere.
-        ! this distance is the real-space cut-off radius used in the construction of second-order force constants
-        ! its value cannot exceed half the smallest dimension of the supercell.
+        ! allocate pair shell class 
+        buffer%natoms = pc%natoms
+        allocate(buffer%pair( buffer%natoms ,absolute_maximum_number_of_shells))
+        allocate(buffer%nshells(buffer%natoms))
         !
         do ii = 1, pc%natoms
             !
-            ! create sphere instance
-            call sphere%copy(uc=uc)
+            ! make a sphere containing atoms a maximum distance of a choosen atom; translate all atoms around the sphere.
+            ! this distance is the real-space cut-off radius used in the construction of second-order force constants
+            ! its value cannot exceed half the smallest dimension of the supercell.
             !
-            ! determine sphere center by choosing an atom in the primitive cell, representative of atoms in the supercell
+            ! create sphere instance (sphere center determined by an atom in the primitive cell, representative of atoms in the supercell)
             select_primitive_atom = uc2prim(ii)
             sphere_center = uc%tau(:,select_primitive_atom)
-            !
-            ! elements with incomplete orbits should be ignored, since they do not have enough information to build full shells
-            if (allocated(atoms_inside)) deallocate(atoms_inside)
-            allocate(atoms_inside(sphere%natoms))
-            atoms_inside = 0
-            !
-            ! filter sphere keeping only atoms iniside pair cutoff raidus
-            j=0
-            do i = 1, sphere%natoms
-                ! turn sphere into a block with select atom at the origin
-                sphere%tau(:,i) = sphere%tau(:,i) - sphere_center
-                ! translate atoms to be as close to the origin as possible
-                sphere%tau(:,i) = reduce_to_wigner_seitz(pnt=sphere%tau(:,i),grid_points=grid_points,bas=uc%bas,sym_prec=opts%sym_prec)
-                ! take note of points within the predetermied pair cutoff radius
-                if (norm2(matmul(uc%bas,sphere%tau(:,i))).le.pair_cutoff+opts%sym_prec) then
-                    j=j+1
-                    atoms_inside(j) = i
-                endif
-            enddo
-            call sphere%filter(indices=atoms_inside(1:j))
+            sphere = create_sphere(uc=uc, sphere_center=sphere_center, pair_cutoff=pair_cutoff )
             !
             ! rg = local pg copy
-            rg=pg
-            ! call rg%copy(sg=pg)
+            call rg%rotational_group(uc=sphere,pg=pg,opts=opts)
             !
             ! convert to cartesian: point symmetries (rg) and atomic basis (sphere)
             call convert(uc=sphere,sg=rg,flags='frac2cart')
                 !
-                ! if (opts%write_sphere) call sphere%output_poscar(file_output_poscar='outfile.POSCAR.sphere')
                 ! write action file and get permutation map PM(sphere%natoms,sg%nsyms) which shows how space symmetries permute atomic positions
                 call rg%symmetry_action(uc=sphere,oopt_PM=PM,flags='relax_pbc',iopt_fname='outfile.action_rotational_group_cart',opts=notalk)
                 ! call am_print('PM',PM)
@@ -537,17 +536,17 @@ contains
                 call rank(d,indices)
                 !
                 ! get shells starting with closest atoms first
-                if (allocated(shell)) deallocate(shell)
-                allocate(shell(sphere%natoms))
-                shell=0
+                if (allocated(shell_identifier)) deallocate(shell_identifier)
+                allocate(shell_identifier(sphere%natoms))
+                shell_identifier=0
                 k=0
                 do jj = 1, sphere%natoms
                     i = indices(jj)
-                    if (shell(i).eq.0) then
+                    if (shell_identifier(i).eq.0) then
                         k=k+1
                         do j = 1, rg%nsyms
                         if ((PM(i,j)).ne.0) then
-                            shell(PM(i,j)) = k
+                            shell_identifier(PM(i,j)) = k
                         endif
                         enddo
                     endif
@@ -560,10 +559,21 @@ contains
                 endif
                 !
                 ! get shell members [shell representative is given by shell_member(:,1)]
-                shell_member = member(shell)
+                shell_member = member(shell_identifier)
                 !
                 ! get number of shell elements
-                shell_nelements = nelements(shell)
+                shell_nelements = nelements(shell_identifier)
+                ! 
+                ! save things to buffer
+                buffer%nshells(ii) = nshells
+                do jj = 1, nshells
+                    buffer%pair(ii,jj)%nelements = shell_nelements(jj)
+                    !
+                    allocate( buffer%pair(ii,jj)%tau(3,shell_nelements(jj)) )
+                    do i = 1, shell_nelements(jj)
+                        buffer%pair(ii,jj)%tau(1:3,i) = sphere%tau(1:3,i)
+                    enddo
+                enddo
                 !
                 ! print header
                 if (opts%verbosity.ge.1) then
@@ -571,7 +581,7 @@ contains
                 write(*,'(a5)' ,advance='no') 'shell'
                 write(*,'(a6)' ,advance='no') 'i-j'
                 write(*,'(a5)' ,advance='no') 'm'
-                write(*,'(a10)',advance='no') 'group'
+                write(*,'(a8)' ,advance='no') 'group'
                 write(*,'(a10)',advance='no') '|v(cart)|'
                 write(*,'(a30)',advance='no') centertitle('v(cart)',30)
                 write(*,'(a30)',advance='no') centertitle('v(frac)',30)
@@ -580,7 +590,7 @@ contains
                 write(*,'(a5)' ,advance='no')      repeat('-',5)
                 write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
                 write(*,'(a5)' ,advance='no') ' '//repeat('-',4)
-                write(*,'(a10)',advance='no') ' '//repeat('-',9)
+                write(*,'(a8)', advance='no') ' '//repeat('-',7)
                 write(*,'(a10)',advance='no') ' '//repeat('-',9)
                 write(*,'(a30)',advance='no') ' '//repeat('-',29)
                 write(*,'(a30)',advance='no') ' '//repeat('-',29)
@@ -588,10 +598,10 @@ contains
                 endif
                 !
                 recbas=reciprocal_basis(pc%bas)
-                do k = 1, nshells
+                do jj = 1, nshells
                     ! pairs
                     i = select_primitive_atom ! holds index of atom in uc instance
-                    j = shell_member(k,1)
+                    j = shell_member(jj,1)
                     ! bond vector (select_primitive_atom is centered at zero by definition here)
                     v = sphere%tau(:,j)
                     ! get stabilizer of vector (bond group), symmetries which leave bond invariant
@@ -599,26 +609,38 @@ contains
                     ! print to stdout
                     if (opts%verbosity.ge.1) then
                     write(*,'(5x)'    ,advance='no') 
-                    write(*,'(i5)'    ,advance='no') k
+                    write(*,'(i5)'    ,advance='no') jj
                     write(*,'(a6)'    ,advance='no') trim(trim(uc%symb(uc%atype(i)))//'-'//trim(sphere%symb(sphere%atype(j))))
-                    write(*,'(i5)'    ,advance='no') shell_nelements(k)
-                    write(*,'(a10)'   ,advance='no') trim(decode_pointgroup(vg%pg_identifier))
+                    write(*,'(i5)'    ,advance='no') shell_nelements(jj)
+                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(vg%pg_identifier))
                     write(*,'(f10.3)' ,advance='no') norm2(v)
                     write(*,'(3f10.3)',advance='no') v
                     write(*,'(3f10.3)',advance='no') matmul(recbas,v)
                     write(*,*)
                     endif
-                    !
-                    ! ! convert back to frac for symmetry_adapted_tensor routine
-                    ! do i = 1,vg%nsyms
-                    ! vg%R(:,:,i)=ps_cart2frac(vg%R(:,:,i),uc%bas)
-                    ! enddo
-                    ! call vg%symmetry_adapted_tensor(uc=sphere,opts=opts,property='pair force-constants')
+                    ! save to buffer
+                    buffer%pair(ii,jj)%vg = vg
+                    ! buffer%pair(ii,jj)%vg = cr
                     !
                 enddo
+                !
             ! convert back to fractional
             call convert(uc=sphere,sg=rg,flags='cart2frac')
             !
+        enddo ! primitive cell atoms
+        !
+        ! clean up
+        ! 
+        shell%natoms  = buffer%natoms
+        shell%nshells = buffer%nshells
+        allocate( shell%pair( shell%natoms ,maxval(shell%nshells)) )
+        do i = 1, buffer%natoms
+        do j = 1, buffer%nshells(i)
+            ! "prototypical/representative" atom in shell given by tau(1:3,1)
+            allocate(shell%pair(i,j)%tau, source=buffer%pair(i,j)%tau)
+            shell%pair(i,j)%vg = buffer%pair(i,j)%vg ! "vector group" - symmetries which stabilize vector corresponding to the position of atom
+            ! allocate(shell%pair(i,j)%cr , source=buffer%pair%(i,j)%cr ) ! coset representative subset: symmerties which rotates atoms in the same shell onto each other
+        enddo
         enddo
         !
         contains
@@ -633,10 +655,10 @@ contains
             real(dp), intent(in) :: sym_prec
             real(dp) :: pnt_cart(3) !> pnt cartesian
             real(dp) :: G(3) !> reciprocal lattice vector
-            real(dp) :: P !> bragg plane condition
             real(dp) :: pnt_reduced(3)
             integer :: i ! loop variable
             logical :: is_not_done
+            ! real(dp) :: small_offset(3)
             !
             ! take pnt in fractional coordinates (will become cartesian later)
             pnt_cart = pnt
@@ -651,8 +673,8 @@ contains
                 is_not_done = .false.
                 do i = 1,27
                     G = grid_points(:,i)
-                    P = 2*dot_product(pnt_cart,G) - dot_product(G,G)
-                    if ( P .gt. sym_prec ) then
+                    ! bragg plane
+                    if ( 2*dot_product(pnt_cart,G) .gt. dot_product(G,G)+sym_prec ) then
                         pnt_cart = pnt_cart - G
                         is_not_done = .true.
                     endif
@@ -662,7 +684,48 @@ contains
             pnt_reduced = matmul(reciprocal_basis(bas),pnt_cart)
             !
         end function   reduce_to_wigner_seitz
-    end subroutine get_atom_pairs
+
+        pure function  create_sphere(uc,sphere_center,pair_cutoff) result(sphere)
+            !
+            ! TO DO: INCLUDE EDGE POINTS
+            ! RIGHT NOW, USING MINUS SIGN AND IGNORING EDGE POINTS, WHICH ARE DIFFICULT TO SEPARATE TO DISTINC ORBIT SITES BECAUSE OF THEIR DEGENERACY.
+            ! EVENTUALLY, TRY TO MAKE THE MINUS INTO A PLUS SIGN AS: "pair_cutoff+opts%sym_prec" 
+            !
+            implicit none
+            !
+            type(am_class_unit_cell), intent(in) :: uc
+            type(am_class_unit_cell) :: sphere
+            real(dp), intent(in) :: sphere_center(3)
+            real(dp), intent(in) :: pair_cutoff
+            integer, allocatable :: atoms_inside(:)
+            integer :: i,j
+            !
+            ! create sphere instance
+            call sphere%copy(uc=uc)
+            !
+            ! elements with incomplete orbits should be ignored, since they do not have enough information to build full shells
+            allocate(atoms_inside(sphere%natoms))
+            atoms_inside = 0
+            !
+            ! filter sphere keeping only atoms iniside pair cutoff raidus
+            j=0
+            do i = 1, sphere%natoms
+                ! turn sphere into a block with select atom at the origin
+                sphere%tau(:,i) = sphere%tau(:,i) - sphere_center + real(1.0E5,dp)
+                ! translate atoms to be as close to the origin as possible
+                sphere%tau(:,i) = reduce_to_wigner_seitz(pnt=sphere%tau(:,i),grid_points=grid_points,bas=uc%bas,sym_prec=opts%sym_prec)
+                ! take note of points within the predetermied pair cutoff radius
+                if (norm2(matmul(uc%bas,sphere%tau(:,i))).le.pair_cutoff-opts%sym_prec) then
+                    j=j+1
+                    atoms_inside(j) = i
+                endif
+            enddo
+            !
+            call sphere%filter(indices=atoms_inside(1:j))
+            !
+            ! call sphere%output_poscar(file_output_poscar='outfile.POSCAR.sphere'//trim(int2char(ii)))
+        end function create_sphere
+    end subroutine get_pair_shells
 
     pure function  transform_2nd_order_force_constants(M,R,PM) result(RM)
         !
@@ -704,12 +767,13 @@ contains
     ! functions which operate on tensors or make symmetry-adapted tensors
     !
 
-    subroutine     symmetry_adapted_tensor(pg,uc,opts,property)
+    subroutine     symmetry_adapted_tensor(pg,uc,opts,relations,property)
         !
         class(am_class_symmetry), intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
         character(*), intent(in) :: property
+        real(dp), allocatable, optional, intent(out) :: relations(:,:)
         !
         integer  :: ndim
         integer  :: nterms                          !> nterms the number of terms
@@ -895,6 +959,8 @@ contains
         !
         call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
             is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
+        !
+        if (present(relations)) allocate(relations, source=RHS)
         !
     end subroutine symmetry_adapted_tensor
 
@@ -1817,6 +1883,49 @@ contains
         if ( present(iopt_filename) ) close(fid)
         !
     end subroutine stdout
+
+    subroutine     convert(sg,uc,flags)
+        !
+        ! one way to remember which to multiply on the left and right is to make form the identity; to convert V and R
+        ! in fractional coordinates to cartesian: V -> BV; R -> B*R*inv(B); because: V_rot_cart = B*R*inv(B) * B*V =
+        ! B*R*I*V = B*R_frac*V_frac
+        !
+        implicit none
+        !
+        type(am_class_symmetry) , intent(inout) :: sg
+        type(am_class_unit_cell), intent(inout) :: uc
+        character(*), intent(in) :: flags
+        real(dp) :: recbas(3,3), bas(3,3)
+        integer :: i
+        !
+        if     (index(flags,'frac2cart').ne.0) then
+            bas    = uc%bas
+            recbas = reciprocal_basis(uc%bas)
+        elseif (index(flags,'cart2frac').ne.0) then
+            bas    = reciprocal_basis(uc%bas)
+            recbas = uc%bas
+        endif
+        !
+        ! atomic basis
+        do i = 1,uc%natoms
+            uc%tau(:,i) = matmul(bas,uc%tau(:,i))
+        enddo
+        !
+        ! rotational component
+        if (allocated(sg%R)) then
+        do i = 1,sg%nsyms
+            sg%R(:,:,i) = matmul(bas,matmul(sg%R(:,:,i),recbas))
+        enddo
+        endif
+        !
+        ! translational component
+        if (allocated(sg%T)) then
+        do i = 1,sg%nsyms
+            sg%T(:,i)   = matmul(bas,sg%T(:,i))
+        enddo
+        endif
+        !
+    end subroutine convert
 
     !
     ! procedures which create representations

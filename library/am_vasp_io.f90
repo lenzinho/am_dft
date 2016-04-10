@@ -765,7 +765,12 @@ module am_vasp_io
                     do j = 1, natoms_per_species(i)
                         !
                         m = m + 1
-                        write(*,'(5x,a5,a3,3f13.8,5x,3f13.8)') int2char(m), symb(atype(m)), tau(1:3,m), matmul(bas,tau(1:3,m))
+                        !
+                        if (m.lt.11) then
+                            write(*,'(5x,a5,a3,3f13.8,5x,3f13.8)') int2char(m), symb(atype(m)), tau(1:3,m), matmul(bas,tau(1:3,m))
+                        elseif (m.eq.11) then
+                            write(*,'(5x,a)') repeat(" ... ",15)
+                        endif
                         !
                     enddo
                 enddo
@@ -829,16 +834,16 @@ module am_vasp_io
             write(unit=fid,fmt='(a)') 'Direct'
             ! (LINE 9-10)   0.1250000000000000  0.1250000000000000  0.1250000000000000
             do i = 1, nspecies
-                do j = 1, natoms
-                    if (atype(j).eq.i) then
-                        !
-                        do n = 1,3
-                            write(unit=fid,fmt='(f20.12)',advance='no') tau(n,j)
-                        enddo
-                        write(unit=fid,fmt=*)
-                        !
-                    endif
+            do j = 1, natoms
+            if (atype(j).eq.i) then
+                !
+                do n = 1,3
+                    write(unit=fid,fmt='(f20.12)',advance='no') tau(n,j)
                 enddo
+                write(unit=fid,fmt=*)
+                !
+            endif
+            enddo
             enddo
             !
         close(fid)

@@ -1314,7 +1314,7 @@
         !
     end function   space_symmetries_from_basis
    
-    subroutine     copy(cp,uc)
+    pure subroutine copy(cp,uc)
         !
         implicit none
         !
@@ -1332,14 +1332,14 @@
         allocate(cp%atype, source = uc%atype)
         allocate(cp%symb , source = uc%symb )
         !
-    end subroutine copy
+    end subroutine  copy
    
-    subroutine     filter(uc,indices)
+    pure subroutine filter(uc,indices)
         !
         implicit none
         !
         class(am_class_unit_cell), intent(inout) :: uc
-        integer , intent(in) :: indices(:)
+        integer , intent(in)  :: indices(:)
         real(dp), allocatable :: tau(:,:)
         integer , allocatable :: atype(:)
         integer :: i
@@ -1363,7 +1363,7 @@
             uc%atype(i)=atype(indices(i))
         enddo
         !
-    end subroutine filter
+    end subroutine  filter
 
 
 end module
