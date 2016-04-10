@@ -918,7 +918,7 @@
         !
         implicit none
         !
-        class(am_class_unit_cell), intent(inout) :: uc
+        class(am_class_unit_cell), intent(in) :: uc
         character(*), intent(in) :: file_output_poscar
         !
         if (uc%nspecies.lt.1) then
@@ -945,7 +945,7 @@
         !
     end subroutine output_poscar
 
-    subroutine     reduce_to_primitive(prim,uc,oopts_uc2prim,opts)
+    subroutine     reduce_to_primitive(prim,uc,opts)
         !
         use am_rank_and_sort, only : rank
         !
@@ -954,11 +954,10 @@
         class(am_class_unit_cell), intent(inout) :: prim
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
-        integer , allocatable, optional :: oopts_uc2prim(:) ! oopts_uc2prim(prim%natoms) lists the indices of the uc atoms which are in prim (note that the coordinates of the atoms in the primitive cell do not necessairly match the coordinates of the corresponding atoms in the original cell)
         integer , allocatable :: indices(:)
         real(dp), allocatable :: T(:,:)
-        real(dp) :: uc2prim(3,3)
-        real(dp) :: tau_ref(3)
+        real(dp) :: uc2prim(3,3) 
+        real(dp) :: tau_ref(3) ! currently not in use, this shifts the basis, putting one atom at the origin
         integer  :: nTs
         integer  :: i, j, k 
         !
@@ -1020,9 +1019,11 @@
         !
         ! reduce atoms to primitive cell by ...
         if (opts%verbosity.ge.1) call am_print('number of atoms in original cell',uc%natoms,' ... ')
-        ! ... setting first atom at the origin
+        ! ... allocating enough space
         allocate(prim%tau(3,uc%natoms))
-        tau_ref = uc%tau(1:3,1)
+        ! ... setting first atom at the origin (no need to do this...)
+        ! tau_ref = uc%tau(1:3,1)
+        tau_ref = real([0,0,0],dp)
         do i = 1, uc%natoms
             prim%tau(1:3,i) = uc%tau(1:3,i) - tau_ref
         enddo
@@ -1048,21 +1049,12 @@
         !
         !
         ! transfer atomic species by comparing atomic coordinates
-        if (present(oopts_uc2prim)) then 
-            allocate(oopts_uc2prim(prim%natoms))
-        endif
         allocate(prim%atype(prim%natoms))
         do i = 1, prim%natoms
             prim%atype(i) = 0
             search_for_atom : do j = 1, uc%natoms
                 if ( all(abs(prim%tau(1:3,i)-modulo( matmul(uc2prim,uc%tau(1:3,j)-tau_ref)+opts%sym_prec,1.0_dp)+opts%sym_prec).lt.opts%sym_prec) ) then
                     prim%atype(i) = uc%atype(j)
-                    ! 
-                    ! create list showing which atoms have been transfered to the primitive cell
-                    if (present(oopts_uc2prim)) then
-                        oopts_uc2prim(i) = j
-                    endif
-                    !
                     exit search_for_atom
                 endif
             enddo search_for_atom
@@ -1077,9 +1069,9 @@
                 stop
             endif
         enddo
+        ! 
         !
-        ! 8) transfer other stuff
-        !
+        ! lastly, transfer other stuff
         allocate(character(500)::prim%symb(uc%nspecies))
         prim%symb = uc%symb
         prim%nspecies = uc%nspecies
@@ -1140,11 +1132,11 @@
         allocate(sc%tau(3,sc%natoms))
         allocate(sc%atype(sc%natoms))
         !
-        sc%tau = 100.0_dp
+        sc%tau = 1.0D5
         m=0
-        map : do i1 = 0, sc%natoms
-              do i2 = 0, sc%natoms
-              do i3 = 0, sc%natoms
+        map : do i1 = 0, nint(sum(abs(bscfp(:,1)))) ! sc%natoms
+              do i2 = 0, nint(sum(abs(bscfp(:,2)))) ! sc%natoms
+              do i3 = 0, nint(sum(abs(bscfp(:,3)))) ! sc%natoms
                   do j = 1, uc%natoms
                       !
                       tau_wrk = uc%tau(1:3,j)
