@@ -17,16 +17,17 @@ module am_symmetry
     !
     type am_class_abstract_group
         integer :: nsyms
-        integer , allocatable :: identifier(:) !> indices assiging each element to a conjugacy class
+        integer , allocatable :: cc_identifier(:) !> indices assiging each element to a conjugacy class
     end type am_class_abstract_group
     !
     type, extends(am_class_abstract_group) :: am_class_symmetry 
-        real(dp), allocatable :: R(:,:,:) !> symmetry elements (operate on fractional atomic basis)
-        real(dp), allocatable :: T(:,:)   !> symmetry elements (operate on fractional atomic basis)
+        real(dp), allocatable :: R(:,:,:)         !> symmetry elements (operate on fractional atomic basis)
+        real(dp), allocatable :: T(:,:)           !> symmetry elements (operate on fractional atomic basis)
         integer , allocatable :: ps_identifier(:) !> integers which identiy point symmetries (see decode_pointsymmetry)
         integer               :: pg_identifier    !> integer which identifies the point group
     contains
         !
+        procedure :: copy
         procedure :: create
         procedure :: space_group
         procedure :: point_group
@@ -408,14 +409,14 @@ contains
         ! rotational component
         if (allocated(sg%R)) then
         do i = 1,sg%nsyms
-            sg%R(:,:,i) = matmul(bas, matmul(sg%R(:,:,i),recbas) )
+            sg%R(:,:,i) = matmul(bas,matmul(sg%R(:,:,i),recbas))
         enddo
         endif
         !
         ! translational component
         if (allocated(sg%T)) then
         do i = 1,sg%nsyms
-            sg%T(:,i)   = matmul(bas,uc%tau(:,i))
+            sg%T(:,i)   = matmul(bas,sg%T(:,i))
         enddo
         endif
         !
@@ -473,12 +474,6 @@ contains
         deallocate(d)
         call am_print('pair cutoff radius',pair_cutoff,' ... ')
         !
-        ! get point symmetries which are compatible with the atomic basis (essentially keeps rotational part of space
-        ! symmetries which are able to map all atoms onto each other. For a symorphic space group this is simply the
-        ! point group. For a non-symmorphic space group, symmetries which have a non-unique rotational part that are
-        ! coupled to a translational part are discarted.)
-        call rg%rotational_group(uc=uc,pg=pg,opts=opts)
-        !
         ! get atoms in primitive cell and indices of atoms in the original cell which represent all identical atoms in the primitive cell
         call pc%reduce_to_primitive(uc=uc,oopts_uc2prim=uc2prim,opts=notalk)
         call am_print('total primitive cell atoms',pc%natoms,' ... ')
@@ -489,20 +484,20 @@ contains
         ! its value cannot exceed half the smallest dimension of the supercell.
         !
         do ii = 1, pc%natoms
-            ! determine sphere center by choosing an atom in the primitive cell, representative of atoms in the supercell
-            select_primitive_atom = uc2prim(ii)
             !
             ! create sphere instance
             call sphere%copy(uc=uc)
+            !
+            ! determine sphere center by choosing an atom in the primitive cell, representative of atoms in the supercell
+            select_primitive_atom = uc2prim(ii)
+            sphere_center = uc%tau(:,select_primitive_atom)
+            !
             ! elements with incomplete orbits should be ignored, since they do not have enough information to build full shells
             if (allocated(atoms_inside)) deallocate(atoms_inside)
             allocate(atoms_inside(sphere%natoms))
             atoms_inside = 0
             !
-            call am_print('centering on primitive cell atom ',select_primitive_atom,' ... ')
-            sphere_center = sphere%tau(:,select_primitive_atom)
-            !
-            ! being sphere construction
+            ! filter sphere keeping only atoms iniside pair cutoff raidus
             j=0
             do i = 1, sphere%natoms
                 ! turn sphere into a block with select atom at the origin
@@ -515,11 +510,14 @@ contains
                     atoms_inside(j) = i
                 endif
             enddo
+            call sphere%filter(indices=atoms_inside(1:j))
+            !
+            ! rg = local pg copy
+            rg=pg
+            ! call rg%copy(sg=pg)
+            !
             ! convert to cartesian: point symmetries (rg) and atomic basis (sphere)
             call convert(uc=sphere,sg=rg,flags='frac2cart')
-                !
-                ! filter sphere keeping only atoms iniside pair cutoff raidus
-                call sphere%filter(indices=atoms_inside)
                 !
                 ! if (opts%write_sphere) call sphere%output_poscar(file_output_poscar='outfile.POSCAR.sphere')
                 ! write action file and get permutation map PM(sphere%natoms,sg%nsyms) which shows how space symmetries permute atomic positions
@@ -548,7 +546,9 @@ contains
                     if (shell(i).eq.0) then
                         k=k+1
                         do j = 1, rg%nsyms
+                        if ((PM(i,j)).ne.0) then
                             shell(PM(i,j)) = k
+                        endif
                         enddo
                     endif
                 enddo
@@ -609,11 +609,11 @@ contains
                     write(*,*)
                     endif
                     !
-    !                 ! convert back to frac for symmetry_adapted_tensor routine
-    !                 do i = 1,vg%nsyms
-    !                 vg%R(:,:,i)=ps_cart2frac(vg%R(:,:,i),uc%bas)
-    !                 enddo
-    !                 call vg%symmetry_adapted_tensor(uc=sphere,opts=opts,property='pair force-constants')
+                    ! ! convert back to frac for symmetry_adapted_tensor routine
+                    ! do i = 1,vg%nsyms
+                    ! vg%R(:,:,i)=ps_cart2frac(vg%R(:,:,i),uc%bas)
+                    ! enddo
+                    ! call vg%symmetry_adapted_tensor(uc=sphere,opts=opts,property='pair force-constants')
                     !
                 enddo
             ! convert back to fractional
@@ -793,7 +793,7 @@ contains
         !
         ! get conjugacy class members
         ! members(nclass,maxval(class_nelements))
-        class_member = member(pg%identifier)
+        class_member = member(pg%cc_identifier)
         !
         ! initialize A. 
         ! using LU factorization instead of applying rref in order to incorporate effect of symmetry on tensor at each step.
@@ -1052,13 +1052,13 @@ contains
         call sg%create(R=seitz(1:3,1:3,:),T=seitz(1:3,4,:))
         !
         ! determine conjugacy classes (needs identity first)
-        sg%identifier = get_conjugacy_classes(rep=seitz,flags='seitz')
+        sg%cc_identifier = get_conjugacy_classes(rep=seitz,flags='seitz')
         !
         ! sort space group symmetries based on parameters
         call sg%sort(sort_parameter=sg%T(1,:),iopt_direction='ascend')
         call sg%sort(sort_parameter=sg%T(2,:),iopt_direction='ascend')
         call sg%sort(sort_parameter=sg%T(3,:),iopt_direction='ascend')
-        call sg%sort(sort_parameter=real(sg%identifier,dp),iopt_direction='ascend')
+        call sg%sort(sort_parameter=real(sg%cc_identifier,dp),iopt_direction='ascend')
         !
         ! name the (im-)proper part of space symmetry
         call sg%name_symmetries(opts=notalk)
@@ -1101,7 +1101,7 @@ contains
         if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,' ... ')
         !
         ! determine conjugacy classes (needs identity first, inversion second)
-        pg%identifier = get_conjugacy_classes(rep=pg%R)
+        pg%cc_identifier = get_conjugacy_classes(rep=pg%R)
         !
         ! sort point group symmetries based on parameters
         allocate(sort_parameter(pg%nsyms))
@@ -1109,7 +1109,7 @@ contains
         call pg%sort(sort_parameter=sort_parameter,iopt_direction='ascend')
         do i = 1, pg%nsyms; sort_parameter(i) = ps_determinant(pg%R(:,:,i)); enddo
         call pg%sort(sort_parameter=sort_parameter,iopt_direction='ascend')
-        call pg%sort(sort_parameter=real(pg%identifier,dp),iopt_direction='ascend')
+        call pg%sort(sort_parameter=real(pg%cc_identifier,dp),iopt_direction='ascend')
         !
         ! name point symmetries
         call pg%name_symmetries(opts=opts)
@@ -1141,7 +1141,7 @@ contains
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options)  , intent(in) :: opts
         type(am_class_options) :: notalk
-        real(dp), allocatable :: wrkspace(:,:,:)
+        real(dp), allocatable  :: wrkspace(:,:,:)
         integer :: i, m
         !
         notalk=opts
@@ -1157,10 +1157,10 @@ contains
             endif
         enddo
         !
-        call rg%create(R=wrkspace(1:3,1:3,1:m))
+        call rg%create(R=unique(wrkspace(1:3,1:3,1:m)))
         !
         ! determine conjugacy classes (needs identity first)
-        rg%identifier = get_conjugacy_classes(rep=rg%R)
+        rg%cc_identifier = get_conjugacy_classes(rep=rg%R)
         !
         ! name the (im-)proper part of space symmetry
         call rg%name_symmetries(opts=notalk)
@@ -1199,7 +1199,7 @@ contains
         ! create group
         call vg%create(R=pg%R(:,:,pack(indicies,mask)))
         ! determine conjugacy classes (needs identity first, inversion second)
-        vg%identifier = get_conjugacy_classes(rep=vg%R)
+        vg%cc_identifier = get_conjugacy_classes(rep=vg%R)
         ! name point symmetries
         call vg%name_symmetries(opts=opts)
         ! name point group
@@ -1254,19 +1254,19 @@ contains
         !
         ! identify which class symmetry belongs to
         ! identifier(nsyms)
-        sg%identifier = get_conjugacy_classes(rep=rep,flags=flags)
+        sg%cc_identifier = get_conjugacy_classes(rep=rep,flags=flags)
         !
         ! get number of classes
-        nclasses = maxval(sg%identifier)
+        nclasses = maxval(sg%cc_identifier)
         ! if (opts%verbosity.ge.1) call am_print('conjugacy classes',nclasses,' ... ')
         !
         ! get number of elements in each class
         ! class_nelements(nclasses)
-        class_nelements = nelements(sg%identifier)
+        class_nelements = nelements(sg%cc_identifier)
         !
         ! record indicies of each class_member element for each class (use the first class_member of class as class representative)
         ! members(nclass,maxval(class_nelements)) 
-        class_member = member(sg%identifier)
+        class_member = member(sg%cc_identifier)
         ! call am_print('class memebers',class_member,' ... ')
         !
         ! get class coefficients (thenumber of times class k appears in the pdocut o class j and k )
@@ -1522,7 +1522,7 @@ contains
                 write(fid,'(5x)',advance='no')
                 write(fid,'(a5)',advance='no') 'class'
                 do i = 1, sg%nsyms
-                    write(fid,'(i10)',advance='no') sg%identifier(i)
+                    write(fid,'(i10)',advance='no') sg%cc_identifier(i)
                 enddo
                 write(fid,*)
                 ! HEADER / SEPERATOR
@@ -1676,6 +1676,22 @@ contains
         enddo
     end subroutine create
 
+    subroutine     copy(cp,sg)
+        !
+        implicit none
+        !
+        class(am_class_symmetry), intent(inout) :: cp
+        type(am_class_symmetry) , intent(in) :: sg
+        !
+        cp%nsyms         = sg%nsyms
+        cp%pg_identifier = sg%pg_identifier
+        if (allocated(sg%cc_identifier)) allocate(cp%cc_identifier  , source=sg%cc_identifier)
+        if (allocated(sg%R))             allocate(cp%R              , source=sg%R)
+        if (allocated(sg%T))             allocate(cp%T              , source=sg%T)
+        if (allocated(sg%ps_identifier)) allocate(cp%ps_identifier  , source=sg%ps_identifier)
+        !
+    end subroutine copy
+   
     subroutine     sort(sg,sort_parameter,iopt_direction)
         !
         ! iopt_direction = 'ascend'/'descend', only first character is important
@@ -1705,7 +1721,7 @@ contains
         if (allocated(sg%R)) sg%R = sg%R(:,:,sorted_indices)
         if (allocated(sg%T)) sg%T = sg%T(:,sorted_indices)
         if (allocated(sg%ps_identifier)) sg%ps_identifier = sg%ps_identifier(sorted_indices)
-        if (allocated(sg%identifier)) sg%identifier = sg%identifier(sorted_indices)
+        if (allocated(sg%cc_identifier)) sg%cc_identifier = sg%cc_identifier(sorted_indices)
         !
     end subroutine sort
 
@@ -2048,7 +2064,7 @@ contains
         ! 
     end subroutine put_identity_first
 
-    function       get_conjugacy_classes(rep,flags) result(identifier)
+    function       get_conjugacy_classes(rep,flags) result(cc_identifier)
         !
         ! for AX = XB, if elements A and B are conjugate pairs for some other element X in the group, then they are in the same class
         !
@@ -2060,7 +2076,7 @@ contains
         character(*), intent(in), optional :: flags
         integer, allocatable :: cayley_table(:,:) ! cayley table
         integer, allocatable :: sinv(:) ! sinv(nsyms) index of the inverse of symmetry element i
-        integer, allocatable :: identifier(:)
+        integer, allocatable :: cc_identifier(:)
         integer, allocatable :: celem(:)
         ! integer, allocatable :: class_member(:,:) ! used to sort based on determinant
         ! integer, allocatable :: indices(:)        ! used to sort based on determinant
@@ -2080,8 +2096,8 @@ contains
         endif
         !
         ! allocate space for conjugacy class
-        allocate(identifier(nsyms))
-        identifier = 0
+        allocate(cc_identifier(nsyms))
+        cc_identifier = 0
         !
         ! get element inverse
         sinv = get_inverse_indices(cayley_table)
@@ -2092,7 +2108,7 @@ contains
         ! determine conjugacy classes
         k = 0
         do i = 1, nsyms
-        if (identifier(i).eq.0) then
+        if (cc_identifier(i).eq.0) then
             k=k+1
             ! conjugate each element with all other group elements
             ! A = X(j) * B * X(j)^-1
@@ -2100,9 +2116,9 @@ contains
                 celem(j) = cayley_table(j,cayley_table(i,sinv(j)))
             enddo
             ! for each subgroup element created by conjugation find the corresponding index of the element in the group
-            ! in order to save the class identifier number
+            ! in order to save the class cc_identifier number
             do j = 1, nsyms
-                identifier( celem(j) ) = k
+                cc_identifier( celem(j) ) = k
             enddo
             !
         endif
@@ -2110,10 +2126,10 @@ contains
         nclasses = k
         !
         ! relabel classes based on number of elements in each class
-        call relabel_based_on_occurances(identifier)
+        call relabel_based_on_occurances(cc_identifier)
         !
         ! relabel classes based on det of class representative
-        ! class_member = member(identifier)
+        ! class_member = member(cc_identifier)
         ! allocate(ccdet(nclasses)) 
         ! do i = 1,nclasses
         !     ccdet(i) = det( rep(:,:,class_member(i,1)) )
@@ -2127,16 +2143,16 @@ contains
         !     relabel_indices(indices(i)) = i
         ! enddo
         ! do i = 1, nsyms
-        !     identifier(i) = relabel_indices( identifier(i) )
+        !     cc_identifier(i) = relabel_indices( cc_identifier(i) )
         ! enddo
         !
         ! make sure the identity is in the first class
-        ! identifier(i=1) is the class of the first element (the identity); swap it's location with whaterver elements are in the first class
-        where (identifier.eq.1) identifier = identifier(1)
-        identifier(1)=1
+        ! cc_identifier(i=1) is the class of the first element (the identity); swap it's location with whaterver elements are in the first class
+        where (cc_identifier.eq.1) cc_identifier = cc_identifier(1)
+        cc_identifier(1)=1
         !
         ! check that classes are disjoint and complete
-        if (any(identifier.eq.0)) then
+        if (any(cc_identifier.eq.0)) then
             call am_print('ERROR','Not every element in the group has been asigned a conjugacy class.',flags='E')
             stop
         endif

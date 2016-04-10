@@ -741,6 +741,7 @@
         real(dp), intent(in), optional :: iopt_sym_prec
         logical , intent(in), optional :: iopt_exact    ! if present, do not apply mod. ; useful for determining stabilizers
         integer , allocatable :: atype(:)
+        real(dp), allocatable :: tau_internal(:,:)
         real(dp) :: R(3,3)
         real(dp) :: T(3)
         real(dp) :: sym_prec
@@ -779,28 +780,38 @@
             T = real([0,0,0],dp)
         endif
         !
+        allocate(tau_internal, source=tau)
+        if (.not.present(iopt_exact)) then
+        do i = 1, natoms
+            tau_internal(:,i) = modulo(tau_internal(:,i)+sym_prec,1.0_dp)-sym_prec
+        enddo
+        endif
+        !
         m = 0
         do i = 1, natoms
             ! apply symmetry operation
-            tau_rot(1:3) = matmul(R,tau(1:3,i)) + T(1:3)
+            tau_rot(1:3) = matmul(R,tau_internal(1:3,i)) + T(1:3)
             ! reduce rotated+translated point to unit cell
             if (.not.present(iopt_exact)) tau_rot(1:3) = modulo(tau_rot(1:3)+sym_prec,1.0_dp)-sym_prec
             ! check that newly created point matches something already present
             overlap_found = .false.
             check_overlap : do j = 1,natoms
                 if (atype(i) .eq. atype(j)) then
-                    if (all(abs(tau_rot(1:3)-tau(1:3,j)).lt.sym_prec)) then
+                    if (all(abs(tau_rot(1:3)-tau_internal(1:3,j)).lt.sym_prec)) then
                         m = m + 1
                         overlap_found = .true.
                         exit check_overlap
                     endif
                 endif
             enddo check_overlap
+            !
             if ( .not. overlap_found ) then
                 is_symmetry_valid = .false.
                 return
             endif
+            !
         enddo
+        !
         if (m .eq. natoms) then
             is_symmetry_valid = .true.
             return
@@ -1328,7 +1339,7 @@
         implicit none
         !
         class(am_class_unit_cell), intent(inout) :: uc
-        integer , allocatable, intent(in) :: indices(:)
+        integer , intent(in) :: indices(:)
         real(dp), allocatable :: tau(:,:)
         integer , allocatable :: atype(:)
         integer :: i
