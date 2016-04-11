@@ -486,10 +486,10 @@ contains
             call rg%copy(sg=pg)
             !
             ! convert rg (local point group) to sphere to cartesian
-            call convert(sg=rg,uc=sphere,flags='frac2cart')
+            ! call convert(sg=rg,uc=sphere,flags='frac2cart')
                 !
                 ! get shell identifier
-                shell_identifier = identify_shells(sphere,rg)
+                shell_identifier = identify_shells(sphere=sphere,rg=rg)
                 ! get number of shells
                 nshells = maxval(shell_identifier)
                 ! get shell members [shell representative is given by shell_member(:,1)]
@@ -548,16 +548,16 @@ contains
                     write(*,'(a6)'    ,advance='no') trim(pc%symb(pc%atype(i)))//'-'// trim(pc%symb( shell%pair(i)%atype(j) ))
                     write(*,'(i5)'    ,advance='no') shell_nelements(j)
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( shell%pair(i)%vg(j)%pg_identifier ))
-                    write(*,'(f10.3)' ,advance='no') norm2( shell%pair(i)%tau(1:3,j) )
+                    write(*,'(f10.3)' ,advance='no') norm2(matmul(sphere%bas,shell%pair(i)%tau(1:3,j)))
+                    write(*,'(3f10.3)',advance='no') matmul(sphere%bas,shell%pair(i)%tau(1:3,j))
                     write(*,'(3f10.3)',advance='no') shell%pair(i)%tau(1:3,j)
-                    write(*,'(3f10.3)',advance='no') matmul(reciprocal_basis(pc%bas), shell%pair(i)%tau(1:3,j))
                     write(*,*)
                     endif
                     !
                 enddo
             !
             ! convert back to fractional
-            call convert(sg=rg,uc=sphere,flags='cart2frac')
+            ! call convert(sg=rg,uc=sphere,flags='cart2frac')
             !
         enddo ! primitive cell atoms
 
@@ -695,7 +695,7 @@ contains
             ! get distance of atoms
             allocate(d(sphere%natoms))
             do i = 1, sphere%natoms
-                d(i) = norm2(sphere%tau(:,i))
+                d(i) = norm2(matmul(sphere%bas,sphere%tau(:,i)))
             enddo
             !
             ! rank atoms according to their distances
