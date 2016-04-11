@@ -451,7 +451,7 @@ contains
         integer , allocatable :: shell_member(:,:)
         integer , allocatable :: shell_identifier(:)
         integer  :: nshells !  number of shells
-        real(dp) :: sphere_center(3)
+        real(dp) :: D(3)
         integer  :: k,i,j
         integer  :: proto
         !
@@ -468,7 +468,6 @@ contains
         !
         ! allocate shell space, pair shell centered on atom pc%natoms 
         allocate( shell%pair(pc%natoms) )
-        !
         ! 
         do i = 1, pc%natoms
             !
@@ -477,81 +476,88 @@ contains
             ! its value cannot exceed half the smallest dimension of the supercell
             !
             ! get center of sphere in fractional supercell coordinates
-            sphere_center = matmul(matmul(reciprocal_basis(uc%bas),pc%bas),pc%tau(:,i)) 
+            D = matmul(matmul(reciprocal_basis(uc%bas),pc%bas),pc%tau(:,i))
             !
             ! create sphere
-            sphere = create_sphere(uc=uc, sphere_center=sphere_center, pair_cutoff=pair_cutoff )
+            sphere = create_sphere(uc=uc, sphere_center=D, pair_cutoff=pair_cutoff, opts=opts )
+            ! call sphere%output_poscar(file_output_poscar='outfile.POSCAR.sphere'//trim(int2char(i)))
             !
             ! create rotational group; essentially all space symmetries that have T = [0 0 0] and are compatible with the atomic basis
-            call rg%rotational_group(uc=sphere,pg=pg,opts=opts)
+            call rg%copy(sg=pg)
             !
-            ! get shell identifier
-            shell_identifier = identify_shells(sphere,rg)
-            ! get number of shells
-            nshells = maxval(shell_identifier)
-            ! get shell members [shell representative is given by shell_member(:,1)]
-            shell_member = member(shell_identifier)
-            ! get number of shell elements
-            shell_nelements = nelements(shell_identifier) ! essentially the oribital weight.
-            !
-            if (opts%verbosity.ge.1) then
-            write(*,'(" ... primitive atom ",a," at "   ,a,",",a,",",a,  " (cart) has ",a," nearest-neighbor shells")') &
-                & trim(int2char(i)), (trim(dbl2char( sum(sphere%bas(k,:)*sphere_center), 4)), k = 1,3 ), trim(int2char(nshells))
-            endif
-            !
-            ! print header
-            if (opts%verbosity.ge.1) then
-            write(*,'(5x)' ,advance='no')
-            write(*,'(a5)' ,advance='no') 'shell'
-            write(*,'(a6)' ,advance='no') 'i-j'
-            write(*,'(a5)' ,advance='no') 'm'
-            write(*,'(a8)' ,advance='no') 'group'
-            write(*,'(a10)',advance='no') '|v(cart)|'
-            write(*,'(a30)',advance='no') centertitle('v(cart)',30)
-            write(*,'(a30)',advance='no') centertitle('v(frac)',30)
-            write(*,*)
-            write(*,'(5x)' ,advance='no')
-            write(*,'(a5)' ,advance='no')      repeat('-',5)
-            write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
-            write(*,'(a5)' ,advance='no') ' '//repeat('-',4)
-            write(*,'(a8)', advance='no') ' '//repeat('-',7)
-            write(*,'(a10)',advance='no') ' '//repeat('-',9)
-            write(*,'(a30)',advance='no') ' '//repeat('-',29)
-            write(*,'(a30)',advance='no') ' '//repeat('-',29)
-            write(*,*)
-            endif
-            !
-            ! each atom has nshells, with a representative for each; save their positions
-            ! representative is given by the first element of the shell_member(nshell,1)
-            shell%pair(i)%nshells = nshells
-            allocate(shell%pair(i)%tau(3,nshells))
-            allocate(shell%pair(i)%atype(nshells))
-            allocate(shell%pair(i)%vg(nshells))
-            do j = 1, nshells
+            ! convert rg (local point group) to sphere to cartesian
+            call convert(sg=rg,uc=sphere,flags='frac2cart')
                 !
-                proto = shell_member(j,1)
+                ! get shell identifier
+                shell_identifier = identify_shells(sphere,rg)
+                ! get number of shells
+                nshells = maxval(shell_identifier)
+                ! get shell members [shell representative is given by shell_member(:,1)]
+                shell_member = member(shell_identifier)
+                ! get number of shell elements
+                shell_nelements = nelements(shell_identifier) ! essentially the oribital weight.
                 !
-                shell%pair(i)%tau(1:3,j) = sphere%tau(1:3,proto)
-                !
-                shell%pair(i)%atype(j) = sphere%atype(proto)
-                !
-                ! get stabilizer of vector (bond group), symmetries which leave bond invariant
-                call shell%pair(i)%vg(j)%stabilizer_group(pg=rg, v=shell%pair(i)%tau(1:3,j), opts=notalk)
-                !
-                ! print to stdout
                 if (opts%verbosity.ge.1) then
-                write(*,'(5x)'    ,advance='no') 
-                write(*,'(i5)'    ,advance='no') j
-                write(*,'(a6)'    ,advance='no') trim(pc%symb(pc%atype(i)))//'-'// trim(pc%symb( shell%pair(i)%atype(j) ))
-                write(*,'(i5)'    ,advance='no') shell_nelements(j)
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( shell%pair(i)%vg(j)%pg_identifier ))
-                write(*,'(f10.3)' ,advance='no') norm2( shell%pair(i)%tau(1:3,j) )
-                write(*,'(3f10.3)',advance='no') shell%pair(i)%tau(1:3,j)
-                write(*,'(3f10.3)',advance='no') matmul(reciprocal_basis(pc%bas), shell%pair(i)%tau(1:3,j))
+                write(*,'(" ... primitive atom ",a," at "   ,a,",",a,",",a,  " (frac) has ",a," nearest-neighbor shells")') &
+                    & trim(int2char(i)), (trim(dbl2char(D(k),4)),k=1,3), trim(int2char(nshells))
+                endif
+                !
+                ! print header
+                if (opts%verbosity.ge.1) then
+                write(*,'(5x)' ,advance='no')
+                write(*,'(a5)' ,advance='no') 'shell'
+                write(*,'(a6)' ,advance='no') 'i-j'
+                write(*,'(a5)' ,advance='no') 'm'
+                write(*,'(a8)' ,advance='no') 'group'
+                write(*,'(a10)',advance='no') '|v(cart)|'
+                write(*,'(a30)',advance='no') centertitle('v(cart)',30)
+                write(*,'(a30)',advance='no') centertitle('v(frac)',30)
+                write(*,*)
+                write(*,'(5x)' ,advance='no')
+                write(*,'(a5)' ,advance='no')      repeat('-',5)
+                write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
+                write(*,'(a5)' ,advance='no') ' '//repeat('-',4)
+                write(*,'(a8)', advance='no') ' '//repeat('-',7)
+                write(*,'(a10)',advance='no') ' '//repeat('-',9)
+                write(*,'(a30)',advance='no') ' '//repeat('-',29)
+                write(*,'(a30)',advance='no') ' '//repeat('-',29)
                 write(*,*)
                 endif
                 !
-            enddo
+                ! each atom has nshells, with a representative for each; save their positions
+                ! representative is given by the first element of the shell_member(nshell,1)
+                shell%pair(i)%nshells = nshells
+                allocate(shell%pair(i)%tau(3,nshells))
+                allocate(shell%pair(i)%atype(nshells))
+                allocate(shell%pair(i)%vg(nshells))
+                do j = 1, nshells
+                    !
+                    proto = shell_member(j,1)
+                    !
+                    shell%pair(i)%tau(1:3,j) = sphere%tau(1:3,proto)
+                    !
+                    shell%pair(i)%atype(j) = sphere%atype(proto)
+                    !
+                    ! get stabilizer of vector (bond group), symmetries which leave bond invariant
+                    call shell%pair(i)%vg(j)%stabilizer_group(pg=rg, v=shell%pair(i)%tau(1:3,j), opts=notalk)
+                    !
+                    ! print to stdout
+                    if (opts%verbosity.ge.1) then
+                    write(*,'(5x)'    ,advance='no') 
+                    write(*,'(i5)'    ,advance='no') j
+                    write(*,'(a6)'    ,advance='no') trim(pc%symb(pc%atype(i)))//'-'// trim(pc%symb( shell%pair(i)%atype(j) ))
+                    write(*,'(i5)'    ,advance='no') shell_nelements(j)
+                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( shell%pair(i)%vg(j)%pg_identifier ))
+                    write(*,'(f10.3)' ,advance='no') norm2( shell%pair(i)%tau(1:3,j) )
+                    write(*,'(3f10.3)',advance='no') shell%pair(i)%tau(1:3,j)
+                    write(*,'(3f10.3)',advance='no') matmul(reciprocal_basis(pc%bas), shell%pair(i)%tau(1:3,j))
+                    write(*,*)
+                    endif
+                    !
+                enddo
+            !
+            ! convert back to fractional
+            call convert(sg=rg,uc=sphere,flags='cart2frac')
             !
         enddo ! primitive cell atoms
 
@@ -597,21 +603,20 @@ contains
             pnt_reduced = matmul(reciprocal_basis(bas),pnt_cart)
             !
         end function   reduce_to_wigner_seitz
-        function       create_sphere(uc,sphere_center,pair_cutoff) result(sphere)
-            !
-            ! TO DO: INCLUDE EDGE POINTS
-            ! RIGHT NOW, USING MINUS SIGN AND IGNORING EDGE POINTS, WHICH ARE DIFFICULT TO SEPARATE TO DISTINC ORBIT SITES BECAUSE OF THEIR DEGENERACY.
-            ! EVENTUALLY, TRY TO MAKE THE MINUS INTO A PLUS SIGN AS: "pair_cutoff+opts%sym_prec" 
+        function       create_sphere(uc,sphere_center,pair_cutoff,opts) result(sphere)
             !
             implicit none
             !
             type(am_class_unit_cell), intent(in) :: uc
+            type(am_class_options)  , intent(in) :: opts
             type(am_class_unit_cell) :: sphere
+            real(dp), intent(in)  :: sphere_center(3)
+            real(dp), intent(in)  :: pair_cutoff
+            integer , allocatable :: atoms_inside(:)
             real(dp), allocatable :: grid_points(:,:) ! used for wigner-seitz reduction
-            real(dp), intent(in) :: sphere_center(3)
-            real(dp), intent(in) :: pair_cutoff
-            integer, allocatable :: atoms_inside(:)
             type(am_class_options) :: notalk ! supress verbosity
+            real(dp) :: bas(3,3), D(3)
+            logical :: check_center
             integer :: i,j
             !
             ! set notalk option
@@ -623,7 +628,10 @@ contains
             grid_points = matmul(uc%bas,grid_points)
             !
             ! create sphere instance
-            call sphere%expand_to_supercell(uc=uc,bscfp=2*eye(3),opts=notalk)
+            bas = 2.0_dp*eye(3)
+            call sphere%expand_to_supercell(uc=uc, bscfp=bas, opts=notalk)
+            D = matmul(inv(bas),sphere_center)
+
             ! call sphere%copy(uc=uc)
             !
             ! elements with incomplete orbits should be ignored, since they do not have enough information to build full shells
@@ -634,7 +642,7 @@ contains
             j=0
             do i = 1, sphere%natoms
                 ! turn sphere into a block with select atom at the origin
-                sphere%tau(:,i) = sphere%tau(:,i) - sphere_center + real(1.0E5,dp)
+                sphere%tau(:,i) = sphere%tau(:,i) - D
                 ! translate atoms to be as close to the origin as possible
                 sphere%tau(:,i) = reduce_to_wigner_seitz(pnt=sphere%tau(:,i),grid_points=grid_points,bas=uc%bas,sym_prec=opts%sym_prec)
                 ! take note of points within the predetermied pair cutoff radius
@@ -643,12 +651,28 @@ contains
                     atoms_inside(j) = i
                 endif
             enddo
-            !
             call sphere%filter(indices=atoms_inside(1:j))
             !
-            call sphere%output_poscar(file_output_poscar='outfile.POSCAR.sphere')
+            ! sphere is in fractional. which means, if a supercell was created by expanding the basis by a factor of 2, the fractional distance between atoms shrunk by half.
+            sphere%tau = matmul(bas,sphere%tau)
+            sphere%bas = matmul(inv(bas),sphere%bas)
             !
-            stop
+            !
+            ! check that there is one atom at the origin
+            check_center = .false.
+            do i = 1,sphere%natoms
+                if (all(abs(sphere%tau(:,i)).lt.tiny)) then
+                    check_center = .true.
+                    exit
+                endif
+            enddo
+            if (check_center.eq..false.) then
+                call am_print('ERROR','No atom at the origin.',flags='E')
+                call am_print('sphere_center',sphere_center)
+                call am_print('sphere%tau',transpose(sphere%tau))
+                stop
+            endif
+            !
         end function   create_sphere
         function       identify_shells(sphere,rg) result(shell_identifier)
             !
