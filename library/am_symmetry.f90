@@ -121,19 +121,6 @@ contains
         !
     end function   ps_cart2frac
 
-    function       ps_determinant(R) result(determinant)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: R(3,3)
-        real(dp) :: determinant
-        !
-        determinant=R(1,1)*(R(2,2)*R(3,3)-R(2,3)*R(3,2))+&
-                  & R(1,2)*(R(2,3)*R(3,1)-R(2,1)*R(3,3))+&
-                  & R(1,3)*(R(2,1)*R(3,2)-R(2,2)*R(3,1))
-        !
-    end function   ps_determinant
-
     function       ps_schoenflies(R) result(ps_identifier)
         !>
         !> Point symmetries in fractional coordinates so that they are nice integers which can be easily classified.
@@ -146,28 +133,28 @@ contains
         !
         real(dp), intent(in) :: R(3,3)
         real(dp) :: tr
-        real(dp) :: det
+        real(dp) :: d
         integer :: ps_identifier
         !
         ! get trace and determinant (fractional)
         tr  = trace(R)
-        det = ps_determinant(R)
+        d = det(R)
         !
         ! The Mathematical Theory of Symmetry in Solids: Representation Theory for
         ! Point Groups and Space Groups. 1 edition. Oxford?: New York: Oxford University
         ! Press, 2010. page 138, table 3.8.
         !
         ps_identifier = 0
-        if     ( (abs(tr - 3).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; ps_identifier = 1  ! 'e'
-        elseif ( (abs(tr + 1).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; ps_identifier = 2  ! 'c_2'
-        elseif ( (abs(tr - 0).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; ps_identifier = 3  ! 'c_3'
-        elseif ( (abs(tr - 1).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; ps_identifier = 4  ! 'c_4'
-        elseif ( (abs(tr - 2).lt.tiny) .and. (abs(det - 1).lt.tiny) ) then; ps_identifier = 5  ! 'c_6'
-        elseif ( (abs(tr + 3).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; ps_identifier = 6  ! 'i'
-        elseif ( (abs(tr - 1).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; ps_identifier = 7  ! 's_2'
-        elseif ( (abs(tr - 0).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; ps_identifier = 8  ! 's_6'
-        elseif ( (abs(tr + 1).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; ps_identifier = 9  ! 's_4'
-        elseif ( (abs(tr + 2).lt.tiny) .and. (abs(det + 1).lt.tiny) ) then; ps_identifier = 10 ! 's_3'
+        if     ( (abs(tr - 3.0_dp).lt.tiny) .and. (abs(d - 1.0_dp).lt.tiny) ) then; ps_identifier = 1  ! 'e'
+        elseif ( (abs(tr + 1.0_dp).lt.tiny) .and. (abs(d - 1.0_dp).lt.tiny) ) then; ps_identifier = 2  ! 'c_2'
+        elseif ( (abs(tr - 0.0_dp).lt.tiny) .and. (abs(d - 1.0_dp).lt.tiny) ) then; ps_identifier = 3  ! 'c_3'
+        elseif ( (abs(tr - 1.0_dp).lt.tiny) .and. (abs(d - 1.0_dp).lt.tiny) ) then; ps_identifier = 4  ! 'c_4'
+        elseif ( (abs(tr - 2.0_dp).lt.tiny) .and. (abs(d - 1.0_dp).lt.tiny) ) then; ps_identifier = 5  ! 'c_6'
+        elseif ( (abs(tr + 3.0_dp).lt.tiny) .and. (abs(d + 1.0_dp).lt.tiny) ) then; ps_identifier = 6  ! 'i'
+        elseif ( (abs(tr - 1.0_dp).lt.tiny) .and. (abs(d + 1.0_dp).lt.tiny) ) then; ps_identifier = 7  ! 's_2'
+        elseif ( (abs(tr - 0.0_dp).lt.tiny) .and. (abs(d + 1.0_dp).lt.tiny) ) then; ps_identifier = 8  ! 's_6'
+        elseif ( (abs(tr + 1.0_dp).lt.tiny) .and. (abs(d + 1.0_dp).lt.tiny) ) then; ps_identifier = 9  ! 's_4'
+        elseif ( (abs(tr + 2.0_dp).lt.tiny) .and. (abs(d + 1.0_dp).lt.tiny) ) then; ps_identifier = 10 ! 's_3'
         endif
         !
         if (ps_identifier .eq. 0) then
@@ -1187,7 +1174,7 @@ contains
         allocate(sort_parameter(pg%nsyms))
         do i = 1, pg%nsyms; sort_parameter(i) = trace(pg%R(:,:,i)); enddo
         call pg%sort(sort_parameter=sort_parameter,iopt_direction='ascend')
-        do i = 1, pg%nsyms; sort_parameter(i) = ps_determinant(pg%R(:,:,i)); enddo
+        do i = 1, pg%nsyms; sort_parameter(i) = det(pg%R(:,:,i)); enddo
         call pg%sort(sort_parameter=sort_parameter,iopt_direction='ascend')
         call pg%sort(sort_parameter=real(pg%cc_identifier,dp),iopt_direction='ascend')
         !
@@ -2382,8 +2369,6 @@ contains
         enddo
         !
     end function   get_coset
-
-
 
     ! 
     ! functions which operate on conjugate classes identifiers
