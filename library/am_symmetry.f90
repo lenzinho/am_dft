@@ -145,23 +145,23 @@ contains
         ! Press, 2010. page 138, table 3.8.
         !
         ps_identifier = 0
-        if     ( (abs(tr - 3.0_dp).lt.tiny) .and. (abs(d - 1.0_dp).lt.tiny) ) then; ps_identifier = 1  ! 'e'
-        elseif ( (abs(tr + 1.0_dp).lt.tiny) .and. (abs(d - 1.0_dp).lt.tiny) ) then; ps_identifier = 2  ! 'c_2'
-        elseif ( (abs(tr - 0.0_dp).lt.tiny) .and. (abs(d - 1.0_dp).lt.tiny) ) then; ps_identifier = 3  ! 'c_3'
-        elseif ( (abs(tr - 1.0_dp).lt.tiny) .and. (abs(d - 1.0_dp).lt.tiny) ) then; ps_identifier = 4  ! 'c_4'
-        elseif ( (abs(tr - 2.0_dp).lt.tiny) .and. (abs(d - 1.0_dp).lt.tiny) ) then; ps_identifier = 5  ! 'c_6'
-        elseif ( (abs(tr + 3.0_dp).lt.tiny) .and. (abs(d + 1.0_dp).lt.tiny) ) then; ps_identifier = 6  ! 'i'
-        elseif ( (abs(tr - 1.0_dp).lt.tiny) .and. (abs(d + 1.0_dp).lt.tiny) ) then; ps_identifier = 7  ! 's_2'
-        elseif ( (abs(tr - 0.0_dp).lt.tiny) .and. (abs(d + 1.0_dp).lt.tiny) ) then; ps_identifier = 8  ! 's_6'
-        elseif ( (abs(tr + 1.0_dp).lt.tiny) .and. (abs(d + 1.0_dp).lt.tiny) ) then; ps_identifier = 9  ! 's_4'
-        elseif ( (abs(tr + 2.0_dp).lt.tiny) .and. (abs(d + 1.0_dp).lt.tiny) ) then; ps_identifier = 10 ! 's_3'
+        if     ( (abs(tr - 3).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_identifier = 1  ! 'e'
+        elseif ( (abs(tr + 1).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_identifier = 2  ! 'c_2'
+        elseif ( (abs(tr - 0).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_identifier = 3  ! 'c_3'
+        elseif ( (abs(tr - 1).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_identifier = 4  ! 'c_4'
+        elseif ( (abs(tr - 2).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_identifier = 5  ! 'c_6'
+        elseif ( (abs(tr + 3).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_identifier = 6  ! 'i'
+        elseif ( (abs(tr - 1).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_identifier = 7  ! 's_2'
+        elseif ( (abs(tr - 0).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_identifier = 8  ! 's_6'
+        elseif ( (abs(tr + 1).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_identifier = 9  ! 's_4'
+        elseif ( (abs(tr + 2).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_identifier = 10 ! 's_3'
         endif
         !
         if (ps_identifier .eq. 0) then
             call am_print('ERROR','Unable to identify point symmetry.',flags='E')
             call am_print('R (frac)',R)
             call am_print('tr (frac)',tr)
-            call am_print('det (frac)',det)
+            call am_print('det (frac)',d)
             stop
         endif
         !
@@ -466,8 +466,46 @@ contains
         implicit none
         !
         type(am_class_shell), intent(inout) :: shell
-
+        ! Okay.. what to do:
+        ! 1) Make a list of the pairs and their distances
         !
+        !  Se-Se 0.000
+        !  Se-Ti 2.570
+        !  Se-Se 3.206
+        !  Se-Se 3.479
+        !  Ti-Ti 0.000
+        !  Ti-Se 2.570
+        !  Ti-Ti 3.479
+        !
+        ! 2) Sort the list based on the distances
+        !
+        !  Se-Se 0.000
+        !  Ti-Ti 0.000
+        !  Se-Ti 2.570
+        !  Ti-Se 2.570
+        !  Se-Se 3.206
+        !  Se-Se 3.479
+        !  Ti-Ti 3.479
+        !
+        ! 3) For pairs with nearly identical distances, determine which involve atoms of the same
+        ! type. This can be done by placing atype in increasing order. (Atom with lower atype in the
+        ! pair is listed first)
+        !
+        !  Se-Se 0.000 N
+        !  Ti-Ti 0.000 N
+        !  Se-Ti 2.570 YES! 
+        !  Ti-Se 2.570 YES! 
+        !  Se-Se 3.206 N
+        !  Se-Se 3.479 N
+        !  Ti-Ti 3.479 N
+        !
+        ! 4) For the pairs which are identified in the previous step, determine whether all tau's in
+        ! one shell match all taus in the other shell. tau's used should be centered above the origin,
+        ! as already required by inhereted by sphere during their construction. If there is a match, 
+        ! these bonds are identical and only one "prototypical bond" is necessary to describe both.
+        !
+
+
     end subroutine get_pair_prototypes
 
     subroutine     get_pair_shells(shell,ic,pg,pair_cutoff,uc,opts)
@@ -2369,6 +2407,8 @@ contains
         enddo
         !
     end function   get_coset
+
+
 
     ! 
     ! functions which operate on conjugate classes identifiers

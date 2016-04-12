@@ -21,8 +21,10 @@ contains
         real(dp) :: d
         real(dp), allocatable :: C(:,:)
         integer , allocatable :: ipiv(:)
+        integer :: pivots
         integer :: m, n, info
         integer :: i 
+        !
         !
         m = size(A,1)
         n = size(A,2)
@@ -50,6 +52,16 @@ contains
         do i = 1, m
             d = d*C(i,i)
         enddo
+        !
+        ! correct for number of pivots
+        pivots = count( abs([1:m]-ipiv) .ne. 0 )
+        d = d*(-1)**pivots
+        !
+        ! LAPACK does not contain routines for computing determinants, although determinants can be obtained following
+        ! the use of a factorization routine. For example, for the PLU factorization the determinant is the product of
+        ! the diagonal elements of U and the sign of P, that is - for an odd number of permutations and + for an even
+        ! number. But aware that determinants can readliy overflow, or underflow.
+        !
     end function  det
 
     ! LU decomposition
