@@ -5,6 +5,7 @@ module am_brillouin_zone
     use am_constants
     use am_helpers
     use am_vasp_io
+    use am_mkl
     !
     implicit none
     !
@@ -74,7 +75,7 @@ contains
     ! functions which operate on kpoint
     !
 
-    pure function  locate_kpoint_in_fbz(kpoint,grid_points,bas) result(position_in_fbz)
+    function     locate_kpoint_in_fbz(kpoint,grid_points,bas) result(position_in_fbz)
         !> Given a kpoint in fractional coordinates, determine if ...
         !> k is inside  ( 1) of FBZ, i.e. 2KG < G^2 for ALL Bragg planes
         !> k is on edge ( 0) of FBZ, i.e. 2KG = G^2 for ONE Bragg plane
@@ -89,8 +90,9 @@ contains
         real(dp) :: P(27)
         integer  :: position_in_fbz
         integer  :: i
+        !
         ! convert kpoint to cartesian
-        k_cart = matmul(reciprocal_basis(bas),kpoint)
+        k_cart = matmul(inv(bas),kpoint)
         !
         P = 0
         do i=1,size(grid_points,2)
@@ -117,9 +119,9 @@ contains
                 position_in_fbz = -1
             endif
         enddo
-    end function   locate_kpoint_in_fbz
+    end function locate_kpoint_in_fbz
 
-    pure function  reduce_kpoint_to_fbz(kpoint,grid_points,bas) result(kpoint_fbz)
+    function     reduce_kpoint_to_fbz(kpoint,grid_points,bas) result(kpoint_fbz)
         !> reduces kpoint (in fractional) to the first Brillouin zone (Wigner-Seitz cell, defined in cartesian coordinates)
         !> cartesian kpoint is returned! 
         implicit none
@@ -139,7 +141,7 @@ contains
         ! reduce to reciprocal unit cell
         k_cart = modulo(k_cart+tiny,1.0_dp)-tiny
         ! convert to cartesian
-        k_cart = matmul(reciprocal_basis(bas),k_cart)
+        k_cart = matmul(inv(bas),k_cart)
         ! reduce to Wigner-Seitz cell (aka first Brillouin zone) by translating the k-point
         ! until the closest reciprocal lattice point is [0 0 0]
         is_not_done = .true.
@@ -157,9 +159,9 @@ contains
         ! convert back to fractional
         kpoint_fbz = matmul(bas,k_cart)
         !
-    end function   reduce_kpoint_to_fbz
+    end function reduce_kpoint_to_fbz
 
-    function       reduce_kpoint_to_ibz(kpoint,grid_points,bas,R,sym_prec) result(kpoint_in_ibz)
+    function     reduce_kpoint_to_ibz(kpoint,grid_points,bas,R,sym_prec) result(kpoint_in_ibz)
         !
         use am_rank_and_sort
         !
@@ -197,9 +199,9 @@ contains
         ! reduce representative irreducible point to fbz
         kpoint_in_ibz = reduce_kpoint_to_fbz(kpoint=kpoint_in_ibz,grid_points=grid_points,bas=bas)
         !
-    end function   reduce_kpoint_to_ibz
+    end function reduce_kpoint_to_ibz
 
-    pure function  kpoint_orbit(R,kpoint) result(korbit)
+    pure function kpoint_orbit(R,kpoint) result(korbit)
         !> Given a kpoint in fractional coordinates, return its orbit (star)
         !> Note: this routine does not check to see whether the orbits are unique. If two point
         !> symmetries produce the same orbital point, this routine returns the same point twice.
@@ -218,9 +220,9 @@ contains
             korbit(:,i)=matmul(R(:,:,i),kpoint)
         enddo
         !
-    end function   kpoint_orbit
+    end function  kpoint_orbit
 
-    function       kpoint_weight(R,kpoint,sym_prec) result(w)
+    function      kpoint_weight(R,kpoint,sym_prec) result(w)
         !
         implicit none
         !
@@ -242,7 +244,7 @@ contains
             stop
         endif
         !
-    end function   kpoint_weight
+    end function  kpoint_weight
 
     !
     ! functions which operate/generate on meshes/grids
@@ -393,7 +395,7 @@ contains
             ! call fbz%outfile_kpoints(fname='outfile.primitive_monkhorst_pack_frac')
         ! generate voronoi points (cartesian)
         grid_points = mesh_grid([1,1,1])
-        grid_points = matmul(reciprocal_basis(uc%bas),grid_points)
+        grid_points = matmul(inv(uc%bas),grid_points)
         ! reduce kpoints to FBZ using voronoi points
         !$OMP PARALLEL PRIVATE(i) SHARED(uc,fbz,grid_points)
         !$OMP DO
@@ -418,7 +420,7 @@ contains
             ! am_print_two_matrices_side_by_side(name, Atitle, Btitle, A, B , in_emph, iopt_fid )
             call am_print_two_matrices_side_by_side(name='kpoints',&
                 Atitle='fractional',A=transpose(fbz%kpt),&
-                Btitle='cartesian' ,B=transpose(matmul(reciprocal_basis(uc%bas),fbz%kpt)),&
+                Btitle='cartesian' ,B=transpose(matmul(inv(uc%bas),fbz%kpt)),&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
         !
@@ -443,7 +445,7 @@ contains
         ! 
         if (opts%verbosity.ge.1) call am_print('number of original kpoints',bz%nkpts,' ... ')
         ! generate voronoi points (cartesian)
-        grid_points = matmul( reciprocal_basis(uc%bas), mesh_grid([1,1,1]) )
+        grid_points = matmul( inv(uc%bas), mesh_grid([1,1,1]) )
         ! reduce kpoints to ibz
         allocate(ibz%kpt(3,bz%nkpts))
         !$OMP PARALLEL PRIVATE(i) SHARED(grid_points,bz,ibz,uc,pg)
@@ -493,7 +495,7 @@ contains
         if (opts%verbosity.ge.1) then
             call am_print_two_matrices_side_by_side(name='irreducible kpoints',&
                 Atitle='fractional',A=transpose(ibz%kpt),&
-                Btitle='cartesian' ,B=transpose(matmul(reciprocal_basis(uc%bas),ibz%kpt)),&
+                Btitle='cartesian' ,B=transpose(matmul(inv(uc%bas),ibz%kpt)),&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
         !
@@ -526,7 +528,7 @@ contains
         if (opts%verbosity.ge.1) then
             call am_print_two_matrices_side_by_side(name='original kpoints',&
                 Atitle='fractional',A=transpose(bz%kpt),&
-                Btitle='cartesian' ,B=transpose(matmul(reciprocal_basis(uc%bas),bz%kpt)),&
+                Btitle='cartesian' ,B=transpose(matmul(inv(uc%bas),bz%kpt)),&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
         !
@@ -567,7 +569,7 @@ contains
         fbz%nkpts = size(fbz%kpt,2)
         ! reduce kpoints to FBZ using voronoi points
         grid_points = mesh_grid([1,1,1])
-        grid_points = matmul(reciprocal_basis(uc%bas),grid_points)
+        grid_points = matmul(inv(uc%bas),grid_points)
         !$OMP PARALLEL PRIVATE(i) SHARED(fbz,grid_points,uc)
         !$OMP DO
         do i = 1,fbz%nkpts
@@ -579,7 +581,7 @@ contains
         if (opts%verbosity.ge.1) then
             call am_print_two_matrices_side_by_side(name='full kpoints',&
                 Atitle='fractional',A=transpose(fbz%kpt),&
-                Btitle='cartesian' ,B=transpose(matmul(reciprocal_basis(uc%bas),fbz%kpt)),&
+                Btitle='cartesian' ,B=transpose(matmul(inv(uc%bas),fbz%kpt)),&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
         ! set weights
@@ -621,7 +623,7 @@ contains
         !
         !
         ! generate voronoi points (cartesian), used to reduce points to wigner-seitz brillouin zone
-        grid_points = matmul( reciprocal_basis(uc%bas) , real(mesh_grid([1,1,1]),dp) )
+        grid_points = matmul( inv(uc%bas) , real(mesh_grid([1,1,1]),dp) )
         !
         fid = 1
         open(unit=fid,file="outfile.bandcharacter",status="replace",action='write')

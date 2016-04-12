@@ -11,12 +11,11 @@
     !
     public :: am_class_unit_cell
     public :: space_symmetries_from_basis ! used by am_symmetry
-    public :: reciprocal_basis ! used by am_symmetry
     public :: is_symmetry_valid
     public :: metric_tensor
     public :: deform
     !
-    public :: neighbors
+    ! public :: neighbors
     
     type am_class_unit_cell
         real(dp) :: bas(3,3) !> column vectors a(1:3,i), a(1:3,j), a(1:3,k)
@@ -41,51 +40,6 @@
     ! functions which operate on bas(3,3)
     !
 
-    function      primitive_volume(bas,skip_volume_check) result(vol)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: bas(3,3)
-        logical , intent(in), optional :: skip_volume_check
-        real(dp) :: vol
-        !
-        vol=abs(bas(1,1)*(bas(2,2)*bas(3,3)-bas(3,2)*bas(2,3)) &
-             & +bas(2,1)*(bas(3,2)*bas(1,3)-bas(1,2)*bas(3,3)) &
-             & +bas(3,1)*(bas(1,2)*bas(2,3)-bas(1,3)*bas(2,2)))
-        !
-        if (.not.present(skip_volume_check)) then
-        if ( abs(vol) .lt. tiny ) then
-            call am_print("ERROR","Basis vectors are not coplanar!"," >>> ")
-            stop
-        endif
-        endif
-        !
-        if (vol .lt. 0.0_dp) then
-            call am_print("WARNING","Primitive cell volume is negative!"," >>> ")
-        endif
-        !
-    end function  primitive_volume
-
-    pure function reciprocal_basis(bas) result(recbas)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: bas(3,3)
-        real(dp) :: recbas(3,3)
-        !
-        recbas = 0.0_dp
-        recbas(1,1)=bas(2,2)*bas(3,3)-bas(3,2)*bas(2,3)
-        recbas(1,2)=bas(3,2)*bas(1,3)-bas(1,2)*bas(3,3)
-        recbas(1,3)=bas(1,2)*bas(2,3)-bas(1,3)*bas(2,2)
-        recbas(2,1)=bas(2,3)*bas(3,1)-bas(2,1)*bas(3,3)
-        recbas(2,2)=bas(1,1)*bas(3,3)-bas(3,1)*bas(1,3)
-        recbas(2,3)=bas(2,1)*bas(1,3)-bas(1,1)*bas(2,3)
-        recbas(3,1)=bas(2,1)*bas(3,2)-bas(2,2)*bas(3,1)
-        recbas(3,2)=bas(3,1)*bas(1,2)-bas(1,1)*bas(3,2)
-        recbas(3,3)=bas(1,1)*bas(2,2)-bas(1,2)*bas(2,1)
-        recbas = recbas/(recbas(1,1)*bas(1,1)+recbas(1,2)*bas(2,1)+recbas(1,3)*bas(3,1))
-    end function  reciprocal_basis
-
     pure function metric_tensor(bas) result(metric)
         !
         implicit none
@@ -97,7 +51,7 @@
         !
     end function  metric_tensor
 
-    pure function lattice_symmetries(bas,sym_prec) result(R)
+    function      lattice_symmetries(bas,sym_prec) result(R)
         !>
         !> Given a metric tensor, this function returns the (arthimetic) a-holohodry:
         !> the group of point symmetries R (fractional) that are compatible with the
@@ -189,7 +143,7 @@
         !
         id = eye(3)
         !
-        recbas = reciprocal_basis(bas)
+        recbas = inv(bas)
         !
         metric = metric_tensor(bas)
         !
@@ -440,6 +394,10 @@
         endif
     end function  apply_elastic_deformation
 
+    !
+    ! functions which operate on lattice_code
+    !
+
     function      lattice_type(bas,sym_prec) result(lattice_code)
         !>
         !> get crystal system centering from the number of point symmetries and metric tensor. 
@@ -579,10 +537,6 @@
         !
     end function  lattice_type
 
-    !
-    ! functions which operate on lattice_code
-    !
-
     function      lattice_centering(lattice_code) result(centering)
         ! 
         implicit none
@@ -643,7 +597,7 @@
     end function  lattice_centering
 
     !
-    ! functions which operate on atomic basis
+    ! symmetry related functions
     !
 
     pure function translations_from_basis(tau,atype,iopt_include,iopt_sym_prec) result(T)
@@ -818,74 +772,123 @@
         endif
     end function  is_symmetry_valid
 
-    function      neighbors(tau,bas) result(d)
+    function      space_symmetries_from_basis(uc,opts) result(seitz)
+        !
+        !The program first finds the primitive unit cell by looking for
+        !additional lattice vectors within the unit cell given in the input.
+        !
+        ! It chooses one of the atoms and tests each vector from that atom to
+        !every other atom of the same type in the unit cell. If that vector
+        !will take us from each atom in the unit cell to another atom of the
+        !same type (not necessarily in the same unit cell), then we have
+        !found a new lattice vector.
+        !
+        ! This process is repeated until we have
+        !found a complete list of lattice vectors. From that list, we find three
+        !which can serve as primitive basis vectors ti of the lattice, i.e. every
+        !lattice vector can be expressed as an integer linear combination of
+        !these basis vectors.
+        !
+        use am_rank_and_sort
         !
         implicit none
+        ! subroutine i/o
+        type(am_class_unit_cell), intent(in) :: uc
+        type(am_class_options), intent(in) :: opts
+        real(dp), allocatable :: seitz(:,:,:)
+        integer               :: nTs
+        integer               :: nRs
+        real(dp), allocatable :: T(:,:)
+        real(dp), allocatable :: R(:,:,:)
+        real(dp), allocatable :: wrkspace(:,:,:)
+        real(dp) :: shift(3), T_shifted(3)
+        integer :: i, j, m
         !
-        real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic basis (frac)
-        real(dp), intent(in) :: bas(3,3) !> unit cell basis
-        real(dp), allocatable :: d(:,:)  !> d(natoms,natoms) distances between atoms i and j (cart)
-        integer  :: natoms
-        real(dp) :: r(3,1)
-        real(dp) :: metric(3,3)
-        integer  :: i, j
+        R = lattice_symmetries(bas=uc%bas,sym_prec=opts%sym_prec)
+        nRs = size(R,3)
         !
-        metric = metric_tensor(bas)
+        if (opts%verbosity.ge.1) call am_print('possible (im-)proper rotations',nRs,' ... ')
         !
-        natoms = size(tau,2)
+        T = translations_from_basis(tau=uc%tau,atype=uc%atype,iopt_sym_prec=opts%sym_prec,iopt_include=trim('zero,relax'))
+        nTs = size(T,2)
         !
-        allocate(d(natoms,natoms))
+        if (opts%verbosity.ge.1) call am_print('possible translations',nTs,' ... ')
         !
-        do i = 1, natoms
-            do j = 1, i
-                r(:,1) = tau(:,i)-tau(:,j)
-                d(i:i,j:j) = matmul(transpose(r),matmul(metric,r))
-                d(j,i) = d(i,j)
-            enddo
+        if (opts%verbosity.ge.1) then
+            call am_print_two_matrices_side_by_side(name='translations',&
+                Atitle='fractional',A=transpose(T),&
+                Btitle='cartesian' ,B=transpose(matmul(uc%bas,T)),&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+        endif 
+        !
+        allocate(wrkspace(4,4,nTs*nRs))
+        wrkspace = 0.0_dp
+        m=0
+        do i = 1, nRs
+        do j = 1, nTs
+            ! Shift tau to put the first atom at the origin. This is important because the
+            ! rotational part of the symmetry operation must leave at least one atom in it's
+            ! original location. If the atom already has a displacement, then it will be rotated
+            ! to another position.
+            if (.not.any(all(abs(uc%tau).lt.opts%sym_prec,2))) then
+                shift = uc%tau(:,1)
+                ! tau' = R*tau + T
+                ! tau' - s = R*(tau-s) + T
+                ! tau' = R*tau + (R*S+T-s) = R*tau + T_shifted ! sign is wrong here for some reason.
+                ! thus, T_shifted = T - R*s + s
+                T_shifted = T(:,j) - matmul(R(:,:,i),shift) + shift
+                ! reduce to primitive
+                T_shifted = modulo(T_shifted+opts%sym_prec,1.0_dp)-opts%sym_prec
+            else
+                T_shifted = T(:,j)
+            endif
+            !
+            if ( is_symmetry_valid(tau=uc%tau,iopt_atype=uc%atype,&
+                & iopt_R=R(1:3,1:3,i),iopt_T=T_shifted,iopt_sym_prec=opts%sym_prec)) then
+                m = m + 1
+                wrkspace(1:3,1:3,m)=R(1:3,1:3,i)
+                wrkspace(1:3,4,m)=T_shifted
+                wrkspace(4,4,m)=1.0_dp
+            endif
+        enddo
         enddo
         !
-    end function  neighbors
+        allocate(seitz(4,4,m))
+        seitz = wrkspace(1:4,1:4,1:m)
+        !
+    end function  space_symmetries_from_basis
+   
+!     function      neighbors(tau,bas) result(d)
+!         !
+!         implicit none
+!         !
+!         real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic basis (frac)
+!         real(dp), intent(in) :: bas(3,3) !> unit cell basis
+!         real(dp), allocatable :: d(:,:)  !> d(natoms,natoms) distances between atoms i and j (cart)
+!         integer  :: natoms
+!         real(dp) :: r(3,1)
+!         real(dp) :: metric(3,3)
+!         integer  :: i, j
+!         !
+!         metric = metric_tensor(bas)
+!         !
+!         natoms = size(tau,2)
+!         !
+!         allocate(d(natoms,natoms))
+!         !
+!         do i = 1, natoms
+!             do j = 1, i
+!                 r(:,1) = tau(:,i)-tau(:,j)
+!                 d(i:i,j:j) = matmul(transpose(r),matmul(metric,r))
+!                 d(j,i) = d(i,j)
+!             enddo
+!         enddo
+!         !
+!     end function  neighbors
 
     !
     ! functions which operate on uc or similar derived types
     !
-
-    subroutine     deform(def,uc,opts)
-        !
-        implicit none
-        !
-        type(am_class_unit_cell), allocatable, intent(out) :: def(:)
-        type(am_class_unit_cell) , intent(in) :: uc
-        type(am_class_options), intent(in) :: opts
-        real(dp), allocatable :: bas_def(:,:,:)
-        integer :: i, j
-        !
-        if (opts%verbosity.ge.1) call am_print_title('Elastically deforming structure')
-        !
-        bas_def = apply_elastic_deformation(bas=uc%bas,deformation_code=opts%deformation_code,strain_max=opts%maxstrain,nstrains=opts%nstrains,iopt_verbosity=opts%verbosity)
-        !
-        allocate(def(opts%nstrains))
-        !
-        do i = 1,opts%nstrains
-            !
-            def(i)%bas = bas_def(:,:,i)
-            !
-            allocate(character(maximum_buffer_size) :: def(i)%symb(uc%nspecies))
-            allocate(def(i)%tau(3,uc%natoms))
-            allocate(def(i)%atype(uc%natoms))
-            def(i)%natoms   = uc%natoms
-            def(i)%nspecies = uc%nspecies
-            do j = 1,uc%nspecies
-            def(i)%symb(j) = uc%symb(j)
-            enddo
-            do j = 1,uc%natoms
-            def(i)%tau(:,j) = uc%tau(:,j)
-            def(i)%atype(j) = uc%atype(j)
-            enddo
-            !
-        enddo
-        !
-    end subroutine deform
 
     subroutine     load_poscar(uc,opts)
         ! 
@@ -977,7 +980,7 @@
         T=T(1:3, indices(nTs:1:-1) )
         if (opts%verbosity.ge.1) then
             call am_print_two_matrices_side_by_side(name='possible primitive lattice vectors',&
-                Atitle='fractional (original)',A=transpose(matmul(reciprocal_basis(uc%bas),T)),&
+                Atitle='fractional (original)',A=transpose(matmul(inv(uc%bas),T)),&
                 Btitle='cartesian' ,B=transpose(T),&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
@@ -996,7 +999,7 @@
         endif
         ! ... selecting smallest primitive vector which produces a non-zero cell volume as third vector
         do k = nTs,1,-1
-            if ( abs(primitive_volume(bas=T(1:3,[i,j,k]),skip_volume_check=.true.)) .gt. tiny ) exit
+            if ( abs( det( T(1:3,[i,j,k]) ) ) .gt. tiny ) exit
         enddo
         if (any([i,j,k].eq.0)) then
             call am_print('ERROR','No primitive basis found',flags='E')
@@ -1005,13 +1008,13 @@
         prim%bas = T(1:3,[i,j,k])
         ! output to stdout
         if (opts%verbosity.ge.1) then
-            call am_print("volume",primitive_volume(prim%bas)," ... ")
+            call am_print("volume",det(prim%bas)," ... ")
             call am_print_two_matrices_side_by_side(name='original basis',&
-                Atitle='fractional (primitive)',A=matmul(reciprocal_basis(prim%bas),uc%bas),&
+                Atitle='fractional (primitive)',A=matmul(inv(prim%bas),uc%bas),&
                 Btitle='cartesian'             ,B=uc%bas,&
                 iopt_emph=' ... ',iopt_teaser=.true.)
             call am_print_two_matrices_side_by_side(name='primitive basis',&
-                Atitle='fractional (original)' ,A=matmul(reciprocal_basis(uc%bas),prim%bas),&
+                Atitle='fractional (original)' ,A=matmul(inv(uc%bas),prim%bas),&
                 Btitle='cartesian'             ,B=prim%bas,&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
@@ -1028,7 +1031,7 @@
             prim%tau(1:3,i) = uc%tau(1:3,i) - tau_ref
         enddo
         ! ... converting all atoms to primitive fractional coordinates
-        uc2prim = matmul(reciprocal_basis(prim%bas),uc%bas)
+        uc2prim = matmul(inv(prim%bas),uc%bas)
         do i = 1, uc%natoms
             prim%tau(1:3,i) = matmul(uc2prim, prim%tau(1:3,i))
         enddo
@@ -1095,13 +1098,13 @@
         !
         if (opts%verbosity.ge.1) call am_print_title('Expanding to supercell')
         !
-        inv_bscfp = reciprocal_basis(bscfp)
+        inv_bscfp = inv(bscfp)
         !
         sc%bas = matmul(uc%bas,bscfp)
         !
         if (opts%verbosity.ge.1) then
             call am_print_two_matrices_side_by_side(name='primitive basis',&
-                Atitle='fractional (supercell)',A=reciprocal_basis(bscfp),&
+                Atitle='fractional (supercell)',A=inv(bscfp),&
                 Btitle='cartesian'             ,B=uc%bas,&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
@@ -1220,92 +1223,43 @@
         !
     end subroutine primitive_to_conventional
 
-    function       space_symmetries_from_basis(uc,opts) result(seitz)
-        !
-        !The program first finds the primitive unit cell by looking for
-        !additional lattice vectors within the unit cell given in the input.
-        !
-        ! It chooses one of the atoms and tests each vector from that atom to
-        !every other atom of the same type in the unit cell. If that vector
-        !will take us from each atom in the unit cell to another atom of the
-        !same type (not necessarily in the same unit cell), then we have
-        !found a new lattice vector.
-        !
-        ! This process is repeated until we have
-        !found a complete list of lattice vectors. From that list, we find three
-        !which can serve as primitive basis vectors ti of the lattice, i.e. every
-        !lattice vector can be expressed as an integer linear combination of
-        !these basis vectors.
-        !
-        use am_rank_and_sort
+    subroutine     deform(def,uc,opts)
         !
         implicit none
-        ! subroutine i/o
-        type(am_class_unit_cell), intent(in) :: uc
+        !
+        type(am_class_unit_cell), allocatable, intent(out) :: def(:)
+        type(am_class_unit_cell) , intent(in) :: uc
         type(am_class_options), intent(in) :: opts
-        real(dp), allocatable :: seitz(:,:,:)
-        integer               :: nTs
-        integer               :: nRs
-        real(dp), allocatable :: T(:,:)
-        real(dp), allocatable :: R(:,:,:)
-        real(dp), allocatable :: wrkspace(:,:,:)
-        real(dp) :: shift(3), T_shifted(3)
-        integer :: i, j, m
+        real(dp), allocatable :: bas_def(:,:,:)
+        integer :: i, j
         !
-        R = lattice_symmetries(bas=uc%bas,sym_prec=opts%sym_prec)
-        nRs = size(R,3)
+        if (opts%verbosity.ge.1) call am_print_title('Elastically deforming structure')
         !
-        if (opts%verbosity.ge.1) call am_print('possible (im-)proper rotations',nRs,' ... ')
+        bas_def = apply_elastic_deformation(bas=uc%bas,deformation_code=opts%deformation_code,strain_max=opts%maxstrain,nstrains=opts%nstrains,iopt_verbosity=opts%verbosity)
         !
-        T = translations_from_basis(tau=uc%tau,atype=uc%atype,iopt_sym_prec=opts%sym_prec,iopt_include=trim('zero,relax'))
-        nTs = size(T,2)
+        allocate(def(opts%nstrains))
         !
-        if (opts%verbosity.ge.1) call am_print('possible translations',nTs,' ... ')
-        !
-        if (opts%verbosity.ge.1) then
-            call am_print_two_matrices_side_by_side(name='translations',&
-                Atitle='fractional',A=transpose(T),&
-                Btitle='cartesian' ,B=transpose(matmul(uc%bas,T)),&
-                iopt_emph=' ... ',iopt_teaser=.true.)
-        endif 
-        !
-        allocate(wrkspace(4,4,nTs*nRs))
-        wrkspace = 0.0_dp
-        m=0
-        do i = 1, nRs
-        do j = 1, nTs
-            ! Shift tau to put the first atom at the origin. This is important because the
-            ! rotational part of the symmetry operation must leave at least one atom in it's
-            ! original location. If the atom already has a displacement, then it will be rotated
-            ! to another position.
-            if (.not.any(all(abs(uc%tau).lt.opts%sym_prec,2))) then
-                shift = uc%tau(:,1)
-                ! tau' = R*tau + T
-                ! tau' - s = R*(tau-s) + T
-                ! tau' = R*tau + (R*S+T-s) = R*tau + T_shifted ! sign is wrong here for some reason.
-                ! thus, T_shifted = T - R*s + s
-                T_shifted = T(:,j) - matmul(R(:,:,i),shift) + shift
-                ! reduce to primitive
-                T_shifted = modulo(T_shifted+opts%sym_prec,1.0_dp)-opts%sym_prec
-            else
-                T_shifted = T(:,j)
-            endif
+        do i = 1,opts%nstrains
             !
-            if ( is_symmetry_valid(tau=uc%tau,iopt_atype=uc%atype,&
-                & iopt_R=R(1:3,1:3,i),iopt_T=T_shifted,iopt_sym_prec=opts%sym_prec)) then
-                m = m + 1
-                wrkspace(1:3,1:3,m)=R(1:3,1:3,i)
-                wrkspace(1:3,4,m)=T_shifted
-                wrkspace(4,4,m)=1.0_dp
-            endif
-        enddo
+            def(i)%bas = bas_def(:,:,i)
+            !
+            allocate(character(maximum_buffer_size) :: def(i)%symb(uc%nspecies))
+            allocate(def(i)%tau(3,uc%natoms))
+            allocate(def(i)%atype(uc%natoms))
+            def(i)%natoms   = uc%natoms
+            def(i)%nspecies = uc%nspecies
+            do j = 1,uc%nspecies
+            def(i)%symb(j) = uc%symb(j)
+            enddo
+            do j = 1,uc%natoms
+            def(i)%tau(:,j) = uc%tau(:,j)
+            def(i)%atype(j) = uc%atype(j)
+            enddo
+            !
         enddo
         !
-        allocate(seitz(4,4,m))
-        seitz = wrkspace(1:4,1:4,1:m)
-        !
-    end function   space_symmetries_from_basis
-   
+    end subroutine deform
+
     pure subroutine copy(cp,uc)
         !
         implicit none
