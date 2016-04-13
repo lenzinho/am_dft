@@ -2,10 +2,12 @@ module am_mkl
     !
     use am_constants
     !
-    integer , parameter :: lwmax = 1000
+    integer , parameter :: lwmax = 1000  ! maximum workspace size
     real(dp), parameter :: eps = 1.0D-14 ! used for regularization
     !
     public
+    !
+    private :: lwmax
 
 contains
 

@@ -14,17 +14,17 @@ module am_symmetry
     public :: determine_symmetry
     public :: get_kpoint_compatible_symmetries
     public :: ps_frac2cart
-    public :: am_class_shell
     public :: irreducible_cell
-    !
-    type am_class_abstract_group
+
+    public :: member
+    public :: nelements
+    public :: decode_pointgroup
+    
+    type am_class_symmetry 
         integer :: nsyms
-        integer , allocatable :: cc_identifier(:) !> indices assiging each element to a conjugacy class
-    end type am_class_abstract_group
-    !
-    type, extends(am_class_abstract_group) :: am_class_symmetry 
         real(dp), allocatable :: R(:,:,:)         !> symmetry elements (operate on fractional atomic basis)
         real(dp), allocatable :: T(:,:)           !> symmetry elements (operate on fractional atomic basis)
+        integer , allocatable :: cc_identifier(:) !> indices assiging each element to a conjugacy class
         integer , allocatable :: ps_identifier(:) !> integers which identiy point symmetries (see decode_pointsymmetry)
         integer               :: pg_identifier    !> integer which identifies the point group
     contains
@@ -40,25 +40,9 @@ module am_symmetry
         procedure :: stdout
         procedure :: sort
         !
-        procedure :: symmetry_adapted_tensor
-        !
         procedure :: determine_character_table
         procedure :: symmetry_action
     end type am_class_symmetry
-
-    !
-    ! shells
-    !
-
-    type am_class_shell
-        !
-        integer :: npairs ! how many pairs atom i has
-        integer :: natoms ! how many atoms there are shells around
-        type(am_class_unit_cell), allocatable :: pair(:,:) ! pair(natoms,npairs(natoms))
-        !
-    contains
-        procedure :: get_pair_shells
-    end type am_class_shell
 
 contains
 
@@ -401,714 +385,6 @@ contains
     end function   point_group_schoenflies
 
     !
-    ! functions for determining symmetry-adapted second-order force consants
-    !
-
-    subroutine     irreducible_cell(ic,pc,sg,opts)
-        !
-        implicit none
-        !
-        class(am_class_unit_cell), intent(inout) :: ic ! irreducible cell
-        type(am_class_unit_cell), intent(in) :: pc
-        type(am_class_symmetry), intent(in) :: sg
-        type(am_class_options), intent(in) :: opts
-        type(am_class_options) :: notalk
-        integer, allocatable :: PM(:,:)
-        logical, allocatable :: mask(:)
-        integer, allocatable :: ind(:)
-        integer :: i,j,k
-        !
-        if (opts%verbosity.ge.1) call am_print_title('Reducing to irreducible cell')
-        !
-        notalk = opts
-        notalk%verbosity=0
-        !
-        if (opts%verbosity.ge.1) call am_print('number of atoms in primitive cell',pc%natoms,' ... ')
-        !
-        call sg%symmetry_action(uc=pc,flags='',oopt_PM=PM,opts=notalk)
-        !
-        allocate(mask(pc%natoms))
-        allocate(ind(pc%natoms))
-        mask = .true.
-        !
-        k=0
-        do i = 1, pc%natoms
-        if (mask(i)) then
-            k=k+1
-            ind(k)=i
-            ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-            do j = 1,sg%nsyms
-                mask(PM(i,j))=.false.
-            enddo
-        endif
-        enddo
-        !
-        ic%bas = pc%bas
-        ic%natoms = k
-        ic%nspecies = pc%nspecies
-        !
-        allocate(ic%symb ,source=pc%symb)
-        allocate(ic%tau  ,source=pc%tau(:,ind(1:k)))
-        allocate(ic%atype,source=pc%atype(ind(1:k)))
-        !
-        if (opts%verbosity.ge.1) call am_print('number of atoms in irreducible cell',ic%natoms,' ... ')
-        if (opts%verbosity.ge.1) then
-            call am_print_two_matrices_side_by_side(name='irreducible atomic basis',&
-                Atitle='fractional',A=transpose(ic%tau),&
-                Btitle='cartesian' ,B=transpose(matmul(ic%bas,ic%tau)),&
-                iopt_emph=' ... ',iopt_teaser=.true.)
-        endif
-        !
-    end subroutine irreducible_cell
-
-    subroutine     get_pair_prototypes(shell)
-        !
-        implicit none
-        !
-        type(am_class_shell), intent(inout) :: shell
-        ! Okay.. what to do:
-        ! 1) Make a list of the pairs and their distances
-        !
-        !  Se-Se 0.000
-        !  Se-Ti 2.570
-        !  Se-Se 3.206
-        !  Se-Se 3.479
-        !  Ti-Ti 0.000
-        !  Ti-Se 2.570
-        !  Ti-Ti 3.479
-        !
-        ! 2) Sort the list based on the distances
-        !
-        !  Se-Se 0.000
-        !  Ti-Ti 0.000
-        !  Se-Ti 2.570
-        !  Ti-Se 2.570
-        !  Se-Se 3.206
-        !  Se-Se 3.479
-        !  Ti-Ti 3.479
-        !
-        ! 3) For pairs with nearly identical distances, determine which involve atoms of the same
-        ! type. This can be done by placing atype in increasing order. (Atom with lower atype in the
-        ! pair is listed first)
-        !
-        !  Se-Se 0.000 N
-        !  Ti-Ti 0.000 N
-        !  Se-Ti 2.570 YES! 
-        !  Ti-Se 2.570 YES! 
-        !  Se-Se 3.206 N
-        !  Se-Se 3.479 N
-        !  Ti-Ti 3.479 N
-        !
-        ! 4) For the pairs which are identified in the previous step, determine whether all tau's in
-        ! one shell match all taus in the other shell. tau's used should be centered above the origin,
-        ! as already required by inhereted by sphere during their construction. If there is a match, 
-        ! these bonds are identical and only one "prototypical bond" is necessary to describe both.
-        !
-
-
-    end subroutine get_pair_prototypes
-
-    subroutine     get_pair_shells(shell,ic,pg,pair_cutoff,uc,opts)
-        !
-        implicit none
-        !
-        class(am_class_shell)   , intent(inout) :: shell
-        type(am_class_unit_cell), intent(in) :: ic ! irreducible cell, only determine pairs for which atleast one atom is in the primitive cell
-        type(am_class_symmetry) , intent(in) :: pg ! point group
-        type(am_class_unit_cell), intent(in) :: uc ! unit cell
-        type(am_class_options)  , intent(in) :: opts
-        real(dp), intent(inout) :: pair_cutoff
-        !
-        type(am_class_symmetry) :: rg ! group of shell
-        type(am_class_symmetry) :: vg ! stabilizer of vector v
-        type(am_class_unit_cell) :: sphere ! sphere containing atoms up to a cutoff
-        type(am_class_options) :: notalk ! supress verbosity
-        integer , allocatable :: pair_nelements(:)
-        integer , allocatable :: pair_member(:,:)
-        integer , allocatable :: pair_identifier(:)
-        integer  :: npairs !  number of pairs
-        integer  :: maxpairs
-        real(dp) :: D(3)
-        integer  :: k,i,j
-        !
-        ! print title
-        if (opts%verbosity.ge.1) call am_print_title('Determining nearest-neighbor atomic pairs')
-        !
-        ! set notalk option
-        notalk = opts 
-        notalk%verbosity = 0
-        !
-        ! set pair cutoff radius (smaller than half the smallest cell dimension, lapger than the smallest distance between atoms)
-        pair_cutoff = minval([norm2(uc%bas(:,:),1)/real(2,dp), pair_cutoff])
-        call am_print('pair cutoff radius',pair_cutoff,' ... ')
-        !
-        ! get maxmimum number of pair shells
-        maxpairs=0
-        do i = 1, ic%natoms
-            ! get center of sphere in fractional supercell coordinates
-            D = matmul(matmul(inv(uc%bas),ic%bas),ic%tau(:,i))
-            ! create sphere
-            sphere = create_sphere(uc=uc, sphere_center=D, pair_cutoff=pair_cutoff, opts=opts )
-            ! get number of pairs
-            npairs = maxval(identify_pairs(sphere=sphere,pg=pg))
-            if (npairs.gt.maxpairs) then
-                maxpairs = npairs
-            endif
-        enddo
-        !
-        ! allocate pair space, pair pair centered on atom ic%natoms 
-        allocate( shell%pair(ic%natoms,maxpairs) )
-        ! 
-        do i = 1, ic%natoms
-            !
-            ! make a sphere containing atoms a maximum distance of a choosen atom; translate all atoms around the sphere.
-            ! this distance is the real-space cut-off radius used in the construction of second-order force constants
-            ! its value cannot exceed half the smallest dimension of the supercell
-            !
-            ! get center of sphere in fractional supercell coordinates
-            D = matmul(matmul(inv(uc%bas),ic%bas),ic%tau(:,i))
-            !
-            ! create sphere
-            sphere = create_sphere(uc=uc, sphere_center=D, pair_cutoff=pair_cutoff, opts=opts )
-            !
-            ! get pair identifier
-            pair_identifier = identify_pairs(sphere=sphere,pg=pg)
-            ! get number of pairs
-            npairs = maxval(pair_identifier)
-            ! get pair members [pair representative is given by pair_member(:,1)]
-            pair_member = member(pair_identifier)
-            ! get number of pair elements (essentially the oribital weights)
-            pair_nelements = nelements(pair_identifier)
-            !
-            if (opts%verbosity.ge.1) then
-                !
-                write(*,'(" ... irreducible atom ",a," at "   ,a,",",a,",",a,  " (frac) has ",a," nearest-neighbor pairs")') &
-                    & trim(int2char(i)), (trim(dbl2char(D(k),4)),k=1,3), trim(int2char(npairs))
-                !
-                write(*,'(5x)' ,advance='no')
-                write(*,'(a5)' ,advance='no') 'shell'
-                write(*,'(a6)' ,advance='no') 'i-j'
-                write(*,'(a5)' ,advance='no') 'm'
-                write(*,'(a8)' ,advance='no') 'group'
-                write(*,'(a10)',advance='no') '|v(cart)|'
-                write(*,'(a30)',advance='no') centertitle('v(cart)',30)
-                write(*,'(a30)',advance='no') centertitle('v(frac)',30)
-                write(*,*)
-                write(*,'(5x)' ,advance='no')
-                write(*,'(a5)' ,advance='no')      repeat('-',5)
-                write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
-                write(*,'(a5)' ,advance='no') ' '//repeat('-',4)
-                write(*,'(a8)', advance='no') ' '//repeat('-',7)
-                write(*,'(a10)',advance='no') ' '//repeat('-',9)
-                write(*,'(a30)',advance='no') ' '//repeat('-',29)
-                write(*,'(a30)',advance='no') ' '//repeat('-',29)
-                write(*,*)
-                !
-            endif
-            !
-            ! each atom has npairs, with a representative for each; save their positions
-            ! representative is given by the first element of the pair_member(npair,1)
-            shell%npairs = npairs
-            do j = 1, npairs
-                !
-                ! transfer number of atoms which are in this pair shell
-                shell%pair(i,j)%natoms = pair_nelements(j)
-                !
-                ! transfer atomic positions
-                allocate( shell%pair(i,j)%tau(3,shell%pair(i,j)%natoms) )
-                do k = 1, shell%pair(i,j)%natoms
-                    shell%pair(i,j)%tau(:,k) = sphere%tau(1:3, pair_member(j,k) )
-                enddo
-                !
-                ! transfer type of atoms
-                allocate(shell%pair(i,j)%atype( shell%pair(i,j)%natoms ))
-                do k = 1, shell%pair(i,j)%natoms
-                    shell%pair(i,j)%atype(k) = sphere%atype( pair_member(j,k) )
-                enddo
-                !
-                ! print to stdout
-                if (opts%verbosity.ge.1) then
-                    ! determine rotations which leaves shell invariant
-                    call rg%rotational_group(pg=pg, uc=shell%pair(i,j), opts=notalk)
-                    ! determine stabilizers of a prototypical bond in shell (vector v)
-                    call vg%stabilizer_group(pg=pg, v=shell%pair(i,j)%tau(1:3,1), opts=notalk)
-                    write(*,'(5x)'    ,advance='no')
-                    write(*,'(i5)'    ,advance='no') j
-                    write(*,'(a6)'    ,advance='no') trim(ic%symb(ic%atype(i)))//'-'// trim(ic%symb( shell%pair(i,j)%atype(1) ))
-                    write(*,'(i5)'    ,advance='no') shell%pair(i,j)%natoms
-                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( vg%pg_identifier ))
-                    write(*,'(f10.3)' ,advance='no') norm2(matmul(sphere%bas,shell%pair(i,j)%tau(1:3,1)))
-                    write(*,'(3f10.3)',advance='no') matmul(sphere%bas,shell%pair(i,j)%tau(1:3,1))
-                    write(*,'(3f10.3)',advance='no') shell%pair(i,j)%tau(1:3,1)
-                    write(*,*)
-                endif
-                !
-            enddo
-            !
-        enddo ! primitive cell atoms
-        !
-        contains
-        function       create_sphere(uc,sphere_center,pair_cutoff,opts) result(sphere)
-            !
-            implicit none
-            !
-            type(am_class_unit_cell), intent(in) :: uc
-            type(am_class_options)  , intent(in) :: opts
-            type(am_class_unit_cell) :: sphere
-            real(dp), intent(in)  :: sphere_center(3)
-            real(dp), intent(in)  :: pair_cutoff
-            integer , allocatable :: atoms_inside(:)
-            real(dp), allocatable :: grid_points(:,:) ! used for wigner-seitz reduction
-            type(am_class_options) :: notalk ! supress verbosity
-            real(dp) :: bas(3,3), D(3)
-            logical :: check_center
-            integer :: i,j
-            !
-            ! set notalk option
-            notalk = opts 
-            notalk%verbosity = 0
-            !
-            ! generate grid points for wigner_seitz reduction
-            grid_points = mesh_grid([1,1,1])
-            grid_points = matmul(uc%bas,grid_points)
-            !
-            ! create sphere instance
-            bas = 2.0_dp*eye(3)
-            call sphere%expand_to_supercell(uc=uc, bscfp=bas, opts=notalk)
-            D = matmul(inv(bas),sphere_center)
-
-            ! call sphere%copy(uc=uc)
-            !
-            ! elements with incomplete orbits should be ignored, since they do not have enough information to build full pairs
-            allocate(atoms_inside(sphere%natoms))
-            atoms_inside = 0
-            !
-            ! filter sphere keeping only atoms iniside pair cutoff raidus
-            j=0
-            do i = 1, sphere%natoms
-                ! turn sphere into a block with select atom at the origin
-                sphere%tau(:,i) = sphere%tau(:,i) - D
-                ! translate atoms to be as close to the origin as possible
-                ! sphere%tau(:,i) = reduce_to_wigner_seitz(pnt=sphere%tau(:,i),grid_points=grid_points,bas=uc%bas,sym_prec=opts%sym_prec)
-                sphere%tau(:,i) = modulo(sphere%tau(:,i) + 0.5_dp + opts%sym_prec, 1.0_dp) - 0.5_dp - opts%sym_prec
-                ! take note of points within the predetermied pair cutoff radius
-                if (norm2(matmul(sphere%bas,sphere%tau(:,i))).le.pair_cutoff + opts%sym_prec) then
-                    j=j+1
-                    atoms_inside(j) = i
-                endif
-            enddo
-            call sphere%filter(indices=atoms_inside(1:j))
-            !
-            ! sphere is in fractional. which means, if a supercell was created by expanding the basis by a factor of 2, the fractional distance between atoms shrunk by half.
-            sphere%tau = matmul(bas,sphere%tau)
-            sphere%bas = matmul(inv(bas),sphere%bas)
-            !
-            !
-            ! check that there is one atom at the origin
-            check_center = .false.
-            do i = 1,sphere%natoms
-                if (all(abs(sphere%tau(:,i)).lt.tiny)) then
-                    check_center = .true.
-                    exit
-                endif
-            enddo
-            if (check_center.eq..false.) then
-                call am_print('ERROR','No atom at the origin.',flags='E')
-                call am_print('sphere_center',sphere_center)
-                call am_print('sphere%tau',transpose(sphere%tau))
-                stop
-            endif
-            !
-        end function   create_sphere
-        function       identify_pairs(sphere,pg) result(pair_identifier)
-            !
-            use am_rank_and_sort
-            !
-            implicit none
-            !
-            type(am_class_unit_cell), intent(in) :: sphere
-            type(am_class_symmetry) , intent(in) :: pg ! rotational group (space symmetries which have translational part set to zero and are still compatbile with the atomic basis)
-            integer , allocatable :: PM(:,:) ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-            real(dp), allocatable :: d(:)    ! d(npairs) array containing distances between atoms
-            integer , allocatable :: indices(:)
-            integer , allocatable :: pair_identifier(:)
-            integer :: i, jj, j, k
-            !
-            ! write action file and get permutation map PM(sphere%natoms,sg%nsyms) which shows how space symmetries permute atomic positions
-            call pg%symmetry_action(uc=sphere,oopt_PM=PM,flags='relax_pbc',opts=notalk)
-            !
-            ! get distance of atoms
-            allocate(d(sphere%natoms))
-            do i = 1, sphere%natoms
-                d(i) = norm2(matmul(sphere%bas,sphere%tau(:,i)))
-            enddo
-            !
-            ! rank atoms according to their distances
-            allocate(indices(sphere%natoms))
-            call rank(d,indices)
-            !
-            ! get pairs starting with closest atoms first
-            allocate(pair_identifier(sphere%natoms))
-            pair_identifier=0
-            k=0
-            do jj = 1, sphere%natoms
-                i = indices(jj)
-                if (pair_identifier(i).eq.0) then
-                    k=k+1
-                    do j = 1, pg%nsyms
-                    if ((PM(i,j)).ne.0) then
-                        pair_identifier(PM(i,j)) = k
-                    endif
-                    enddo
-                endif
-            enddo
-            !
-        end function   identify_pairs
-    end subroutine get_pair_shells
-
-    pure function  transform_2nd_order_force_constants(M,R,PM) result(RM)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: M(:,:,:,:) ! M(3,3,uc%natoms,uc%natoms) 
-        real(dp), intent(in) :: R(3,3)  ! rotational part of space symmetry
-        integer , intent(in) :: PM(:) ! ! PM(uc%natoms) permutation map contains a table of indices describing atoms space symmetry map other atoms to
-        real(dp) :: RM(size(M,1),size(M,2),size(M,3),size(M,4))
-        integer  :: i, j, alpha, beta, gamma, delta
-        integer  :: natoms
-        !
-        natoms = size(PM,1)
-        !
-        ! second order force constants transform like 
-        ! p 678 "Symmetry and condensed matter physics" Wooten
-        !
-        RM = 0
-        !
-        do i = 1, natoms
-        do j = 1, natoms
-        do beta  = 1,3
-        do alpha = 1,3
-            ! gamma -> alpha
-            ! delta -> beta
-            do gamma = 1,3
-            do delta = 1,3
-                RM(alpha,beta,PM(i),PM(j)) = RM(alpha,beta,PM(i),PM(j)) + R(alpha,gamma)*R(beta,delta)*M(gamma,delta,i,j)
-            enddo
-            enddo
-        enddo
-        enddo
-        enddo
-        enddo
-        !
-    end function   transform_2nd_order_force_constants
-
-    !
-    ! functions which operate on tensors or make symmetry-adapted tensors
-    !
-
-    subroutine     symmetry_adapted_tensor(pg,uc,opts,relations,property)
-        !
-        class(am_class_symmetry), intent(in) :: pg
-        type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_options), intent(in) :: opts
-        character(*), intent(in) :: property
-        real(dp), allocatable, optional, intent(out) :: relations(:,:)
-        !
-        integer  :: ndim
-        integer  :: nterms                          !> nterms the number of terms
-        integer  :: tensor_rank                     !> tensor_rank rank of tensor matrix M, determined automatically by code
-        integer , allocatable :: class_member(:,:)
-        real(dp), allocatable :: R(:,:)
-        real(dp), allocatable :: S(:,:,:)           !> intrinsic symmetries
-        real(dp), allocatable :: A(:,:)             !> A(2*nterms,2*nterms) augmented matrix equation
-        real(dp), allocatable :: LHS(:,:)           !> LHS(nterms,nterms) left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
-        real(dp), allocatable :: RHS(:,:)           !> RHS(nterms,nterms) right hand side of augmented matrix equation
-        logical , allocatable :: is_dependent(:)    !> is_dependent(nterms) logical array which describes which terms depend on others
-        logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
-        logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
-        integer , allocatable :: indices(:)
-        character(10) :: flags
-        integer :: i, j, k
-        integer :: nequations
-        !
-        if (opts%verbosity.ge.1) call am_print_title('Determining symmetry-adapted tensor: '//trim(property))
-        !
-        ! << - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - >>
-        !
-        ! ... Wooten page 449; sflag specifies whether the neighboring indices are symmetric with respect to each other. NEED TO IMPLEMENT STILL. 
-        ! N = no intrinsic symmetry on this pair of indices
-        ! S = symmetric pair of indices
-        ! A = antisymmetric pair of indices
-        !
-        ! Tensors transferm differently whether they are axial or polar:
-        ! POLAR :  T_{i,j,k,l,...} =        sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
-        ! AXIAL :  T_{i,j,k,l,...} = det(R) sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
-        ! Thus, all axial tensors of even rank and polar tensors of odd rank are null are null.  Wooten p 485. Eq. 13.21. 
-        !
-        if     (index(property,'pyroelectricity')        .ne.0) then; tensor_rank = 1 !    ! P_{i}     = p_{i} \Delta T
-        !
-        ! << - - - - - - - - - - - - - - - - - - - - - - - SECOND-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - >>
-        !
-        ! Onsager’s Principle requires that the electric resistivity and thermal conductivity tensors be symmetric.
-        ! This does not hold for the Seebeck and Peltier (thermoelectric) tensors which relate two different flows. Thus
-        ! there are, at most, nine independent parameters rather than six. [Newnham "Properties of Materials"]
-        !
-        elseif (index(property,'pair force-constants')   .ne.0) then; tensor_rank = 2; flags = 'polar' ! second-order force-constants
-        elseif (index(property,'electric susceptibility').ne.0) then; tensor_rank = 2; flags = 'polar' ! S  ! P_{i}     = \alpha_{ij}  E_{j}
-        elseif (index(property,'magnetic susceptibility').ne.0) then; tensor_rank = 2; flags = 'axial' ! S  ! M_{i}     = \mu_{ij}     H_{j}
-        elseif (index(property,'magneto-electric')       .ne.0) then; tensor_rank = 2; flags = 'axial' 
-        elseif (index(property,'thermal expansion')      .ne.0) then; tensor_rank = 2; flags = 'polar' ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
-        elseif (index(property,'electric conductivity')  .ne.0) then; tensor_rank = 2; flags = 'polar' ! S  ! J_{i}     = \sigma_{ij}  E_{i}
-        elseif (index(property,'electric resistivity')   .ne.0) then; tensor_rank = 2; flags = 'polar' ! S  ! E_{i}     = \rho_{ij}    J_{j}
-        elseif (index(property,'thermal conductivity')   .ne.0) then; tensor_rank = 2; flags = 'polar' ! S  ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
-        elseif (index(property,'thermoelectricity')      .ne.0) then; tensor_rank = 2; flags = 'polar' ! N  ! 
-        elseif (index(property,'seebeck')                .ne.0) then; tensor_rank = 2; flags = 'polar' ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
-        elseif (index(property,'peltier')                .ne.0) then; tensor_rank = 2; flags = 'polar' ! N  ! q_{i}     = \pi_{ij}     J_{j}
-        !
-        ! << - - - - - - - - - - - - - - - - - - - - - - - THIRD-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - ->>
-        !
-        elseif (index(property,'hall')                   .ne.0) then; tensor_rank = 3;                 !    ! E_{i}     = h_{ijk}      J_{j} H_{k} 
-        elseif (index(property,'piezoelectricity')       .ne.0) then; tensor_rank = 3; flags = 'polar' !    ! P_{i}     = d_{ijk}      \sigma_{jk}
-        elseif (index(property,'piezomagnetic')          .ne.0) then; tensor_rank = 3; flags = 'axial' !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
-        !
-        ! << - - - - - - - - - - - - - - - - - - - - - - - FOURTH-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - >>
-        !
-        elseif (index(property,'elasticity')             .ne.0) then; tensor_rank = 4; flags = 'polar' !    ! 
-        elseif (index(property,'piezo-optic')            .ne.0) then; tensor_rank = 4 !    ! 
-        elseif (index(property,'kerr')                   .ne.0) then; tensor_rank = 4 !    ! 
-        elseif (index(property,'electrostriction')       .ne.0) then; tensor_rank = 4 !    ! 
-        !
-        ! << - - - - - - - - - - - - - - - - - - - - - - - SXITH-RANK TENSORS - - - - - - - - - - - - - - - - - - - - - - - ->>
-        !
-        elseif (index(property,'third-order elasticity') .ne.0) then; tensor_rank = 6; flags = 'polar' !    ! 
-        !
-        ! << - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - >>
-        !
-        else
-            call am_print('ERROR','Unknown property',flags='E')
-            stop
-        endif
-        !
-        ! << - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - >>
-        !
-        ndim = 3
-        nterms = ndim**tensor_rank
-        !
-        ! get conjugacy class members
-        ! members(nclass,maxval(class_nelements))
-        class_member = member(pg%cc_identifier)
-        !
-        ! initialize A. 
-        ! using LU factorization instead of applying rref in order to incorporate effect of symmetry on tensor at each step.
-        ! LU needs two additional work spaces.
-        allocate(A(3*nterms,2*nterms)) ! augmented matrix
-        A = 0
-        !
-        allocate(indices(nterms))
-        indices = [1:nterms]
-        !
-        ! start counter for number of equations
-        nequations = 0
-        !
-        ! crystal symmetries
-        !
-        do j = 1, size(class_member,1) ! loop over classes
-            ! track number of symmetry equations for fun
-            nequations = nequations + nterms*count(class_member(j,:).ne.0)
-            ! get index of class representative 
-            i=class_member(j,1)
-            ! construct symmetry operator in the flattend basis
-            ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
-            R = kron_pow(ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),tensor_rank)
-            ! if the quantity corresponds to an axial tensor
-            if (index(flags,'axial').ne.0) R = det(pg%R(:,:,i)) * R
-            ! Save the action of the symmetry operations
-            A(2*nterms+indices,0*nterms+indices) = R
-            A(2*nterms+indices,1*nterms+indices) = eye(nterms)
-            ! At this point A is an augmented matrix of the form
-            !
-            !        [ A1 , B1 ]
-            !   A =  [ A2 , B2 ]
-            !        [ A3 , I  ]
-            !
-            ! in which the square matrix [A1,B1;A2,B2] is an augmented upper triangular matrix corresponding to 2*nterms
-            ! coupled equations which describe how the terms are interrelated. The last augmented matrix [A3,I]
-            ! describes how the tensor rotates under the most recently considered symmetry operation R. In order
-            ! incorporate the effect of symmetry operation R on the set of linearly coupled 2*nterms equations, LU
-            ! factorization is performed. By doing so, the augmented matrix A is converted into its factored upper
-            ! triangular matrix U, which, by definition, only occupies rows corresponding to the smallest dimension of
-            ! the matrix [either row or column, i.e. min(m,n)]. For this case, it occupies the top 2x2 augmented blocks.
-            ! This is also why the symmetry equations are added as components in the [A3,I] block -- so they don't
-            ! overlap with U.
-            !
-            ! perform LU factorization (saving only U) to incorporate effect
-            call lu(A)
-            ! debug flags
-            if (opts%verbosity.ge.2) then
-                call am_print('ps',ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),filename='debug_ps'//trim(int2char(i))//'.txt',permission='w')
-                call am_print('R',R,filename='debug_R'//trim(int2char(i))//'.txt',permission='w')
-                call am_print('A',A,filename='debug_A'//trim(int2char(i))//'.txt',permission='w')
-            endif
-        enddo
-        !
-        ! intrinsic symmetries
-        !
-        allocate(S(nterms,nterms,100))
-        k=0
-        if     (index(property,'conductivity'    ).ne.0 &
-         & .or. index(property,'resistivity'     ).ne.0 &
-         & .or. index(property,'voigt'           ).ne.0) then
-            k=k+1; S(:,:,k) = T_hat(ndim)                     ! s_ij  = s_ji
-        elseif (index(property,'piezoelectricity').ne.0) then
-            k=k+1; S(:,:,k) = kron(T_hat(ndim),eye(ndim))     ! d_ijk = d_ikj
-        elseif (index(property,'elasticity'      ).ne.0) then
-            k=k+1; S(:,:,k) = eye(nterms)                     ! cijkl = cijkl
-            k=k+1; S(:,:,k) = kron(eye(ndim**2),T_hat(ndim))  ! cijkl = cjikl
-            k=k+1; S(:,:,k) = kron(T_hat(ndim),eye(ndim**2))  ! cijkl = cjilk
-            k=k+1; S(:,:,k) = kron(T_hat(ndim),T_hat(ndim))   ! cijkl = cjilk
-        endif
-        !
-        do i = 1, k
-            nequations = nequations+nterms
-            A(2*nterms+indices,0*nterms+indices) = S(:,:,i)
-            A(2*nterms+indices,1*nterms+indices) = eye(nterms)
-            call lu(A)
-            ! if (opts%verbosity.ge.2) call am_print('I',S(:,:,i),filename='debug_I'//trim(int2char(i))//'.txt',permission='w')
-        enddo
-        !
-        ! Apply Gram-Schmidt orthogonalization by converting A into reduced row echelon form
-        !
-        call rref(A)
-        !
-        ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS should be the identity matrix,
-        ! which, together with the RHS, completely  specifies all relationships between variables.
-        !
-        allocate(LHS(nterms,nterms))
-        allocate(RHS(nterms,nterms))
-        LHS = A(0*nterms+indices,0*nterms+indices)
-        RHS = A(0*nterms+indices,1*nterms+indices)
-        !
-        if ( any(abs(LHS-eye(nterms)).gt.tiny) ) then
-            call am_print('ERROR','Unable to reduce matrix to row echlon form.')
-            call am_print_sparse('spy(LHS)',LHS)
-            stop
-        endif
-        !
-        call am_print('number of symmetry equations',nequations,' ... ')
-        !
-        call parse_symmetry_equations(LHS=LHS,RHS=RHS,is_zero=is_zero,&
-            is_independent=is_independent,is_dependent=is_dependent,verbosity=opts%verbosity)
-        !
-        if (present(relations)) allocate(relations, source=RHS)
-        !
-    end subroutine symmetry_adapted_tensor
-
-    subroutine     parse_symmetry_equations(LHS,RHS,is_zero,is_independent,is_dependent,verbosity)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: LHS(:,:)
-        real(dp), intent(in) :: RHS(:,:)
-        logical , intent(out), allocatable :: is_dependent(:)
-        logical , intent(out), allocatable :: is_zero(:)
-        logical , intent(out), allocatable :: is_independent(:)
-        integer :: nterms_zero
-        integer :: nterms_independent
-        integer :: nterms_dependent
-        integer :: nterms
-        integer :: verbosity
-        integer :: i, j 
-        !
-        nterms = size(LHS,1)
-        allocate(is_dependent(nterms))
-        allocate(is_zero(nterms))
-        allocate(is_independent(nterms))
-        !
-        if (verbosity.ge.1) call am_print('total number of terms',nterms,' ... ')
-        !
-        ! null terms (equal zero)
-        !
-        is_zero = (all(abs(RHS).lt.tiny,2))
-        nterms_zero = count(all(abs(RHS).lt.tiny,2))
-        if (verbosity.ge.1) call am_print('number of terms equal to zero',nterms_zero,' ... ')
-        !
-        ! independent terms (equal themselves and nothing else)
-        !
-        is_independent = (all(abs(RHS-LHS).lt.tiny,2))
-        nterms_independent = count(is_independent)
-        if (verbosity.ge.1) call am_print('number of independent terms',nterms_independent,' ... ')
-        !
-        ! dependent terms (can be written via independent terms)
-        !
-        is_dependent = (any(abs(RHS).gt.tiny,2))
-        is_dependent = (is_dependent.and..not.is_independent)
-        nterms_dependent = count(is_dependent)
-        if (verbosity.ge.1) call am_print('number of dependent terms',nterms_dependent,' ... ')
-        !
-        if (nterms_zero+nterms_independent+nterms_dependent.ne.nterms) then
-            call am_print('ERROR','The number of terms which are independent, null, and dependent do not add to the total number of terms.',flags='E')
-            stop
-        endif
-        !
-        ! write symmetry equations to stdout
-        !
-        if (verbosity.ge.1) then
-            if (nterms_zero.ne.nterms) then
-                !
-                write(*,'(a5,a)') ' ... ', 'irreducible symmetry equations'
-                !
-                ! write the independentterms (equal only to themselves)
-                !
-                do i = 1,nterms
-                    if (is_independent(i)) then
-                        write(*,'(5x,a1,a,a1,a1,a)',advance='no') 'a',trim(int2char(i)),'=', 'a', trim(int2char(i))
-                        write(*,*)
-                    endif
-                enddo
-                ! write the interrelated terms
-                do i = 1,nterms
-                    if (is_dependent(i)) then
-                        write(*,'(5x,a1,a,a1)',advance='no') 'a',trim(int2char(i)),'='
-                        do j = 1,nterms
-                            if (abs(RHS(i,j)).gt.tiny) then
-                                write(*,'(a,a,a)',advance='no') trim(dbl2charSP(RHS(i,j),7)), '*a', trim(int2char(j))
-                            endif
-                        enddo
-                        write(*,*)
-                    endif
-                enddo
-                ! !
-                ! ! finally, write the terms that are equal to zero.
-                ! !
-                ! do i = 1,nterms
-                !     if (is_zero(i)) then
-                !         write(*,'(5x,a1,a,a)') 'a',trim(int2char(i)),'=+0.00'
-                !     endif
-                ! enddo
-            endif
-        endif
-        !
-    end subroutine parse_symmetry_equations
-
-    pure function  T_hat(n) result(M)
-        ! c_ij -> c_ji in the flattened basis
-        implicit none
-        !
-        integer, intent(in) :: n
-        real(dp), allocatable :: M(:,:)
-        integer  :: i, j
-        !
-        allocate(M(n**2,n**2))
-        M=0
-        !
-        do i = 1, n
-        do j = 1, n
-           M(i+n*(j-1),j+n*(i-1)) = 1.0_dp
-        enddo
-        enddo
-    end function   T_hat
-
-    !
     ! very high level routines which operate on sg
     !
 
@@ -1116,9 +392,9 @@ contains
         !
         implicit none
         !
+        class(am_class_unit_cell), intent(in) :: uc
         type(am_class_symmetry), intent(out) :: sg
         type(am_class_symmetry), intent(out) :: pg
-        type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options)  , intent(in) :: opts
         !
         if (opts%verbosity.ge.1) call am_print_title('Analyzing symmetry')
@@ -1311,6 +587,63 @@ contains
         vg%pg_identifier = point_group_schoenflies(vg%ps_identifier)
         !
     end subroutine stabilizer_group
+
+    subroutine     irreducible_cell(ic,pc,sg,opts)
+        !
+        implicit none
+        !
+        class(am_class_unit_cell), intent(inout) :: ic ! irreducible cell
+        type(am_class_unit_cell), intent(in) :: pc
+        type(am_class_symmetry), intent(in) :: sg
+        type(am_class_options), intent(in) :: opts
+        type(am_class_options) :: notalk
+        integer, allocatable :: PM(:,:)
+        logical, allocatable :: mask(:)
+        integer, allocatable :: ind(:)
+        integer :: i,j,k
+        !
+        if (opts%verbosity.ge.1) call am_print_title('Reducing to irreducible cell')
+        !
+        notalk = opts
+        notalk%verbosity=0
+        !
+        if (opts%verbosity.ge.1) call am_print('number of atoms in primitive cell',pc%natoms,' ... ')
+        !
+        call sg%symmetry_action(uc=pc,flags='',oopt_PM=PM,opts=notalk)
+        !
+        allocate(mask(pc%natoms))
+        allocate(ind(pc%natoms))
+        mask = .true.
+        !
+        k=0
+        do i = 1, pc%natoms
+        if (mask(i)) then
+            k=k+1
+            ind(k)=i
+            ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
+            do j = 1,sg%nsyms
+                mask(PM(i,j))=.false.
+            enddo
+        endif
+        enddo
+        !
+        ic%bas = pc%bas
+        ic%natoms = k
+        ic%nspecies = pc%nspecies
+        !
+        allocate(ic%symb ,source=pc%symb)
+        allocate(ic%tau  ,source=pc%tau(:,ind(1:k)))
+        allocate(ic%atype,source=pc%atype(ind(1:k)))
+        !
+        if (opts%verbosity.ge.1) call am_print('number of atoms in irreducible cell',ic%natoms,' ... ')
+        if (opts%verbosity.ge.1) then
+            call am_print_two_matrices_side_by_side(name='irreducible atomic basis',&
+                Atitle='fractional',A=transpose(ic%tau),&
+                Btitle='cartesian' ,B=transpose(matmul(ic%bas,ic%tau)),&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+        endif
+        !
+    end subroutine irreducible_cell
 
     !
     ! medium level routines which operate on sg
@@ -2407,8 +1740,6 @@ contains
         enddo
         !
     end function   get_coset
-
-
 
     ! 
     ! functions which operate on conjugate classes identifiers

@@ -9,11 +9,13 @@
     !
     private
     !
+    public :: am_class_primitive_cell
     public :: am_class_unit_cell
     public :: space_symmetries_from_basis ! used by am_symmetry
     public :: is_symmetry_valid
     public :: metric_tensor
     public :: deform
+
     !
     ! public :: neighbors
     
@@ -25,14 +27,21 @@
         real(dp), allocatable :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates 
         integer , allocatable :: atype(:) !> atype(natoms) index indentifying the atomic species for each atom
     contains
+        procedure :: write_poscar
         procedure :: load_poscar
-        procedure :: reduce_to_primitive
+        ! procedure :: reduce_to_primitive
         procedure :: expand_to_supercell
         procedure :: primitive_to_conventional
-        procedure :: output_poscar
         procedure :: copy
         procedure :: filter
     end type am_class_unit_cell
+
+
+    type, extends(am_class_unit_cell) :: am_class_primitive_cell
+        
+    contains
+        procedure :: reduce => primitive_reduce
+    end type am_class_primitive_cell
 
     contains
 
@@ -857,34 +866,6 @@
         seitz = wrkspace(1:4,1:4,1:m)
         !
     end function  space_symmetries_from_basis
-   
-!     function      neighbors(tau,bas) result(d)
-!         !
-!         implicit none
-!         !
-!         real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic basis (frac)
-!         real(dp), intent(in) :: bas(3,3) !> unit cell basis
-!         real(dp), allocatable :: d(:,:)  !> d(natoms,natoms) distances between atoms i and j (cart)
-!         integer  :: natoms
-!         real(dp) :: r(3,1)
-!         real(dp) :: metric(3,3)
-!         integer  :: i, j
-!         !
-!         metric = metric_tensor(bas)
-!         !
-!         natoms = size(tau,2)
-!         !
-!         allocate(d(natoms,natoms))
-!         !
-!         do i = 1, natoms
-!             do j = 1, i
-!                 r(:,1) = tau(:,i)-tau(:,j)
-!                 d(i:i,j:j) = matmul(transpose(r),matmul(metric,r))
-!                 d(j,i) = d(i,j)
-!             enddo
-!         enddo
-!         !
-!     end function  neighbors
 
     !
     ! functions which operate on uc or similar derived types
@@ -913,11 +894,11 @@
         !
     end subroutine load_poscar
 
-    subroutine     output_poscar(uc,file_output_poscar)
+    subroutine     write_poscar(uc,file_output_poscar)
         ! 
         ! Reads the poscar file, look below: code is short and self explanatory.
         !
-        use am_vasp_io
+        use am_vasp_io, write_poscar_internal => write_poscar
         !
         implicit none
         !
@@ -937,7 +918,7 @@
             stop
         endif
         !
-        call write_poscar(&
+        call write_poscar_internal(&
             bas=uc%bas,&
             natoms=uc%natoms,&
             nspecies=uc%nspecies,&
@@ -946,15 +927,15 @@
             atype=uc%atype,&
             iopt_filename=file_output_poscar)
         !
-    end subroutine output_poscar
+    end subroutine write_poscar
 
-    subroutine     reduce_to_primitive(prim,uc,opts)
+    subroutine     primitive_reduce(prim,uc,opts)
         !
         use am_rank_and_sort, only : rank
         !
         implicit none
         !
-        class(am_class_unit_cell), intent(inout) :: prim
+        class(am_class_primitive_cell), intent(inout) :: prim
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
         integer , allocatable :: indices(:)
@@ -1079,7 +1060,7 @@
         prim%symb = uc%symb
         prim%nspecies = uc%nspecies
         !
-    end subroutine reduce_to_primitive
+    end subroutine primitive_reduce
 
     subroutine     expand_to_supercell(sc,uc,bscfp,opts)
         !
