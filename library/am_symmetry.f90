@@ -14,7 +14,6 @@ module am_symmetry
     public :: determine_symmetry
     public :: get_kpoint_compatible_symmetries
     public :: ps_frac2cart
-    public :: irreducible_cell
 
     public :: member
     public :: nelements
@@ -31,10 +30,10 @@ module am_symmetry
         !
         procedure :: copy
         procedure :: create
-        procedure :: space_group
-        procedure :: point_group
-        procedure :: rotational_group
-        procedure :: stabilizer_group
+        procedure :: get_space_group
+        procedure :: get_point_group
+        procedure :: get_rotational_group
+        procedure :: get_stabilizer_group
         !
         procedure :: name_symmetries
         procedure :: stdout
@@ -399,13 +398,13 @@ contains
         !
         if (opts%verbosity.ge.1) call am_print_title('Analyzing symmetry')
         !
-        call sg%space_group(uc=uc,opts=opts)
+        call sg%get_space_group(uc=uc,opts=opts)
         !
-        call pg%point_group(sg=sg,uc=uc,opts=opts)
+        call pg%get_point_group(sg=sg,uc=uc,opts=opts)
         !
     end subroutine determine_symmetry
 
-    subroutine     space_group(sg,uc,opts)
+    subroutine     get_space_group(sg,uc,opts)
         !
         use am_rank_and_sort
         !
@@ -454,9 +453,9 @@ contains
         ! if (opts%verbosity.ge.1) call sg%stdout(iopt_uc=uc)
         call sg%stdout(iopt_uc=uc,iopt_filename=trim('outfile.spacegroup'))
         !
-    end subroutine space_group
+    end subroutine get_space_group
 
-    subroutine     point_group(pg,uc,sg,opts)
+    subroutine     get_point_group(pg,uc,sg,opts)
         !
         ! requires only sg%R
         !
@@ -511,9 +510,9 @@ contains
         ! if (opts%verbosity.ge.1) call pg%stdout(iopt_uc=uc)
         if (opts%verbosity.ge.1) call pg%stdout(iopt_uc=uc,iopt_filename=trim('outfile.pointgroup'))
         !
-    end subroutine point_group
+    end subroutine get_point_group
 
-    subroutine     rotational_group(rg,uc,pg,opts)
+    subroutine     get_rotational_group(rg,uc,pg,opts)
         ! get point symmetries which are compatible with the atomic basis (essentially keeps rotational part of space symmetries which are able to map all atoms onto each other)
         implicit none
         ! subroutine i/o
@@ -550,9 +549,9 @@ contains
         ! this would be the name of the group, if the group were symmorphic (in which case it will match the real point group name)... 
         rg%pg_identifier = point_group_schoenflies(rg%ps_identifier)
         !
-    end subroutine rotational_group
+    end subroutine get_rotational_group
 
-    subroutine     stabilizer_group(vg,pg,v,opts)
+    subroutine     get_stabilizer_group(vg,pg,v,opts)
         !
         implicit none
         !
@@ -586,64 +585,7 @@ contains
         ! name point group
         vg%pg_identifier = point_group_schoenflies(vg%ps_identifier)
         !
-    end subroutine stabilizer_group
-
-    subroutine     irreducible_cell(ic,pc,sg,opts)
-        !
-        implicit none
-        !
-        class(am_class_unit_cell), intent(inout) :: ic ! irreducible cell
-        type(am_class_unit_cell), intent(in) :: pc
-        type(am_class_symmetry), intent(in) :: sg
-        type(am_class_options), intent(in) :: opts
-        type(am_class_options) :: notalk
-        integer, allocatable :: PM(:,:)
-        logical, allocatable :: mask(:)
-        integer, allocatable :: ind(:)
-        integer :: i,j,k
-        !
-        if (opts%verbosity.ge.1) call am_print_title('Reducing to irreducible cell')
-        !
-        notalk = opts
-        notalk%verbosity=0
-        !
-        if (opts%verbosity.ge.1) call am_print('number of atoms in primitive cell',pc%natoms,' ... ')
-        !
-        call sg%symmetry_action(uc=pc,flags='',oopt_PM=PM,opts=notalk)
-        !
-        allocate(mask(pc%natoms))
-        allocate(ind(pc%natoms))
-        mask = .true.
-        !
-        k=0
-        do i = 1, pc%natoms
-        if (mask(i)) then
-            k=k+1
-            ind(k)=i
-            ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-            do j = 1,sg%nsyms
-                mask(PM(i,j))=.false.
-            enddo
-        endif
-        enddo
-        !
-        ic%bas = pc%bas
-        ic%natoms = k
-        ic%nspecies = pc%nspecies
-        !
-        allocate(ic%symb ,source=pc%symb)
-        allocate(ic%tau  ,source=pc%tau(:,ind(1:k)))
-        allocate(ic%atype,source=pc%atype(ind(1:k)))
-        !
-        if (opts%verbosity.ge.1) call am_print('number of atoms in irreducible cell',ic%natoms,' ... ')
-        if (opts%verbosity.ge.1) then
-            call am_print_two_matrices_side_by_side(name='irreducible atomic basis',&
-                Atitle='fractional',A=transpose(ic%tau),&
-                Btitle='cartesian' ,B=transpose(matmul(ic%bas,ic%tau)),&
-                iopt_emph=' ... ',iopt_teaser=.true.)
-        endif
-        !
-    end subroutine irreducible_cell
+    end subroutine get_stabilizer_group
 
     !
     ! medium level routines which operate on sg

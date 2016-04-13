@@ -3,6 +3,8 @@ module am_shells
     use am_constants
     use am_helpers
     use am_unit_cell
+    use am_prim_cell
+    use am_irre_cell
     use am_options
     use am_mkl
     use am_symmetry
@@ -79,7 +81,7 @@ contains
         implicit none
         !
         class(am_class_shell)   , intent(inout) :: shell
-        type(am_class_unit_cell), intent(in) :: ic ! irreducible cell, only determine pairs for which atleast one atom is in the primitive cell
+        class(am_class_unit_cell), intent(in) :: ic ! irreducible cell, only determine pairs for which atleast one atom is in the primitive cell
         type(am_class_symmetry) , intent(in) :: pg ! point group
         type(am_class_unit_cell), intent(in) :: uc ! unit cell
         type(am_class_options)  , intent(in) :: opts
@@ -195,9 +197,9 @@ contains
                 ! print to stdout
                 if (opts%verbosity.ge.1) then
                     ! determine rotations which leaves shell invariant
-                    call rg%rotational_group(pg=pg, uc=shell%pair(i,j), opts=notalk)
+                    call rg%get_rotational_group(pg=pg, uc=shell%pair(i,j), opts=notalk)
                     ! determine stabilizers of a prototypical bond in shell (vector v)
-                    call vg%stabilizer_group(pg=pg, v=shell%pair(i,j)%tau(1:3,1), opts=notalk)
+                    call vg%get_stabilizer_group(pg=pg, v=shell%pair(i,j)%tau(1:3,1), opts=notalk)
                     write(*,'(5x)'    ,advance='no')
                     write(*,'(i5)'    ,advance='no') j
                     write(*,'(a6)'    ,advance='no') trim(ic%symb(ic%atype(i)))//'-'// trim(ic%symb( shell%pair(i,j)%atype(1) ))
@@ -240,7 +242,7 @@ contains
             !
             ! create sphere instance
             bas = 2.0_dp*eye(3)
-            call sphere%expand_to_supercell(uc=uc, bscfp=bas, opts=notalk)
+            call sphere%get_supercell(uc=uc, bscfp=bas, opts=notalk)
             D = matmul(inv(bas),sphere_center)
 
             ! call sphere%copy(uc=uc)
