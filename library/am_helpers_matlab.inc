@@ -2,6 +2,39 @@
     ! matlab-inspired functions
     !
     
+    function      perms(n) result(PT)
+        !
+        implicit none
+        !
+        integer, intent(in) :: n
+        integer, allocatable :: P(:,:)
+        integer, allocatable :: PT(:,:)
+        integer :: m
+        !
+        m = product([1:n])
+        !
+        allocate(P(m,n))
+        !
+        call permutate([1:n],P)
+        !
+        allocate(PT,source=transpose(P))
+        !
+        contains
+        recursive subroutine permutate(E, P)
+            !
+            implicit none
+            !
+            integer, intent(in)  :: E(:) ! array of objects 
+            integer, intent(out) :: P(:,:) ! permutations of E 
+            integer :: N, Nfac, i, k, S(size(P,1)/size(E), size(E)-1) 
+            N = size(E); Nfac = size(P,1); 
+            do i = 1, N
+              if( N>1 ) call permutate((/E(:i-1), E(i+1:)/), S) 
+              forall(k=1:Nfac/N) P((i-1)*Nfac/N+k,:) = (/E(i), S(k,:)/) 
+            enddo 
+        end subroutine permutate 
+    end function  perms
+
     function      fopen(filename,permission) result(fid)
         !
         implicit none
@@ -338,6 +371,18 @@
             eye(i,i) = 1.0_dp
         enddo
     end function  eye
+
+    pure function ones(n)
+        !> nxn identity matrix
+        implicit none
+        !
+        integer, intent(in) :: n
+        real(dp), dimension(:,:), allocatable :: ones
+        !
+        allocate(ones(n,n))
+        ones=1.0_dp
+        !
+    end function  ones
 
     pure function eye_nxm(n,m) result(id)
         !> nxm identity matrix

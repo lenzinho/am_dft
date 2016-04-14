@@ -17,23 +17,52 @@ module am_shells
 
     type am_class_shell
         !
-        integer :: npairs ! how many pairs atom i has
-        integer :: natoms ! how many atoms there are shells around
-        type(am_class_unit_cell), allocatable :: pair(:,:) ! pair(natoms,npairs(natoms))
+        integer, allocatable :: npairs(:) ! how many pairs atom i has
+        type(am_class_unit_cell), allocatable :: pair(:,:) ! pair(ic%natoms,npairs(natoms))
         !
     contains
         !
         procedure :: get_pair_shells
+        procedure :: get_pair_prototypes
         !
     end type am_class_shell
 
 contains
 
-    subroutine     get_pair_prototypes(shell)
+    subroutine     get_pair_prototypes(shell,ic)
         !
         implicit none
         !
-        type(am_class_shell), intent(inout) :: shell
+        class(am_class_shell), intent(inout) :: shell
+        class(am_class_unit_cell), intent(in) :: ic
+        integer , allocatable :: p(:,:)
+        real(dp), allocatable :: d(:)
+        integer :: i,j,k
+        !
+        !
+        call am_print('ic%natoms',ic%natoms)
+        call am_print('shell%npairs',shell%npairs)
+        do i = 1, ic%natoms
+        do j = 1, shell%npairs(i)
+            call am_print('shell%pair(i,j)%natoms',shell%pair(i,j)%natoms)
+            call am_print('shell%pair(i,j)%atype',shell%pair(i,j)%atype)
+            call am_print('shell%pair(i,j)%symb',trim(shell%pair(i,j)%symb(1)))
+            call am_print('shell%pair(i,j)',transpose(shell%pair(i,j)%tau))
+            call shell%pair(i,j)%write_poscar(file_output_poscar='shell_'//trim(int2char(i))//'_'//trim(int2char(j)))
+        enddo
+        enddo
+!         allocate(p(2,maxval(shell%npairs)*shell%natoms))
+!         k=0
+!         do i = 1, shell%natoms
+!         do j = 1, shell%npairs(i)
+! !             k=k+1
+! !             d(k)   = norm(shell%atype(i))
+! !             p(1,k) = ic%atype(i)
+! !             p(2,k) = shell%pair(i,j)%atype(1)
+!         enddo
+!         enddo
+
+
         ! Okay.. what to do:
         ! 1) Make a list of the pairs and their distances
         !
@@ -94,6 +123,7 @@ contains
         integer , allocatable :: pair_nelements(:)
         integer , allocatable :: pair_member(:,:)
         integer , allocatable :: pair_identifier(:)
+        integer , allocatable :: ind(:)
         integer  :: npairs !  number of pairs
         integer  :: maxpairs
         real(dp) :: D(3)
@@ -125,6 +155,7 @@ contains
         enddo
         !
         ! allocate pair space, pair pair centered on atom ic%natoms 
+        allocate( shell%npairs(ic%natoms) )
         allocate( shell%pair(ic%natoms,maxpairs) )
         ! 
         do i = 1, ic%natoms
@@ -176,23 +207,14 @@ contains
             !
             ! each atom has npairs, with a representative for each; save their positions
             ! representative is given by the first element of the pair_member(npair,1)
-            shell%npairs = npairs
+            shell%npairs(i) = npairs
             do j = 1, npairs
                 !
-                ! transfer number of atoms which are in this pair shell
-                shell%pair(i,j)%natoms = pair_nelements(j)
+                if (allocated(ind)) deallocate(ind)
+                allocate(ind,source=pair_member(j,1:pair_nelements(j)))
                 !
-                ! transfer atomic positions
-                allocate( shell%pair(i,j)%tau(3,shell%pair(i,j)%natoms) )
-                do k = 1, shell%pair(i,j)%natoms
-                    shell%pair(i,j)%tau(:,k) = sphere%tau(1:3, pair_member(j,k) )
-                enddo
-                !
-                ! transfer type of atoms
-                allocate(shell%pair(i,j)%atype( shell%pair(i,j)%natoms ))
-                do k = 1, shell%pair(i,j)%natoms
-                    shell%pair(i,j)%atype(k) = sphere%atype( pair_member(j,k) )
-                enddo
+                call shell%pair(i,j)%initialize(bas=ic%bas,tau=sphere%tau(:,ind),&
+                        atype=sphere%atype(ind),symb=sphere%symb(sphere%atype(ind(1:1))) )
                 !
                 ! print to stdout
                 if (opts%verbosity.ge.1) then
@@ -205,7 +227,7 @@ contains
                     write(*,'(a6)'    ,advance='no') trim(ic%symb(ic%atype(i)))//'-'// trim(ic%symb( shell%pair(i,j)%atype(1) ))
                     write(*,'(i5)'    ,advance='no') shell%pair(i,j)%natoms
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( vg%pg_identifier ))
-                    write(*,'(f10.3)' ,advance='no') norm2(matmul(sphere%bas,shell%pair(i,j)%tau(1:3,1)))
+                    write(*,'(f10.3)' ,advance='no') norm2(matmul(shell%pair(i,j)%bas,shell%pair(i,j)%tau(1:3,1)))
                     write(*,'(3f10.3)',advance='no') matmul(sphere%bas,shell%pair(i,j)%tau(1:3,1))
                     write(*,'(3f10.3)',advance='no') shell%pair(i,j)%tau(1:3,1)
                     write(*,*)

@@ -4,6 +4,7 @@ module am_unit_cell
     use am_helpers
     use am_options
     use am_mkl
+    use am_atom
 
     implicit none
 
@@ -28,6 +29,7 @@ module am_unit_cell
         procedure :: get_supercell
         procedure :: copy
         procedure :: filter
+        procedure :: initialize
     end type am_class_unit_cell
 
 contains
@@ -116,7 +118,7 @@ contains
         real(dp), intent(in) :: sym_prec
         real(dp), allocatable :: R(:,:,:) !> point symmetries (fractional)
         !
-        character(3), parameter :: method = 'bas' ! met/bas : metric vs basis methods
+        character(3), parameter :: method = 'met' ! met/bas : metric vs basis methods
         real(dp) :: id(3,3)
         real(dp) :: recbas(3,3)
         real(dp) :: metric(3,3)
@@ -556,6 +558,12 @@ contains
         !
         if ((mod(det(bscfp)+opts%sym_prec,1.0_dp)-opts%sym_prec).gt.opts%sym_prec) then
             call am_print('ERROR','The determinant of the supercell basis in primitive fractional coordinates must be an integer.',flags='E')
+            call am_print('bscfp',bscfp)
+            call am_print('det(bscfp)',det(bscfp))
+            call am_print('check',modulo(det(bscfp),1.0_dp).lt.tiny)
+            write(*,*) opts%sym_prec
+            write(*,*) mod(det(bscfp),1.0_dp)
+            write(*,*) mod(det(bscfp)+opts%sym_prec,1.0_dp)-opts%sym_prec
             stop
         endif
         !
@@ -666,6 +674,30 @@ contains
         enddo
         !
     end subroutine  filter
+
+    subroutine      initialize(uc,bas,tau,atype,symb)
+        !
+        implicit none
+        !
+        class(am_class_unit_cell) , intent(inout) :: uc
+        real(dp), intent(in) :: bas(3,3)
+        real(dp), intent(in) :: tau(:,:)
+        integer , intent(in) :: atype(:)
+        character(*), intent(in) :: symb(:)
+        !
+        uc%bas = bas
+        !
+        uc%natoms = size(tau,2)
+        !
+        allocate(uc%tau,source=tau)
+        !
+        uc%nspecies = size(unique(atype))
+        !
+        allocate(uc%atype,source=atype)
+        !
+        allocate(uc%symb,source=symb)
+        !
+    end subroutine  initialize
 
     !
     ! deform (strain related stuff)

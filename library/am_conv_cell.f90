@@ -5,6 +5,7 @@ module am_conv_cell
     use am_options
     use am_unit_cell
     use am_prim_cell
+    use am_symmetry
     use am_mkl
 
     implicit none
@@ -19,6 +20,76 @@ module am_conv_cell
 
 contains
 
+!     subroutine     get_conventional(conv,prim,opts)
+!         !
+!         use am_rank_and_sort
+!         !
+!         implicit none
+!         !
+!         class(am_class_conv_cell), intent(inout) :: conv
+!         type(am_class_prim_cell), intent(in) :: prim
+!         type(am_class_options), intent(in) :: opts
+!         type(am_class_options)  :: notalk
+!         real(dp) :: S(3,3,4) ! four types of centering matrices
+!         integer , allocatable :: P(:,:) ! permutation matrices
+!         real(dp), allocatable :: C(:,:,:)
+!         real(dp) :: bas(3,3)
+!         integer :: ID(3,3)
+!         integer :: m, j, i, k, n
+!         logical :: found
+!         !
+!         if (opts%verbosity.ge.1) call am_print_title('Transforming to conventional cell') 
+!         !
+!         notalk = opts
+!         notalk%verbosity = 0
+!         !
+!         ! construct all possible centering matrices
+!         n = 0
+!         n=n+1 ! BCC
+!         S(1:3,1:3,n) = (ones(3)-eye(3)*2.0_dp)/real(2,dp)
+!         n=n+1 ! ABC
+!         S(1,1:3,n) = [ 0, 0, 2]
+!         S(2,1:3,n) = [-1, 1, 0]
+!         S(3,1:3,n) = [ 1, 1, 0]
+!         n=n+1 ! FCC
+!         S(1:3,1:3,n) = (ones(3)-eye(3))/real(2,dp)
+!         !
+!         ID = eye(3)
+!         P = perms(3)
+!         m = sine(P,2)
+!         allocate(C(3,3,6*6*n+1))
+!         n = 0
+!         do k = 1, 3
+!         do i = 1, m
+!         do j = 1, m
+!             !
+!             n=n+1
+!             C(:,:,n) = matmul(ID(1:3,P(1:3,i)),S(P(1:3,j),1:3,k))
+!             !
+!         enddo
+!         enddo
+!         enddo
+!         !
+!         found = .false.
+!         do i = 1, n
+!             bas = matmul(inv(C(:,:,i)),prim%bas)
+!             if ( all(abs(diag(diag(bas))-bas).lt.tiny)) then
+!                 found = .true.
+!                 conv%centering = C(:,:,i)
+!                 exit
+!             endif
+!         enddo
+!         !
+!         if (.not.found) then
+!             conv%centering = eye(3)
+!         endif
+!         !
+!         if (opts%verbosity.ge.1) call am_print('centering matrix',conv%centering,' ... ')
+!         !
+!         call conv%get_supercell(uc=prim,bscfp=inv(conv%centering),opts=notalk)
+!         !
+!     end subroutine get_conventional
+
     subroutine     get_conventional(conv,prim,opts)
         !
         use am_rank_and_sort
@@ -27,44 +98,61 @@ contains
         !
         class(am_class_conv_cell), intent(inout) :: conv
         type(am_class_prim_cell), intent(in) :: prim
+        type(am_class_options), intent(in) :: opts
         real(dp) :: centering(3,3)
         integer :: lattice_code
-        type(am_class_options), intent(in) :: opts
-        !
-        if (opts%verbosity.ge.1) call am_print_title('Transforming to conventional cell') 
-        !
-        lattice_code = lattice_type(bas=prim%bas,sym_prec=opts%sym_prec)
-        !
-        if (opts%verbosity.ge.1) then
-        select case(lattice_code)
-        case(1);  call am_print('lattice','simple cubic cell',' ... ')
-        case(2);  call am_print('lattice','body-centered cubic cell',' ... ')
-        case(3);  call am_print('lattice','face-centered cubic cell',' ... ')
-        case(4);  call am_print('lattice','hexagonal cell',' ... ')
-        case(5);  call am_print('lattice','simple tetragonal cell',' ... ')
-        case(6);  call am_print('lattice','body-centered tetragonal cell',' ... ')
-        case(7);  call am_print('lattice','rhombohedral (trigonal) cell',' ... ')
-        case(8);  call am_print('lattice','simple orthorhombic cell',' ... ')
-        case(9);  call am_print('lattice','body-centered orthorhombic cell',' ... ')
-        case(10); call am_print('lattice','face-centered orthorhombic cell',' ... ')
-        case(11); call am_print('lattice','base centered orthorhombic cell',' ... ')
-        case(12); call am_print('lattice','simple monoclinic cell',' ... ')
-        case(13); call am_print('lattice','base-centered monoclinic cell',' ... ')
-        case(14); call am_print('lattice','triclinic cell',' ... ')
-        case default
-            call am_print('ERROR','Unknown lattice.')
-        end select
-        endif
-        !
-        centering = lattice_centering(lattice_code)
-        !
-        if (opts%verbosity.ge.1) call am_print('centering matrix',centering,' ... ')
-        !
-        call conv%get_supercell(uc=prim,bscfp=inv(centering),opts=opts)
-        !
+        integer, allocatable :: P(:,:) ! permutation matrices
+        integer :: i, j
+!         !
+!         if (opts%verbosity.ge.1) call am_print_title('Transforming to conventional cell') 
+!         !
+!         !
+!         P = perms(3)
+!         s : do i = 1, sine(P,2)
+!         do j = 1, sine(P,2)
+!             lattice_code = lattice_type(bas=prim%bas(P(1:3,j),P(1:3,i)),sym_prec=opts%sym_prec)
+!             if (lattice_code.ne.0) exit s
+!         enddo
+!         enddo s
+!         if (lattice_code.eq.0) then
+!             call am_print('ERROR','Unable to determine lattice type.',flags='E')
+!             stop
+!         endif
+!         !
+!         !
+!         if (opts%verbosity.ge.1) then
+!         select case(lattice_code)
+!         case(1);  call am_print('lattice','simple cubic cell',' ... ')
+!         case(2);  call am_print('lattice','body-centered cubic cell',' ... ')
+!         case(3);  call am_print('lattice','face-centered cubic cell',' ... ')
+!         case(4);  call am_print('lattice','hexagonal cell',' ... ')
+!         case(5);  call am_print('lattice','simple tetragonal cell',' ... ')
+!         case(6);  call am_print('lattice','body-centered tetragonal cell',' ... ')
+!         case(7);  call am_print('lattice','rhombohedral (trigonal) cell',' ... ')
+!         case(8);  call am_print('lattice','simple orthorhombic cell',' ... ')
+!         case(9);  call am_print('lattice','body-centered orthorhombic cell',' ... ')
+!         case(10); call am_print('lattice','face-centered orthorhombic cell',' ... ')
+!         case(11); call am_print('lattice','base centered orthorhombic cell',' ... ')
+!         case(12); call am_print('lattice','simple monoclinic cell',' ... ')
+!         case(13); call am_print('lattice','base-centered monoclinic cell',' ... ')
+!         case(14); call am_print('lattice','triclinic cell',' ... ')
+!         case default
+!             call am_print('ERROR','Unknown lattice code.')
+!             stop
+!         end select
+!         endif
+!         !
+!         centering = lattice_centering(lattice_code)
+!         !
+!         if (opts%verbosity.ge.1) call am_print('centering matrix',centering,' ... ')
+!         !
+!         call conv%get_supercell(uc=prim,bscfp=inv(centering),opts=opts)
+!         !
     end subroutine get_conventional
 
     function       lattice_type(bas,sym_prec) result(lattice_code)
+        !>
+        !> Returns 0 if unable to identify lattice type.
         !>
         !> get crystal system centering from the number of point symmetries and metric tensor. 
         !> For the formalism, see:
@@ -96,7 +184,7 @@ contains
         integer  :: nsyms ! number of symmetries
         real(dp) :: M(3,3) ! metric tensor
         !
-        nsyms = size( lattice_symmetries(bas,sym_prec), 3)
+        nsyms = sine( lattice_symmetries(bas,sym_prec), 3)
         !
         M = matmul(transpose(bas),bas)
         !
@@ -192,14 +280,6 @@ contains
                 return
             endif
         end select
-        !
-        if (lattice_code.eq.0) then
-            call am_print('ERROR','Unable to identify lattice type.',flags='E')
-            call am_print('number of symmetry operations',nsyms)
-            call am_print('primitive basis',bas)
-            call am_print('metric tensor',M)
-            stop
-        endif
         !
     end function   lattice_type
 
