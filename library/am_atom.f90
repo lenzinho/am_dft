@@ -1,6 +1,7 @@
 module am_atom
 	!
 	use am_constants
+  use am_helpers
 	!
 	implicit none
 
@@ -8,7 +9,7 @@ module am_atom
 
 	contains
 
-    pure function   symb(Z)
+    pure function   atm_symb(Z) result(symb)
         !
         implicit none
         !
@@ -28,9 +29,9 @@ module am_atom
         !
         symb=symbs(Z)
         !
-    end function    symb
+    end function    atm_symb
 
-    pure function   Z(symb)
+    pure function   atm_Z(symb) result(Z)
         !
         implicit none
         !
@@ -54,6 +55,6 @@ module am_atom
     	 endif
     	enddo
         !
-    end function    Z
+    end function    atm_Z
 
 end module

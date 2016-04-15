@@ -44,13 +44,15 @@ contains
         call am_print('shell%npairs',shell%npairs)
         do i = 1, ic%natoms
         do j = 1, shell%npairs(i)
-            call am_print('shell%pair(i,j)%natoms',shell%pair(i,j)%natoms)
-            call am_print('shell%pair(i,j)%atype',shell%pair(i,j)%atype)
-            call am_print('shell%pair(i,j)%symb',trim(shell%pair(i,j)%symb(1)))
-            call am_print('shell%pair(i,j)',transpose(shell%pair(i,j)%tau))
-            call shell%pair(i,j)%write_poscar(file_output_poscar='shell_'//trim(int2char(i))//'_'//trim(int2char(j)))
+            ! call am_print('shell%pair(i,j)%natoms',shell%pair(i,j)%natoms)
+            ! call am_print('shell%pair(i,j)%atype',shell%pair(i,j)%atype)
+            ! call am_print('shell%pair(i,j)%symb',trim(shell%pair(i,j)%symb(1)))
+            ! call am_print('shell%pair(i,j)',transpose(shell%pair(i,j)%tau))
+            call shell%pair(i,j)%write_poscar(file_output_poscar='shell_'//trim(int2char(i))//'_'//trim(int2char(j)),iopt_header=ic%symb(ic%atype(i))'//')
         enddo
         enddo
+        !
+        
 !         allocate(p(2,maxval(shell%npairs)*shell%natoms))
 !         k=0
 !         do i = 1, shell%natoms
@@ -207,6 +209,7 @@ contains
             !
             ! each atom has npairs, with a representative for each; save their positions
             ! representative is given by the first element of the pair_member(npair,1)
+            sphere%atype = 1 ! <<<==== QUICK AND DIRTY FIX TO MAKE THINGS WORK; the problem below is that symb will only have 1 element in the shell, but if atype = 2, then it will try to reference that position, which doesn't exist.
             shell%npairs(i) = npairs
             do j = 1, npairs
                 !
@@ -224,11 +227,11 @@ contains
                     call vg%get_stabilizer_group(pg=pg, v=shell%pair(i,j)%tau(1:3,1), opts=notalk)
                     write(*,'(5x)'    ,advance='no')
                     write(*,'(i5)'    ,advance='no') j
-                    write(*,'(a6)'    ,advance='no') trim(ic%symb(ic%atype(i)))//'-'// trim(ic%symb( shell%pair(i,j)%atype(1) ))
+                    write(*,'(a6)'    ,advance='no') trim(ic%symb(ic%atype(i)))//'-'//trim(shell%pair(i,j)%symb(shell%pair(i,j)%atype(1)))
                     write(*,'(i5)'    ,advance='no') shell%pair(i,j)%natoms
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( vg%pg_identifier ))
                     write(*,'(f10.3)' ,advance='no') norm2(matmul(shell%pair(i,j)%bas,shell%pair(i,j)%tau(1:3,1)))
-                    write(*,'(3f10.3)',advance='no') matmul(sphere%bas,shell%pair(i,j)%tau(1:3,1))
+                    write(*,'(3f10.3)',advance='no') matmul(shell%pair(i,j)%bas,shell%pair(i,j)%tau(1:3,1))
                     write(*,'(3f10.3)',advance='no') shell%pair(i,j)%tau(1:3,1)
                     write(*,*)
                 endif

@@ -26,17 +26,10 @@ module am_helpers
         module procedure am_print_sparse_double, am_print_sparse_integer
     end interface ! am_print_sparse
     !
-    interface linspace
-        module procedure linspace_double, linspace_integer
-    end interface ! linspace
-    !
     interface issubset
         module procedure issubset_vec, issubset_mat
     end interface ! issubset
     !
-    interface diag
-        module procedure diag1, diag2
-    end interface ! diag
     !
     contains
 
@@ -47,8 +40,6 @@ module am_helpers
 #include "am_helpers_print.inc"
 
 #include "am_helpers_unique.inc"
-
-#include "am_helpers_matlab.inc"
 
     !
     ! CONVERT DATA TYPES  
@@ -423,7 +414,7 @@ module am_helpers
         enddo        
     end function  are_different
 
-    function      lowercase(strIn) result(strOut)
+    pure function lowercase(strIn) result(strOut)
         ! Converts string to lower case
         ! used in subroutine atom_z
         ! Adapted from http://www.star.le.ac.uk/~cgp/fortran.html (25 May 2012)

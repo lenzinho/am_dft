@@ -4,87 +4,57 @@ module am_matlab
     
     use am_constants
 
+    interface linspace
+        module procedure linspace_double, linspace_integer
+    end interface ! linspace
+
+    interface diag
+        module procedure diag1, diag2
+    end interface ! diag
+    
 contains
 
     !
     ! matlab-inspired functions
     !
-    
-    pure function legendre(l,m,x) result(y)
+
+    pure function Ylm(l,m,theta,phi)
         !
-        ! computes the associated legrende polynomial, x = cos(theta)
+        ! computes spherical harmonics. Theta and phi in radians. Theta and phi should be the same size.
+        !
+        ! W. H. Press, B. P. Flannery, S. A. Teukolsky, and W. T. Vetterling, Numerical Recipes in Fortran 77: The Art
+        ! of Scientific Computing, 2 edition (Cambridge University Press, Cambridge England ; New York, 1992), p 246.
+        ! 
+        implicit none
+        !
+        integer , intent(in)  :: l, m
+        real(dp), intent(in) :: theta(:), phi(:)
+        complex(dp) :: Ylm(size(theta))
+        !
+        Ylm = sqrt( real(2*l+1,dp)/fourpi * factorial(l-m)/real(factorial(l+m),dp) ) * legendre(l,m,cos(theta)) * exp(cmplx_i*m*phi)
+        !
+    end function  Ylm
+
+    pure function factorial(n) result(y)
         !
         implicit none
         !
-        integer , intent(in) :: l,m
-        real(dp), intent(in) :: x(:)
-        real(dp) :: y(size(x))
-        integer( :: ll
-        real(dp) :: pll(size(x))
-        real(dp) :: pmm(size(x))
-        real(dp) :: pmmp1(size(x))
-        real(dp) :: somx2(size(x))
+        integer, intent(in) :: n
+        integer :: y
         !
-        ! call assert(m >= 0, m <= l, all(abs(x) <= 1.0), 'y args')
-        !
-        pmm=1.0
-        if (m > 0) then
-            somx2=sqrt((1.0_dp-x)*(1.0_dp+x))
-            pmm=product(arth(1.0_dp,2.0_dp,m))*somx2**m
-            if (mod(m,2) == 1) pmm=-pmm
-        end if
-        if (l == m) then
-            y=pmm
+        if (n.ge.1) then
+            y = product([1:n])
         else
-            pmmp1=x*(2*m+1)*pmm
-            if (l == m+1) then
-                y=pmmp1
-            else
-                do ll=m+2,l
-                    pll=(x*(2*ll-1)*pmmp1-(ll+m-1)*pmm)/(ll-m)
-                    pmm=pmmp1
-                    pmmp1=pll
-                end do
-                y=pll
-            end if
-        end if
-        contains
-        pure function arth(first,increment,n)
-            !
-            implicit none
-            !
-            real(dp), intent(in) :: first
-            real(dp), intent(in) :: increment
-            integer , intent(in) :: n
-            real(dp) :: arth_d(n)
-            integer  :: k,k2
-            real(dp) :: temp
-            !
-            if (n > 0) arth_d(1)=first
-            if (n <= npar_arth) then
-                do k=2,n
-                    arth_d(k)=arth_d(k-1)+increment
-                end do
-            else
-                do k=2,npar2_arth
-                    arth_d(k)=arth_d(k-1)+increment
-                end do
-                temp=increment*npar2_arth
-                k=npar2_arth
-                do
-                    if (k >= n) exit
-                    k2=k+k
-                    arth_d(k+1:min(k2,n))=temp+arth_d(1:min(k,n-k))
-                    temp=temp+temp
-                    k=k2
-                end do
-            end if
-        end function arth
-    end function  legendre
+            y = 0
+        endif
+    end function  factorial
 
     pure function legendre(l,m,x) result(y)
         !
         ! computes the associated legrende polynomial, x = cos(theta)
+        !
+        ! W. H. Press, B. P. Flannery, S. A. Teukolsky, and W. T. Vetterling, Numerical Recipes in Fortran 77: The Art
+        ! of Scientific Computing, 2 edition (Cambridge University Press, Cambridge England ; New York, 1992), p 246.
         !
         implicit none
         !

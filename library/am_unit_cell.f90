@@ -23,6 +23,7 @@ module am_unit_cell
         character(len=:), allocatable :: symb(:) !> symb(nspecies) symbols of unique atomic species
         real(dp), allocatable :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates 
         integer , allocatable :: atype(:) !> atype(natoms) index indentifying the atomic species for each atom
+        integer , allocatable :: Z(:) ! protons
     contains
         procedure :: load_poscar
         procedure :: write_poscar

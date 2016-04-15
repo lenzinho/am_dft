@@ -23,8 +23,8 @@ module am_symmetry
         integer :: nsyms
         real(dp), allocatable :: R(:,:,:)         !> symmetry elements (operate on fractional atomic basis)
         real(dp), allocatable :: T(:,:)           !> symmetry elements (operate on fractional atomic basis)
-        integer , allocatable :: cc_identifier(:) !> indices assiging each element to a conjugacy class
-        integer , allocatable :: ps_identifier(:) !> integers which identiy point symmetries (see decode_pointsymmetry)
+        integer , allocatable :: cc_identifier(:) !> integer assiging each element to a conjugacy class
+        integer , allocatable :: ps_identifier(:) !> integer which identifies point symmetries (see decode_pointsymmetry)
         integer               :: pg_identifier    !> integer which identifies the point group
     contains
         !

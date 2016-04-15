@@ -779,7 +779,7 @@ module am_vasp_io
         close(fid)
     end subroutine read_poscar
 
-    subroutine     write_poscar(bas,natoms,nspecies,symb,tau,atype,iopt_filename)
+    subroutine     write_poscar(bas,natoms,nspecies,symb,tau,atype,iopt_filename,iopt_header)
         !>
         !> Write poscar based on structure data.
         !>
@@ -798,8 +798,12 @@ module am_vasp_io
         ! optional i/o
         character(*), optional :: iopt_filename
         character(max_argument_length) :: fname
-        fname = "outfile.POSCAR"
+        character(*), optional :: iopt_header
+        character(max_argument_length) :: header
+        fname = 'outfile.POSCAR'
         if ( present(iopt_filename) ) fname = iopt_filename
+        header = 'POSCAR'
+        if ( present(iopt_filename) ) header = iopt_header
         !
         !
         !
@@ -810,7 +814,7 @@ module am_vasp_io
             !
             call am_print('file',trim(fname),' ... ')
             ! (LINE 1) header
-            write(unit=fid,fmt='(a)') 'POSCAR'
+            write(unit=fid,fmt='(a)') header
             ! (LINE 2) lattice parameter scaling
             write(unit=fid,fmt='(f20.12)') 1.0_dp
             ! (LINES 3-5) basis
