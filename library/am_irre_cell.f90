@@ -13,6 +13,7 @@ module am_irre_cell
     private
 
     type, public, extends(am_class_prim_cell) :: am_class_irre_cell
+        !
     contains
         procedure :: get_irreducible
     end type am_class_irre_cell
@@ -60,11 +61,9 @@ contains
         !
         ic%bas = pc%bas
         ic%natoms = k
-        ic%nspecies = pc%nspecies
         !
-        allocate(ic%symb ,source=pc%symb)
-        allocate(ic%tau  ,source=pc%tau(:,ind(1:k)))
-        allocate(ic%atype,source=pc%atype(ind(1:k)))
+        allocate(ic%tau,source=pc%tau(:,ind(1:k)))
+        allocate(ic%Z,source=pc%Z(ind(1:k)))
         !
         if (opts%verbosity.ge.1) call am_print('number of atoms in irreducible cell',ic%natoms,' ... ')
         if (opts%verbosity.ge.1) then

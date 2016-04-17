@@ -9,7 +9,7 @@ cd ${odir}/library
 	if [ ! -f makefile.inc ]; then
 		ln -s ../makefile.inc .
 	fi
-	make clean
+	#make clean
 	make
 cd ${odir}
 
@@ -20,7 +20,7 @@ for program in `find . -name main.f90` ; do
 	#
 	d=`dirname ${program}`
 	cd ${odir}/${d}
-		make clean
+		#make clean
 		#
 		echo ""
 		echo "+----------------------------------------------------------------------------------------+"

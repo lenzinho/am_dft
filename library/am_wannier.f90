@@ -3,6 +3,7 @@ module am_wannier
 	use am_unit_cell
 	use am_constants
 	use am_helpers
+	use am_matlab
 	!
 	implicit none
 	
@@ -218,10 +219,10 @@ contains
 		!
 		do i = 1,3
 			mask = (abs(kpt(i,:)).gt.tiny)
-			n(i) = nint(1/(minval(abs(pack(kpt(i,:),mask)))*2))
+			n(i) = nint(1/(minval(abs(pack(kpt(i,:),mask)))))
 		enddo
 		!
-	    fourier_points = mesh_grid(n)
+	    fourier_points = meshgrid( [0:n(1)]-floor(n(1)/2.0_dp),[0:n(1)]-floor(n(2)/2.0_dp),[0:n(1)]-floor(n(3)/2.0_dp) )
 		!
 	end function   get_fft_mesh
 

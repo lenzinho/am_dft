@@ -37,7 +37,7 @@ module am_symmetry
         !
         procedure :: name_symmetries
         procedure :: stdout
-        procedure :: sort
+        procedure :: sort => symsort
         !
         procedure :: determine_character_table
         procedure :: symmetry_action
@@ -530,7 +530,7 @@ contains
         allocate(wrkspace(3,3,pg%nsyms))
         m=0
         do i = 1, pg%nsyms
-            if ( is_symmetry_valid(tau=uc%tau,iopt_atype=uc%atype, &
+            if ( is_symmetry_valid(tau=uc%tau,iopt_Z=uc%Z, &
                & iopt_R=pg%R(1:3,1:3,i),iopt_sym_prec=opts%sym_prec)) then
                 m = m + 1
                 wrkspace(1:3,1:3,m)=pg%R(1:3,1:3,i)
@@ -869,9 +869,16 @@ contains
         integer, allocatable :: PM(:,:)
         integer :: fid
         character(10) :: buffer
-        character(3) :: xyz
-        integer :: i,j,k
-        real(dp) :: R(3,3)
+        integer :: i,j,k,m ! loop variables
+        character(:), allocatable :: xyz(:) ! basis functions output
+        real(dp) :: voigt(6) ! voigt notation
+        real(dp) :: R(3,3) ! used for basis functions output
+        real(dp) :: RR(9,9) ! used for basis functions output
+        character(10) :: fmt1
+        character(10) :: fmt2
+        character(10) :: fmt3
+        character(10) :: fmt4
+        character(10) :: fmt5
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining symmetry action')
         !
@@ -879,6 +886,13 @@ contains
         if (present(oopt_P)) allocate(oopt_P,source=P)
         !
         allocate(PM(uc%natoms,sg%nsyms))
+        !
+        !
+        fmt1 = '(a5)'
+        fmt2 = '(i5)'
+        fmt3 = '(a10)'
+        fmt4 = '(f10.2)'
+        fmt5 = '(i10)'
         !
         PM = 0
         do i = 1,sg%nsyms
@@ -890,42 +904,45 @@ contains
             !
             fid = 1
             open(unit=fid,file=trim(iopt_fname),status="replace",action='write')
+                ! HEADER INFO
+                write(fid,'(a)') 'Ellipses indicate linear combinations of linear x, y, z or quadratic x^2, y^2, z^2, xy, yz, zx functions. In order to form a compact table, these longer lines are not printed.'
+                write(fid,'(a)') 'Coefficients obtained in the transformation of linear and quadratic functions are rounded to integers. This is exact in fractional coordinates, where rotational matrices contain only 0, +1, -1, but not for cartesian coordinats which are unitary.'
                 !
                 ! SYMMETRY NUMBER
                 write(fid,'(5x)',advance='no')
-                write(fid,'(a5)',advance='no') '#'
+                write(fid,fmt1,advance='no') '#'
                 do i = 1, sg%nsyms
-                    write(fid,'(i10)',advance='no') i
+                    write(fid,fmt5,advance='no') i
                 enddo
                 write(fid,*)
                 ! CLASS IDENTIFIED
                 write(fid,'(5x)',advance='no')
-                write(fid,'(a5)',advance='no') 'class'
+                write(fid,fmt1,advance='no') 'class'
                 do i = 1, sg%nsyms
-                    write(fid,'(i10)',advance='no') sg%cc_identifier(i)
+                    write(fid,fmt5,advance='no') sg%cc_identifier(i)
                 enddo
                 write(fid,*)
                 ! HEADER / SEPERATOR
                 write(fid,'(5x)',advance='no')
                 write(fid,'(5x)',advance='no')
                 do i = 1, sg%nsyms
-                    write(fid,'(a10)',advance='no') ' '//repeat('-',9)
+                    write(fid,fmt3,advance='no') ' '//repeat('-',9)
                 enddo
                 write(fid,*)
                 ! POINT-SYMMMETRY IDENTIFIED
                 write(fid,'(5x)',advance='no')
-                write(fid,'(a5)',advance='no') 'SF'
+                write(fid,fmt1,advance='no') 'SF'
                 do i = 1, sg%nsyms
-                    write(fid,'(a10)',advance='no') trim(decode_pointsymmetry(sg%ps_identifier(i)))
+                    write(fid,fmt3,advance='no') trim(decode_pointsymmetry(sg%ps_identifier(i)))
                 enddo
                 write(fid,*)
                 ! POINT SYMMETRY COMPONENTS (FRAC)
                 do i = 1,3
                 do j = 1,3
                     write(fid,'(5x)',advance='no')
-                    write(fid,'(a5)',advance='no') adjustr('R'//trim(int2char(i))//trim(int2char(j)))
+                    write(fid,fmt1,advance='no') adjustr('R'//trim(int2char(i))//trim(int2char(j)))
                     do k = 1, sg%nsyms
-                        write(fid,'(f10.2)',advance='no') sg%R(i,j,k)
+                        write(fid,fmt4,advance='no') sg%R(i,j,k)
                     enddo
                     write(fid,*)
                 enddo
@@ -934,51 +951,105 @@ contains
                 if (allocated(sg%T)) then
                 do j = 1,3
                     write(fid,'(5x)',advance='no')
-                    write(fid,'(a5)',advance='no') adjustr('T'//trim(int2char(j)))
+                    write(fid,fmt1,advance='no') adjustr('T'//trim(int2char(j)))
                     do i = 1, sg%nsyms
-                        write(fid,'(f10.2)',advance='no') sg%T(j,i)
+                        write(fid,fmt4,advance='no') sg%T(j,i)
                     enddo
                     write(fid,*)
                 enddo
                 endif
-                ! ACTION TABLE (AXIS PERMUTATION)
+                ! ACTION TABLE (BASIS FUNCTIONS FOR P ORBITALS)
                 write(fid,'(5x)',advance='no')
-                write(fid,'(a5)',advance='no') 'axes'
+                write(fid,fmt1,advance='no') 'p orbs.'
                 do i = 1, sg%nsyms
-                    write(fid,'(a10)',advance='no') ' '//repeat('-',9)
+                    write(fid,fmt3,advance='no') ' '//repeat('-',9)
                 enddo
                 write(fid,*)
-                xyz = 'xyz'
+                allocate(character(1)::xyz(3))
+                i=0
+                i = i + 1; xyz(i)='x'
+                i = i + 1; xyz(i)='y'
+                i = i + 1; xyz(i)='z'
                 do j = 1,3
                     write(fid,'(5x)',advance='no')
-                    write(fid,'(a5)',advance='no') trim(xyz(j:j))
+                    write(fid,fmt1,advance='no') trim(xyz(j))
                     do i = 1, sg%nsyms
-                        buffer=''
-                        do k = 1,3
-                            ! for fractional R; its elements will always be an integer...
-                            ! inverse here because f(Rr) = R^-1 * f(r)
-                            R=inv(sg%R(:,:,i))
+                        ! inverse here because f(Rr) = R^-1 * f(r)
+                        ! for fractional R; its elements will always be an integer...
+                        R=inv(sg%R(:,:,i))
+                        !
+                        if (count(abs(R(j,:)).gt.tiny).ge.2) then
+                            buffer=' ... ' 
+                        else
+                            buffer=''
+                            do k = 1,3
                             if (abs(R(j,k)).gt.tiny) then
-                                buffer = trim(buffer)//trim(int2char(nint(R(j,k)),'SP'))//xyz(j:j)
+                                buffer = trim(buffer)//trim(int2char(nint(R(j,k)),'SP'))//trim(xyz(k))
                             endif
-                        enddo
-                        write(fid,'(a10)',advance='no') trim(buffer)
+                            enddo
+                        endif
+                        write(fid,fmt3,advance='no') trim(buffer)
                     enddo
                     write(fid,*)
                 enddo
+                deallocate(xyz)
+                ! ACTION TABLE (BASIS FUNCTIONS FOR D ORBITALS)
+                write(fid,'(5x)',advance='no')
+                write(fid,fmt1,advance='no') 'd orbs.'
+                do i = 1, sg%nsyms
+                    write(fid,fmt3,advance='no') ' '//repeat('-',9)
+                enddo
+                write(fid,*)
+                allocate(character(2)::xyz(9))
+                i=0
+                i = i + 1; xyz(i)='xx' ! 1,1 - unique functions
+                i = i + 1; xyz(i)='xy' ! 4,2
+                i = i + 1; xyz(i)='xz' ! 5,3
+                i = i + 1; xyz(i)='yx' ! 
+                i = i + 1; xyz(i)='yy' ! 2,5
+                i = i + 1; xyz(i)='yz' ! 6,6
+                i = i + 1; xyz(i)='xz' ! 
+                i = i + 1; xyz(i)='yz' ! 
+                i = i + 1; xyz(i)='zz' ! 3,9
+                voigt=[1,5,9,2,3,6]
+                do m = 1,6
+                    j = voigt(m)
+                    write(fid,'(5x)',advance='no')
+                    write(fid,fmt1,advance='no') trim(xyz(j))
+                    do i = 1, sg%nsyms
+                        ! inverse here because f(Rr) = R^-1 * f(r)
+                        ! for fractional R; its elements will always be an integer...
+                        R=inv(sg%R(:,:,i))
+                        RR=kron(R,R)
+                        !
+                        if (count(abs(RR(j,:)).gt.tiny).ge.2) then
+                            buffer=' ... ' 
+                        else
+                            buffer=''
+                            do k = 1,9
+                                if (abs(RR(j,k)).gt.tiny) then
+                                    buffer = trim(buffer)//trim(int2char(nint(RR(j,k)),'SP'))//trim(xyz(k))
+                                endif
+                            enddo
+                        endif
+                        write(fid,fmt3,advance='no') trim(buffer)
+                    enddo
+                    write(fid,*)
+                enddo
+                deallocate(xyz)
                 ! ACTION TABLE (ATOM PERMUTATION)
                 write(fid,'(5x)',advance='no')
-                write(fid,'(a5)',advance='no') 'atoms'
+                write(fid,fmt1,advance='no') 'atoms'
                 do i = 1, sg%nsyms
-                    write(fid,'(a10)',advance='no') ' '//repeat('-',9)
+                    write(fid,fmt3,advance='no') ' '//repeat('-',9)
                 enddo
                 write(fid,*)
                 !
                 do j = 1, uc%natoms
                     write(fid,'(5x)',advance='no')
-                    write(fid,'(i5)',advance='no') j
+                    write(fid,fmt2,advance='no') j
                     do i = 1, sg%nsyms
-                        write(fid,'(i10)',advance='no') PM(j,i)
+                        write(fid,fmt5,advance='no') PM(j,i)
                     enddo
                     write(fid,*)
                 enddo
@@ -1072,7 +1143,7 @@ contains
         !
     end subroutine copy
    
-    subroutine     sort(sg,sort_parameter,iopt_direction)
+    subroutine     symsort(sg,sort_parameter,iopt_direction)
         !
         ! iopt_direction = 'ascend'/'descend', only first character is important
         !
@@ -1103,7 +1174,7 @@ contains
         if (allocated(sg%ps_identifier)) sg%ps_identifier = sg%ps_identifier(sorted_indices)
         if (allocated(sg%cc_identifier)) sg%cc_identifier = sg%cc_identifier(sorted_indices)
         !
-    end subroutine sort
+    end subroutine symsort
 
     subroutine     stdout(sg,iopt_uc,iopt_filename)
         !

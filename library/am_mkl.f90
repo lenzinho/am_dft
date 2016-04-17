@@ -8,12 +8,38 @@ module am_mkl
     public
     !
     private :: lwmax
-
+    private :: eps
+    !
+    
 contains
 
+    ! sort array in increasing order
+    
+    subroutine     sort(d,flags)
+        !
+        implicit none
+        !
+        real(dp), intent(inout) :: d(:)
+        character(*), intent(in), optional :: flags
+        character(1) :: id
+        integer :: info
+        !
+        ID = 'I'
+        if (present(flags)) then
+            if (index(flags,'ascend')) then 
+                id = 'I'
+            elseif (index(flags,'descend')) then
+                id = 'D'
+            endif
+        endif
+        !
+        call dlasrt( id, size(d), d, info )
+        !
+    end subroutine sort 
+    
     ! get determinant by LU facorization
 
-    function      det(A) result(d)
+    function       det(A) result(d)
         ! 
         use am_helpers
         !
@@ -64,7 +90,7 @@ contains
         ! the diagonal elements of U and the sign of P, that is - for an odd number of permutations and + for an even
         ! number. But aware that determinants can readliy overflow, or underflow.
         !
-    end function  det
+    end function   det
 
     ! LU decomposition
 

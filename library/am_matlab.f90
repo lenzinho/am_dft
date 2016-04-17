@@ -1,8 +1,8 @@
 module am_matlab
 
-    implicit none
-    
     use am_constants
+
+    implicit none
 
     interface linspace
         module procedure linspace_double, linspace_integer
@@ -11,12 +11,95 @@ module am_matlab
     interface diag
         module procedure diag1, diag2
     end interface ! diag
-    
+
+    interface eye
+        module procedure eye, eye_nxm
+    end interface ! eye
+
+    interface ones
+        module procedure ones, ones_nxm
+    end interface ! ones
+
+    interface unique
+        module procedure unique_columns_double, unique_matrices_double, unique_columns_integer, unique_integer
+    end interface ! unique
+
 contains
 
     !
     ! matlab-inspired functions
     !
+
+
+    pure function rotmat(a,b) result(R)
+        !
+        ! Rotation matrix R which aligns unit vector (Ra) to unit vector b (that is, B = R*A)
+        !
+        ! based on Rodrigues' Rotation Formula
+        ! "A Mathematical Introduction to Robotic Manipulation", Richard M. Murray, Zexiang Li, S. Shankar Sastry, pp. 26-28
+        !
+        ! % quick matlab implementation:
+        ! a = rand(3,1); a=a./norm(a);
+        ! b = rand(3,1); b=b./norm(a);
+        ! v = cross(a,b);
+        ! s = norm(v);
+        ! c = dot(a,b);
+        ! vx(1:3,1) = [0.0,v(3),-v(2)];
+        ! vx(1:3,2) = [-v(3),0.0,v(1)];
+        ! vx(1:3,3) = [v(2),-v(1),0.0];
+        ! R = eye(3) + vx + (vx*vx)*(1.0-c)/(s.^2)
+        ! R*a-b
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: a(3)
+        real(dp), intent(in) :: b(3)
+        real(dp) :: R(3,3)
+        real(dp) :: s ! sine of angle
+        real(dp) :: c ! cosine of angle
+        real(dp) :: v(3) ! cross product of a and b
+        real(dp) :: vx(3,3) ! skew symmetric cross product of v
+        ! 
+        v = cross_product(a,b)
+        s = norm2(v)
+        c = dot_product(a,b)
+        vx(1:3,1) = [0.0_dp,v(3),-v(2)]
+        vx(1:3,2) = [-v(3),0.0_dp,v(1)]
+        vx(1:3,3) = [v(2),-v(1),0.0_dp]
+        !
+        R = eye(3) + vx + matmul(vx,vx)*(1.0_dp - c)/(s**2)
+        !
+    end function  rotmat
+
+    pure function meshgrid(n1,n2,n3) result(grid_points)
+        !> 
+        !> Generates a mesh of lattice vectors (fractional coordinates) around the origin. 
+        !> n(1), n(2), n(3) specifies the number of mesh points away from 0, i.e. [-n:1:n]
+        !> To obtain a mesh of reciprocal lattice vectors: matmul(recbas,grid_points)
+        !> To obtain a mesh of real-space lattice vectors: matmul(bas,grid_points)
+        !>
+        implicit none
+        !
+        integer , intent(in) :: n1(:)
+        integer , intent(in) :: n2(:)
+        integer , intent(in) :: n3(:)
+        real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
+        integer :: i1,i2,i3,j
+        !
+        allocate(grid_points(3,size(n1)*size(n2)*size(n3)))
+        !
+        j=0
+        do i1 = 1, size(n1)
+        do i2 = 1, size(n2)
+        do i3 = 1, size(n3)
+            j=j+1
+            grid_points(1,j)=n1(i1)
+            grid_points(2,j)=n2(i2)
+            grid_points(3,j)=n3(i3)
+        enddo
+        enddo
+        enddo
+    end function  meshgrid
 
     pure function Ylm(l,m,theta,phi)
         !
@@ -61,7 +144,7 @@ contains
         integer , intent(in) :: l,m
         real(dp), intent(in) :: x(:)
         real(dp) :: y(size(x))
-        integer( :: ll
+        integer  :: ll
         real(dp) :: pll(size(x))
         real(dp) :: pmm(size(x))
         real(dp) :: pmmp1(size(x))
@@ -98,28 +181,28 @@ contains
             real(dp), intent(in) :: first
             real(dp), intent(in) :: increment
             integer , intent(in) :: n
-            real(dp) :: arth_d(n)
+            real(dp) :: arth(n)
             integer  :: k,k2
             real(dp) :: temp
             !
-            if (n > 0) arth_d(1)=first
-            if (n <= npar_arth) then
+            if (n > 0) arth(1)=first
+            if (n <= 16) then
                 do k=2,n
-                    arth_d(k)=arth_d(k-1)+increment
-                end do
+                    arth(k)=arth(k-1)+increment
+                enddo
             else
-                do k=2,npar2_arth
-                    arth_d(k)=arth_d(k-1)+increment
+                do k=2,8
+                    arth(k)=arth(k-1)+increment
                 end do
-                temp=increment*npar2_arth
-                k=npar2_arth
+                temp=increment*8
+                k=8
                 do
                     if (k >= n) exit
                     k2=k+k
-                    arth_d(k+1:min(k2,n))=temp+arth_d(1:min(k,n-k))
+                    arth(k+1:min(k2,n))=temp+arth(1:min(k,n-k))
                     temp=temp+temp
                     k=k2
-                end do
+                enddo
             end if
         end function arth
     end function  legendre
@@ -494,6 +577,21 @@ contains
         enddo
     end function  eye
 
+    pure function eye_nxm(n) result(id)
+        !> nxm identity matrix
+        implicit none
+        !
+        integer, intent(in) :: n(2)
+        real(dp), dimension(:,:), allocatable :: id
+        integer :: i
+        !
+        allocate(id(n(1),n(2)))
+        id=0.0_dp
+        do i = 1, minval(n)
+            id(i,i) = 1.0_dp
+        enddo
+    end function  eye_nxm
+
     pure function ones(n)
         !> nxn identity matrix
         implicit none
@@ -506,20 +604,17 @@ contains
         !
     end function  ones
 
-    pure function eye_nxm(n,m) result(id)
-        !> nxm identity matrix
+    pure function ones_nxm(n) result(M)
+        !> nxn identity matrix
         implicit none
         !
-        integer, intent(in) :: n, m
-        real(dp), dimension(:,:), allocatable :: id
-        integer :: i
+        integer, intent(in) :: n(2)
+        real(dp), dimension(:,:), allocatable :: M
         !
-        allocate(id(n,m))
-        id=0.0_dp
-        do i = 1, min(n,m)
-            id(i,i) = 1.0_dp
-        enddo
-    end function  eye_nxm
+        allocate(M(n(1),n(2)))
+        M=1.0_dp
+        !
+    end function  ones_nxm
 
     pure subroutine rref(matrix)
         !
@@ -565,5 +660,134 @@ contains
         end do
         deallocate(temp)
     end subroutine  rref
+
+    pure function unique_matrices_double(A,iopt_tiny) result(B)
+        !> returns unique matrices of A(:,:,i) within numerical precision
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:,:)
+        real(dp) :: wrkspace(size(A,1),size(A,2),size(A,3))
+        real(dp), allocatable :: B(:,:,:)
+        integer :: i,j,k
+        real(dp), intent(in), optional :: iopt_tiny
+        real(dp) :: tiny_prec
+        !
+        if ( present(iopt_tiny) ) then
+            tiny_prec = iopt_tiny
+        else
+            tiny_prec = tiny
+        endif
+        !
+        k=1
+        wrkspace(:,:,1) = A(:,:,1)
+        !
+        try_loop : do i = 1, size(A,3)
+            do j = 1, k
+                if ( all(abs(A(:,:,i)-wrkspace(:,:,j)).lt.tiny_prec) ) cycle try_loop
+            enddo
+            k = k + 1
+            wrkspace(:,:,k) = A(:,:,i)
+        enddo try_loop
+        !
+        allocate(B(size(A,1),size(A,2),k))
+        B(:,:,1:k) = wrkspace(:,:,1:k)
+        !
+    end function  unique_matrices_double
+
+    pure function unique_columns_double(A,iopt_tiny) result(B)
+        !> returns unique columns of double matrix A(:,i) within numerical precision
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:)
+        real(dp) :: wrkspace(size(A,1),size(A,2))
+        real(dp), allocatable :: B(:,:)
+        integer :: i,j,k
+        real(dp), intent(in), optional :: iopt_tiny
+        real(dp) :: tiny_prec
+        !
+        if ( present(iopt_tiny) ) then
+            tiny_prec = iopt_tiny
+        else
+            tiny_prec = tiny
+        endif
+        !
+        k=1
+        wrkspace(:,1) = A(:,1)
+        !
+        try_loop : do i = 1,size(A,2)
+            do j = 1,k
+                if ( all(abs(A(:,i)-wrkspace(:,j)).lt.tiny_prec) ) cycle try_loop
+            enddo
+            k = k + 1
+            wrkspace(:,k) = A(:,i)
+        enddo try_loop
+        !
+        allocate(B(size(A,1),k))
+        !
+        do i = 1,k
+            B(:,i) = wrkspace(:,i)
+        enddo
+    end function  unique_columns_double
+
+    pure function unique_columns_integer(A) result(B)
+        !> returns unique columns of double matrix A(:,i) within numerical precision
+        implicit none
+        !
+        integer, intent(in) :: A(:,:)
+        integer :: wrkspace(size(A,1),size(A,2))
+        integer, allocatable :: B(:,:)
+        integer :: i,j,k
+        logical :: found
+        !
+        k=1
+        wrkspace(:,1) = A(:,1)
+        !
+        do i = 1, size(A,2)
+            !
+            found = .false.
+            !
+            do j = 1, k
+            if ( all(A(:,i).eq.wrkspace(:,j)) ) then
+                found = .true.
+                exit
+            endif
+            enddo
+            !
+            if (.not.found) then
+                k = k + 1
+                wrkspace(:,k) = A(:,i)
+            endif
+        enddo 
+        !
+        allocate(B,source=wrkspace(:,1:k))
+        !
+    end function  unique_columns_integer
+
+    pure function unique_integer(A) result(B)
+        !> returns unique values of integer array A(:)
+        implicit none
+        !
+        integer, intent(in) :: A(:)
+        integer, allocatable :: wrkspace(:)
+        integer, allocatable :: B(:)
+        integer :: i, k, n
+        !
+        n = size(A)
+        !
+        allocate(wrkspace(n))
+        wrkspace=0
+        !
+        !
+        k=0
+        do i = 1, n
+        if (.not. any(A(i).eq.wrkspace)) then
+            k=k+1
+            wrkspace(k) = A(i)
+        endif
+        enddo 
+        !
+        allocate(B,source=wrkspace(1:k))
+        !
+    end function  unique_integer
 
 end module am_matlab

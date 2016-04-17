@@ -19,11 +19,8 @@ module am_unit_cell
     type, public :: am_class_unit_cell
         real(dp) :: bas(3,3) !> column vectors a(1:3,i), a(1:3,j), a(1:3,k)
         integer  :: natoms   !> number of atoms
-        integer  :: nspecies !> number of unique atomic species
-        character(len=:), allocatable :: symb(:) !> symb(nspecies) symbols of unique atomic species
-        real(dp), allocatable :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates 
-        integer , allocatable :: atype(:) !> atype(natoms) index indentifying the atomic species for each atom
-        integer , allocatable :: Z(:) ! protons
+        real(dp), allocatable :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates
+        integer , allocatable :: Z(:) !> protons
     contains
         procedure :: load_poscar
         procedure :: write_poscar
@@ -36,7 +33,7 @@ module am_unit_cell
 contains
 
     !
-    ! fundamental symmetry related functions for creating space and point groups
+    ! symmetry related functions for creating space and point groups
     !
 
     function       lattice_symmetries(bas,sym_prec) result(R)
@@ -65,69 +62,19 @@ contains
         !> "The inverse of a unitary matrix (rotation) is equal to its transpose
         !>  (this is only true in cartesian coordinates.)"
         !>
-        !> An example of the procedure:
-        !>
-        !> 1) Consider the matrix S which is composed of entries which are only -1, 0, and +1:
-        !>    S =
-        !>    [         1        -1         0 ]
-        !>    [         1         0         0 ]
-        !>    [         0         0         1 ]
-        !>
-        !> 2) Furthermore, consider the primitive basis for MoS2 (column vectors):
-        !>    A =
-        !>    [    3.3269   -1.6635         0 ]
-        !>    [         0    2.8812         0 ]
-        !>    [         0         0   15.4510 ]
-        !>
-        !> 3) Evidently, S^T*S is not the identity. That is to say: S is not an orthogonal matrix.
-        !>
-        !> 4) The basis transformation, C = A*S*B, for which B = inv(A), produces:
-        !>    C =
-        !>    [    0.5000   -0.8660         0 ]
-        !>    [    0.8660    0.5000         0 ]
-        !>    [         0         0    1.0000 ]
-        !>    which, in fact, is an ORTHOGONAL MATRIX, corresponding to a unitary rotation!
-        !>
-        !> 5) Note that the order of the operation A*S*B (NOT B*S*A) is important!
-        !>    The operation B*S*A produces, instead:
-        !>    D =
-        !>    [  1.5774  1.1547       0 ]
-        !>    [ -1.6547 -0.5774       0 ]
-        !>    [       0       0  1.0000 ]
-        !>    A matrix which is neither orthogonal, NOR, composed of 0, +1, and -1.
-        !>
-        !> %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        !> % QUICK MATLAB SCRIPT TO CONFIRM THE ABOVE:
-        !>     S=[
-        !>          1    -1     0
-        !>          1     0     0
-        !>          0     0     1];
-        !>     A=[
-        !>         3.3269   -1.6635         0
-        !>              0    2.8812         0
-        !>              0         0   15.4510];
-        !>     B=inv(A);
-        !>     S'*S
-        !>     C=A*S*B
-        !>     C'*C-eye(3)
-        !>
-        !> %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        !>
         implicit none
         ! subroutine i/o
         real(dp), intent(in) :: bas(3,3)
         real(dp), intent(in) :: sym_prec
         real(dp), allocatable :: R(:,:,:) !> point symmetries (fractional)
         !
-        character(3), parameter :: method = 'met' ! met/bas : metric vs basis methods
         real(dp) :: id(3,3)
         real(dp) :: recbas(3,3)
         real(dp) :: metric(3,3)
         real(dp) :: buffer(3,3,48) ! buffer for point symmetries
         integer  :: k ! point symmetry counter
         real(dp) :: o(3,3)  ! point symmetry in fractional
-        real(dp) :: oc(3,3) ! point symmetry in cartesian
-        integer  :: i, i11, i12, i13, i21, i22, i23, i31, i32, i33 ! used to generate unitary rotational matrices
+        integer  :: i11, i12, i13, i21, i22, i23, i31, i32, i33 ! used to generate unitary rotational matrices
         !
         id = eye(3)
         !
@@ -139,51 +86,29 @@ contains
         !
         k = 0
         !
-        do i11 = 1,3
-        do i12 = 1,3
-        do i13 = 1,3
-            do i21 = 1,3
-            do i22 = 1,3
-            do i23 = 1,3
-                do i31 = 1,3
-                do i32 = 1,3
-                do i33 = 1,3
-                    ! can be either [-1,0,1] = [1:3]-2
-                    o(1,1:3)=real([i11-2,i12-2,i13-2],dp)
-                    o(2,1:3)=real([i21-2,i22-2,i23-2],dp)
-                    o(3,1:3)=real([i31-2,i32-2,i33-2],dp)
-                    select case (method)
-                    case ('met')
-                        !
-                        ! Checks that metric is left unchanged by symmetry opreation in fractional coordinates.
-                        ! i.e. that metric tensor commutes with point symmetry.
-                        !
-                        if ( all( abs(matmul(transpose(o),matmul(metric,o))-metric) .lt. sym_prec ) ) then
-                            k = k + 1
-                            ! store point symmetry in cartesian coordinates
-                            ! buffer(1:3,1:3,k) = matmul(bas,matmul(o,recbas))
-                            ! store point symmetry in fractional coordinates
-                            buffer(:,:,k) = o
-                        endif
-                    case ('bas')
-                        !
-                        ! Checks that point symmetry in cartesian coordinates is unitary. (O^-1 = O^T, i.e. O*O^T = O*O^-1 = I) 
-                        !
-                        ! Transform point symmetry to cartesian coordinates. Values which are possible 
-                        ! in cartesian coordinates are: cos(pi/n), sin(pi/n) for n = 1, 2, 3, 6
-                        ! Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. 
-                        ! Cambridge, UK ; New York: Cambridge University Press, 2008. page 275.
-                        !
-                        !           n  =      1         2         3         6
-                        !    sin(pi/n) =   0.0000    1.0000    0.8660    0.5000
-                        !    cos(pi/n) =  -1.0000    0.0000    0.5000    0.8660 - sqrt(3)/2
-                        !
-                        oc = matmul(bas,matmul(o,recbas))
-                        if ( all(abs(matmul(transpose(oc),oc)-id) .lt. tiny) ) then
-                            k = k + 1
-                            buffer(:,:,k) = o ! store point symmetry in fractional coordinates
-                        endif
-                    end select
+        do i11 = -1,1
+        do i12 = -1,1
+        do i13 = -1,1
+            do i21 = -1,1
+            do i22 = -1,1
+            do i23 = -1,1
+                do i31 = -1,1
+                do i32 = -1,1
+                do i33 = -1,1
+                    !
+                    o(1,1:3)=real([i11,i12,i13],dp)
+                    o(2,1:3)=real([i21,i22,i23],dp)
+                    o(3,1:3)=real([i31,i32,i33],dp)
+                    !
+                    ! Check that metric is left unchanged by symmetry opreation in fractional coordinates.
+                    ! i.e. that metric tensor commutes with point symmetry.
+                    if ( all( abs(matmul(transpose(o),matmul(metric,o))-metric) .lt. sym_prec ) ) then
+                        k = k + 1
+                        ! store point symmetry in cartesian coordinates
+                        ! buffer(1:3,1:3,k) = matmul(bas,matmul(o,recbas))
+                        ! store point symmetry in fractional coordinates
+                        buffer(:,:,k) = o
+                    endif
                     !
                 enddo
                 enddo
@@ -195,18 +120,15 @@ contains
         enddo
         enddo
         !
-        allocate(R(3,3,k))
-        do i = 1,k
-            R(:,:,i)= buffer(:,:,i)
-        enddo
+        allocate(R,source=buffer(:,:,1:k))
         !
     end function   lattice_symmetries
 
-    pure function  translations_from_basis(tau,atype,iopt_include,iopt_sym_prec) result(T)
+    pure function  translations_from_basis(tau,Z,iopt_include,iopt_sym_prec) result(T)
         !
         implicit none
         ! subroutine i/o
-        integer , intent(in) :: atype(:) !> atype(natoms) list identifing type of atom
+        integer , intent(in) :: Z(:)     !> Z(natoms) list identifing type of atom
         real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates
         character(len=*), intent(in), optional :: iopt_include 
         !> iopt_include string can contain 'prim', 'zero', 'relax' and any combination of each
@@ -249,7 +171,7 @@ contains
         nTs = 0
         do j = 1,natoms
             if ( i .ne. j) then
-            if ( atype(i) .eq. atype(j) ) then
+            if ( Z(i) .eq. Z(j) ) then
                 ! shift to put reference atom at zero.
                 wrkr(1:3) = tau(1:3,j) - tau(1:3,i)
                 ! wrkr = modulo(wrkr+sym_prec,1.0_dp)-sym_prec ! added this in for testing.
@@ -258,7 +180,7 @@ contains
                     nTs = nTs + 1
                     wrk(1:3,nTs) = wrkr
                 else
-                    if ( is_symmetry_valid(iopt_T=wrkr, iopt_atype=atype, tau=tau, iopt_sym_prec=sym_prec) ) then
+                    if ( is_symmetry_valid(iopt_T=wrkr, iopt_Z=Z, tau=tau, iopt_sym_prec=sym_prec) ) then
                         nTs = nTs + 1
                         wrk(1:3,nTs) = wrkr
                     endif
@@ -284,19 +206,19 @@ contains
         !
     end function   translations_from_basis
 
-    pure function  is_symmetry_valid(tau,iopt_atype,iopt_R,iopt_T,iopt_exact,iopt_sym_prec)
+    pure function  is_symmetry_valid(tau,iopt_Z,iopt_R,iopt_T,iopt_exact,iopt_sym_prec)
         !
         ! check whether symmetry operation is valid
         !
         implicit none
         ! function i/o
         real(dp), intent(in)           :: tau(:,:)      !> tau(3,natoms) fractional atomic basis
-        integer , intent(in), optional :: iopt_atype(:) !> atype(natoms) list identify type of atom
+        integer , intent(in), optional :: iopt_Z(:) !> Z(natoms) list identify type of atom
         real(dp), intent(in), optional :: iopt_R(3,3)
         real(dp), intent(in), optional :: iopt_T(3)
         real(dp), intent(in), optional :: iopt_sym_prec
         logical , intent(in), optional :: iopt_exact    ! if present, do not apply mod. ; useful for determining stabilizers
-        integer , allocatable :: atype(:)
+        integer , allocatable :: Z(:)
         real(dp), allocatable :: tau_internal(:,:)
         real(dp) :: R(3,3)
         real(dp) :: T(3)
@@ -309,11 +231,11 @@ contains
         !
         natoms = size(tau,2)
         !
-        if ( present(iopt_atype) ) then
-            atype = iopt_atype
+        if ( present(iopt_Z) ) then
+            Z = iopt_Z
         else
-            allocate(atype(natoms))
-            atype = 1
+            allocate(Z(natoms))
+            Z = 1
         endif
         !
         if ( present(iopt_sym_prec) ) then
@@ -352,7 +274,7 @@ contains
             ! check that newly created point matches something already present
             overlap_found = .false.
             check_overlap : do j = 1,natoms
-                if (atype(i) .eq. atype(j)) then
+                if (Z(i) .eq. Z(j)) then
                     if (all(abs(tau_rot(1:3)-tau_internal(1:3,j)).lt.sym_prec)) then
                         m = m + 1
                         overlap_found = .true.
@@ -411,7 +333,7 @@ contains
         !
         if (opts%verbosity.ge.1) call am_print('possible (im-)proper rotations',nRs,' ... ')
         !
-        T = translations_from_basis(tau=uc%tau,atype=uc%atype,iopt_sym_prec=opts%sym_prec,iopt_include=trim('zero,relax'))
+        T = translations_from_basis(tau=uc%tau,Z=uc%Z,iopt_sym_prec=opts%sym_prec,iopt_include=trim('zero,relax'))
         nTs = size(T,2)
         !
         if (opts%verbosity.ge.1) call am_print('possible translations',nTs,' ... ')
@@ -445,7 +367,7 @@ contains
                 T_shifted = T(:,j)
             endif
             !
-            if ( is_symmetry_valid(tau=uc%tau,iopt_atype=uc%atype,&
+            if ( is_symmetry_valid(tau=uc%tau,iopt_Z=uc%Z,&
                 & iopt_R=R(1:3,1:3,i),iopt_T=T_shifted,iopt_sym_prec=opts%sym_prec)) then
                 m = m + 1
                 wrkspace(1:3,1:3,m)=R(1:3,1:3,i)
@@ -474,16 +396,26 @@ contains
         !
         class(am_class_unit_cell), intent(inout) :: uc
         type(am_class_options), intent(in) :: opts
+        ! ommiting these parameters in favor of Z
+        integer :: nspecies
+        character(:), allocatable :: symb(:)
+        integer, allocatable :: atype(:)
+        integer :: i
         !
         call read_poscar(&
             bas=uc%bas,&
             natoms=uc%natoms,&
-            nspecies=uc%nspecies,&
-            symb=uc%symb,&
+            nspecies=nspecies,&
+            symb=symb,&
             tau=uc%tau,&
-            atype=uc%atype,&
+            atype=atype,&
             iopt_filename=opts%poscar,&
             iopt_verbosity=opts%verbosity)
+        !
+        allocate(uc%Z(uc%natoms))
+        do i = 1, uc%natoms
+            uc%Z(i) = atm_Z(trim(symb(atype(i))))
+        enddo
         !
     end subroutine  load_poscar
 
@@ -498,26 +430,44 @@ contains
         class(am_class_unit_cell), intent(in) :: uc
         character(*), intent(in) :: file_output_poscar
         !
-        if (uc%nspecies.lt.1) then
-            call am_print('ERROR','Number of atomic species < 1.',flags='E')
-            stop
-        endif
+        integer, allocatable :: unique_Z(:)
+        integer :: nspecies
+        character(:), allocatable :: symb(:)
+        integer, allocatable :: atype(:)
+        integer :: i
+        !
         if (uc%natoms.lt.1) then
             call am_print('ERROR','Number of atoms < 1.',flags='E')
             stop
         endif
-        if (len(trim(uc%symb(1))).eq.0) then
-            call am_print('ERROR','Atomic symbols not defined.',flags='E')
+        !
+        ! nspecies
+        unique_Z = unique(uc%Z)
+        nspecies = size(unique_Z)
+        if (nspecies.lt.1) then
+            call am_print('ERROR','Number of atomic species < 1.',flags='E')
             stop
         endif
+        !
+        ! symbs
+        allocate(character(500)::symb(nspecies))
+        do i = 1, nspecies
+            symb(i) = atm_symb(unique_Z(i))
+        enddo
+        !
+        ! atype
+        allocate(atype(uc%natoms))
+        do i = 1, nspecies
+            where(uc%Z(:).eq.unique_Z(i)) atype = i
+        enddo
         !
         call write_poscar_internal(&
             bas=uc%bas,&
             natoms=uc%natoms,&
-            nspecies=uc%nspecies,&
-            symb=uc%symb,&
+            nspecies=nspecies,&
+            symb=symb,&
             tau=uc%tau,&
-            atype=uc%atype,&
+            atype=atype,&
             iopt_filename=file_output_poscar)
         !
     end subroutine  write_poscar
@@ -580,7 +530,7 @@ contains
         endif
         !
         allocate(sc%tau(3,sc%natoms))
-        allocate(sc%atype(sc%natoms))
+        allocate(sc%Z(sc%natoms))
         !
         sc%tau = 1.0D5
         m=0
@@ -600,7 +550,7 @@ contains
                       if (.not.issubset(sc%tau,tau_wrk,opts%sym_prec)) then
                           m = m+1 
                           sc%tau(1:3,m) = tau_wrk
-                          sc%atype(m) = uc%atype(j)
+                          sc%Z(m) = uc%Z(j)
                       endif
                       if (m.eq.sc%natoms) then
                           exit map
@@ -618,10 +568,6 @@ contains
                 Btitle='cartesian'             ,B=transpose(matmul(sc%bas,sc%tau)),&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
-        ! transfer other stuff
-        allocate(character(500)::sc%symb(uc%nspecies))
-        sc%symb = uc%symb
-        sc%nspecies = uc%nspecies
         !
     end subroutine  get_supercell
 
@@ -632,16 +578,13 @@ contains
         class(am_class_unit_cell), intent(inout) :: cp
         type(am_class_unit_cell) , intent(in) :: uc
         !
-        cp%natoms   = uc%natoms
-        cp%bas      = uc%bas
-        cp%nspecies = uc%nspecies
+        cp%natoms=uc%natoms
+        cp%bas=uc%bas
         !
-        if (allocated(cp%tau  )) deallocate(cp%tau  )
-        if (allocated(cp%atype)) deallocate(cp%atype)
-        if (allocated(cp%symb )) deallocate(cp%symb )
-        allocate(cp%tau  , source = uc%tau  )
-        allocate(cp%atype, source = uc%atype)
-        allocate(cp%symb , source = uc%symb )
+        if (allocated(cp%tau)) deallocate(cp%tau)
+        if (allocated(cp%Z)) deallocate(cp%Z)
+        allocate(cp%tau,source=uc%tau)
+        allocate(cp%Z,source=uc%Z)
         !
     end subroutine  copy
    
@@ -652,12 +595,12 @@ contains
         class(am_class_unit_cell), intent(inout) :: uc
         integer , intent(in)  :: indices(:)
         real(dp), allocatable :: tau(:,:)
-        integer , allocatable :: atype(:)
+        integer , allocatable :: Z(:)
         integer :: i
         !
         ! create temporary variables
         allocate(tau   ,source=uc%tau )
-        allocate(atype,source=uc%atype)
+        allocate(Z,source=uc%Z)
         !
         ! count how many atoms should be passed
         uc%natoms = count(indices.ne.0)
@@ -668,23 +611,22 @@ contains
             uc%tau(:,i)=tau(:,indices(i))
         enddo
         !
-        deallocate(uc%atype)
-        allocate(uc%atype(uc%natoms))
+        deallocate(uc%Z)
+        allocate(uc%Z(uc%natoms))
         do i = 1, uc%natoms
-            uc%atype(i)=atype(indices(i))
+            uc%Z(i)=Z(indices(i))
         enddo
         !
     end subroutine  filter
 
-    subroutine      initialize(uc,bas,tau,atype,symb)
+    subroutine      initialize(uc,bas,tau,Z)
         !
         implicit none
         !
         class(am_class_unit_cell) , intent(inout) :: uc
         real(dp), intent(in) :: bas(3,3)
         real(dp), intent(in) :: tau(:,:)
-        integer , intent(in) :: atype(:)
-        character(*), intent(in) :: symb(:)
+        integer , intent(in) :: Z(:)
         !
         uc%bas = bas
         !
@@ -692,11 +634,7 @@ contains
         !
         allocate(uc%tau,source=tau)
         !
-        uc%nspecies = size(unique(atype))
-        !
-        allocate(uc%atype,source=atype)
-        !
-        allocate(uc%symb,source=symb)
+        allocate(uc%Z,source=Z)
         !
     end subroutine  initialize
 
@@ -712,7 +650,7 @@ contains
         type(am_class_unit_cell) , intent(in) :: uc
         type(am_class_options), intent(in) :: opts
         real(dp), allocatable :: bas_def(:,:,:)
-        integer :: i, j
+        integer :: i
         !
         if (opts%verbosity.ge.1) call am_print_title('Elastically deforming structure')
         !
@@ -722,20 +660,9 @@ contains
         !
         do i = 1,opts%nstrains
             !
-            def(i)%bas = bas_def(:,:,i)
+            call def(i)%copy(uc)
             !
-            allocate(character(maximum_buffer_size) :: def(i)%symb(uc%nspecies))
-            allocate(def(i)%tau(3,uc%natoms))
-            allocate(def(i)%atype(uc%natoms))
-            def(i)%natoms   = uc%natoms
-            def(i)%nspecies = uc%nspecies
-            do j = 1,uc%nspecies
-            def(i)%symb(j) = uc%symb(j)
-            enddo
-            do j = 1,uc%natoms
-            def(i)%tau(:,j) = uc%tau(:,j)
-            def(i)%atype(j) = uc%atype(j)
-            enddo
+            def(i)%bas = bas_def(:,:,i)
             !
         enddo
         !

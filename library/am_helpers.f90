@@ -1,12 +1,10 @@
 module am_helpers
     !
     use am_constants
+    use am_matlab
     !
     implicit none
     !
-    interface unique
-        module procedure unique_integer, unique_columns_integer, unique_columns_double, unique_matrices_double
-    end interface
     !
     interface am_print
         ! function overloading must start with the same name as the interface, i.e. "am_print" in this case
@@ -38,8 +36,6 @@ module am_helpers
     !
 
 #include "am_helpers_print.inc"
-
-#include "am_helpers_unique.inc"
 
     !
     ! CONVERT DATA TYPES  
@@ -237,36 +233,6 @@ module am_helpers
     end subroutine am_print_two_matrices_side_by_side
 
     !
-    ! matrix functions
-    !
-
-    pure function  mesh_grid(n) result(grid_points)
-        !> 
-        !> Generates a mesh of lattice vectors (fractional coordinates) around the origin. 
-        !> n(1), n(2), n(3) specifies the number of mesh points away from 0, i.e. [-n:1:n]
-        !> To obtain a mesh of reciprocal lattice vectors: matmul(recbas,grid_points)
-        !> To obtain a mesh of real-space lattice vectors: matmul(bas,grid_points)
-        !>
-        implicit none
-        !
-        integer , intent(in) :: n(3)
-        real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
-        integer :: i1,i2,i3,j
-        !
-        allocate(grid_points(3,product(2*n+1)))
-        !
-        j=0
-        do i1 = -n(1),n(1)
-            do i2 = -n(2),n(2)
-                do i3 = -n(3),n(3)
-                    j=j+1
-                    grid_points(1:3,j)=[i1,i2,i3]
-                enddo
-            enddo
-        enddo
-    end function   mesh_grid
-
-    !
     ! generic math functions 
     !
 
@@ -343,30 +309,6 @@ module am_helpers
         !
     end function  regspace
 
-    pure function rotation_from_vectors(a,b) result(R)
-        ! based on Rodrigues' Rotation Formula
-        ! "A Mathematical Introduction to Robotic Manipulation", Richard M. Murray, Zexiang Li, S. Shankar Sastry, pp. 26-28
-        implicit none
-        !
-        real(dp), intent(in) :: a(3)
-        real(dp), intent(in) :: b(3)
-        real(dp) :: R(3,3)
-        real(dp) :: s ! sine of angle
-        real(dp) :: c ! cosine of angle
-        real(dp) :: v(3) ! cross product of a and b
-        real(dp) :: vx(3,3) ! skew symmetric cross product of v
-        ! 
-        v = cross_product(a,b)
-        s = norm2(v)
-        c = dot_product(a,b)
-        vx(1:3,1) = [0.0_dp,v(3),-v(2)]
-        vx(1:3,2) = [-v(3),0.0_dp,v(1)]
-        vx(1:3,3) = [v(2),-v(1),0.0_dp]
-        !
-        R = eye(3) + vx + matmul(vx,vx)*(1.0_dp - c)/(s**2)
-        !
-    end function  rotation_from_vectors
-    
     pure function are_equal(a)
         !
         ! are all elements of a equal to each other

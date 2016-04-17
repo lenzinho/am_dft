@@ -612,7 +612,7 @@ module am_vasp_io
         character(len=:), allocatable, intent(out) :: symb(:) ! 1 symb per species
         integer , allocatable :: natoms_per_species(:) ! number of atoms per species
         real(dp), allocatable, intent(out) :: tau(:,:) ! atomic coordinates tau_read(3,natoms) in fractional
-        integer,allocatable, intent(out) :: atype(:) ! type of atom tau_read(natoms)
+        integer , allocatable, intent(out) :: atype(:) ! type of atom tau_read(natoms)
         ! subroutine internal parameters
         real(dp) :: recbas(3,3)
         real(dp) :: vol

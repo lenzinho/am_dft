@@ -7,111 +7,137 @@ module am_shells
     use am_irre_cell
     use am_options
     use am_mkl
+    use am_atom
     use am_symmetry
 
     implicit none
 
     private
 
-    public :: am_class_shell
+    public :: am_class_pair_shell
 
-    type am_class_shell
+    type am_class_pair_shell
         !
-        integer, allocatable :: npairs(:) ! how many pairs atom i has
-        type(am_class_unit_cell), allocatable :: pair(:,:) ! pair(ic%natoms,npairs(natoms))
+        integer, allocatable :: nshells(:) ! how many pairs atom i has
+        type(am_class_unit_cell), allocatable :: shell(:,:) ! shell(ic%natoms,npairs(natoms)) - pair%shell(i,j) pair between irreducible atom i and its shell j
         !
     contains
         !
         procedure :: get_pair_shells
         procedure :: get_pair_prototypes
         !
-    end type am_class_shell
+    end type am_class_pair_shell
 
 contains
 
-    subroutine     get_pair_prototypes(shell,ic)
+    function       get_pair_prototypes(pair,pg,ic,opts) result(pair_prototypes)
         !
         implicit none
         !
-        class(am_class_shell), intent(inout) :: shell
-        class(am_class_unit_cell), intent(in) :: ic
-        integer , allocatable :: p(:,:)
-        real(dp), allocatable :: d(:)
+        class(am_class_pair_shell), intent(inout) :: pair
+        type(am_class_symmetry)   , intent(in) :: pg
+        class(am_class_unit_cell) , intent(in) :: ic
+        type(am_class_options)    , intent(in) :: opts
+        type(am_class_options)  :: notalk
+        type(am_class_symmetry) :: vg ! stabilizer of vector v
+        integer , allocatable :: pair_prototypes(:,:) ! unique indicies i and j (see below)
+        integer , allocatable :: ij(:,:) ! indicies i and j (see below)
+        integer , allocatable :: p(:,:) ! Z of each atom in pair
+        integer , allocatable :: s(:) ! stabilizer point group identifier
+        real(dp), allocatable :: d(:) ! distances of atoms
+        integer , allocatable :: ind(:) ! used for multiple things
+        real(dp) :: v(3)
+        integer :: totalshells
         integer :: i,j,k
+        ! just for stdout
+        integer :: totalshells_u
+        integer , allocatable :: ind_u(:)
         !
         !
-        call am_print('ic%natoms',ic%natoms)
-        call am_print('shell%npairs',shell%npairs)
+        if (opts%verbosity.ge.1) call am_print_title('Determining irreducible bond prototypes')
+        !
+        notalk = opts
+        notalk%verbosity = 0
+        !
+        totalshells = sum(pair%nshells)
+        !
+        if (opts%verbosity.ge.1) call am_print('possible bond prototypes',totalshells)
+        !
+        allocate(d(totalshells))
+        allocate(s(totalshells))
+        allocate(p(2,totalshells))
+        allocate(ij(2,totalshells))
+        !
+        k=0
         do i = 1, ic%natoms
-        do j = 1, shell%npairs(i)
-            ! call am_print('shell%pair(i,j)%natoms',shell%pair(i,j)%natoms)
-            ! call am_print('shell%pair(i,j)%atype',shell%pair(i,j)%atype)
-            ! call am_print('shell%pair(i,j)%symb',trim(shell%pair(i,j)%symb(1)))
-            ! call am_print('shell%pair(i,j)',transpose(shell%pair(i,j)%tau))
-            call shell%pair(i,j)%write_poscar(file_output_poscar='shell_'//trim(int2char(i))//'_'//trim(int2char(j)),iopt_header=ic%symb(ic%atype(i))'//')
+        do j = 1, pair%nshells(i)
+            k=k+1
+            ! get bond vector
+            v = pair%shell(i,j)%tau(:,1)
+            ! record distances
+            d(k) = norm2(matmul(pair%shell(i,j)%bas,v))
+            ! record indices
+            ij(1:2,k) = [i,j]
+            ! record sorted pair
+            p(1:2,k) = [ic%Z(i), pair%shell(i,j)%Z(1)]
+            if (p(1,k).gt.p(2,k)) p([1,2],k) = p([2,1],k)
+            ! record stabilzier group
+            call vg%get_stabilizer_group(pg=pg, v=v, opts=notalk)
+            s(k) = vg%pg_identifier
+            !
+            ! call pair%shell(i,j)%write_poscar(file_output_poscar='shell_'//trim(int2char(i))//'_'//trim(int2char(j)))
         enddo
         enddo
+        if (k.ne.totalshells) then
+            call am_print('ERROR','k.ne.totalshells',flags='E')
+            stop
+        endif
         !
-        
-!         allocate(p(2,maxval(shell%npairs)*shell%natoms))
-!         k=0
-!         do i = 1, shell%natoms
-!         do j = 1, shell%npairs(i)
-! !             k=k+1
-! !             d(k)   = norm(shell%atype(i))
-! !             p(1,k) = ic%atype(i)
-! !             p(2,k) = shell%pair(i,j)%atype(1)
-!         enddo
-!         enddo
+        allocate(ind(totalshells))
+        !
+        ! compare to figure out which pairs are unique
+        ind = 0
+        do i = 1, totalshells
+            if (ind(i).eq.0) then
+                do j = 1, totalshells
+                    ! check that bond length is the same
+                    if ( abs(d(i)-d(j)).lt.opts%sym_prec) then
+                    ! check that atoms are the same type
+                    if ( all(p(1:2,i).eq.p(1:2,j)) ) then
+                    ! check that stabilizers are the same
+                    if ( s(i).eq.s(j) ) then
+                        ind(j) = i
+                    endif
+                    endif
+                    endif
+                enddo
+            endif
+        enddo
+        !
+        ! output
+        allocate(pair_prototypes,source=ij(1:2,unique(ind)))
+        !
+        !
+        if (opts%verbosity.ge.1) then
+            ind_u = unique(ind)
+            totalshells_u = size(ind_u)
+            call am_print('unique bond prototypes ('//trim(int2char(totalshells_u))//')',ij(:,ind_u))
+            !
+            write(*,'(5x)', advance='no')
+            do k = 1,totalshells_u
+                i = ij(1,ind_u(k))
+                j = ij(2,ind_u(k))
+                write(*,'(a,"-",a)',advance='no') "("//trim(atm_symb(ic%Z(i))), trim(atm_symb(pair%shell(i,j)%Z(1)))//") "
+            enddo
+            write(*,*)
+        endif
+    end function   get_pair_prototypes
 
-
-        ! Okay.. what to do:
-        ! 1) Make a list of the pairs and their distances
-        !
-        !  Se-Se 0.000
-        !  Se-Ti 2.570
-        !  Se-Se 3.206
-        !  Se-Se 3.479
-        !  Ti-Ti 0.000
-        !  Ti-Se 2.570
-        !  Ti-Ti 3.479
-        !
-        ! 2) Sort the list based on the distances
-        !
-        !  Se-Se 0.000
-        !  Ti-Ti 0.000
-        !  Se-Ti 2.570
-        !  Ti-Se 2.570
-        !  Se-Se 3.206
-        !  Se-Se 3.479
-        !  Ti-Ti 3.479
-        !
-        ! 3) For pairs with nearly identical distances, determine which involve atoms of the same
-        ! type. This can be done by placing atype in increasing order. (Atom with lower atype in the
-        ! pair is listed first)
-        !
-        !  Se-Se 0.000 N
-        !  Ti-Ti 0.000 N
-        !  Se-Ti 2.570 YES! 
-        !  Ti-Se 2.570 YES! 
-        !  Se-Se 3.206 N
-        !  Se-Se 3.479 N
-        !  Ti-Ti 3.479 N
-        !
-        ! 4) For the pairs which are identified in the previous step, determine whether all tau's in
-        ! one shell match all taus in the other shell. tau's used should be centered above the origin,
-        ! as already required by inhereted by sphere during their construction. If there is a match, 
-        ! these bonds are identical and only one "prototypical bond" is necessary to describe both.
-        !
-
-
-    end subroutine get_pair_prototypes
-
-    subroutine     get_pair_shells(shell,ic,pg,pair_cutoff,uc,opts)
+    subroutine     get_pair_shells(pair,ic,pg,pair_cutoff,uc,opts)
         !
         implicit none
         !
-        class(am_class_shell)   , intent(inout) :: shell
+        class(am_class_pair_shell)   , intent(inout) :: pair
         class(am_class_unit_cell), intent(in) :: ic ! irreducible cell, only determine pairs for which atleast one atom is in the primitive cell
         type(am_class_symmetry) , intent(in) :: pg ! point group
         type(am_class_unit_cell), intent(in) :: uc ! unit cell
@@ -124,7 +150,7 @@ contains
         type(am_class_options) :: notalk ! supress verbosity
         integer , allocatable :: pair_nelements(:)
         integer , allocatable :: pair_member(:,:)
-        integer , allocatable :: pair_identifier(:)
+        integer , allocatable :: ind_u(:)
         integer , allocatable :: ind(:)
         integer  :: npairs !  number of pairs
         integer  :: maxpairs
@@ -157,8 +183,8 @@ contains
         enddo
         !
         ! allocate pair space, pair pair centered on atom ic%natoms 
-        allocate( shell%npairs(ic%natoms) )
-        allocate( shell%pair(ic%natoms,maxpairs) )
+        allocate( pair%nshells(ic%natoms) )
+        allocate( pair%shell(ic%natoms,maxpairs) )
         ! 
         do i = 1, ic%natoms
             !
@@ -173,13 +199,13 @@ contains
             sphere = create_sphere(uc=uc, sphere_center=D, pair_cutoff=pair_cutoff, opts=opts )
             !
             ! get pair identifier
-            pair_identifier = identify_pairs(sphere=sphere,pg=pg)
+            ind_u = identify_pairs(sphere=sphere,pg=pg)
             ! get number of pairs
-            npairs = maxval(pair_identifier)
+            npairs = maxval(ind_u)
             ! get pair members [pair representative is given by pair_member(:,1)]
-            pair_member = member(pair_identifier)
+            pair_member = member(ind_u)
             ! get number of pair elements (essentially the oribital weights)
-            pair_nelements = nelements(pair_identifier)
+            pair_nelements = nelements(ind_u)
             !
             if (opts%verbosity.ge.1) then
                 !
@@ -209,30 +235,28 @@ contains
             !
             ! each atom has npairs, with a representative for each; save their positions
             ! representative is given by the first element of the pair_member(npair,1)
-            sphere%atype = 1 ! <<<==== QUICK AND DIRTY FIX TO MAKE THINGS WORK; the problem below is that symb will only have 1 element in the shell, but if atype = 2, then it will try to reference that position, which doesn't exist.
-            shell%npairs(i) = npairs
+            pair%nshells(i) = npairs
             do j = 1, npairs
                 !
                 if (allocated(ind)) deallocate(ind)
                 allocate(ind,source=pair_member(j,1:pair_nelements(j)))
                 !
-                call shell%pair(i,j)%initialize(bas=ic%bas,tau=sphere%tau(:,ind),&
-                        atype=sphere%atype(ind),symb=sphere%symb(sphere%atype(ind(1:1))) )
+                call pair%shell(i,j)%initialize(bas=ic%bas,tau=sphere%tau(:,ind),Z=sphere%Z(ind))
                 !
                 ! print to stdout
                 if (opts%verbosity.ge.1) then
                     ! determine rotations which leaves shell invariant
-                    call rg%get_rotational_group(pg=pg, uc=shell%pair(i,j), opts=notalk)
+                    call rg%get_rotational_group(pg=pg, uc=pair%shell(i,j), opts=notalk)
                     ! determine stabilizers of a prototypical bond in shell (vector v)
-                    call vg%get_stabilizer_group(pg=pg, v=shell%pair(i,j)%tau(1:3,1), opts=notalk)
+                    call vg%get_stabilizer_group(pg=pg, v=pair%shell(i,j)%tau(1:3,1), opts=notalk)
                     write(*,'(5x)'    ,advance='no')
                     write(*,'(i5)'    ,advance='no') j
-                    write(*,'(a6)'    ,advance='no') trim(ic%symb(ic%atype(i)))//'-'//trim(shell%pair(i,j)%symb(shell%pair(i,j)%atype(1)))
-                    write(*,'(i5)'    ,advance='no') shell%pair(i,j)%natoms
+                    write(*,'(a6)'    ,advance='no') trim(atm_symb(ic%Z(i)))//'-'//trim(atm_symb(pair%shell(i,j)%Z(1)))
+                    write(*,'(i5)'    ,advance='no') pair%shell(i,j)%natoms
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( vg%pg_identifier ))
-                    write(*,'(f10.3)' ,advance='no') norm2(matmul(shell%pair(i,j)%bas,shell%pair(i,j)%tau(1:3,1)))
-                    write(*,'(3f10.3)',advance='no') matmul(shell%pair(i,j)%bas,shell%pair(i,j)%tau(1:3,1))
-                    write(*,'(3f10.3)',advance='no') shell%pair(i,j)%tau(1:3,1)
+                    write(*,'(f10.3)' ,advance='no') norm2(matmul(pair%shell(i,j)%bas,pair%shell(i,j)%tau(1:3,1)))
+                    write(*,'(3f10.3)',advance='no') matmul(pair%shell(i,j)%bas,pair%shell(i,j)%tau(1:3,1))
+                    write(*,'(3f10.3)',advance='no') pair%shell(i,j)%tau(1:3,1)
                     write(*,*)
                 endif
                 !
@@ -262,7 +286,7 @@ contains
             notalk%verbosity = 0
             !
             ! generate grid points for wigner_seitz reduction
-            grid_points = mesh_grid([1,1,1])
+            grid_points = meshgrid([-1:1],[-1:1],[-1:1])
             grid_points = matmul(uc%bas,grid_points)
             !
             ! create sphere instance
@@ -313,7 +337,7 @@ contains
             endif
             !
         end function   create_sphere
-        function       identify_pairs(sphere,pg) result(pair_identifier)
+        function       identify_pairs(sphere,pg) result(ind_u)
             !
             use am_rank_and_sort
             !
@@ -324,7 +348,7 @@ contains
             integer , allocatable :: PM(:,:) ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
             real(dp), allocatable :: d(:)    ! d(npairs) array containing distances between atoms
             integer , allocatable :: indices(:)
-            integer , allocatable :: pair_identifier(:)
+            integer , allocatable :: ind_u(:)
             integer :: i, jj, j, k
             !
             ! write action file and get permutation map PM(sphere%natoms,sg%nsyms) which shows how space symmetries permute atomic positions
@@ -341,16 +365,16 @@ contains
             call rank(d,indices)
             !
             ! get pairs starting with closest atoms first
-            allocate(pair_identifier(sphere%natoms))
-            pair_identifier=0
+            allocate(ind_u(sphere%natoms))
+            ind_u=0
             k=0
             do jj = 1, sphere%natoms
                 i = indices(jj)
-                if (pair_identifier(i).eq.0) then
+                if (ind_u(i).eq.0) then
                     k=k+1
                     do j = 1, pg%nsyms
                     if ((PM(i,j)).ne.0) then
-                        pair_identifier(PM(i,j)) = k
+                        ind_u(PM(i,j)) = k
                     endif
                     enddo
                 endif

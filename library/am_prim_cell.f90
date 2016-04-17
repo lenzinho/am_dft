@@ -5,6 +5,7 @@ module am_prim_cell
     use am_options
     use am_unit_cell
     use am_symmetry
+    use am_matlab
     use am_mkl
 
     implicit none
@@ -18,7 +19,7 @@ module am_prim_cell
 
 contains
 
-    subroutine     get_primitive(prim,uc,sg,opts)
+    subroutine     get_primitive(prim,uc,opts)
         !
         use am_rank_and_sort, only : rank
         !
@@ -27,7 +28,6 @@ contains
         class(am_class_prim_cell), intent(inout) :: prim
         class(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
-        type(am_class_symmetry), optional, intent(in) :: sg ! not used for anything
         integer , allocatable :: indices(:)
         real(dp), allocatable :: T(:,:)
         real(dp) :: uc2prim(3,3) 
@@ -39,7 +39,7 @@ contains
         !
         !
         ! get basis translations which could serve as primitive cell vectors
-        T = translations_from_basis(tau=uc%tau,atype=uc%atype,iopt_include=trim('prim'),iopt_sym_prec=opts%sym_prec)
+        T = translations_from_basis(tau=uc%tau,Z=uc%Z,iopt_include=trim('prim'),iopt_sym_prec=opts%sym_prec)
         T = matmul(uc%bas,T)
         nTs = size(T,2)
         if (opts%verbosity.ge.1) call am_print("possible primitive lattice translations found",nTs," ... ")
@@ -124,32 +124,26 @@ contains
         !
         !
         ! transfer atomic species by comparing atomic coordinates
-        allocate(prim%atype(prim%natoms))
+        allocate(prim%Z(prim%natoms))
         do i = 1, prim%natoms
-            prim%atype(i) = 0
+            prim%Z(i) = 0
             search_for_atom : do j = 1, uc%natoms
                 if ( all(abs(prim%tau(1:3,i)-modulo( matmul(uc2prim,uc%tau(1:3,j)-tau_ref)+opts%sym_prec,1.0_dp)+opts%sym_prec).lt.opts%sym_prec) ) then
-                    prim%atype(i) = uc%atype(j)
+                    prim%Z(i) = uc%Z(j)
                     exit search_for_atom
                 endif
             enddo search_for_atom
-            if (prim%atype(i).eq.0) then
+            if (prim%Z(i).eq.0) then
                 call am_print('ERROR','Unable to identify atom in reduced cell',flags='E')
                 call am_print('atom #',i)
                 call am_print('coordinate of reference atom',tau_ref)
                 call am_print('atomic coordinate of unidentified atoms',prim%tau(1:3,i))
-                call am_print('atom types',uc%atype(:))
+                call am_print('atom types',uc%Z(:))
                 call am_print('atom original',transpose(uc%tau))
                 call am_print('atom reduced',transpose(prim%tau))
                 stop
             endif
         enddo
-        ! 
-        !
-        ! lastly, transfer other stuff
-        allocate(character(500)::prim%symb(uc%nspecies))
-        prim%symb = uc%symb
-        prim%nspecies = uc%nspecies
         !
     end subroutine get_primitive
 

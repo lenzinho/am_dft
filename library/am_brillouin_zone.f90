@@ -394,7 +394,7 @@ contains
             ! write to file for debugging
             ! call fbz%outfile_kpoints(fname='outfile.primitive_monkhorst_pack_frac')
         ! generate voronoi points (cartesian)
-        grid_points = mesh_grid([1,1,1])
+        grid_points = meshgrid([-1:1],[-1:1],[-1:1])
         grid_points = matmul(inv(uc%bas),grid_points)
         ! reduce kpoints to FBZ using voronoi points
         !$OMP PARALLEL PRIVATE(i) SHARED(uc,fbz,grid_points)
@@ -445,7 +445,7 @@ contains
         ! 
         if (opts%verbosity.ge.1) call am_print('number of original kpoints',bz%nkpts,' ... ')
         ! generate voronoi points (cartesian)
-        grid_points = matmul( inv(uc%bas), mesh_grid([1,1,1]) )
+        grid_points = matmul( inv(uc%bas), meshgrid([-1:1],[-1:1],[-1:1]) )
         ! reduce kpoints to ibz
         allocate(ibz%kpt(3,bz%nkpts))
         !$OMP PARALLEL PRIVATE(i) SHARED(grid_points,bz,ibz,uc,pg)
@@ -568,7 +568,7 @@ contains
         ! get number of kpoints in the fbz
         fbz%nkpts = size(fbz%kpt,2)
         ! reduce kpoints to FBZ using voronoi points
-        grid_points = mesh_grid([1,1,1])
+        grid_points = meshgrid([-1:1],[-1:1],[-1:1])
         grid_points = matmul(inv(uc%bas),grid_points)
         !$OMP PARALLEL PRIVATE(i) SHARED(fbz,grid_points,uc)
         !$OMP DO
@@ -623,7 +623,7 @@ contains
         !
         !
         ! generate voronoi points (cartesian), used to reduce points to wigner-seitz brillouin zone
-        grid_points = matmul( inv(uc%bas) , real(mesh_grid([1,1,1]),dp) )
+        grid_points = matmul( inv(uc%bas) , meshgrid([-1:1],[-1:1],[-1:1]) )
         !
         fid = 1
         open(unit=fid,file="outfile.bandcharacter",status="replace",action='write')
