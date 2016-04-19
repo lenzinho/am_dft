@@ -49,7 +49,7 @@ contains
         !
         complex(dp), intent(in) :: X(:),Y(:)
         real(dp) :: res
-        real(dp), external :: zdotc
+        complex(dp), external :: zdotc
         !
         res = zdotc(size(X), X, 1, Y, 1)
         !

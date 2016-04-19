@@ -133,7 +133,7 @@ contains
 
     pure function legendre(l,m,x) result(y)
         !
-        ! computes the associated legrende polynomial, x = cos(theta)
+        ! Associated legrende polynomial
         !
         ! W. H. Press, B. P. Flannery, S. A. Teukolsky, and W. T. Vetterling, Numerical Recipes in Fortran 77: The Art
         ! of Scientific Computing, 2 edition (Cambridge University Press, Cambridge England ; New York, 1992), p 246.
@@ -206,20 +206,23 @@ contains
         end function arth
     end function  legendre
 
-    pure function laguerre(n,m,x) result(y)
-        ! Linus Pauling
+    pure function laguerre(k,p,x) result(y)
+        ! associated Laguerre polynomial L_k^p(x)
+        ! Using the expression from Samuel Shaw Ming Wong "Computational Methods in Physics and Engineering", Eq 4-86 p 139
+        ! Note, there is a typographical error on http://mathworld.wolfram.com/AssociatedLaguerrePolynomial.html Eq 10
+        ! Also see Linus Pauling "Introuction to Quantum Mechancs"
         implicit none 
         !
-        integer , intent(in) :: n, m
+        integer , intent(in) :: k, p
         real(dp), intent(in) :: x(:)
         real(dp), allocatable :: y(:)
-        integer :: i
+        integer :: j
         !
         allocate(y(size(x)))
         y=0
         !
-        do i = 0, n
-            y = y + factorial(m+n) * nchoosek(m+n,n-i) / factorial(i) * (-x)**i
+        do j = 0, k
+            y = y + nchoosek(k+p,k-j) * (-x)**j / factorial(j)
         enddo
         !
     end function  laguerre
@@ -645,6 +648,23 @@ contains
         !
     end function  ones_nxm
 
+    pure function heavi(m)
+        !
+        ! A. V. Podolskiy and P. Vogl, Phys. Rev. B 69, 233101 (2004). Eq 15
+        !
+        implicit none
+        !
+        integer, intent(in) :: m
+        real(dp) :: heavi
+        !
+        if (m.ge.0) then
+            heavi = 1.0_dp
+        else
+            heavi = 0.0_dp
+        endif
+        !
+    end function  heavi
+
     pure subroutine rref(matrix)
         !
         ! note: algorithm on roseta code is broken.
@@ -688,7 +708,7 @@ contains
         pivot = pivot + 1
         end do
         deallocate(temp)
-    end subroutine  rref
+    end subroutine  rref    
 
     pure function unique_matrices_double(A,iopt_tiny) result(B)
         !> returns unique matrices of A(:,:,i) within numerical precision

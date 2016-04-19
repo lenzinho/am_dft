@@ -211,7 +211,7 @@ contains
             !
             if (opts%verbosity.ge.1) then
                 !
-                write(*,'(" ... irreducible atom ",a," at "   ,a,",",a,",",a,  " (frac) has ",a," nearest-neighbor pairs")') &
+                write(*,'(" ... irreducible atom ",a," at "   ,a,",",a,",",a,  " (frac) has ",a," nearest-neighbor shells")') &
                     & trim(int2char(i)), (trim(dbl2char(D(k),4)),k=1,3), trim(int2char(npairs))
                 !
                 write(*,'(5x)' ,advance='no')
@@ -304,8 +304,6 @@ contains
             bas = 2.0_dp*eye(3)
             call sphere%get_supercell(uc=uc, bscfp=bas, opts=notalk)
             D = matmul(inv(bas),sphere_center)
-
-            ! call sphere%copy(uc=uc)
             !
             ! elements with incomplete orbits should be ignored, since they do not have enough information to build full pairs
             allocate(atoms_inside(sphere%natoms))
