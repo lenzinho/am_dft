@@ -13,6 +13,62 @@ module am_mkl
     
 contains
 
+    ! eucledian norm of vector
+
+    function      am_dnrm2(V) result(norm)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: V(:)
+        real(dp) :: norm
+        real(dp), external :: dnrm2
+        !
+        norm = dnrm2(size(V), V, 1)
+        !
+    end function  am_dnrm2 
+
+    function      am_dznrm2(V) result(norm)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: V(:)
+        real(dp) :: norm
+        real(dp), external :: dznrm2
+        !
+        norm = dznrm2(size(V), V, 1)
+        !
+    end function  am_dznrm2
+
+    ! dot products
+
+    function      am_zdotc(X,Y) result(res)
+        !
+        ! res = dot(conjg(x), y)
+        ! 
+        implicit none
+        !
+        complex(dp), intent(in) :: X(:),Y(:)
+        real(dp) :: res
+        real(dp), external :: zdotc
+        !
+        res = zdotc(size(X), X, 1, Y, 1)
+        !
+    end function  am_zdotc
+
+    function      am_ddot(X,Y) result(res)
+        !
+        ! res = dot(x, y)
+        ! 
+        implicit none
+        !
+        real(dp), intent(in) :: X(:),Y(:)
+        real(dp) :: res
+        real(dp), external :: ddot
+        !
+        res = ddot(size(X), X, 1, Y, 1)
+        !
+    end function  am_ddot
+
     ! sort array in increasing order
     
     subroutine     sort(d,flags)
@@ -631,4 +687,157 @@ contains
         enddo
     end subroutine am_dgetrf
 
-end module
+    ! multiply A and B matrices
+
+    function       am_dgemm(A,B,flags) result(C)
+        !
+        ! multiply matrices A and B
+        ! 
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:)
+        real(dp), intent(in) :: B(:,:)
+        character(*), intent(in), optional :: flags
+        real(dp), allocatable :: C(:,:)
+        character(len=1) :: transa
+        character(len=1) :: transb
+        integer :: Am,An,Bm,Bn
+        integer :: m,n,k
+        !
+        Am = size(A,1)
+        An = size(A,2)
+        Bm = size(B,1)
+        Bn = size(B,2)
+        !
+        transa='N'
+        transb='N'
+        if (present(flags)) then
+            if (index(flags,'AT').ne.0) then
+                transa = 'T'
+            endif
+            if (index(flags,'AC').ne.0) then
+                transa = 'C'
+            endif
+            if (index(flags,'BT').ne.0) then
+                transb = 'T'
+            endif
+            if (index(flags,'BC').ne.0) then
+                transb = 'C'
+            endif
+        endif
+        !
+        ! m Specifies the number of rows of the matrix op(A)
+        m = Am
+        if ((transa(1:1).eq.'T').or.(transa(1:1).eq.'C')) m = An
+        !
+        ! n Specifies the number of columns of the matrix op(B)
+        n = Bn
+        if ((transb(1:1).eq.'T').or.(transb(1:1).eq.'C')) n = Bm
+        !
+        ! k Specifies the number of columns of the matrix op(A)
+        k = An
+        if ((transa(1:1).eq.'T').or.(transa(1:1).eq.'C')) k = Am
+        !
+        allocate(C(m,n))
+        C = 0
+        !
+        write(*,*) transa
+        write(*,*) transb
+        write(*,*) m
+        write(*,*) n
+        write(*,*) k
+        write(*,*) Am
+        write(*,*) Bm
+        write(*,*) m
+        !
+        ! C := alpha*op(A)*op(B) + beta*C,
+        !            [m*k] [k*n]
+        !
+        !    dgemm(transa, transb, m, n, k, 1.0_dp, A, lda, B, ldb, 0.0_dp , C, ldc)
+        call dgemm(transa, transb, m, n, k, 1.0_dp, A,  Am, B,  Bm, 0.0_dp , C,   m)
+        !
+    end function   am_dgemm
+
+    ! multiply A and B and get a symmetric matrix C
+
+! this routine does not exist... 
+! https://software.intel.com/en-us/articles/a-matrix-multiplication-routine-that-updates-only-the-upper-or-lower-triangular-part-of-the?language=ru
+!     function       am_dhamm(A,B,flags) result(C)
+!         !
+!         ! multiply matrices A and B
+!         ! 
+!         implicit none
+!         !
+!         real(dp), intent(in) :: A(:,:)
+!         real(dp), intent(in) :: B(:,:)
+!         character(*), intent(in), optional :: flags
+!         real(dp), allocatable :: C(:,:)
+!         character(len=1) :: transa
+!         character(len=1) :: transb
+!         integer :: Am,An,Bm,Bn
+!         integer :: m,n,k
+!         !
+!         Am = size(A,1)
+!         An = size(A,2)
+!         Bm = size(B,1)
+!         Bn = size(B,2)
+!         !
+!         transa='N'
+!         transb='N'
+!         if (present(flags)) then
+!             if (index(flags,'AT').ne.0) then
+!                 transa = 'T'
+!             endif
+!             if (index(flags,'AC').ne.0) then
+!                 transa = 'C'
+!             endif
+!             if (index(flags,'BT').ne.0) then
+!                 transb = 'T'
+!             endif
+!             if (index(flags,'BC').ne.0) then
+!                 transb = 'C'
+!             endif
+!         endif
+!         !
+!         ! m Specifies the number of rows of the matrix op(A)
+!         m = Am
+!         if ((transa(1:1).eq.'T').or.(transa(1:1).eq.'C')) m = An
+!         !
+!         ! n Specifies the number of columns of the matrix op(B)
+!         n = Bn
+!         if ((transb(1:1).eq.'T').or.(transb(1:1).eq.'C')) n = Bm
+!         !
+!         ! k Specifies the number of columns of the matrix op(A)
+!         k = An
+!         if ((transa(1:1).eq.'T').or.(transa(1:1).eq.'C')) k = Am
+!         !
+!         allocate(C(m,n))
+!         C = 0
+!         !
+!         ! C := alpha*op(A)*op(B) + beta*C,
+!         !            [m*k] [k*n]
+!         !
+!         !    dgemm(transa, transb, m, n, k, 1.0_dp, A, lda, B, ldb, 0.0_dp , C, ldc)
+!         call dgemm(transa, transb, m, n, k, 1.0_dp, A,  Am, B,  Bm, 0.0_dp , C,   m)
+!         !
+!     end function   am_dhamm
+
+
+
+end module am_mkl
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

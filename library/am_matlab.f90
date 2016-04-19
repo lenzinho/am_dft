@@ -24,6 +24,10 @@ module am_matlab
         module procedure unique_columns_double, unique_matrices_double, unique_columns_integer, unique_integer
     end interface ! unique
 
+    interface meshgrid
+        module procedure dmeshgrid, imeshgrid
+    end interface ! meshgrid
+
 contains
 
     !
@@ -71,7 +75,7 @@ contains
         !
     end function  rotmat
 
-    pure function meshgrid(n1,n2,n3) result(grid_points)
+    pure function dmeshgrid(n1,n2,n3) result(grid_points)
         !> 
         !> Generates a mesh of lattice vectors (fractional coordinates) around the origin. 
         !> n(1), n(2), n(3) specifies the number of mesh points away from 0, i.e. [-n:1:n]
@@ -80,9 +84,9 @@ contains
         !>
         implicit none
         !
-        integer , intent(in) :: n1(:)
-        integer , intent(in) :: n2(:)
-        integer , intent(in) :: n3(:)
+        real(dp), intent(in) :: n1(:)
+        real(dp), intent(in) :: n2(:)
+        real(dp), intent(in) :: n3(:)
         real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
         integer :: i1,i2,i3,j
         !
@@ -99,24 +103,20 @@ contains
         enddo
         enddo
         enddo
-    end function  meshgrid
+    end function  dmeshgrid
 
-    pure function Ylm(l,m,theta,phi)
+    pure function imeshgrid(n1,n2,n3) result(grid_points)
         !
-        ! computes spherical harmonics. Theta and phi in radians. Theta and phi should be the same size.
-        !
-        ! W. H. Press, B. P. Flannery, S. A. Teukolsky, and W. T. Vetterling, Numerical Recipes in Fortran 77: The Art
-        ! of Scientific Computing, 2 edition (Cambridge University Press, Cambridge England ; New York, 1992), p 246.
-        ! 
         implicit none
         !
-        integer , intent(in)  :: l, m
-        real(dp), intent(in) :: theta(:), phi(:)
-        complex(dp) :: Ylm(size(theta))
+        integer, intent(in) :: n1(:)
+        integer, intent(in) :: n2(:)
+        integer, intent(in) :: n3(:)
+        real(dp), allocatable :: grid_points(:,:)
         !
-        Ylm = sqrt( real(2*l+1,dp)/fourpi * factorial(l-m)/real(factorial(l+m),dp) ) * legendre(l,m,cos(theta)) * exp(cmplx_i*m*phi)
+        grid_points=dmeshgrid(real(n1,dp),real(n2,dp),real(n3,dp))
         !
-    end function  Ylm
+    end function  imeshgrid
 
     pure function factorial(n) result(y)
         !
@@ -128,7 +128,7 @@ contains
         if (n.ge.1) then
             y = product([1:n])
         else
-            y = 0
+            y = 1
         endif
     end function  factorial
 
@@ -206,6 +206,39 @@ contains
             end if
         end function arth
     end function  legendre
+
+    pure function laguerre(p,q,x) result(y)
+        ! Associated Laguerre Polynomial, to within a constant
+        ! The Rodrigues representation for the associated Laguerre polynomials
+        ! http://mathworld.wolfram.com/AssociatedLaguerrePolynomial.html, Eq 5
+        !
+        implicit none 
+        !
+        integer , intent(in) :: q,p
+        real(dp), intent(in) :: x(:)
+        real(dp), allocatable :: y(:)
+        integer :: j
+        !
+        allocate(y(size(x)))
+        y=0
+        !
+        do j = 0, p
+            y = y + (-1)**j * factorial(p+q)/real(factorial(p-j)*factorial(q+j)*factorial(j),dp) * x**j
+        enddo
+        !
+    end function  laguerre
+
+    pure function nchoosek(n,k) result (res)
+        !
+        implicit none
+        !
+        integer, intent(in) :: n
+        integer, intent(in) :: k
+        integer :: res
+        !
+        res=factorial(n)/(factorial(k)*factorial(n-k))
+        !
+    end function  nchoosek
 
     function      perms(n) result(PT)
         !

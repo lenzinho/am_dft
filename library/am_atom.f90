@@ -2,33 +2,64 @@ module am_atom
 	!
 	use am_constants
 	use am_helpers
+	use am_options
 	!
 	implicit none
 
 	public
 
+	type am_class_atom
+		!
+        integer :: nstates
+        integer, allocatable :: state(:,:) ! quantum numbers [n,l,m,s,#], last number in nlms array is the state index starting with H 1s
+        !
+    contains
+		!    	
+	end type am_class_atom
+
 	contains
 
-	function        atm_state(Z,nvs,nes,verbosity) result(nlms)
+
+! 	subroutine     generate_orbitals(atom,Z,nvalences,nexciteds,opts)
+! 		!
+! 		! nvalence = number of valence orbitals
+! 		! nexcited = number of excited orbitals
+! 		!
+! 		use am_rank_and_sort
+! 		!
+! 		implicit none
+! 	  	!
+! 	  	class(am_class_atom), intent(inout) :: atom
+! 	  	class(am_class_options), intent(in) :: opts
+! 		integer, intent(in)  :: Z, nvalences, nexciteds
+! 		integer, allocatable :: nlms(:,:)
+! 		!
+! 		nlms = get_states(Z,nvalences,nexciteds)
+! 		!
+! 		allocate(atom%state,source=nlms)
+! 		!
+! 		atom%nstates = size(atom%state,2)
+! 		!
+! 	end subroutine generate_orbitals
+
+	function       get_states(Z,nvalences,nexciteds) result(nlms)
 		!
-		! nvs = number of valence states
-		! nes = number of excited states
+		! nvalence = number of valence orbitals
+		! nexcited = number of excited orbitals
 		!
 		use am_rank_and_sort
 		!
 		implicit none
 	  	!
-		integer, intent(in) :: Z, nvs, nes
-		integer, intent(in) :: verbosity
+		integer, intent(in) :: Z, nvalences, nexciteds
 		integer, allocatable :: ind(:)
-		integer, allocatable :: nlms(:,:) ! quantum numbers, [n,l,m,s, state index starting from the first electron on H 1s] last index is electron count
+		integer, allocatable :: nlms(:,:) ! quantum numbers, [n,l,m,s,#] state index starting from the first electron on H 1s] last index is electron count
 		integer, allocatable :: state(:,:)
 		integer :: nmax, nstates
 		integer :: n,l,m,s,k
 		!
 		!
-
-		! generate all states
+		! generate all possible states for atoms in the periodic table
 		nmax = 6
 		nstates = 182
 		allocate(state(5,nstates))
@@ -51,11 +82,11 @@ module am_atom
 		state = state(:,ind)
 		state(5,:)=[1:k]
 		!
-		allocate(nlms,source=state(:,(Z-nvs):(Z+nes)))
+		allocate(nlms,source=state(:,(Z-nvalences):(Z+nexciteds)))
 		!
-	end function    atm_state
+	end function   get_states
 
-	pure function   atm_symb(Z) result(symb)
+	pure function  atm_symb(Z) result(symb)
 		!
 		implicit none
 		!
@@ -75,9 +106,9 @@ module am_atom
 		!
 		symb=symbs(Z)
 		!
-	end function    atm_symb
+	end function   atm_symb
 
-	pure function   atm_Z(symb) result(Z)
+	pure function  atm_Z(symb) result(Z)
 		!
 		implicit none
 		!
@@ -101,6 +132,6 @@ module am_atom
 		 endif
 		enddo
 		!
-	end function    atm_Z
+	end function   atm_Z
 
 end module

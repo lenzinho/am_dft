@@ -286,7 +286,8 @@ contains
             notalk%verbosity = 0
             !
             ! generate grid points for wigner_seitz reduction
-            grid_points = meshgrid([-1:1],[-1:1],[-1:1])
+            D = real([-1:1],dp)
+            grid_points = meshgrid(D,D,D)
             grid_points = matmul(uc%bas,grid_points)
             !
             ! create sphere instance

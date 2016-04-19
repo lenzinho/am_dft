@@ -7,12 +7,15 @@ module am_irre_cell
     use am_unit_cell
     use am_prim_cell
     use am_mkl
+    use am_atom
 
     implicit none
 
     private
 
     type, public, extends(am_class_prim_cell) :: am_class_irre_cell
+        !
+        type(am_class_atom), allocatable :: atom(:)
         !
     contains
         procedure :: get_irreducible
