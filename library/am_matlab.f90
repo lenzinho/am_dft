@@ -27,13 +27,12 @@ module am_matlab
     interface meshgrid
         module procedure dmeshgrid, imeshgrid
     end interface ! meshgrid
-
+    
 contains
 
     !
     ! matlab-inspired functions
     !
-
 
     pure function rotmat(a,b) result(R)
         !
@@ -123,7 +122,7 @@ contains
         implicit none
         !
         integer, intent(in) :: n
-        integer :: y
+        real(dp) :: y
         !
         if (n.ge.1) then
             y = product([1:n])
@@ -207,23 +206,20 @@ contains
         end function arth
     end function  legendre
 
-    pure function laguerre(p,q,x) result(y)
-        ! Associated Laguerre Polynomial, to within a constant
-        ! The Rodrigues representation for the associated Laguerre polynomials
-        ! http://mathworld.wolfram.com/AssociatedLaguerrePolynomial.html, Eq 5
-        !
+    pure function laguerre(n,m,x) result(y)
+        ! Linus Pauling
         implicit none 
         !
-        integer , intent(in) :: q,p
+        integer , intent(in) :: n, m
         real(dp), intent(in) :: x(:)
         real(dp), allocatable :: y(:)
-        integer :: j
+        integer :: i
         !
         allocate(y(size(x)))
         y=0
         !
-        do j = 0, p
-            y = y + (-1)**j * factorial(p+q)/real(factorial(p-j)*factorial(q+j)*factorial(j),dp) * x**j
+        do i = 0, n
+            y = y + factorial(m+n) * nchoosek(m+n,n-i) / factorial(i) * (-x)**i
         enddo
         !
     end function  laguerre

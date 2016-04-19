@@ -205,6 +205,7 @@ contains
 	function      Xlc(l,m,x,y,z,r)
 		! unnormalized cubic harmonics
 		! R. McWeeny, Symmetry: An Introduction to Group Theory and Its Applications (Courier Corporation, 2002). p 263.
+        ! See also https://en.wikipedia.org/wiki/Table_of_spherical_harmonics
 		!
 		real(dp), intent(in) :: x(:)
 		real(dp), intent(in) :: y(:)
@@ -226,7 +227,8 @@ contains
 			elseif (m.eq. 0) then; Xlc = x/r ! x
 			elseif (m.eq. 1) then; Xlc = y/r ! y
 			endif
-		elseif (l.eq. 2) then ! d
+        elseif (l.eq. 2) then ! d
+            ! 2 -2 does seem to orthogonal to 0,0
 			if     (m.eq.-2) then; Xlc = (3*z**2)/r**2-1.0_dp ! ~ z^2 ! E_g
 			elseif (m.eq.-1) then; Xlc = (x**2-y**2)/r**2 ! x^2-y^2   ! E_g
 			elseif (m.eq. 0) then; Xlc = (x*y)/r**2 ! xy ! d_2tg
@@ -245,27 +247,33 @@ contains
 		! 			elseif (m.eq. 1) then; Xlc = z*(5*z**2 - 3*r**2)/r**3 ! z^2
 		! 			elseif (m.eq. 2) then; Xlc = x*(5*x**2 - 3*r**2)/r**3 ! x^2
 		! 			elseif (m.eq. 3) then; Xlc = y*(5*y**2 - 3*r**2)/r**3 ! y^2
-		! 			endif
+		! 			endfi
 		endif
 		!
 	end function  Xlc
 
-	function      Rnl(r,n,l) result(y)
+	function      radial(n,l,r) result(y)
 		! unnormalized radial hyrdogen wavefunction
 		! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed. 1980 edition (Springer, 2013), p 356.
 		! Griffiths, David J. (2005), Introduction to Quantum Mechanics, 2nd Edition; Pearson Education - Problem 4.12.
+		!
 		real(dp), intent(in) :: r(:)
 		integer , intent(in) :: n,l
 		real(dp), allocatable :: y(:)
-		real(dp), allocatable :: rho(:)
+		real(dp) :: ao, s
 		!
 		allocate(y(size(r)))
 		!
-		allocate(rho,source=r/n)
-		!
-		y = rho**l * exp(-rho) * laguerre(p=(n+l),q=(2*l+1),x=(rho))
-		!
-	end function  Rnl
+		! y = rho**l * exp(-rho/2) * laguerre(n=n,l=l,x=rho) ! laguerre(p=(n+l),q=(2*l+1),x=rho)
+		! 
+		! bohr radius
+		ao = 1
+		! scaling factor
+		s = 1/factorial(n - l + 2*l) * sqrt( (2/(ao*n))**3 * factorial(n-l-1)/(2*n*factorial(n+l)))
+		! radial wave function
+	 	y = s * (2*r/(ao*n)) * exp(-r/(ao*n)) * laguerre(n-l-1, 2*l+1, 2*r/(ao*n))
+	 	!
+	end function  radial
 
 	function      get_orbitals(nlm,x,y,z) result(orb)
 		!
@@ -293,8 +301,9 @@ contains
 			l = nlm(2,i)
 			m = nlm(3,i)
 			! psi = (cubic harmonics) * (radial part)
-			orb(:,i) = Xlc(l=l,m=m,x=x,y=y,z=z,r=r) * Rnl(n=n,l=l,r=r) 
-! 			orb(:,i) =  Rnl(n=n,l=l,r=r) 
+            orb(:,i) = radial(n=n,l=l,r=r)
+			! orb(:,i) = Xlc(l=l,m=m,x=x,y=y,z=z,r=r) * Rnl(n=n,l=l,r=r) 
+ 			! orb(:,i) =  Rnl(n=n,l=l,r=r) 
 			!
 			! normalize
 			orb(:,i) = orb(:,i)/am_dnrm2(orb(:,i))
@@ -340,15 +349,21 @@ contains
 		! setup real space coordinates
 		! Note: d_z^2 requires a very large range in order to be orthogonal with s orbital
 		!
+        ! something is wrong with spherical integration...
+        !
 		! setup spherical coordinates
-		N = 10
-		sph = meshgrid(linspace(0.0_dp,100000.0_dp,20*N), twopi*[0:(N-1)]/real(N,dp), halfpi*[0:(N-1)]/real(N,dp))
-		! convert to cartesian coordinates
-		allocate(xyz,mold=sph)
-		xyz(1,:)=sph(1,:)*cos(sph(2,:))*sin(sph(3,:))
-		xyz(2,:)=sph(1,:)*sin(sph(2,:))*sin(sph(3,:))
-		xyz(3,:)=sph(1,:)*cos(sph(3,:))
-!  		xyz = meshgrid(linspace(-N,N,N),linspace(-N,N,N),linspace(-N,N,N))
+! 		N = 2**4
+!         write(*,*) N
+!         ! r, 0 <= theta <= pi , 0 <= phi < 2*pi
+! 		sph = meshgrid(linspace(0.0_dp,100000.0_dp,3), pi*[0:n]/real(n,dp), twopi*[0:(n-1)]/real(n,dp))
+! 		! convert to cartesian coordinates
+! 		allocate(xyz,mold=sph)
+! 		xyz(1,:)=sph(1,:)*cos(sph(2,:))*sin(sph(3,:))
+! 		xyz(2,:)=sph(1,:)*sin(sph(2,:))*sin(sph(3,:))
+! 		xyz(3,:)=sph(1,:)*cos(sph(3,:))
+        !
+       	N = 100
+  		xyz = meshgrid(linspace(-N,N,N),linspace(-N,N,N),linspace(-N,N,N))
 		!
 		if (opts%verbosity.ge.1) call am_print('number of irreducible atoms',ic%natoms)
 		!
@@ -364,6 +379,12 @@ contains
 		! call am_print('Y',Y)
 		call am_print('Y^T*Y',matmul(transpose(Y),Y))
 		!
+        
+        
+        stop
+        
+        
+        
 		! confirm that states are orthogonal
 		if (any( abs(am_dgemm(A=Y,B=Y,flags='AT')-eye(k)).gt.tiny )) then
 			call am_print('ERROR','Cubic harmonics not orthonormal.')

@@ -34,6 +34,7 @@ module am_symmetry
         procedure :: get_point_group
         procedure :: get_rotational_group
         procedure :: get_stabilizer_group
+        procedure :: get_reversal_group
         !
         procedure :: name_symmetries
         procedure :: stdout
@@ -568,8 +569,7 @@ contains
         !
         do i = 1, pg%nsyms
             ! mark symmetries which leaves vector strictly invariant (not even modulo a lattice vector)
-            if (is_symmetry_valid(tau=reshape(v,[3,1]),iopt_R=pg%R(:,:,i),&
-                iopt_exact=.true.,iopt_sym_prec=opts%sym_prec)) then
+            if (is_symmetry_valid(tau=reshape(v,[3,1]),iopt_R=pg%R(:,:,i),iopt_sym_prec=opts%sym_prec,flags='exact')) then
                 mask(i) = .true.
             endif
         enddo
@@ -586,6 +586,43 @@ contains
         vg%pg_identifier = point_group_schoenflies(vg%ps_identifier)
         !
     end subroutine get_stabilizer_group
+    
+    subroutine     get_reversal_group(revg,sg,v,opts)
+        !
+        implicit none
+        !
+        class(am_class_symmetry), intent(inout) :: revg ! reversal group associated with vector v, i.e. the space symmetries with bring v to [0,0,0], essentially flipping the atoms at the corners of the vector
+        type(am_class_symmetry) , intent(in) :: sg ! space group
+        real(dp)                , intent(in) :: v(3)
+        type(am_class_options)  , intent(in) :: opts
+        real(dp),allocatable :: seitz(:,:,:)
+        integer, allocatable :: indicies(:)
+        logical, allocatable :: mask(:)
+        integer :: i
+        !
+        allocate(mask(sg%nsyms))
+        mask = .false.
+        !
+        do i = 1, sg%nsyms
+            if (is_symmetry_valid(tau=reshape(v,[3,1]),iopt_R=sg%R(:,:,i),iopt_T=sg%T(:,i),&
+                & iopt_sym_prec=opts%sym_prec,flags='zero')) then
+                mask(i) = .true.
+            endif
+        enddo
+        !
+        allocate(indicies(sg%nsyms))
+        indicies=[1:sg%nsyms]
+        ! create group
+        call revg%create(R=sg%R(:,:,pack(indicies,mask)),T=sg%T(:,pack(indicies,mask)))
+        ! determine conjugacy classes (needs identity first, inversion second)
+        seitz = rep_seitz(R=revg%R,T=revg%T) 
+        revg%cc_identifier = get_conjugacy_classes(rep=seitz)
+        ! name point symmetries
+        call revg%name_symmetries(opts=opts)
+        ! name point group
+        revg%pg_identifier = point_group_schoenflies(revg%ps_identifier)
+        !
+    end subroutine get_reversal_group
 
     !
     ! medium level routines which operate on sg
@@ -872,7 +909,7 @@ contains
         integer :: i,j,k,m ! loop variables
         character(:), allocatable :: xyz(:) ! basis functions output
         real(dp) :: voigt(6) ! voigt notation
-        real(dp) :: R(3,3) ! used for basis functions output
+        real(dp) :: R(3,3)  ! used for basis functions output
         real(dp) :: RR(9,9) ! used for basis functions output
         character(10) :: fmt1
         character(10) :: fmt2
@@ -1834,49 +1871,6 @@ contains
         R_syms = wrkspace(:,:,1:j)
         !
     end function   get_kpoint_compatible_symmetries
-
-
-        ! pure function  reduce_to_wigner_seitz(pnt,grid_points,bas,sym_prec) result(pnt_reduced)
-        !     !> reduces pnt (in fractional) to the first Brillouin zone (Wigner-Seitz cell, defined in cartesian coordinates)
-        !     !> cartesian pnt is returned! 
-        !     implicit none
-        !     !
-        !     real(dp), intent(in) :: pnt(3) !> fractional
-        !     real(dp), intent(in) :: bas(3,3) !> real space basis (column vectors)
-        !     real(dp), intent(in) :: grid_points(3,27) !> voronoi points (cartesian)
-        !     real(dp), intent(in) :: sym_prec
-        !     real(dp) :: pnt_cart(3) !> pnt cartesian
-        !     real(dp) :: G(3) !> reciprocal lattice vector
-        !     real(dp) :: pnt_reduced(3)
-        !     integer :: i ! loop variable
-        !     logical :: is_not_done
-        !     ! real(dp) :: small_offset(3)
-        !     !
-        !     ! take pnt in fractional coordinates (will become cartesian later)
-        !     pnt_cart = pnt
-        !     ! reduce to reciprocal unit cell
-        !     pnt_cart = modulo(pnt_cart+sym_prec,1.0_dp)-sym_prec
-        !     ! convert to cartesian
-        !     pnt_cart = matmul(bas,pnt_cart)
-        !     ! reduce to Wigner-Seitz cell (aka first Brillouin zone) by translating the k-point
-        !     ! until the closest reciprocal lattice point is [0 0 0]
-        !     is_not_done = .true.
-        !     do while ( is_not_done )
-        !         is_not_done = .false.
-        !         do i = 1,27
-        !             G = grid_points(:,i)
-        !             ! bragg plane
-        !             if ( 2*dot_product(pnt_cart,G) .gt. dot_product(G,G)+sym_prec ) then
-        !                 pnt_cart = pnt_cart - G
-        !                 is_not_done = .true.
-        !             endif
-        !         enddo
-        !     end do
-        !     ! convert back to fractional
-        !     pnt_reduced = matmul(inv(bas),pnt_cart)
-        !     !
-        ! end function   reduce_to_wigner_seitz
-
 
 end module am_symmetry
 

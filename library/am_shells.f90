@@ -133,19 +133,21 @@ contains
         endif
     end function   get_pair_prototypes
 
-    subroutine     get_pair_shells(pair,ic,pg,pair_cutoff,uc,opts)
+    subroutine     get_pair_shells(pair,ic,pg,sg,pair_cutoff,uc,opts)
         !
         implicit none
         !
         class(am_class_pair_shell)   , intent(inout) :: pair
         class(am_class_unit_cell), intent(in) :: ic ! irreducible cell, only determine pairs for which atleast one atom is in the primitive cell
+        type(am_class_symmetry) , intent(in) :: sg ! space group
         type(am_class_symmetry) , intent(in) :: pg ! point group
         type(am_class_unit_cell), intent(in) :: uc ! unit cell
         type(am_class_options)  , intent(in) :: opts
         real(dp), intent(inout) :: pair_cutoff
         !
-        type(am_class_symmetry) :: rg ! group of shell
-        type(am_class_symmetry) :: vg ! stabilizer of vector v
+        type(am_class_symmetry) :: rg ! local point groupas seen by rotating the shell
+        type(am_class_symmetry) :: revg ! reversal group of a typical bond in the shell v
+        type(am_class_symmetry) :: vg ! stabilizer of a typical bond in the shell v
         type(am_class_unit_cell) :: sphere ! sphere containing atoms up to a cutoff
         type(am_class_options) :: notalk ! supress verbosity
         integer , allocatable :: pair_nelements(:)
@@ -216,7 +218,9 @@ contains
                 write(*,'(a5)' ,advance='no') 'shell'
                 write(*,'(a6)' ,advance='no') 'i-j'
                 write(*,'(a5)' ,advance='no') 'm'
-                write(*,'(a8)' ,advance='no') 'group'
+                write(*,'(a8)' ,advance='no') 'stab.'
+                write(*,'(a8)' ,advance='no') 'rot.'
+                write(*,'(a8)' ,advance='no') 'rev.'
                 write(*,'(a10)',advance='no') '|v(cart)|'
                 write(*,'(a30)',advance='no') centertitle('v(cart)',30)
                 write(*,'(a30)',advance='no') centertitle('v(frac)',30)
@@ -225,6 +229,8 @@ contains
                 write(*,'(a5)' ,advance='no')      repeat('-',5)
                 write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
                 write(*,'(a5)' ,advance='no') ' '//repeat('-',4)
+                write(*,'(a8)', advance='no') ' '//repeat('-',7)
+                write(*,'(a8)', advance='no') ' '//repeat('-',7)
                 write(*,'(a8)', advance='no') ' '//repeat('-',7)
                 write(*,'(a10)',advance='no') ' '//repeat('-',9)
                 write(*,'(a30)',advance='no') ' '//repeat('-',29)
@@ -249,11 +255,15 @@ contains
                     call rg%get_rotational_group(pg=pg, uc=pair%shell(i,j), opts=notalk)
                     ! determine stabilizers of a prototypical bond in shell (vector v)
                     call vg%get_stabilizer_group(pg=pg, v=pair%shell(i,j)%tau(1:3,1), opts=notalk)
+                    ! determine reversal group, space symmetries, which interchange the position of atoms at the edges of the bond
+                    call revg%get_reversal_group(sg=sg,v=pair%shell(i,j)%tau(1:3,1),opts=notalk)
                     write(*,'(5x)'    ,advance='no')
                     write(*,'(i5)'    ,advance='no') j
                     write(*,'(a6)'    ,advance='no') trim(atm_symb(ic%Z(i)))//'-'//trim(atm_symb(pair%shell(i,j)%Z(1)))
                     write(*,'(i5)'    ,advance='no') pair%shell(i,j)%natoms
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( vg%pg_identifier ))
+                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( rg%pg_identifier ))
+                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( revg%pg_identifier ))
                     write(*,'(f10.3)' ,advance='no') norm2(matmul(pair%shell(i,j)%bas,pair%shell(i,j)%tau(1:3,1)))
                     write(*,'(3f10.3)',advance='no') matmul(pair%shell(i,j)%bas,pair%shell(i,j)%tau(1:3,1))
                     write(*,'(3f10.3)',advance='no') pair%shell(i,j)%tau(1:3,1)

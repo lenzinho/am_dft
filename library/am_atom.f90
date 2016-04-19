@@ -82,7 +82,7 @@ module am_atom
 		state = state(:,ind)
 		state(5,:)=[1:k]
 		!
-		allocate(nlms,source=state(:,(Z-nvalences):(Z+nexciteds)))
+		allocate(nlms,source=state(:,max(1,(Z-nvalences)):(Z+nexciteds)))
 		!
 	end function   get_states
 

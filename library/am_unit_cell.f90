@@ -206,7 +206,7 @@ contains
         !
     end function   translations_from_basis
 
-    pure function  is_symmetry_valid(tau,iopt_Z,iopt_R,iopt_T,iopt_exact,iopt_sym_prec)
+    pure function  is_symmetry_valid(tau,iopt_Z,iopt_R,iopt_T,iopt_sym_prec,flags)
         !
         ! check whether symmetry operation is valid
         !
@@ -217,9 +217,13 @@ contains
         real(dp), intent(in), optional :: iopt_R(3,3)
         real(dp), intent(in), optional :: iopt_T(3)
         real(dp), intent(in), optional :: iopt_sym_prec
-        logical , intent(in), optional :: iopt_exact    ! if present, do not apply mod. ; useful for determining stabilizers
+        character(*), intent(in), optional :: flags
+        !
+        logical  :: isexact    ! if present, do not apply mod. ; useful for determining stabilizers
+        logical  :: iszero     ! if present, returns that the symmetry is valid if it reduces the tau to [0,0,0]. useful for determing which symmetries flip bonds
         integer , allocatable :: Z(:)
         real(dp), allocatable :: tau_internal(:,:)
+        real(dp), allocatable :: tau_ref(:,:) ! what to compare to
         real(dp) :: R(3,3)
         real(dp) :: T(3)
         real(dp) :: sym_prec
@@ -231,38 +235,41 @@ contains
         !
         natoms = size(tau,2)
         !
-        if ( present(iopt_Z) ) then
-            Z = iopt_Z
-        else
-            allocate(Z(natoms))
-            Z = 1
+        ! set defaults
+        if ( present(iopt_Z) ) then; allocate(Z,source=iopt_Z)
+        else; allocate(Z(natoms)); Z = 1; endif
+        !
+        if ( present(iopt_sym_prec) ) then; sym_prec = iopt_sym_prec
+        else; sym_prec = tiny; endif
+        !
+        if ( present(iopt_R) ) then; R = iopt_R
+        else; R = real(eye(3),dp); endif
+        !
+        if ( present(iopt_T) ) then; T = iopt_T
+        else; T = 0.0_dp; endif
+        !
+        ! load flag options
+        isexact = .false.
+        iszero  = .false.
+        if (present(flags)) then
+        if (index(flags,'exact').ne.0) isexact = .true.
+        if (index(flags,'zero').ne.0)  iszero  = .true.
         endif
         !
-        if ( present(iopt_sym_prec) ) then
-            sym_prec = iopt_sym_prec
-        else
-            sym_prec = tiny
-        endif
-        !
-        if ( present(iopt_R) ) then
-            R = iopt_R
-        else
-            R(1:3,1) = real([1,0,0],dp)
-            R(1:3,2) = real([0,1,0],dp)
-            R(1:3,3) = real([0,0,1],dp)
-        endif
-        !
-        if ( present(iopt_T) ) then
-            T = iopt_T
-        else
-            T = real([0,0,0],dp)
-        endif
-        !
+        ! start main part of function here
         allocate(tau_internal, source=tau)
-        if (.not.present(iopt_exact)) then
+        if (.not.isexact) then
         do i = 1, natoms
             tau_internal(:,i) = modulo(tau_internal(:,i)+sym_prec,1.0_dp)-sym_prec
         enddo
+        endif
+        !
+        ! tau ref is what the rotated vector is compared to
+        if (iszero) then
+            tau_ref(:,i) = 0.0_dp
+        else
+            ! default behavior: just compare it to what it was originally before it was rotated
+            allocate(tau_ref,source=tau_internal)
         endif
         !
         m = 0
@@ -270,7 +277,7 @@ contains
             ! apply symmetry operation
             tau_rot(1:3) = matmul(R,tau_internal(1:3,i)) + T(1:3)
             ! reduce rotated+translated point to unit cell
-            if (.not.present(iopt_exact)) tau_rot(1:3) = modulo(tau_rot(1:3)+sym_prec,1.0_dp)-sym_prec
+            if (.not.isexact) tau_rot(1:3) = modulo(tau_rot(1:3)+sym_prec,1.0_dp)-sym_prec
             ! check that newly created point matches something already present
             overlap_found = .false.
             check_overlap : do j = 1,natoms
