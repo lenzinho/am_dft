@@ -90,6 +90,7 @@ contains
         integer :: i1,i2,i3,j
         !
         allocate(grid_points(3,size(n1)*size(n2)*size(n3)))
+        grid_points = 0
         !
         j=0
         do i1 = 1, size(n1)
@@ -207,7 +208,7 @@ contains
     end function  legendre
 
     pure function laguerre(k,p,x) result(y)
-        ! associated Laguerre polynomial L_k^p(x)
+        ! associated Laguerre polynomial L_k^p(x)(k,p,x)
         ! Using the expression from Samuel Shaw Ming Wong "Computational Methods in Physics and Engineering", Eq 4-86 p 139
         ! Note, there is a typographical error on http://mathworld.wolfram.com/AssociatedLaguerrePolynomial.html Eq 10
         ! Also see Linus Pauling "Introuction to Quantum Mechancs"
@@ -218,11 +219,11 @@ contains
         real(dp), allocatable :: y(:)
         integer :: j
         !
-        allocate(y(size(x)))
-        y=0
+        allocate(y,mold=x)
+        y=0.0_dp
         !
         do j = 0, k
-            y = y + nchoosek(k+p,k-j) * (-x)**j / factorial(j)
+            y = y + nchoosek(k+p,k-j) * (-x)**j / factorial(j) ! * factorial(k+p) essentially just a normalization factor, ignoring it
         enddo
         !
     end function  laguerre
