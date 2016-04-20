@@ -1,41 +1,48 @@
 module am_mkl
-    !
+    
     use am_constants
-    !
+    
     integer , parameter :: lwmax = 1000  ! maximum workspace size
     real(dp), parameter :: eps = 1.0D-14 ! used for regularization
-    !
+    
     public
-    !
+    
     private :: lwmax
     private :: eps
-    !
     
+    interface norm
+        module procedure am_dznrm2, am_dnrm2    
+    end interface ! norm
+
+    interface dot
+        module procedure am_zdotc, am_ddot    
+    end interface ! dot
+
 contains
 
     ! eucledian norm of vector
 
-    function      am_dnrm2(V) result(norm)
+    function      am_dnrm2(V) result(n)
         !
         implicit none
         !
         real(dp), intent(in) :: V(:)
-        real(dp) :: norm
+        real(dp) :: n
         real(dp), external :: dnrm2
         !
-        norm = dnrm2(size(V), V, 1)
+        n = dnrm2(size(V), V, 1)
         !
     end function  am_dnrm2 
 
-    function      am_dznrm2(V) result(norm)
+    function      am_dznrm2(V) result(n)
         !
         implicit none
         !
         complex(dp), intent(in) :: V(:)
-        real(dp) :: norm
+        real(dp) :: n
         real(dp), external :: dznrm2
         !
-        norm = dznrm2(size(V), V, 1)
+        n = dznrm2(size(V), V, 1)
         !
     end function  am_dznrm2
 
@@ -741,15 +748,6 @@ contains
         allocate(C(m,n))
         C = 0
         !
-        write(*,*) transa
-        write(*,*) transb
-        write(*,*) m
-        write(*,*) n
-        write(*,*) k
-        write(*,*) Am
-        write(*,*) Bm
-        write(*,*) m
-        !
         ! C := alpha*op(A)*op(B) + beta*C,
         !            [m*k] [k*n]
         !
@@ -760,67 +758,83 @@ contains
 
     ! multiply A and B and get a symmetric matrix C
 
-! this routine does not exist... 
-! https://software.intel.com/en-us/articles/a-matrix-multiplication-routine-that-updates-only-the-upper-or-lower-triangular-part-of-the?language=ru
-!     function       am_dhamm(A,B,flags) result(C)
-!         !
-!         ! multiply matrices A and B
-!         ! 
-!         implicit none
-!         !
-!         real(dp), intent(in) :: A(:,:)
-!         real(dp), intent(in) :: B(:,:)
-!         character(*), intent(in), optional :: flags
-!         real(dp), allocatable :: C(:,:)
-!         character(len=1) :: transa
-!         character(len=1) :: transb
-!         integer :: Am,An,Bm,Bn
-!         integer :: m,n,k
-!         !
-!         Am = size(A,1)
-!         An = size(A,2)
-!         Bm = size(B,1)
-!         Bn = size(B,2)
-!         !
-!         transa='N'
-!         transb='N'
-!         if (present(flags)) then
-!             if (index(flags,'AT').ne.0) then
-!                 transa = 'T'
-!             endif
-!             if (index(flags,'AC').ne.0) then
-!                 transa = 'C'
-!             endif
-!             if (index(flags,'BT').ne.0) then
-!                 transb = 'T'
-!             endif
-!             if (index(flags,'BC').ne.0) then
-!                 transb = 'C'
-!             endif
-!         endif
-!         !
-!         ! m Specifies the number of rows of the matrix op(A)
-!         m = Am
-!         if ((transa(1:1).eq.'T').or.(transa(1:1).eq.'C')) m = An
-!         !
-!         ! n Specifies the number of columns of the matrix op(B)
-!         n = Bn
-!         if ((transb(1:1).eq.'T').or.(transb(1:1).eq.'C')) n = Bm
-!         !
-!         ! k Specifies the number of columns of the matrix op(A)
-!         k = An
-!         if ((transa(1:1).eq.'T').or.(transa(1:1).eq.'C')) k = Am
-!         !
-!         allocate(C(m,n))
-!         C = 0
-!         !
-!         ! C := alpha*op(A)*op(B) + beta*C,
-!         !            [m*k] [k*n]
-!         !
-!         !    dgemm(transa, transb, m, n, k, 1.0_dp, A, lda, B, ldb, 0.0_dp , C, ldc)
-!         call dgemm(transa, transb, m, n, k, 1.0_dp, A,  Am, B,  Bm, 0.0_dp , C,   m)
-!         !
-!     end function   am_dhamm
+    function       am_dgemmt(A,B,flags) result(C)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:)
+        real(dp), intent(in) :: B(:,:)
+        character(*), intent(in), optional :: flags
+        real(dp), allocatable :: C(:,:)
+        character(len=1) :: uplo
+        character(len=1) :: transa
+        character(len=1) :: transb
+        integer :: Am,An,Bm,Bn
+        integer :: m,n,k
+        integer :: i, j
+        !
+        Am = size(A,1)
+        An = size(A,2)
+        Bm = size(B,1)
+        Bn = size(B,2)
+        !
+        uplo  ='U'
+        transa='N'
+        transb='N'
+        if (present(flags)) then
+            if (index(flags,'U').ne.0) then
+                uplo    = 'T'
+            endif
+            if (index(flags,'L').ne.0) then
+                uplo    = 'L'
+            endif
+            if (index(flags,'AT').ne.0) then
+                transa = 'T'
+            endif
+            if (index(flags,'AC').ne.0) then
+                transa = 'C'
+            endif
+            if (index(flags,'BT').ne.0) then
+                transb = 'T'
+            endif
+            if (index(flags,'BC').ne.0) then
+                transb = 'C'
+            endif
+        endif
+        !
+        ! m Specifies the number of rows of the matrix op(A)
+        m = Am
+        if ((transa(1:1).eq.'T').or.(transa(1:1).eq.'C')) m = An
+        !
+        ! n Specifies the number of columns of the matrix op(B)
+        n = Bn
+        if ((transb(1:1).eq.'T').or.(transb(1:1).eq.'C')) n = Bm
+        !
+        if (n.ne.m) then
+            write(*,*) 'ERROR: The final matrix must be square. n /= m.'
+            stop
+        endif
+        !
+        ! k Specifies the number of columns of the matrix op(A)
+        k = An
+        if ((transa(1:1).eq.'T').or.(transa(1:1).eq.'C')) k = Am
+        !
+        allocate(C(m,n))
+        C = 0
+        !
+        ! C := alpha*op(A)*op(B) + beta*C,
+        !            [m*k] [k*n]
+        !
+        !    dgemmt(uplo, transa, transb, n, k,  alpha, a, lda, b, ldb,   beta, c, ldc)
+        call dgemmt(uplo, transa, transb, n, k, 1.0_dp, A,  Am, B,  Bm, 0.0_dp, C,   m)
+        !
+        do i = 1, m
+            do j = 1, (i-1)
+                C(i,j) = C(j,i)
+            enddo
+        enddo
+        !
+    end function   am_dgemmt
 
 
 
