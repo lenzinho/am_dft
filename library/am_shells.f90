@@ -80,6 +80,8 @@ module am_shells
     
     function       identify_irreducible_pair_shells(pair,pg,ic,opts) result(irrep_pair_identifier)
         !
+        ! negative irrep_pair_identifier is returned for bonds that are flipped
+        !
         implicit none
         !
         class(am_class_pair_shell), intent(in) :: pair
@@ -88,11 +90,11 @@ module am_shells
         type(am_class_options)    , intent(in) :: opts
         type(am_class_options)  :: notalk
         type(am_class_symmetry) :: vg ! stabilizer of vector v
-        integer , allocatable :: ij(:,:) ! indicies i and j (see below)
         integer , allocatable :: Z(:,:) ! Z of each atom in pair
         integer , allocatable :: s(:) ! stabilizer point group identifier
         real(dp), allocatable :: d(:) ! distances of atoms
-        integer , allocatable :: irrep_pair_identifier(:) 
+        integer , allocatable :: irrep_pair_identifier(:) ! can have negative, it means bond was flipped!
+        logical , allocatable :: isflipped(:)
         real(dp) :: v(3)
         integer :: i,j,k
         !
@@ -105,24 +107,25 @@ module am_shells
         !
         ! set total number of pairs as the sum of the number of shells on each atom 
         ! note that totalshells is not the absolute number of pairs, it is the number of shells on all atoms; i.e. the number of unique pairs all atoms have by themselves without referencing other atoms.
-        if (opts%verbosity.ge.1) call am_print('shells',pair%nshells)
         !
         ! allocate space 
         allocate(d(pair%nshells))   ! distance between pair of atoms (having atoms the same distance apart is a prerequesit for the bond to be the same)
         allocate(s(pair%nshells))   ! stabilizer group identifier (having the same stabilier group is a prerequesit for the bond to be the same)
         allocate(Z(2,pair%nshells)) ! atomic number of elements in pair (having the same types of atoms is a prerequesit for the bond to be the same)
-        allocate(ij(2,pair%nshells))! save indices of shell j centered on atom i for convinence 
+        allocate(isflipped(pair%nshells)) ! indicates which pairs were flipped in the comparison, returns negative irrep_pair_identifier if the corresponding bond was flipped
         !
+        isflipped = .false.
         do k = 1, pair%nshells
             ! get bond vector
             v = pair%shell(k)%tau(:,1)
             ! record distances
             d(k) = norm2(matmul(pair%shell(k)%bas,v))
-            ! record indices
-            ij(1:2,k) = [i,j]
             ! record sorted pair
             Z(1:2,k) = [ic%Z(pair%shell(k)%i), pair%shell(k)%Z(1)]
-            if (Z(1,k).gt.Z(2,k)) Z([1,2],k) = Z([2,1],k)
+            if (Z(1,k).gt.Z(2,k)) then
+                isflipped(k) = .true.
+                Z([1,2],k) = Z([2,1],k)
+            endif
             ! record stabilzier group
             call vg%get_stabilizer_group(pg=pg, v=v, opts=notalk)
             s(k) = vg%pg_identifier
@@ -149,7 +152,13 @@ module am_shells
                 enddo
             endif
         enddo
-        call am_print('irrep_pair_identifier',irrep_pair_identifier)
+        !
+        ! indicate which atoms have been flipped with negative sign
+        do k = 1, pair%nshells
+            if (isflipped(k)) irrep_pair_identifier(k) = -irrep_pair_identifier(k)
+        enddo
+        !
+        ! call am_print('irrep_pair_identifier (negative sign indicates flipped bonds)',irrep_pair_identifier)
     end function   identify_irreducible_pair_shells
 
     subroutine     get_pair_shells(pair,ic,pg,sg,pair_cutoff,uc,opts)
@@ -297,7 +306,7 @@ module am_shells
         write(*,'(5x,a)') 'Definitions:'
         write(*,'(5x,a)') 'stabilizer (stab): point symmetries which leave a prototypical bond in shell invariant'
         write(*,'(5x,a)') 'rotational (rot) : point symmetries which leave shell invariant'
-        write(*,'(5x,a)') 'reversal   (rev) : (im) proper rotational parts of space symmetries which invert bond endpoints'
+        write(*,'(5x,a)') 'reversal   (rev) : (im)proper rotational parts of space symmetries which flip bond endpoints'
         !
         contains
         function       create_sphere(uc,sphere_center,pair_cutoff,opts) result(sphere)

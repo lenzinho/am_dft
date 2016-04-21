@@ -116,8 +116,11 @@ contains
         !
         ! transfer atomic species by comparing atomic coordinates
         allocate(prim%pc_identifier(prim%natoms),source=[1:prim%natoms])
-        allocate(uc%pc_identifier(uc%natoms)); uc%pc_identifier=0
         allocate(prim%uc_identifier(prim%natoms)); prim%uc_identifier = 0
+        allocate(uc%pc_identifier(uc%natoms)); uc%pc_identifier=0
+        if (.not.allocated(uc%uc_identifier)) then
+            allocate(uc%uc_identifier,source=[1:uc%natoms])
+        endif
         !
         allocate(prim%Z(prim%natoms))
         do i = 1, prim%natoms
@@ -146,23 +149,23 @@ contains
         enddo
         !
         if (opts%verbosity.ge.1) then
-            write(*,'(5x,a)',advance='no') 'atomic mapping (to primitive cell)'
+            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to primitive cell)'
             do i = 1, uc%natoms
-                if (modulo(i,10).eq.1) then
-                    write(*,*)
-                    write(*,'(5x)',advance='no')
-                endif
-                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(prim%uc_identifier(i)))
-            enddo
-            write(*,*)
-            !
-            write(*,'(5x,a)',advance='no') 'atomic mapping (from primitive cell)'
-            do i = 1, prim%natoms
-                if (modulo(i,10).eq.1) then
+                if (modulo(i,11).eq.1) then
                     write(*,*)
                     write(*,'(5x)',advance='no')
                 endif
                 write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(uc%pc_identifier(i)))
+            enddo
+            write(*,*)
+            !
+            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (from primitive cell)'
+            do i = 1, prim%natoms
+                if (modulo(i,11).eq.1) then
+                    write(*,*)
+                    write(*,'(5x)',advance='no')
+                endif
+                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(prim%uc_identifier(i)))
             enddo
             write(*,*)
         endif

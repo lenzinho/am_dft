@@ -53,7 +53,8 @@ contains
         mask = .true.
         !
         !
-        ! determine irreducible atoms.
+        ! determine irreducible atoms, i.e. get all atoms, in increments, which have not been already mapped onto by a space symmetry operation
+        ! thus, primitive cell atom i corresponds to irreducible atom k ...
         k=0
         do i = 1, pc%natoms
         if (mask(i)) then
@@ -78,68 +79,84 @@ contains
                 Btitle='cartesian' ,B=transpose(matmul(ic%bas,ic%tau)),&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
-        !
-        ! make maps
-        allocate(ic%uc_identifier,source=pc%uc_identifier(ind(1:k)))
-        allocate(ic%pc_identifier,source=ind(1:k))
-        allocate(ic%ic_identifier,source=[1:ic%natoms])
-        !
-        allocate(pc%ic_identifier(pc%natoms))
-        do i = 1, ic%natoms
-            where (PM(i,:).eq.i) pc%ic_identifier = i
-        enddo
-        !
-        if (present(uc)) then
-            allocate(uc%ic_identifier(pc%natoms))
-            do i = 1, uc%natoms
-                uc%ic_identifier(i) = pc%ic_identifier(uc%pc_identifier(i))
-            enddo
-        endif
-        !
-        if (opts%verbosity.ge.1) then
-            write(*,'(5x,a)',advance='no') 'atomic mapping (irreducible to original cell)'
-            do i = 1, ic%natoms
-                if (modulo(i,10).eq.1) then
-                    write(*,*)
-                    write(*,'(5x)',advance='no')
-                endif
-                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(ic%uc_identifier(i)))
-            enddo
-            write(*,*)
-            !
-            write(*,'(5x,a)',advance='no') 'atomic mapping (irreducible to primitive cell)'
-            do i = 1, ic%natoms
-                if (modulo(i,10).eq.1) then
-                    write(*,*)
-                    write(*,'(5x)',advance='no')
-                endif
-                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(ic%pc_identifier(i)))
-            enddo
-            write(*,*)
-            !
-            write(*,'(5x,a)',advance='no') 'atomic mapping (primitive to irreducible cell)'
-            do i = 1, pc%natoms
-                if (modulo(i,10).eq.1) then
-                    write(*,*)
-                    write(*,'(5x)',advance='no')
-                endif
-                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(pc%ic_identifier(i)))
-            enddo
-            write(*,*)
-            !
-            if (present(uc)) then
-            write(*,'(5x,a)',advance='no') 'atomic mapping (original to irreducible cell)'
-            do i = 1, uc%natoms
-                if (modulo(i,10).eq.1) then
-                    write(*,*)
-                    write(*,'(5x)',advance='no')
-                endif
-                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(uc%ic_identifier(i)))
-            enddo
-            write(*,*)
-            endif
-            !
-        endif
+        !     !
+        !     ! this mapping is broken.
+        !     ! 
+        !     ! make maps
+        !     ! Note: ind(1:k) are indices primitive cell atoms correspond to irreducible cell atoms
+        !     ! maps irreducible cell atom onto -> irreducible cell
+        !     allocate(ic%ic_identifier,source=[1:ic%natoms]) 
+        !     ! maps irreducible cell atom onto -> primitive cell
+        !     allocate(ic%pc_identifier,source=ind(1:k))
+        !     ! maps irreducible cell atom onto -> unit cell
+        !     allocate(ic%uc_identifier,source=pc%uc_identifier(ind(1:k)))
+        !     ! maps primitive cell atom onto -> irreducible cell
+        !     allocate(pc%ic_identifier(pc%natoms))
+        !     do i = 1, ic%natoms
+        !         ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
+        !         ! PM(1,:) shows all atoms onto which atom 1 is mapped by all space symmetry operations
+        !         do j = 1, pc%natoms
+        !         do k = 1, sg%nsyms
+        !         if (PM(j,k).eq.i) pc%ic_identifier(j) = i
+        !         enddo
+        !         enddo
+        !     enddo
+        !     ! maps unit cell atom onto -> irreducible cell
+        !     if (present(uc)) then
+        !         allocate(uc%ic_identifier(uc%natoms))
+        !         do i = 1, uc%natoms
+        !             ! j = uc%pc_identifier(i) shows to which primitive atom j, unit cell atom i is associated with  
+        !             ! now find... to which irreducible atom k, primitive cell atom j is associated with... k = 
+        !         do j = 1, ic%natoms
+        !             uc%ic_identifier(i) = pc%uc_identifier(ic%pc_identifier(j))
+        !         enddo
+        !         enddo
+        !     endif
+        !     !
+        !     if (opts%verbosity.ge.1) then
+        !         write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (irreducible to original cell)'
+        !         do i = 1, ic%natoms
+        !             if (modulo(i,10).eq.1) then
+        !                 write(*,*)
+        !                 write(*,'(5x)',advance='no')
+        !             endif
+        !             write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(ic%uc_identifier(i)))
+        !         enddo
+        !         write(*,*)
+        !         !
+        !         write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (irreducible to primitive cell)'
+        !         do i = 1, ic%natoms
+        !             if (modulo(i,10).eq.1) then
+        !                 write(*,*)
+        !                 write(*,'(5x)',advance='no')
+        !             endif
+        !             write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(ic%pc_identifier(i)))
+        !         enddo
+        !         write(*,*)
+        !         !
+        !         write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (primitive to irreducible cell)'
+        !         do i = 1, pc%natoms
+        !             if (modulo(i,10).eq.1) then
+        !                 write(*,*)
+        !                 write(*,'(5x)',advance='no')
+        !             endif
+        !             write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(pc%ic_identifier(i)))
+        !         enddo
+        !         write(*,*)
+        !         !
+        !         if (present(uc)) then
+        !         write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (original to irreducible cell)'
+        !         do i = 1, uc%natoms
+        !             if (modulo(i,10).eq.1) then
+        !                 write(*,*)
+        !                 write(*,'(5x)',advance='no')
+        !             endif
+        !             write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(uc%ic_identifier(i)))
+        !         enddo
+        !         write(*,*)
+        !         endif
+        !         !
+        !     endif
         !     
     end subroutine get_irreducible
 
