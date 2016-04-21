@@ -22,8 +22,8 @@ module am_unit_cell
         real(dp), allocatable :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates
         integer , allocatable :: Z(:) !> protons
         integer , allocatable :: uc_identifier(:) ! idenitfies corresponding atom in unit cell
-        integer , allocatable :: ic_identifier(:) ! idenitfies corresponding atom in irreducible cell
         integer , allocatable :: pc_identifier(:) ! idenitfies corresponding atom in primitive cell
+        integer , allocatable :: ic_identifier(:) ! idenitfies corresponding atom in irreducible cell
     contains
         procedure :: load_poscar
         procedure :: write_poscar

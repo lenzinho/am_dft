@@ -204,61 +204,60 @@ contains
         !
     end function tesseral_harmonics
 
-	function      Rnl(r,n,l) result(y)
-		! unnormalized radial hyrdogen wavefunction
-		! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed. 1980 edition (Springer, 2013), p 356.
-		! Griffiths, David J. (2005), Introduction to Quantum Mechanics, 2nd Edition; Pearson Education - Problem 4.12.
+	function     Rnl(r,n,l) result(y)
+		! Unnormalized radial hyrdogen wavefunction 
+		! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed. 1980 edition (Springer,
+		! 2013), p 356. Griffiths, David J. (2005), Introduction to Quantum Mechanics, 2nd Edition; Pearson Education -
+		! Problem 4.12.
+		! L. Pauling, E. B. W. Jr, and Physics, Introduction to Quantum Mechanics with Applications to Chemistry, 3134th
+		! edition (Dover Publications, New York, N.Y, 1985), p 131.
+		!
+		!             Laguerre L_n       functions orthogonal over R = [0,inf) with weighing function        exp(-r)
+		! Generalized Laguerre L_{n}^{k} functions orthogonal over R = [0,inf) with weighing function r**k * exp(-r) 
+		! Divide weight factor by two because the wave functions will multiply each other to produce unity.
+		!
+		! The radial components are built out of Laguerre polynomials, whose orthogonality only holds when leaving the
+		! secondary index l fixed. <i,j|i,j> = 1, <i,k|j,k> = 0, and <i,j|k,l> for i/=j,k/=l is not 0 or 1.
+		!
 		real(dp), intent(in) :: r(:)
 		integer , intent(in) :: n,l
 		real(dp), allocatable :: y(:)
-		real(dp), allocatable :: rho(:)
+		integer :: k
 		!
 		allocate(y(size(r)))
 		!
-		allocate(rho,source=r/n)
-		!
 		! associated Laguerre polynomial L_k^p(x) of degree k and order p
-		! see Linus p 131
-		y = rho**l * exp(-rho/2) * laguerre(k=(n-l-1),p=(2*l+1),x=rho)
+		! the last r is part of the volume integration factor for spherical integration
+		y = r**(l/2) * exp(-r/2) * laguerre(k=(n-l-1),p=(2*l+1),x=(r/n))
+		! 
+		! FROM LINUS PAULING'S BOOK:
+		! y=0
+		! do k = 0, (n-l-1)
+		! y = y + (-1)**(k+1) * factorial(n+l)**2/(factorial(n-l-k-1)*factorial(2*l+1+k)*factorial(k)) * (r/n)**k
+		! enddo
+		! y = y * exp(-r/(2*n)) ! * (r/n)**l
 		!
-	end function  Rnl
+	end function Rnl
 
-	subroutine     test_orbitals()
+	subroutine    test_orbitals()
 		!
 		implicit none
 		!
-		! TEST 1 - compare 1s orbitals
-		real(dp),allocatable :: r(:)
-		real(dp),allocatable :: psi_r(:)
-		real(dp),allocatable :: psi_rp(:)
-		! TEST 2
 	    real(dp),allocatable :: sph(:,:)  ! real space spherical coordinates sph(1:3,i) = [r,th,phi] 
 		integer ,allocatable :: nlm(:,:)
-		complex(dp),allocatable :: Y(:,:)
+		real(dp),allocatable :: Y(:,:)
+		real(dp),allocatable :: dV(:) ! integration volume element
 		integer :: n,l,m
 		integer :: k, i
 		!
-		allocate(r,source=linspace(0,100,100))
 		!
-		allocate(psi_r,mold=r)
-		!
-		psi_r = Rnl(n=1,l=0,r=r)
-		psi_r = psi_r/norm2(psi_r)
-		!
-		allocate(psi_rp,mold=r)
-		!
-		psi_rp = exp(-r/2)
-		psi_rp = psi_rp/norm2(psi_r)
-		!
-		write(*,*) sum(abs(psi_r-psi_rp))
-		!
-		!
-		! TEST 2 
-		n = 120 ! 180/4
+		n = 3 ! 180/4
+		! r     = [0,inf)
 		! theta = [0, pi]
 		! phi   = [0,2pi)
-		! r     = [0,inf)
-		sph = meshgrid([1.0_dp], pi*[0:n]/real(n,dp), [pi*[1:(2*n)]/real(2*n,dp)] )
+		sph = meshgrid(linspace(0.0_dp,10000.0_dp, 2 ), pi*[0:n]/real(n,dp), [pi*[1:(2*n)]/real(2*n,dp)] )
+		! volume element: in reality dV = sqrt(dV) because it will multiply both bra and ket wave functions to form recover its power in the integral
+		dV  = sph(1,:) * aimag(exp(cmplx_i*sph(2,:)/2))
 		!
 		allocate(nlm(3,100))
 		k=0
@@ -272,16 +271,22 @@ contains
 		enddo 
 		call am_print('nlm',nlm(:,1:k))
 		!
+		!
 		allocate(Y(size(sph,2),k))
+		Y = 0
 		!
 		do i = 1,k
-			Y(:,i) = spherical_harmonics(l=nlm(2,i),m=nlm(3,i),theta=sph(2,:),phi=sph(3,:))
-			Y(:,i) = Y(:,i)/am_dznrm2(Y(:,i))
+			n = nlm(1,i)
+			l = nlm(2,i)
+			m = nlm(3,i)
+			Y(:,i) = tesseral_harmonics(l=l,m=m,theta=sph(2,:),phi=sph(3,:)) * dV
+			! Y(:,i) = Rnl(n=n,l=l,r=sph(1,:))
+			Y(:,i) = Y(:,i)/am_dnrm2(Y(:,i))
 		enddo
 		!
 		! Y = get_orbitals(x=xyz(1,:),y=xyz(2,:),z=xyz(3,:),nlm=nlm(:,1:k))
 		!
-		call am_print('Y^T*Y',real(matmul(transpose(conjg(Y)),Y)))
+		call am_print('Y^T*Y',matmul(transpose((Y)),Y))
 
 
 

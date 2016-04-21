@@ -40,11 +40,13 @@ contains
         integer :: i, j, k
         integer :: nequations
         !
+        !
         if (opts%verbosity.ge.1) call am_print_title('Determining symmetry-adapted tensor: '//trim(property))
         !------------------------------------------------- FIRST-RANK TENSORS --------------------------------------------------
         if     (index(property,'pyroelectricity')          .ne.0) then; tensor_rank = 1 !    ! P_{i}     = p_{i} \Delta T
         !------------------------------------------------- SECOND-RANK TENSORS -------------------------------------------------
         elseif (index(property,'pair force-constants')     .ne.0) then; tensor_rank = 2; flags = 'polar' ! second-order force-constants
+        elseif (index(property,'pair reversal')            .ne.0) then; tensor_rank = 2; flags = 'polar' ! second-order force-constants corresponding to reversal group (will apply flip operator!)
         elseif (index(property,'electrical susceptibility').ne.0) then; tensor_rank = 2; flags = 'polar' ! S  ! P_{i}     = \alpha_{ij}  E_{j}
         elseif (index(property,'magnetic susceptibility')  .ne.0) then; tensor_rank = 2; flags = 'axial' ! S  ! M_{i}     = \mu_{ij}     H_{j}
         elseif (index(property,'magneto-electric')         .ne.0) then; tensor_rank = 2; flags = 'axial' 
@@ -68,7 +70,7 @@ contains
         elseif (index(property,'third-order elasticity')   .ne.0) then; tensor_rank = 6; flags = 'polar' !    ! 
         !----------------------------------------------------------------------------------------------------------------------
         else
-            call am_print('ERROR','Unknown property',flags='E')
+            call am_print('ERROR','Unknown property.',flags='E')
             stop
         endif
         !----------------------------------------------------------------------------------------------------------------------
@@ -120,6 +122,11 @@ contains
             ! construct symmetry operator in the flattend basis
             ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
             R = kron_pow(ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),tensor_rank)
+            ! apply flip operator. S_{alpha,beta,n,m} = S_{beta,alpha,m,n}
+            ! reversal group have operations S which flip n->m and m->n. To return n and m to their correct indicies, apply "flip" operator which flips n<->m AND transposes alpha and beta cartesian indices.
+            if (index(property,'pair reversal').ne.0) then
+                R = matmul(T(ndim),R)
+            endif
             ! if the quantity corresponds to an axial tensor
             if (index(flags,'axial').ne.0) R = det(pg%R(:,:,i)) * R
             ! Save the action of the symmetry operations
@@ -162,10 +169,10 @@ contains
         elseif (index(property,'piezoelectricity').ne.0) then
             k=k+1; S(:,:,k) = kron(T(ndim),eye(ndim))     ! d_ijk = d_ikj
         elseif (index(property,'elasticity'      ).ne.0) then
-            k=k+1; S(:,:,k) = eye(nterms)                     ! cijkl = cijkl
+            k=k+1; S(:,:,k) = eye(nterms)                 ! cijkl = cijkl
             k=k+1; S(:,:,k) = kron(eye(ndim**2),T(ndim))  ! cijkl = cjikl
             k=k+1; S(:,:,k) = kron(T(ndim),eye(ndim**2))  ! cijkl = cjilk
-            k=k+1; S(:,:,k) = kron(T(ndim),T(ndim))   ! cijkl = cjilk
+            k=k+1; S(:,:,k) = kron(T(ndim),T(ndim))       ! cijkl = cjilk
         endif
         !
         do i = 1, k

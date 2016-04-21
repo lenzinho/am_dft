@@ -115,11 +115,9 @@ contains
         !
         !
         ! transfer atomic species by comparing atomic coordinates
-        allocate(uc%pc_identifier(uc%natoms))
-        uc%pc_identifier=0
-        ! 
-        allocate(prim%uc_identifier(prim%natoms))
-        prim%uc_identifier = 0
+        allocate(prim%pc_identifier(prim%natoms),source=[1:prim%natoms])
+        allocate(uc%pc_identifier(uc%natoms)); uc%pc_identifier=0
+        allocate(prim%uc_identifier(prim%natoms)); prim%uc_identifier = 0
         !
         allocate(prim%Z(prim%natoms))
         do i = 1, prim%natoms
@@ -148,8 +146,25 @@ contains
         enddo
         !
         if (opts%verbosity.ge.1) then
-            call am_print('atomic mapping (original index top; primitive cell bottom)',transpose(reshape([1:uc%natoms,uc%pc_identifier],[uc%natoms,2])))
-            call am_print('atomic mapping (primitive cell top; original index bottom)',transpose(reshape([1:prim%natoms,prim%uc_identifier],[prim%natoms,2])))
+            write(*,'(5x,a)',advance='no') 'atomic mapping (to primitive cell)'
+            do i = 1, uc%natoms
+                if (modulo(i,10).eq.1) then
+                    write(*,*)
+                    write(*,'(5x)',advance='no')
+                endif
+                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(prim%uc_identifier(i)))
+            enddo
+            write(*,*)
+            !
+            write(*,'(5x,a)',advance='no') 'atomic mapping (from primitive cell)'
+            do i = 1, prim%natoms
+                if (modulo(i,10).eq.1) then
+                    write(*,*)
+                    write(*,'(5x)',advance='no')
+                endif
+                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(uc%pc_identifier(i)))
+            enddo
+            write(*,*)
         endif
         !
     end subroutine get_primitive
