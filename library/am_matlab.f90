@@ -85,24 +85,43 @@ contains
         !
         real(dp), intent(in) :: n1(:)
         real(dp), intent(in) :: n2(:)
-        real(dp), intent(in) :: n3(:)
+        real(dp), intent(in), optional :: n3(:)
         real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
         integer :: i1,i2,i3,j
         !
-        allocate(grid_points(3,size(n1)*size(n2)*size(n3)))
-        grid_points = 0
+        if (present(n3)) then
+            !
+            allocate(grid_points(3,size(n1)*size(n2)*size(n3)))
+            grid_points = 0
+            !
+            j=0
+            do i1 = 1, size(n1)
+            do i2 = 1, size(n2)
+            do i3 = 1, size(n3)
+                j=j+1
+                grid_points(1,j)=n1(i1)
+                grid_points(2,j)=n2(i2)
+                grid_points(3,j)=n3(i3)
+            enddo
+            enddo
+            enddo
+            !
+        else
+            !
+            allocate(grid_points(2,size(n1)*size(n2)))
+            grid_points = 0
+            !
+            j=0
+            do i1 = 1, size(n1)
+            do i2 = 1, size(n2)
+                j=j+1
+                grid_points(1,j)=n1(i1)
+                grid_points(2,j)=n2(i2)
+            enddo
+            enddo
+            !
+        endif
         !
-        j=0
-        do i1 = 1, size(n1)
-        do i2 = 1, size(n2)
-        do i3 = 1, size(n3)
-            j=j+1
-            grid_points(1,j)=n1(i1)
-            grid_points(2,j)=n2(i2)
-            grid_points(3,j)=n3(i3)
-        enddo
-        enddo
-        enddo
     end function  dmeshgrid
 
     pure function imeshgrid(n1,n2,n3) result(grid_points)
@@ -111,10 +130,14 @@ contains
         !
         integer, intent(in) :: n1(:)
         integer, intent(in) :: n2(:)
-        integer, intent(in) :: n3(:)
+        integer, intent(in), optional :: n3(:)
         real(dp), allocatable :: grid_points(:,:)
         !
-        grid_points=dmeshgrid(real(n1,dp),real(n2,dp),real(n3,dp))
+        if (present(n3)) then
+            grid_points=dmeshgrid(real(n1,dp),real(n2,dp),real(n3,dp))
+        else
+            grid_points=dmeshgrid(real(n1,dp),real(n2,dp))
+        endif
         !
     end function  imeshgrid
 
@@ -143,14 +166,18 @@ contains
         !
         integer , intent(in) :: l,m
         real(dp), intent(in) :: x(:)
-        real(dp) :: y(size(x))
+        real(dp), allocatable :: y(:)
         integer  :: ll
         real(dp) :: pll(size(x))
         real(dp) :: pmm(size(x))
         real(dp) :: pmmp1(size(x))
         real(dp) :: somx2(size(x))
         !
-        ! call assert(m >= 0, m <= l, all(abs(x) <= 1.0), 'y args')
+        allocate(y(size(x)))
+        !
+        if ((m.lt.0).or.(m.gt.l).or.(all(abs(x).gt.1.0_dp))) then
+            y = 0
+        endif
         !
         pmm=1.0
         if (m > 0) then
@@ -223,7 +250,7 @@ contains
         y=0.0_dp
         !
         do j = 0, k
-            y = y + nchoosek(k+p,k-j) * (-x)**j / factorial(j) ! * factorial(k+p) essentially just a normalization factor, ignoring it
+            y = y + nchoosek(k+p,k-j) * (-x)**j / factorial(j)
         enddo
         !
     end function  laguerre

@@ -15,6 +15,8 @@ module am_irre_cell
     
     type, public, extends(am_class_prim_cell) :: am_class_irre_cell
         !
+        class(am_class_atom), allocatable :: atom(:)
+        !
     contains
         procedure :: get_irreducible
     end type am_class_irre_cell

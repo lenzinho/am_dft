@@ -14,35 +14,12 @@ module am_atom
         integer, allocatable :: state(:,:) ! quantum numbers [n,l,m,s,#], last number in nlms array is the state index starting with H 1s
         !
     contains
-		!    	
+        procedure :: generate_states
 	end type am_class_atom
 
-	contains
-
-
-! 	subroutine     generate_orbitals(atom,Z,nvalences,nexciteds,opts)
-! 		!
-! 		! nvalence = number of valence orbitals
-! 		! nexcited = number of excited orbitals
-! 		!
-! 		use am_rank_and_sort
-! 		!
-! 		implicit none
-! 	  	!
-! 	  	class(am_class_atom), intent(inout) :: atom
-! 	  	class(am_class_options), intent(in) :: opts
-! 		integer, intent(in)  :: Z, nvalences, nexciteds
-! 		integer, allocatable :: nlms(:,:)
-! 		!
-! 		nlms = get_states(Z,nvalences,nexciteds)
-! 		!
-! 		allocate(atom%state,source=nlms)
-! 		!
-! 		atom%nstates = size(atom%state,2)
-! 		!
-! 	end subroutine generate_orbitals
-
-	function       get_states(Z,nvalences,nexciteds) result(nlms)
+    contains
+    
+	subroutine     generate_states(atom,Z,n_valence_states,n_excited_states)
 		!
 		! nvalence = number of valence orbitals
 		! nexcited = number of excited orbitals
@@ -51,7 +28,8 @@ module am_atom
 		!
 		implicit none
 	  	!
-		integer, intent(in) :: Z, nvalences, nexciteds
+        class(am_class_atom), intent(inout) :: atom
+		integer, intent(in) :: Z, n_valence_states, n_excited_states
 		integer, allocatable :: ind(:)
 		integer, allocatable :: nlms(:,:) ! quantum numbers, [n,l,m,s,#] state index starting from the first electron on H 1s] last index is electron count
 		integer, allocatable :: state(:,:)
@@ -82,9 +60,9 @@ module am_atom
 		state = state(:,ind)
 		state(5,:)=[1:k]
 		!
-		allocate(nlms,source=state(:,max(1,(Z-nvalences)):(Z+nexciteds)))
+		allocate(atom%state,source=state(:,max(1,(Z-n_valence_states)):(Z+n_excited_states)))
 		!
-	end function   get_states
+	end subroutine generate_states
 
 	pure function  atm_symb(Z) result(symb)
 		!
