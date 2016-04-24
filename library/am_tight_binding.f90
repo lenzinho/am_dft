@@ -336,7 +336,7 @@ contains
 		!
 		integer    , intent(in) :: l ! l is the orbital quantum number,  
 		complex(dp), intent(out), allocatable :: My(:,:) ! My is returned as a (l**2+1) x (l**2+1) matrix containing all possible values of m : |m| .le. l
-		complex(dp), intent(out), allocatable :: D(:) ! eigenvalues
+		real(dp)   , intent(out), allocatable :: D(:)    ! because Ly operator is Hermitian, eigenvalues are real
 		complex(dp), allocatable :: Ly(:,:) ! banded
 		complex(dp), allocatable :: Lyf(:,:) ! full
 		integer :: k, nstates, m
@@ -380,7 +380,7 @@ contains
 		implicit none
 		integer :: l
 		complex(dp), allocatable :: My(:,:)
-		complex(dp), allocatable :: D(:)
+		real(dp)   , allocatable :: D(:)
 		!
 		l = 2
 		!

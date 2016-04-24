@@ -22,7 +22,7 @@ contains
 
     ! eucledian norm of vector
 
-    function      am_dnrm2(V) result(n)
+    function       am_dnrm2(V) result(n)
         !
         implicit none
         !
@@ -32,9 +32,9 @@ contains
         !
         n = dnrm2(size(V), V, 1)
         !
-    end function  am_dnrm2 
+    end function   am_dnrm2 
 
-    function      am_dznrm2(V) result(n)
+    function       am_dznrm2(V) result(n)
         !
         implicit none
         !
@@ -44,11 +44,11 @@ contains
         !
         n = dznrm2(size(V), V, 1)
         !
-    end function  am_dznrm2
+    end function   am_dznrm2
 
     ! dot products
 
-    function      am_zdotc(X,Y) result(res)
+    function       am_zdotc(X,Y) result(res)
         !
         ! res = dot(conjg(x), y)
         ! 
@@ -60,9 +60,9 @@ contains
         !
         res = zdotc(size(X), X, 1, Y, 1)
         !
-    end function  am_zdotc
+    end function   am_zdotc
 
-    function      am_ddot(X,Y) result(res)
+    function       am_ddot(X,Y) result(res)
         !
         ! res = dot(x, y)
         ! 
@@ -74,7 +74,7 @@ contains
         !
         res = ddot(size(X), X, 1, Y, 1)
         !
-    end function  am_ddot
+    end function   am_ddot
 
     ! sort array in increasing order
     
@@ -428,7 +428,7 @@ contains
         implicit none
         !
         complex(dp), intent(in)  :: A(:,:)
-        complex(dp), intent(out), allocatable :: D(:)   ! eigenvalues of the matrix A in ascending order
+        real(dp)   , intent(out), allocatable :: D(:)   ! eigenvalues of the matrix A in ascending order
         complex(dp), intent(out), allocatable :: V(:,:) ! orthonormal eigenvectors of the matrix A
         complex(dp), allocatable :: WORK(:)
         real(dp)   , allocatable :: RWORK(:)
@@ -482,7 +482,7 @@ contains
         implicit none
         !
         complex(dp), intent(in)  :: A_b(:,:)
-        complex(dp), intent(out), allocatable :: D(:)! eigenvalues of the matrix A in ascending order
+        real(dp)   , intent(out), allocatable :: D(:)   ! eigenvalues of the matrix A in ascending order
         complex(dp), intent(out), allocatable :: V(:,:) ! orthonormal eigenvectors of the matrix A
         complex(dp), allocatable :: A(:,:)
         complex(dp), allocatable :: work(:)
