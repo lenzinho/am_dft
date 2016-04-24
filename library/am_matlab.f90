@@ -9,7 +9,7 @@ module am_matlab
     end interface ! linspace
 
     interface diag
-        module procedure diag1, diag2
+        module procedure ddiag1, ddiag2, zdiag1, zdiag2
     end interface ! diag
 
     interface eye
@@ -535,7 +535,7 @@ contains
 		!
 	end function  primes
 
-    pure function diag1(M,j) result(d)
+    pure function ddiag1(M,j) result(d)
         !
         ! gets jth (sub-,super-)diagonal elements of matrix M
         ! if j is not passed, retunrs diagonal elements (j = 0)
@@ -588,9 +588,9 @@ contains
             enddo
         endif
         !
-    end function  diag1
+    end function  ddiag1
 
-    pure function diag2(d,j) result(M)
+    pure function ddiag2(d,j) result(M)
         !
         ! get diagonal elements of matrix M
         implicit none
@@ -633,7 +633,107 @@ contains
             enddo
         endif
         !
-    end function  diag2 
+    end function  ddiag2 
+
+    pure function zdiag1(M,j) result(d)
+        !
+        ! gets jth (sub-,super-)diagonal elements of matrix M
+        ! if j is not passed, retunrs diagonal elements (j = 0)
+        ! j > 0 super
+        ! j < 0 sub
+        !
+        ! for example, 
+        ! [ a_{1,1} a_{2,2} a_{3,3} ... a_{n-2,n-2} a_{n-1,n-1} a_{n,n}   ]  ==>  j =  0   diagonal
+        ! [ a_{1,2} a_{2,3} a_{3,4} ... a_{n-2,n-1} a_{n-1,n  } 0         ]  ==>  j =  1   superdiagonal # 1
+        ! [ a_{1,3} a_{2,4} a_{3,5} ... a_{n-2,n}   0           0         ]  ==>  j =  2   superdiagonal # 2
+        ! 
+        ! [ a_{1,1} a_{2,2} a_{3,3} ... a_{n-2,n-2} a_{n-1,n-1} a_{n,n}   ]  ==>  j =  0   diagonal
+        ! [ a_{2,1} a_{3,2} a_{4,3} ... a_{n-1,n-2} a_{n  ,n-1} 0         ]  ==>  j = -1   subdiagonal # 1
+        ! [ a_{3,1} a_{4,2} a_{5,3} ... a_{n  ,n-2} 0           0         ]  ==>  j = -2   subdiagonal # 2
+        !
+        implicit none
+        !
+        complex(dp), intent(in)  :: M(:,:)
+        integer , optional, intent(in) :: j ! selects a sub- or super- diagonal
+        complex(dp), allocatable :: d(:)
+        integer :: n
+        integer :: i, k
+        !
+        if (present(j)) then
+            k = j
+        else 
+            k = 0
+        endif
+        !
+        ! number of elements in off-diagonal
+        n = min(size(M,1),size(M,2))-abs(k)
+        allocate(d(n))
+        !
+        ! construct matrix
+        !
+        if     (k.eq.0) then
+            ! diagonal
+            do i = 1, n
+                d(i) = M(i,i)
+            enddo
+        elseif (k.gt.0) then
+            ! superdiagonal (upper triangular part)
+            do i = 1, n
+                d(i) = M(i,i+k)
+            enddo
+        elseif (k.lt.0) then
+            ! subdiagonal (lower triangular part)
+            do i = 1, n
+                d(i) = M(i-k,i)
+            enddo
+        endif
+        !
+    end function  zdiag1
+
+    pure function zdiag2(d,j) result(M)
+        !
+        ! get diagonal elements of matrix M
+        implicit none
+        !
+        complex(dp), intent(in)  :: d(:)
+        integer    , optional, intent(in) :: j ! selects a sub- or super- diagonal
+        complex(dp), allocatable :: M(:,:)
+        integer :: n
+        integer :: i, k
+        !
+        if (present(j)) then
+            k = j
+        else 
+            k = 0
+        endif
+        !
+        n = size(d) + abs(k)
+        !
+        if (.not.allocated(M)) then
+            allocate(M(n,n))
+            M=0
+        endif
+        !
+        ! construct matrix
+        !
+        if     (k.eq.0) then
+            ! diagonal
+            do i = 1, n
+                M(i,i) = d(i)
+            enddo
+        elseif (k.gt.0) then
+            ! superdiagonal (upper triangular part)
+            do i = 1, n-abs(k)
+                M(i,i+k) = d(i)
+            enddo
+        elseif (k.lt.0) then
+            ! subdiagonal (lower triangular part)
+            do i = 1, n-abs(k)
+                M(i-k,i) = d(i)
+            enddo
+        endif
+        !
+    end function  zdiag2 
 
     pure function kron(A,B) result(C)
         ! kronecker product

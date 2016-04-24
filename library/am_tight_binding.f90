@@ -361,9 +361,9 @@ contains
 		!
 		call am_print('Ly',Ly)
 		!
-		Lyf = diag(aimag(Ly(2,1:k)),-1)
+		Lyf = diag(Ly(2,1:k),-1)
 		call am_print('Lyf',Lyf)
-		call am_print('Lyf',diag(real(Lyf)))
+		call am_print('Lyf',diag(Lyf))
 		!
 		!
 		! Diagonalize the Ly matrix
