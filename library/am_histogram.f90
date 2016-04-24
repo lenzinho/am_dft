@@ -1,7 +1,7 @@
 module am_histogram
     !
     use am_constants
-    use am_helpers
+    use am_stdout
     !
     implicit none
     !

@@ -3,7 +3,7 @@ module am_brillouin_zone
     use am_unit_cell
     use am_symmetry
     use am_constants
-    use am_helpers
+    use am_stdout
     use am_vasp_io
     use am_mkl
     !

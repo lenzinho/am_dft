@@ -1,7 +1,7 @@
 module am_atom
 	!
 	use am_constants
-	use am_helpers
+	use am_stdout
 	use am_options
 	!
 	implicit none

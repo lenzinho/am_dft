@@ -1,7 +1,7 @@
 module am_tight_binding
 
     use am_constants
-    use am_helpers
+    use am_stdout
     use am_matlab
     use am_options
     use am_shells
@@ -359,15 +359,19 @@ contains
 			Ly(2,k) = -0.5_dp * cmplx_i * sqrt( real(l*(l+1)-m*(m+1),dp) )
 		enddo
 		!
-		call am_print('Ly',Ly)
-		!
 		Lyf = diag(Ly(2,1:k),-1)
+		Lyf = Lyf + adjoint(Lyf)
 		call am_print('Lyf',Lyf)
-		call am_print('Lyf',diag(Lyf))
+		!
+		call am_zheev(A=Lyf,V=My,D=D)
+		call am_print('zheev : V',My)
+		call am_print('zheev : D',D)
 		!
 		!
 		! Diagonalize the Ly matrix
 		call am_zhbev(A_b=Ly,V=My,D=D)
+		call am_print('zhbev : V',My)
+		call am_print('zhbev : D',D)
 		!
 	end Subroutine get_Ly_eigenstates
 

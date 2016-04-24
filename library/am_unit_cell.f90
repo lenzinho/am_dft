@@ -1,7 +1,7 @@
 module am_unit_cell
 
     use am_constants
-    use am_helpers
+    use am_stdout
     use am_options
     use am_mkl
     use am_atom

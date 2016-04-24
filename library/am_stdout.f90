@@ -1,4 +1,4 @@
-module am_helpers
+module am_stdout
     !
     use am_constants
     use am_matlab

@@ -3,7 +3,7 @@ module am_stopwatch
 	! borrowed from wannier90
 	!
 	use am_constants, only : dp
-  use am_helpers
+  use am_stdout
 	!
 	implicit none
 	!

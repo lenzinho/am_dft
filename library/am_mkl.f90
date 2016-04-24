@@ -104,7 +104,7 @@ contains
 
     function       det(A) result(d)
         ! 
-        use am_helpers
+        use am_stdout
         !
         implicit none
         !
@@ -159,7 +159,7 @@ contains
 
     subroutine     lu(A)
         ! returns the upper triangular matrix U
-        use am_helpers
+        use am_stdout
         !
         implicit none
         !
@@ -196,7 +196,7 @@ contains
     
     function       inv(A) result(Ainv)
         !
-        use am_helpers
+        use am_stdout
         !
         implicit none
         !
@@ -700,7 +700,7 @@ contains
 
     subroutine     am_dgetrf(A,L,U)
         ! NOT YET TESTED.
-        use am_helpers
+        use am_stdout
         !
         implicit none
         !

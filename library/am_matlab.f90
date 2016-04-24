@@ -34,6 +34,18 @@ contains
     ! matlab-inspired functions
     !
 
+    pure function adjoint(A)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: A(:,:)
+        complex(dp), allocatable :: adjoint(:,:)
+        !
+        allocate(adjoint(size(A,2),size(A,1)))
+        adjoint = transpose(conjg(A))
+        !
+    end function  adjoint
+
     pure function rotmat(a,b) result(R)
         !
         ! Rotation matrix R which aligns unit vector (Ra) to unit vector b (that is, B = R*A)
