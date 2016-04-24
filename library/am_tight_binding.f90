@@ -337,7 +337,8 @@ contains
 		integer    , intent(in) :: l ! l is the orbital quantum number,  
 		complex(dp), intent(out), allocatable :: My(:,:) ! My is returned as a (l**2+1) x (l**2+1) matrix containing all possible values of m : |m| .le. l
 		complex(dp), intent(out), allocatable :: D(:) ! eigenvalues
-		complex(dp), allocatable :: Ly(:,:) !
+		complex(dp), allocatable :: Ly(:,:) ! banded
+		complex(dp), allocatable :: Lyf(:,:) ! full
 		integer :: k, nstates, m
 		! 
 		! number of states (m=-l,-l+1,-l+2,...,0,...,l-2,l-1,l)
@@ -359,7 +360,11 @@ contains
 		enddo
 		!
 		call am_print('Ly',Ly)
-		write(*,*) 'asdfasdfsd'
+		!
+		Lyf = diag(aimag(Ly(2,1:k)),-1)
+		call am_print('Lyf',Lyf)
+		call am_print('Lyf',diag(real(Lyf)))
+		!
 		!
 		! Diagonalize the Ly matrix
 		call am_zhbev(A_b=Ly,V=My,D=D)
@@ -373,7 +378,7 @@ contains
 		complex(dp), allocatable :: My(:,:)
 		complex(dp), allocatable :: D(:)
 		!
-		l = 1
+		l = 2
 		!
 		call get_Ly_eigenstates(l, My, D)
 		!

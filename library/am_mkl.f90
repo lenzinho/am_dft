@@ -475,9 +475,9 @@ contains
         ! noted A is a banded matrix containing either upper or lower triangular part of the Hermitian matrix A.
         ! If A contains the lower triangular part, as it hard coded to do so here, it should be stored like so:
         !
-        ! [ a_{1,1} a_{2,2} a_{3,3} ... a_{n-2,n-2} a_{n-1,n-1} a_{n,n}   ]
-        ! [ a_{1,2} a_{2,3} a_{2,4} ... a_{n-1,n  } a_{n-1,n  } 0         ] 
-        ! [ a_{1,3} a_{2,4} a_{2,5} ... a_{n-1,n+1} 0           0         ]
+        ! [ a_{1,1} a_{2,2} a_{3,3} ... a_{n-2,n-2} a_{n-1,n-1} a_{n,n}   ] diagonal
+        ! [ a_{1,2} a_{2,3} a_{2,4} ... a_{n-1,n  } a_{n-1,n  } 0         ] subdiagonal # 1
+        ! [ a_{1,3} a_{2,4} a_{2,5} ... a_{n-1,n+1} 0           0         ] subdiagonal # 2
         ! 
         implicit none
         !
@@ -506,16 +506,18 @@ contains
         ! allocate output arrays
         allocate(V(n,n))
         allocate(D(n))
+        ! debug
+        write(*,*) 'lda ', lda 
+        write(*,*) 'kd  ', kd  
+        write(*,*) 'n   ', n   
+        write(*,*) 'ldz ', ldz 
         ! perform checks
         if (lda.le.0) stop 'zhbev : lda .le. 0'
         if (kd .le.0) stop 'zhbev : kd  .le. 0'
         if (n  .le.0) stop 'zhbev : n   .le. 0'
-        !
         ! solve eigenproblem
-        !
         call zhbev('V', 'L', n, kd, A, lda, D, V, ldz, work, rwork, info)
-        !
-        ! check for sucess
+        ! check for success
         if(info/=0) stop 'zhbev : failed to compute eigenvalues'
         !
     end subroutine am_zhbev
