@@ -468,6 +468,58 @@ contains
         end if
     end subroutine am_zheev
 
+    ! diagonalize banded complex hermitian matrix
+
+    subroutine     am_zhbev(A_b,V,D)
+        !
+        ! noted A is a banded matrix containing either upper or lower triangular part of the Hermitian matrix A.
+        ! If A contains the lower triangular part, as it hard coded to do so here, it should be stored like so:
+        !
+        ! [ a_{1,1} a_{2,2} a_{3,3} ... a_{n-2,n-2} a_{n-1,n-1} a_{n,n}   ]
+        ! [ a_{1,2} a_{2,3} a_{2,4} ... a_{n-1,n  } a_{n-1,n  } 0         ] 
+        ! [ a_{1,3} a_{2,4} a_{2,5} ... a_{n-1,n+1} 0           0         ]
+        ! 
+        implicit none
+        !
+        complex(dp), intent(in)  :: A_b(:,:)
+        complex(dp), intent(out), allocatable :: D(:)! eigenvalues of the matrix A in ascending order
+        complex(dp), intent(out), allocatable :: V(:,:) ! orthonormal eigenvectors of the matrix A
+        complex(dp), allocatable :: A(:,:)
+        complex(dp), allocatable :: work(:)
+        real(dp)   , allocatable :: rwork(:)
+        integer :: kd
+        integer :: n
+        integer :: lda
+        integer :: info
+        integer :: ldz
+        !
+        ! copy Ab so that the original is not overwritten by zhbev
+        allocate(A,source=A_b)
+        ! initialize variables
+        lda = size(A,1) ! leading dimension of ab
+        kd  = lda - 1   ! The number of super- or sub-diagonals in A (subtract because of diagonal)
+        n   = size(A,2) ! order of A (number of diagonal = number of rows = number of columns = order of matrix)
+        ldz = n         ! leading dimension of output array (square matrix on output of order equal to the order of A)
+        ! allocate work space
+        allocate(work(max(1,n)))
+        allocate(rwork(max(1,3*n-2)))
+        ! allocate output arrays
+        allocate(V(n,n))
+        allocate(D(n))
+        ! perform checks
+        if (lda.le.0) stop 'zhbev : lda .le. 0'
+        if (kd .le.0) stop 'zhbev : kd  .le. 0'
+        if (n  .le.0) stop 'zhbev : n   .le. 0'
+        !
+        ! solve eigenproblem
+        !
+        call zhbev('V', 'L', n, kd, A, lda, D, V, ldz, work, rwork, info)
+        !
+        ! check for sucess
+        if(info/=0) stop 'zhbev : failed to compute eigenvalues'
+        !
+    end subroutine am_zhbev
+
     ! perform svd decomposition on real general rectangular matrix
 
     subroutine     am_dgesvd(A,U,S,VT)

@@ -1,43 +1,36 @@
-# Master makefile
-
-MAKE    = make
-INCLUDE = -I../library
-AMLIB   = libam.a
-DIRLIB  = library
-
 PROGS   = tb 2fc uc wannier sym ibz dos bandcharacter
 
-# System specific make file
 include makefile.inc
 
 TIME_STAMP=`date +%b_%d_%H:%M`
 
+
 all: $(PROGS)
 
 tb: $(AMLIB) 
-	(cd prog_tb; 		$(MAKE) )
+	(cd prog_tb; $(MAKE) )
 
 2fc: $(AMLIB) 
-	(cd prog_2fc; 		$(MAKE) )
+	(cd prog_2fc; $(MAKE) )
 
 uc: $(AMLIB) 
-	(cd prog_uc; 		$(MAKE) )
+	(cd prog_uc; $(MAKE) )
 
 wannier: $(AMLIB) 
-	(cd prog_wannier; 	$(MAKE) )
+	(cd prog_wannier; $(MAKE) )
 
 sym: $(AMLIB) 
-	(cd prog_sym; 		$(MAKE) )
+	(cd prog_sym; $(MAKE) )
 
 dos: $(AMLIB) 
-	(cd prog_dos; 		$(MAKE) )
+	(cd prog_dos; $(MAKE) )
 
 ibz: $(AMLIB) 
-	(cd prog_ibz; 		$(MAKE) )
+	(cd prog_ibz; $(MAKE) )
 
 bandcharacter: $(AMLIB) 
 	(cd prog_bandcharacter; $(MAKE) )
-	
+
 $(AMLIB): 
 	(cd $(DIRLIB); $(MAKE) )
 
@@ -53,7 +46,6 @@ clean:
 	(cd prog_toy;  			$(MAKE) clean)
 	(cd $(DIRLIB); 			$(MAKE) clean)
 
-
 # save:
 # 	(cd $(COMDIR); $(MAKE) "SUF=$(SUF)" "TAR=$(TAR)" save)
 # 	(cd $(PWDIR); $(MAKE) "SUF=$(SUF)" "TAR=$(TAR)" save)
@@ -64,9 +56,6 @@ clean:
 # 		$(TBDIR)/$(TBPROJ).tar
 # 	gzip $(PROJ)_*.tar
 # #	mv $(PROJ)_*.tar.gz $(HOME)/save/.
-
-
-
 
 
 

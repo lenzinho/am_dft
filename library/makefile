@@ -5,6 +5,7 @@ SRCS = am_constants.f90 am_matlab.f90 am_progress_bar.f90 am_helpers.f90 am_mkl.
 OBJS = am_constants.o   am_matlab.o   am_progress_bar.o   am_helpers.o   am_mkl.o   am_histogram.o   am_rank_and_sort.o   am_options.o   am_vasp_io.o   am_tet_mesh.o   am_atom.o   am_unit_cell.o   am_symmetry.o   am_prim_cell.o   am_irre_cell.o   am_conv_cell.o   am_symmetry_adapted_tensors.o   am_shells.o   am_tight_binding.o   am_brillouin_zone.o   am_wannier.o  
 
 all: $(LIBS)
+	@echo > /dev/null
 
 $(LIBS): $(OBJS)
 	-rm libam.a
@@ -23,5 +24,4 @@ clean:
 %.o: %.F90
 	$(FC) $(FFLAGS) $(LFLAGS) $(DEBUG) -c $<
 
-
-
+.PHONY: all
