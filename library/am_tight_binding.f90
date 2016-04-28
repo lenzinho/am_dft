@@ -6,7 +6,6 @@ module am_tight_binding
     use am_options
     use am_shells
     use am_irre_cell
-    use am_atom
     use am_symmetry
     use am_mkl
 
@@ -14,11 +13,84 @@ module am_tight_binding
 
 	private
 
+	type am_class_tb
+		!
+		! matrix elements
+		integer :: nSKs ! number of matrix elements
+		real(dp), allocatable :: KS(:,:) ! matrix elements
+		!
+	contains
+		procedure output_matrix_elements
+	end type am_class_tb
+
 ! 	public :: tight_binding_main
 ! 	public :: test_orbitals
-	public :: test_functions
+	!public :: test_functions
 
 contains
+
+	subroutine     output_matrix_elements(tb,irrpair,ic,opts)
+		!
+		implicit none
+        !
+        class(am_class_tb)        , intent(in) :: tb
+        class(am_class_pair_shell), intent(inout) :: irrpair
+        class(am_class_unit_cell) , intent(in) :: ic
+        type(am_class_options)    , intent(in) :: opts
+    	integer :: n,l,m,s
+    	integer :: i,k
+        !
+        ! there will be 1 matrix element for every irreducible pair of orbitals
+        !
+        if (.not.allocated(tb%KS)) then
+        	!
+        	if (.not.allocated(ic%atom)) then
+	    		! if no states on atoms are defined
+	    		! just give each atom all the possible states correspoding to the M shell (n=3) [ s p d states (1+3+5=9 states) ]
+	    		allocate(ic%atom(ic%natoms))
+	    		!
+	    		do i = 1, ic%natoms
+	    			!
+	    			n = 3
+	    			!
+	    			ic%natom(i)%norbitals = n**2
+	    			!
+	    			allocate(ic%atom(i)%orbital(4, ic%natom(i)%norbitals))
+	    			!
+	    			k=0
+					do l = 0, (n-1)
+					do m = -l, l
+					do s = 1, 2
+						k = k+1
+						ic%natom(i)%norbitals(1,k) = n
+						ic%natom(i)%norbitals(2,k) = l
+						ic%natom(i)%norbitals(3,k) = m
+						ic%natom(i)%norbitals(4,k) = s
+					enddo
+					enddo
+					enddo
+					!
+	    		enddo
+        	endif
+        	!
+        	! number of slater koster matrix elements
+        	! (1 matrix element for every irreducible pair of orbitals)
+        	nSKs = 0
+        	do k = 1,pair%nshells
+        		! atoms comprising pair
+				pair%shell(k)%i
+				pair%shell(k)%j
+				! 
+        		nSKs = nSKs + (ic%atom(i)%norbitals * ic%atom(j)%norbitals)
+    		enddo
+    		!
+        	!
+	    endif
+
+
+	    ! add output routine here.
+
+    end subroutine output_matrix_elements
 
 	pure function  slater_koster(l1,m1,l2,m2,R) result(sk)
 		!
@@ -316,7 +388,7 @@ contains
         end function r_nl
 	end subroutine atomic_orbital
 
-	subroutine     get_Ly_eigenstates(l, My, D)
+	subroutine     get_Ly_in_Lz_basis(l, V, D)
 		!
 		! Calculates the eigenvalues D and eigevectors My of Ly operator in the Lz basis using raising/lowering operators.
 		!
@@ -335,17 +407,16 @@ contains
 		implicit none
 		!
 		integer    , intent(in) :: l ! l is the orbital quantum number,  
-		complex(dp), intent(out), allocatable :: My(:,:) ! My is returned as a (l**2+1) x (l**2+1) matrix containing all possible values of m : |m| .le. l
+		complex(dp), intent(out), allocatable :: V(:,:)  ! My is returned as a (l**2+1) x (l**2+1) matrix containing all possible values of m : |m| .le. l
 		real(dp)   , intent(out), allocatable :: D(:)    ! because Ly operator is Hermitian, eigenvalues are real
-		complex(dp), allocatable :: Ly(:,:) ! banded
-		complex(dp), allocatable :: Lyf(:,:) ! full
+		complex(dp), allocatable :: Ly(:,:)
 		integer :: k, nstates, m
 		! 
 		! number of states (m=-l,-l+1,-l+2,...,0,...,l-2,l-1,l)
 		nstates = l**2 + 1
 		!
-		! indices of My refer to value of m
-		allocate(My(nstates,nstates))
+		! indices of V refer to value of m
+		allocate(V(nstates,nstates))
 		!
 		! initialize banded Ly matrix
 		allocate(Ly(2,nstates))
@@ -359,38 +430,71 @@ contains
 			Ly(2,k) = -0.5_dp * cmplx_i * sqrt( real(l*(l+1)-m*(m+1),dp) )
 		enddo
 		!
-		Lyf = diag(Ly(2,1:k),-1)
-		Lyf = Lyf + adjoint(Lyf)
-		call am_print('Lyf',Lyf)
-		!
-		call am_zheev(A=Lyf,V=My,D=D)
-		call am_print('zheev : V',My)
-		call am_print('zheev : D',D)
-		!
-		!
 		! Diagonalize the Ly matrix
-		call am_zhbev(A_b=Ly,V=My,D=D)
-		call am_print('zhbev : V',My)
-		call am_print('zhbev : D',D)
+		call am_zhbev(A_b=Ly,V=V,D=D)
 		!
-	end Subroutine get_Ly_eigenstates
+! 		My 
+		!
+		! Equivalent to above, but using full matrix instead
+		! complex(dp), allocatable :: Lyf(:,:)
+		! Lyf = diag(Ly(2,1:k),-1)
+		! Lyf = Lyf + adjoint(Lyf)
+		! call am_print('Lyf',Lyf)
+		! call am_zheev(A=Lyf,V=My,D=D)
+		! call am_print('zheev : V',My)
+		! call am_print('zheev : D',D)
+		!
+	end subroutine get_Ly_in_Lz_basis
 
-	subroutine     test_functions()
-		!
-		implicit none
-		integer :: l
-		complex(dp), allocatable :: My(:,:)
-		real(dp)   , allocatable :: D(:)
-		!
-		l = 2
-		!
-		call get_Ly_eigenstates(l, My, D)
-		!
-		call am_print('My',My)
-		!
-		call am_print('D',D)
-		!
-	end subroutine test_functions
+! 	subroutine     quantize_orbitals_to_bond(v,state)
+! 		!
+! 		implicit none
+! 		!
+! 		real(dp), intent(in) :: v(3)   ! bond vector
+! 		integer , intent(in) :: state(:,:) ! contains a list of all states on atom 1
+! 		complex(dp), allocatable :: V(:,:)
+! 		real(dp)   , allocatable :: D(:)
+! 		integer :: nstates
+! 		!
+! 		! get number of states on atom of interest
+! 		nstates = size(state,2)
+! 		!
+! 		! generate a direct sum over l m by m matrices corresponding to the basis on Ly in Lz
+! 		do i = 1,1! , nstates
+! 			!
+! 			! set l for state [n,l,m,s,#]
+! 			l = state(2,i)
+! 			!
+! 			! get eigenvectors V and eigenvalues D of Ly in Lz basis
+! 			call get_Ly_in_Lz_basis(l=l, V=V, D=D)
+! 			!
+! 			!
+! 		!
+! 		!
+! 		! get rotated coordinate system ...
+! 		! z axis is at th = 0. this operation below brings vector v parallel with z axis, pointing up.
+! 		! if v=[0,0,0] no quantization is needed. keep vector aligned as it already is, i.e. z pointing along z.
+! 		if (norm2(v).gt.tiny) then
+! 		    dcosines = v/norm2(v)
+! 		else
+! 		    dcosines = real([0,0,1],dp)
+! 		endif
+! 		!
+! 		th = acos(dcosines(3))
+! 		phi = atan(dcosines(2)/(dcosines(1)+1.0D-14))
+! 		!
+! 		!
+! 		!
+
+
+
+! 		! 
+! 		! 
+! 		call am_print('My',My)
+! 		!
+! 		call am_print('D',D)
+! 		!
+! 	end subroutine quantize_orbitals_to_bond
 
 ! 	subroutine     test_orbitals()
 ! 		!

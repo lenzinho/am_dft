@@ -26,7 +26,7 @@ module am_shells
     
     type am_class_pair_shell
         !
-        integer, allocatable :: nshells ! how many pairs atom i has
+        integer, allocatable :: nshells ! how many shells irreducible atoms
         type(am_shell_cell), allocatable :: shell(:) ! shell(k)
         !
     contains
@@ -108,11 +108,11 @@ contains
         !
         ! determine irreducible pair shells
         irrpair_identifier = identify_irreducible_pair_shells(pair=pair,pg=pg,ic=ic,opts=opts)
-        call am_print('irrpair_identifier',irrpair_identifier)
+        ! call am_print('irrpair_identifier',irrpair_identifier)
         !
         ! allocate space
         irrpair_identifier_unique = unique(abs(irrpair_identifier)) 
-        call am_print('irrpair_identifier_unique',irrpair_identifier_unique)
+        ! call am_print('irrpair_identifier_unique',irrpair_identifier_unique)
         irrpair%nshells = size(irrpair_identifier_unique)
         if (opts%verbosity.ge.1) call am_print('irreducible pair shells',irrpair%nshells)
         !
