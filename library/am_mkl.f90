@@ -563,11 +563,6 @@ contains
         ! allocate output arrays
         allocate(V(n,n))
         allocate(D(n))
-        ! debug
-        write(*,*) 'lda ', lda 
-        write(*,*) 'kd  ', kd  
-        write(*,*) 'n   ', n   
-        write(*,*) 'ldz ', ldz 
         ! perform checks
         if (lda.le.0) stop 'zhbev : lda .le. 0'
         if (kd .le.0) stop 'zhbev : kd  .le. 0'

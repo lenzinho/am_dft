@@ -35,8 +35,37 @@ module am_matlab
     !
     ! matlab-inspired functions
     !
-        
-    function      R2axis_angle(R) result(aa)
+    
+    ! rotation functions
+
+    pure function vec2dcosines(vec) result(dcosines)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: vec(3)
+        real(dp) :: dcosines(3)
+        !
+        if (norm2(vec).gt.tiny) then
+            dcosines = vec/norm2(vec)
+        else
+            dcosines = real([0,0,1],dp)
+        endif
+    end function  vec2dcosines
+
+    pure function dcosines2thetaphi(dcosines) result(theta_phi)
+        ! th is polar angle (measured from z axis)
+        ! phi is azimulthal angle (around z axis)
+        implicit none
+        !
+        real(dp), intent(in) :: dcosines(3)
+        real(dp) :: theta_phi(2)
+        !
+        theta_phi(1)  = acos(dcosines(3))
+        theta_phi(2) = atan(dcosines(2)/(dcosines(1)+1.0D-14))
+       !
+    end function  dcosines2thetaphi
+
+    pure function rot2axis_angle(R) result(aa)
         !
         implicit none
         !
@@ -45,8 +74,6 @@ module am_matlab
         real(dp) :: aa(4) ! axis & angle [x,y,z,th]
         real(dp) :: tr, phi, axis(3), d
         integer  :: i
-        ! real(dp) :: signs(3),  m_upper(3), flip(3), shifted(3)
-        !
         !
         ! if R is a rotoinversion, get the angle and axis of the rotational part only (without the inversion)
         d = R(1,1)*R(2,2)*R(3,3)-R(1,1)*R(2,3)*R(3,2)-R(1,2)*R(2,1)*R(3,3)+R(1,2)*R(2,3)*R(3,1)+R(1,3)*R(2,1)*R(3,2)-R(1,3)*R(2,2)*R(3,1)
@@ -57,51 +84,39 @@ module am_matlab
         if (abs(tr-3.0_dp).lt.tiny) then
             aa = [0,0,1,0]
         elseif (abs(tr+1.0_dp).lt.tiny) then
-            !
             do i = 1,3
-                axis(i) = sqrt(max( 0.5_dp*(Rcp(i,i)+1),0.0_dp))
+                axis(i) = sqrt(max(0.5_dp*(Rcp(i,i)+1),0.0_dp))
             enddo
-            where (abs(axis).lt.tiny) axis = 0.0_dp
-            !!
-            !m_upper = [Rcp(2,3),Rcp(1,3),Rcp(1,2)]
-            !do i = 1,3
-            !    signs(i) = sign(1.0_dp,m_upper(i))
-            !enddo
-            !where (abs(signs).lt.tiny) signs = 0.0_dp
-            !!
-            !if (sum(signs).ge.0) then
-            !    flip = real([1,1,1],dp)
-            !elseif (.not.any(abs(signs).lt.tiny)) then
-            !    flip = -signs
-            !else
-            !    shifted = [signs(3),signs(1),signs(2)]
-            !    flip = shifted
-            !    where (shifted.eq.0) flip = flip + 1.0_dp
-            !endif
-            !axis = axis * flip;
             aa(1:3) = axis
             aa(4)   = pi
         else
-            !
             phi = acos( (tr-1.0_dp)/2.0_dp )
             axis = [Rcp(3,2)-Rcp(2,3),Rcp(1,3)-Rcp(3,1),Rcp(2,1)-Rcp(1,2)]/(2.0_dp*sin(phi))
             aa(1:3) = axis
             aa(4)   = phi
         endif
-        !
-    end function  R2axis_angle
+    end function  rot2axis_angle
 
-    pure function adjoint(A)
+    pure function axis_angle2rot(aa) result(R)
         !
         implicit none
         !
-        complex(dp), intent(in) :: A(:,:)
-        complex(dp), allocatable :: adjoint(:,:)
+        real(dp), intent(in) :: aa(4) ! axis & angle [x,y,z,th]
+        real(dp) :: R(3,3)
+        real(dp) :: s, c, t, n(3), x, y, z
         !
-        allocate(adjoint(size(A,2),size(A,1)))
-        adjoint = transpose(conjg(A))
+        s = sin(aa(4))
+        c = cos(aa(4))
+        t = 1.0_dp - c
+        n = aa(1:3)/(norm2(aa(1:3))+1.0D-14)
+        x = n(1)
+        y = n(2)
+        z = n(3)
+        R(:,1) = [ t*x*x + c,   t*x*y - s*z, t*x*z + s*y ]
+        R(:,2) = [ t*x*y + s*z, t*y*y + c,   t*y*z - s*x ]
+        R(:,3) = [ t*x*z - s*y, t*y*z + s*x, t*z*z + c   ]
         !
-    end function  adjoint
+    end function  axis_angle2rot
 
     pure function rotmat(a,b) result(R)
         !
@@ -143,86 +158,7 @@ module am_matlab
         !
     end function  rotmat
 
-    pure function dmeshgrid(n1,n2,n3) result(grid_points)
-        !> 
-        !> Generates a mesh of lattice vectors (fractional coordinates) around the origin. 
-        !> n(1), n(2), n(3) specifies the number of mesh points away from 0, i.e. [-n:1:n]
-        !> To obtain a mesh of reciprocal lattice vectors: matmul(recbas,grid_points)
-        !> To obtain a mesh of real-space lattice vectors: matmul(bas,grid_points)
-        !>
-        implicit none
-        !
-        real(dp), intent(in) :: n1(:)
-        real(dp), intent(in) :: n2(:)
-        real(dp), intent(in), optional :: n3(:)
-        real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
-        integer :: i1,i2,i3,j
-        !
-        if (present(n3)) then
-            !
-            allocate(grid_points(3,size(n1)*size(n2)*size(n3)))
-            grid_points = 0
-            !
-            j=0
-            do i1 = 1, size(n1)
-            do i2 = 1, size(n2)
-            do i3 = 1, size(n3)
-                j=j+1
-                grid_points(1,j)=n1(i1)
-                grid_points(2,j)=n2(i2)
-                grid_points(3,j)=n3(i3)
-            enddo
-            enddo
-            enddo
-            !
-        else
-            !
-            allocate(grid_points(2,size(n1)*size(n2)))
-            grid_points = 0
-            !
-            j=0
-            do i1 = 1, size(n1)
-            do i2 = 1, size(n2)
-                j=j+1
-                grid_points(1,j)=n1(i1)
-                grid_points(2,j)=n2(i2)
-            enddo
-            enddo
-            !
-        endif
-        !
-    end function  dmeshgrid
-
-    pure function imeshgrid(n1,n2,n3) result(grid_points)
-        !
-        implicit none
-        !
-        integer, intent(in) :: n1(:)
-        integer, intent(in) :: n2(:)
-        integer, intent(in), optional :: n3(:)
-        real(dp), allocatable :: grid_points(:,:)
-        !
-        if (present(n3)) then
-            grid_points=dmeshgrid(real(n1,dp),real(n2,dp),real(n3,dp))
-        else
-            grid_points=dmeshgrid(real(n1,dp),real(n2,dp))
-        endif
-        !
-    end function  imeshgrid
-
-    pure function factorial(n) result(y)
-        !
-        implicit none
-        !
-        integer, intent(in) :: n
-        real(dp) :: y
-        !
-        if (n.ge.1) then
-            y = product([1:n])
-        else
-            y = 1
-        endif
-    end function  factorial
+    ! special functions
 
     pure function legendre(l,m,x) result(y)
         !
@@ -324,6 +260,39 @@ module am_matlab
         !
     end function  laguerre
 
+    pure function heavi(m)
+        !
+        ! A. V. Podolskiy and P. Vogl, Phys. Rev. B 69, 233101 (2004). Eq 15
+        !
+        implicit none
+        !
+        integer, intent(in) :: m
+        real(dp) :: heavi
+        !
+        if (m.ge.0) then
+            heavi = 1.0_dp
+        else
+            heavi = 0.0_dp
+        endif
+        !
+    end function  heavi
+
+    ! statistics functions
+
+    pure function factorial(n) result(y)
+        !
+        implicit none
+        !
+        integer, intent(in) :: n
+        real(dp) :: y
+        !
+        if (n.ge.1) then
+            y = product([1:n])
+        else
+            y = 1
+        endif
+    end function  factorial
+
     pure function nchoosek(n,k) result (res)
         !
         implicit none
@@ -368,6 +337,43 @@ module am_matlab
             enddo 
         end subroutine permutate 
     end function  perms
+
+    pure function primes(nprimes)
+        !
+        ! naive approach to generating the first n prime numbers
+        !
+        implicit none
+        !
+        integer, intent(in)  :: nprimes
+        integer, allocatable :: primes(:) ! array that will hold the primes
+        integer :: at, found, i
+        logical :: is_prime
+        !
+        allocate (primes(nprimes))
+        !
+        primes(1) = 2
+        at = 2
+        found = 1
+        do
+            is_prime = .true. ! assume prime
+            do i = 1, found
+                if (modulo(at,primes(i)).eq.0) then ! if divisible by any other element
+                    is_prime = .false.               ! in the array, then not prime.
+                    at = at + 1
+                    continue
+                end if
+            end do
+            found = found + 1
+            primes(found) = at
+            at = at + 1
+            if (found == nprimes) then ! stop when all primes are found
+                exit
+            endif
+        end do
+        !
+    end function  primes
+
+    ! file io functions
 
     function      fopen(filename,permission) result(fid)
         !
@@ -473,21 +479,6 @@ module am_matlab
         enddo
         !
     end function  strsplit
-
-    pure function trace(R) result(tr)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: R(:,:)
-        real(dp) :: tr
-        integer :: i
-        !
-        tr = 0
-        do i = 1,size(R,2)
-            tr = tr + R(i,i)
-        enddo
-        !
-    end function  trace
     
     pure function cross_product(a,b) result(c)
         !
@@ -533,6 +524,75 @@ module am_matlab
         !
     end function  gcd
 
+    ! grid functions
+
+    pure function dmeshgrid(n1,n2,n3) result(grid_points)
+        !> 
+        !> Generates a mesh of lattice vectors (fractional coordinates) around the origin. 
+        !> n(1), n(2), n(3) specifies the number of mesh points away from 0, i.e. [-n:1:n]
+        !> To obtain a mesh of reciprocal lattice vectors: matmul(recbas,grid_points)
+        !> To obtain a mesh of real-space lattice vectors: matmul(bas,grid_points)
+        !>
+        implicit none
+        !
+        real(dp), intent(in) :: n1(:)
+        real(dp), intent(in) :: n2(:)
+        real(dp), intent(in), optional :: n3(:)
+        real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
+        integer :: i1,i2,i3,j
+        !
+        if (present(n3)) then
+            !
+            allocate(grid_points(3,size(n1)*size(n2)*size(n3)))
+            grid_points = 0
+            !
+            j=0
+            do i1 = 1, size(n1)
+            do i2 = 1, size(n2)
+            do i3 = 1, size(n3)
+                j=j+1
+                grid_points(1,j)=n1(i1)
+                grid_points(2,j)=n2(i2)
+                grid_points(3,j)=n3(i3)
+            enddo
+            enddo
+            enddo
+            !
+        else
+            !
+            allocate(grid_points(2,size(n1)*size(n2)))
+            grid_points = 0
+            !
+            j=0
+            do i1 = 1, size(n1)
+            do i2 = 1, size(n2)
+                j=j+1
+                grid_points(1,j)=n1(i1)
+                grid_points(2,j)=n2(i2)
+            enddo
+            enddo
+            !
+        endif
+        !
+    end function  dmeshgrid
+
+    pure function imeshgrid(n1,n2,n3) result(grid_points)
+        !
+        implicit none
+        !
+        integer, intent(in) :: n1(:)
+        integer, intent(in) :: n2(:)
+        integer, intent(in), optional :: n3(:)
+        real(dp), allocatable :: grid_points(:,:)
+        !
+        if (present(n3)) then
+            grid_points=dmeshgrid(real(n1,dp),real(n2,dp),real(n3,dp))
+        else
+            grid_points=dmeshgrid(real(n1,dp),real(n2,dp))
+        endif
+        !
+    end function  imeshgrid
+
     pure function linspace_double(d1,d2,n) result(y)
         !
         implicit none
@@ -569,40 +629,34 @@ module am_matlab
         !
     end function  linspace_integer
 
-    pure function primes(nprimes)
-	    !
-    	! naive approach to generating the first n prime numbers
-    	!
-		implicit none
-		!
-		integer, intent(in)  :: nprimes
-		integer, allocatable :: primes(:) ! array that will hold the primes
-		integer :: at, found, i
-		logical :: is_prime
-		!
-		allocate (primes(nprimes))
-		!
-		primes(1) = 2
-		at = 2
-		found = 1
-		do
-		    is_prime = .true. ! assume prime
-		    do i = 1, found
-		        if (modulo(at,primes(i)).eq.0) then ! if divisible by any other element
-		            is_prime = .false.               ! in the array, then not prime.
-		            at = at + 1
-		            continue
-		        end if
-		    end do
-		    found = found + 1
-		    primes(found) = at
-		    at = at + 1
-		    if (found == nprimes) then ! stop when all primes are found
-		        exit
-		    endif
-		end do
-		!
-	end function  primes
+    ! matrix functions
+
+    pure function adjoint(A)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: A(:,:)
+        complex(dp), allocatable :: adjoint(:,:)
+        !
+        allocate(adjoint(size(A,2),size(A,1)))
+        adjoint = transpose(conjg(A))
+        !
+    end function  adjoint
+
+    pure function trace(R) result(tr)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: R(:,:)
+        real(dp) :: tr
+        integer :: i
+        !
+        tr = 0
+        do i = 1,size(R,2)
+            tr = tr + R(i,i)
+        enddo
+        !
+    end function  trace
 
     pure function ddiag1(M,j) result(d)
         !
@@ -802,7 +856,7 @@ module am_matlab
             enddo
         endif
         !
-    end function  zdiag2 
+    end function  zdiag2
 
     pure function kron(A,B) result(C)
         ! kronecker product
@@ -904,23 +958,6 @@ module am_matlab
         !
     end function  ones_nxm
 
-    pure function heavi(m)
-        !
-        ! A. V. Podolskiy and P. Vogl, Phys. Rev. B 69, 233101 (2004). Eq 15
-        !
-        implicit none
-        !
-        integer, intent(in) :: m
-        real(dp) :: heavi
-        !
-        if (m.ge.0) then
-            heavi = 1.0_dp
-        else
-            heavi = 0.0_dp
-        endif
-        !
-    end function  heavi
-
     pure subroutine rref(matrix)
         !
         ! note: algorithm on roseta code is broken.
@@ -965,6 +1002,8 @@ module am_matlab
         end do
         deallocate(temp)
     end subroutine  rref    
+
+    ! unique
 
     pure function unique_matrices_double(A,iopt_tiny) result(B)
         !> returns unique matrices of A(:,:,i) within numerical precision

@@ -652,7 +652,7 @@ module am_stdout
         implicit none
         !
         complex(dp), intent(in) :: A(:)
-        integer :: i, j
+        integer :: i
         !
 #include 'am_print_header.inc'
         !

@@ -959,7 +959,7 @@ contains
         !
         allocate(aa(4,sg%nsyms))
         do i = 1,sg%nsyms
-            aa(1:4,i)=R2axis_angle(R=ps_frac2cart(R_frac=sg%R(1:3,1:3,i),bas=uc%bas))
+            aa(1:4,i)=rot2axis_angle(R=ps_frac2cart(R_frac=sg%R(1:3,1:3,i),bas=uc%bas))
         enddo
         !
         if (present(iopt_fname)) then 

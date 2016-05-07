@@ -252,10 +252,9 @@ contains
     	!
     	class(am_class_tb), intent(inout) :: tb
         type(am_class_options), intent(in) :: opts
-    	integer :: fid, k, i
-    	real(dp) :: b
         character(maximum_buffer_size) :: buffer ! read buffer
         character(len=:), allocatable :: word(:) ! read buffer
+        integer :: fid, k
     	!
     	if (opts%verbosity.ge.1) call am_print_title('Reading tight binding matrix elements')
     	!
@@ -295,212 +294,239 @@ contains
 		!
 	end subroutine read_matrix_elements
 
-	subroutine     get_Ly_in_Lz_basis(l, V, D)
-		!
-		! Calculates the eigenvalues D and eigevectors My of Ly operator in the Lz basis using raising/lowering operators.
-		!
-		! R. M. Martin, Electronic Structure: Basic Theory and Practical Methods, 1 edition
-		! (Cambridge University Press, Cambridge, UK ; New York, 2008), p 573.
-		!
-		! Romero Nichols "Density Functional Study of Fullerene-Based Solids: Crystal Structure,
-		! Doping, and Electron- Phonon Interaction", Ph.D. Thesis UIUC, p 96.
-		!
-		! C. Cohen-Tannoudji, B. Diu, and F. Laloe, Quantum Mechanics, 1 edition (Wiley-VCH, New
-		! York; Paris, 1992), p 666.
-		!
-		! J. J. Sakurai, Modern Quantum Mechanics, Revised edition (Addison Wesley, Reading, Mass,
-		! 1993). p 207
-		!
-		implicit none
-		!
-		integer    , intent(in) :: l ! l is the orbital quantum number,  
-		complex(dp), intent(out), allocatable :: V(:,:)  ! My is returned as a (l**2+1) x (l**2+1) matrix containing all possible values of m : |m| .le. l
-		real(dp)   , intent(out), allocatable :: D(:)    ! because Ly operator is Hermitian, eigenvalues are real
-		complex(dp), allocatable :: Ly(:,:)
-		integer :: k, nstates, m
-		! 
-		! number of states (m=-l,-l+1,-l+2,...,0,...,l-2,l-1,l)
-		nstates = l*2 + 1
-		!
-		! indices of V refer to value of m
-		allocate(V(nstates,nstates))
-		!
-		! initialize banded Ly matrix
-		allocate(Ly(2,nstates))
-		Ly = 0
-		!
-		! Construct banded Ly matrix in the Lz basis from raising and lower operators
-		! Laloe, p 666; Martin, p 573, Eq N4; Sakurai, p 207. Here, hbar is set to 1.
-		k = 0
-		do m = -l, l-1
-			k=k+1
-			Ly(2,k) = -0.5_dp * cmplx_i * sqrt( real(l*(l+1)-m*(m+1),dp) )
-		enddo
-		!
-		! Diagonalize the Ly matrix
-		call am_zhbev(A_b=Ly,V=V,D=D)
-		!
-		! Equivalent to above, but using full matrix instead
-		! complex(dp), allocatable :: Lyf(:,:)
-		! Lyf = diag(Ly(2,1:k),-1)
-		! Lyf = Lyf + adjoint(Lyf)
-		! call am_print('Lyf',Lyf)
-		! call am_zheev(A=Lyf,V=My,D=D)
-		! call am_print('zheev : V',My)
-		! call am_print('zheev : D',D)
-		!
-    end subroutine get_Ly_in_Lz_basis
-
-    function       spherical_to_tesseral(l) result(B)
-        ! R. R. Sharma, Phys. Rev. B. 19, 2813 (1979).
-        !     [1    0    0    0     0     0    0    0     0  ]
-        !     [0   0.7   0   0.7i   0     0    0    0     0  ]
-        !     [0    0    1    0     0     0    0    0     0  ]
-        !     [0  -0.7   0   0.7i   0     0    0    0     0  ]
-        ! B = [0    0    0    0    0.7    0    0    0    0.7i]
-        !     [0    0    0    0     0    0.7   0   0.7i   0  ]
-        !     [0    0    0    0     0     0    1    0     0  ]
-        !     [0    0    0    0     0   -0.7   0   0.7i   0  ]
-        !     [0    0    0    0    0.7    0    0    0   -0.7i]
+    function       SO3(l,th,phi) result(R)
+        !
         implicit none
         !
-		integer, intent(in) :: l ! l is the orbital quantum number
-		integer  :: nstates
-        real(dp) :: invsqrt2
-        complex(dp), allocatable :: B(:,:)
-        integer :: m,mp
-        !
-        invsqrt2 = 0.70710678118655_dp
-        !
-        nstates = l*2 + 1
-        allocate(B(-l:l,-l:l))
-        B = 0.0_dp
-        !
-		do m = -l, l
-        do mp= -l, l
-            ! Real orbitals which are given by Y_{l0}.
-            if (m.eq.mp) then
-            if (m.eq.0 ) then
-                B(m,mp) = 1.0_dp
-            endif
-            endif
-            ! Real orbitals which are given by (Y_{l-m} + (-1)^m Y_{lm}^\ast)/sqrt(2)
-			if (mp.lt.0) then
-                if (mp.eq.-m) then
-                    B(m,mp) = CMPLX(invsqrt2, 0.0_dp)
-                endif
-                if (mp.eq.m) then
-                    B(m,mp) = CMPLX(((-1)**m)*invsqrt2, 0.0_dp)
-                endif
-            endif
-            ! Real orbitals which are given by i*(Y_{l-m} - (-1)^m Y_{lm}^\ast)/sqrt(2)
-			if (mp.gt.0) then
-                if (mp.eq.-m) then
-                    B(m,mp) = CMPLX(0.0_dp, invsqrt2)
-                endif
-                if (mp.eq.m) then
-                    B(m,mp) = CMPLX(0.0_dp, -((-1)**m)*invsqrt2)
-                endif
-            endif
-        enddo
-        enddo
-        !
-    end function   spherical_to_tesseral
-    
- 	subroutine     test_rotation
- 		!
- 		implicit none
- 		!
-        integer :: l
- 		complex(dp), allocatable :: V(:,:)
- 		real(dp)   , allocatable :: D(:)
-        real(dp)   :: th, phi, dcosines(3), vec(3)
-        complex(dp), allocatable :: th_mat(:,:)
-        complex(dp), allocatable :: phi_mat(:,:)
-        complex(dp), allocatable :: U(:,:)
-        complex(dp), allocatable :: B(:,:)
+        integer , intent(in) :: l
+        real(dp), intent(in) :: th
+        real(dp), intent(in) :: phi
+        integer :: n
         real(dp)   , allocatable :: R(:,:) !  the rotation matrix
-        real(dp) :: aa(4)
+        complex(dp), allocatable :: V(:,:) ! eigenvector of Ly in Lz basis
+        real(dp)   , allocatable :: D(:)   ! eigenvalues of Ly in Lz basis = -l, -l+1, ... -1, 0, 1, ... l-1, l
+        complex(dp), allocatable :: th_mat(:,:)  ! matrix corresponding to exp(-i*theta*Ly)
+        complex(dp), allocatable :: phi_mat(:,:) ! matrix corresponding to exp(-i* phi *Ly)
+        complex(dp), allocatable :: U(:,:) ! see below
+        complex(dp), allocatable :: B(:,:) ! see below
+        integer  :: verbosity ! used for debugging
         !
+        verbosity = 1
         !
-        l = 1
+        ! print inputs if debugging
+        if (verbosity.ge.1) then 
+            call am_print('l',l)
+            call am_print('th',th)
+            call am_print('phi',phi)
+        endif
         !
-        ! 0 s, 1 p, 3 d, 4 f
-        call get_Ly_in_Lz_basis(l=l, V=V, D=D)
+        ! get dimensions of matrices
+        n = 2*l + 1
         !
-        call am_print('V',V)
-        call am_print('D',D)
+        ! get Ly eigenvector and eigenvalus in Lz basis
+        call get_Ly_in_Lz(l=l, V=V, D=D)
+        ! if (verbosity.ge.1) then
+        !     call am_print('V',V)
+        !     call am_print('D',D)
+        ! endif
         !
-        th = 30.0*pi/180.0_dp
-        phi= 00.0*pi/180.0_dp
- 		call am_print('th',th)
-        call am_print('phi',phi)
-        !
-        th_mat  = diag(exp(cmplx_i*th*D))
+        ! setup theta and phi rotation matrices
+        th_mat  = diag(exp(cmplx_i* th*D))
         phi_mat = diag(exp(cmplx_i*phi*D))
- 		call am_print('th_mat',th_mat)
-        call am_print('phi_mat',phi_mat)
+        ! if (verbosity.ge.1) then 
+        !     call am_print('th_mat',th_mat)
+        !     call am_print('phi_mat',phi_mat)
+        ! endif
         !
+        ! construct U
+        allocate(U(n,n))
         U = matmul(matmul(V,th_mat),matmul(adjoint(V),phi_mat))
-        call am_print('U',U)
-        !
-        ! check that U is unitary
-        call am_print('det(U)',abs(det(U)))
+        ! if (verbosity.ge.1) then 
+        !     call am_print('U',U)
+        ! endif
         if (abs(abs(det(U))-1.0_dp).gt.tiny) then
+            ! check that U is unitary
             call am_print('det(U)',abs(det(U)))
+            call am_print('U\dag * U',matmul(adjoint(U),U))
             call am_print('ERROR','U is not unitary.')
             stop
         endif
         !
-        ! convert from spherical to tesseral harmonics 
-        B = spherical_to_tesseral(l)
-        call am_print('B',B)
-        call am_print('B\dagB',matmul(adjoint(B),B))
-        !
-        ! check that B is unitary
-        call am_print('det(B)',abs(det(B)))
+        ! determine similarity transform to convert spherical into tesseral harmnoics
+        B = spherical2tesseral(l)
+        ! if (verbosity.ge.1) then 
+        !     call am_print('B',B)
+        !     call am_print('B\dag * B',matmul(adjoint(B),B))
+        ! endif
         if (abs(abs(det(B))-1.0_dp).gt.tiny) then
+            ! check that B is unitary
             call am_print('det(B)',abs(det(U)))
             call am_print('ERROR','B is not unitary.')
             stop
         endif
         !
-        !
+        ! finally, multiply to obtain the rotation matrix
+        allocate(R(n,n))
         R = matmul(adjoint(B),matmul(U,B))
-        call am_print('R',R)
-        call am_print('det(R)',abs(det(R)))
-        if (abs(abs(det(U))-1.0_dp).gt.tiny) then
-            call am_print('det(R)',abs(det(U)))
+        if (verbosity.ge.1) then 
+            call am_print('R',R)
+        endif
+        if (abs(abs(det(R))-1.0_dp).gt.tiny) then
+            ! check that R is unitary
+            call am_print('det(R)',abs(det(R)))
+            call am_print('R\dag * R',matmul(transpose(R),R))
             call am_print('ERROR','R is not unitary.')
             stop
         endif
         !
-        aa = R2axis_angle(R)
-        call am_print('aa',aa)
-        
-        
-        
+        contains
+        subroutine     get_Ly_in_Lz(l, V, D)
+            !
+            ! Calculates the eigenvalues D and eigevectors My of Ly operator in the Lz basis using raising/lowering operators.
+            !
+            ! R. M. Martin, Electronic Structure: Basic Theory and Practical Methods, 1 edition
+            ! (Cambridge University Press, Cambridge, UK ; New York, 2008), p 573.
+            !
+            ! Romero Nichols "Density Functional Study of Fullerene-Based Solids: Crystal Structure,
+            ! Doping, and Electron- Phonon Interaction", Ph.D. Thesis UIUC, p 96.
+            !
+            ! C. Cohen-Tannoudji, B. Diu, and F. Laloe, Quantum Mechanics, 1 edition (Wiley-VCH, New
+            ! York; Paris, 1992), p 666.
+            !
+            ! J. J. Sakurai, Modern Quantum Mechanics, Revised edition (Addison Wesley, Reading, Mass,
+            ! 1993). p 207
+            !
+            implicit none
+            !
+            integer    , intent(in) :: l ! l is the orbital quantum number,  
+            complex(dp), intent(out), allocatable :: V(:,:)  ! My is returned as a (l**2+1) x (l**2+1) matrix containing all possible values of m : |m| .le. l
+            real(dp)   , intent(out), allocatable :: D(:)    ! because Ly operator is Hermitian, eigenvalues are real
+            complex(dp), allocatable :: Ly(:,:)
+            integer :: k, nstates, m
+            ! 
+            ! number of states (m=-l,-l+1,-l+2,...,0,...,l-2,l-1,l)
+            nstates = l*2 + 1
+            !
+            ! indices of V refer to value of m
+            allocate(V(nstates,nstates))
+            !
+            ! initialize banded Ly matrix
+            allocate(Ly(2,nstates))
+            Ly = 0
+            !
+            ! Construct banded Ly matrix in the Lz basis from raising and lower operators
+            ! Laloe, p 666; Martin, p 573, Eq N4; Sakurai, p 207. Here, hbar is set to 1.
+            k = 0
+            do m = -l, l-1
+                k=k+1
+                Ly(2,k) = -0.5_dp * cmplx_i * sqrt( real(l*(l+1)-m*(m+1),dp) )
+            enddo
+            !
+            ! Diagonalize the Ly matrix
+            call am_zhbev(A_b=Ly,V=V,D=D)
+            !
+            ! Equivalent to above, but using full matrix instead
+            ! complex(dp), allocatable :: Lyf(:,:)
+            ! Lyf = diag(Ly(2,1:k),-1)
+            ! Lyf = Lyf + adjoint(Lyf)
+            ! call am_print('Lyf',Lyf)
+            ! call am_zheev(A=Lyf,V=My,D=D)
+            ! call am_print('zheev : V',My)
+            ! call am_print('zheev : D',D)
+            !
+        end subroutine get_Ly_in_Lz
+        function       spherical2tesseral(l) result(B)
+            ! R. R. Sharma, Phys. Rev. B. 19, 2813 (1979).
+            !     [1    0    0    0     0     0    0    0     0  ]
+            !     [0   0.7   0   0.7i   0     0    0    0     0  ]
+            !     [0    0    1    0     0     0    0    0     0  ]
+            !     [0  -0.7   0   0.7i   0     0    0    0     0  ]
+            ! B = [0    0    0    0    0.7    0    0    0    0.7i]
+            !     [0    0    0    0     0    0.7   0   0.7i   0  ]
+            !     [0    0    0    0     0     0    1    0     0  ]
+            !     [0    0    0    0     0   -0.7   0   0.7i   0  ]
+            !     [0    0    0    0    0.7    0    0    0   -0.7i]
+            implicit none
+            !
+            integer, intent(in) :: l ! l is the orbital quantum number
+            integer  :: nstates
+            real(dp) :: invsqrt2
+            complex(dp), allocatable :: B(:,:)
+            integer :: m,mp
+            !
+            invsqrt2 = 0.70710678118655_dp
+            !
+            nstates = l*2 + 1
+            allocate(B(-l:l,-l:l))
+            B = 0.0_dp
+            !
+            do m = -l, l
+            do mp= -l, l
+                ! Real orbitals which are given by Y_{l0}.
+                if (m.eq.mp) then
+                if (m.eq.0 ) then
+                    B(m,mp) = 1.0_dp
+                endif
+                endif
+                ! Real orbitals which are given by (Y_{l-m} + (-1)^m Y_{lm}^\ast)/sqrt(2)
+                if (mp.lt.0) then
+                    if (mp.eq.-m) then
+                        B(m,mp) = CMPLX(invsqrt2, 0.0_dp)
+                    endif
+                    if (mp.eq.m) then
+                        B(m,mp) = CMPLX(((-1)**m)*invsqrt2, 0.0_dp)
+                    endif
+                endif
+                ! Real orbitals which are given by i*(Y_{l-m} - (-1)^m Y_{lm}^\ast)/sqrt(2)
+                if (mp.gt.0) then
+                    if (mp.eq.-m) then
+                        B(m,mp) = CMPLX(0.0_dp, invsqrt2)
+                    endif
+                    if (mp.eq.m) then
+                        B(m,mp) = CMPLX(0.0_dp, -((-1)**m)*invsqrt2)
+                    endif
+                endif
+            enddo
+            enddo
+            !
+        end function   spherical2tesseral
+    end function   SO3
+
+ 	subroutine     test_rotation
+ 		!
+ 		implicit none
+ 		!
+        integer  :: l
+        real(dp) :: theta_phi(2), dcosines(3), vec(3)
+        real(dp)   , allocatable :: R(:,:) !  the rotation matrix
+        real(dp) :: aa(4)
+        real(dp) :: A(3,3), B(3,3)
         !
-        ! convert from spherical to tesseral harmonics 
+        vec = real([2.0,1.0,2.0],dp)
         !
+        dcosines = vec2dcosines(vec)
         !
-        vec = [0,0,1]
-        !
- 		if (norm2(vec).gt.tiny) then
- 		    dcosines = vec/norm2(vec)
- 		else
- 		    dcosines = real([0,0,1],dp)
-        endif
- 		! th is polar angle (measured from z axis)
-        ! phi is azimulthal angle (around z axis)
- 		th = acos(dcosines(3))
- 		phi = atan(dcosines(2)/(dcosines(1)+1.0D-14))
- 		
+        theta_phi = dcosines2thetaphi(dcosines)
         !
         call am_print('vec',vec)
         call am_print('dcosines',dcosines)
- 		call am_print('th',th)
-        call am_print('phi',phi)
+        call am_print('th & phi',theta_phi*180.0_dp/pi)
+        !
+        l = 1
+        !
+        R = SO3(l=l,th=theta_phi(1),phi=theta_phi(2))
+        !
+        aa = rot2axis_angle(R)
+        call am_print('aa',aa)
+        !
+        ! check that A*B = R (WORKING)
+        B = axis_angle2rot([0.0_dp, 1.0_dp, 0.0_dp, theta_phi(2)]) ! first rotate around Y
+        A = axis_angle2rot([0.0_dp, 0.0_dp, 1.0_dp, theta_phi(1)]) ! then  rotate around Z
+        call am_print('A*B',matmul(A,B))
+        call am_print('A*B-R',matmul(A,B)-R)
+        ! 
+        call am_print('R*vec',matmul(R,dcosines))
+        
  		!
         stop
  	end subroutine test_rotation
