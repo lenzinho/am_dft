@@ -13,7 +13,7 @@ module am_tight_binding
 
 	private
     
-    public :: test_rotation
+    public :: test_SO3
 
 	type, public :: am_class_tb
 		!
@@ -296,86 +296,108 @@ contains
 
     function       SO3(l,th,phi) result(R)
         !
+        ! Definitions:
+        ! l       angular quantum number
+        ! theta   polar angle (rotate away from Z axis, i.e. around Y axis)
+        ! phi     azimuthal angle (rotate around Z axis)
+        !
+        ! For l = 1 (p orbitals transform like x, y, z), R is equivalent to a rotation around the Y
+        ! axis, followed by a rotation around the Z axis. That is,
+        !
+        !         R = Z*Y with
+        !
+        !         Y = axis_angle2rot([0.0_dp, 1.0_dp, 0.0_dp, theta_phi(1)])
+        !         Z = axis_angle2rot([0.0_dp, 0.0_dp, 1.0_dp, theta_phi(2)])
+        !
+        ! The operation
+        !       
+        !         K = Z' * Y * Z
+        ! 
+        !         takes directional cosines of {th,phi} to [0 0 1]. That is,
+        !
+        !             [ sin(th)cos(phi) ]   [ 0 ]
+        !         K * [ sin(th)sin(phi) ] = [ 0 ]
+        !             [     cos(th)     ]   [ 1 ]
+        !
+        ! Equivalently, using the transpose distributive properties, (A*B)' = B'*A', and the fact that K is unitary, inv(K) = K':
+        !
+        !         K' = Z' * Y' * Z
+        !
+        !              [ 0 ]   [ sin(th)cos(phi) ]
+        !         K' * [ 0 ] = [ sin(th)sin(phi) ]
+        !              [ 1 ]   [     cos(th)     ]
+        !
+        ! Quick matlab script (note different sign conventions for theta/phi in vrrotvec2mat vs. that used here)
+        !
+        !     v = [3 2 1]';
+        !     dcosines = v/norm(v);
+        !     theta_phi(1) = acos(dcosines(3));
+        !     theta_phi(2) = atan(dcosines(2)/(dcosines(1)+1E-14));
+        !     Y=vrrotvec2mat([0 1 0 -theta_phi(1)]);
+        !     Z=vrrotvec2mat([0 0 1 -theta_phi(2)]);
+        !     R=(Z*Y)
+        !     K=(Z'*Y*Z)
+        !     K*dcosines
+        !
         implicit none
         !
         integer , intent(in) :: l
         real(dp), intent(in) :: th
         real(dp), intent(in) :: phi
         integer :: n
-        real(dp)   , allocatable :: R(:,:) !  the rotation matrix
+        real(dp)   , allocatable :: R(:,:) ! tesseral harmonics rotation matrix, (2*l+1) x (2*l+1) irrep of rotation in 3 dimensional space 
         complex(dp), allocatable :: V(:,:) ! eigenvector of Ly in Lz basis
         real(dp)   , allocatable :: D(:)   ! eigenvalues of Ly in Lz basis = -l, -l+1, ... -1, 0, 1, ... l-1, l
         complex(dp), allocatable :: th_mat(:,:)  ! matrix corresponding to exp(-i*theta*Ly)
         complex(dp), allocatable :: phi_mat(:,:) ! matrix corresponding to exp(-i* phi *Ly)
-        complex(dp), allocatable :: U(:,:) ! see below
-        complex(dp), allocatable :: B(:,:) ! see below
-        integer  :: verbosity ! used for debugging
-        !
-        verbosity = 1
-        !
-        ! print inputs if debugging
-        if (verbosity.ge.1) then 
-            call am_print('l',l)
-            call am_print('th',th)
-            call am_print('phi',phi)
-        endif
+        complex(dp), allocatable :: U(:,:) ! rotation matrix in complex coordinates (spherical harmonics)
+        complex(dp), allocatable :: B(:,:) ! similarity transform which maps complex spherical harmonics onto real tesseral harmonics
         !
         ! get dimensions of matrices
         n = 2*l + 1
         !
         ! get Ly eigenvector and eigenvalus in Lz basis
         call get_Ly_in_Lz(l=l, V=V, D=D)
-        ! if (verbosity.ge.1) then
-        !     call am_print('V',V)
-        !     call am_print('D',D)
-        ! endif
         !
-        ! setup theta and phi rotation matrices
-        th_mat  = diag(exp(cmplx_i* th*D))
-        phi_mat = diag(exp(cmplx_i*phi*D))
-        ! if (verbosity.ge.1) then 
-        !     call am_print('th_mat',th_mat)
-        !     call am_print('phi_mat',phi_mat)
-        ! endif
+        ! setup rotation matrices
+        th_mat  = diag(exp(cmplx_i* th*D)) ! away from Z
+        phi_mat = diag(exp(cmplx_i*phi*D)) ! around Z
         !
-        ! construct U
+        ! construct U (rotation in complex coordinates) by first rotating AWAY FROM Z then AROUND Z
         allocate(U(n,n))
-        U = matmul(matmul(V,th_mat),matmul(adjoint(V),phi_mat))
-        ! if (verbosity.ge.1) then 
-        !     call am_print('U',U)
-        ! endif
+        U = matmul(matmul(V,phi_mat),matmul(adjoint(V),th_mat))
+        !
+        ! check that U is unitary
         if (abs(abs(det(U))-1.0_dp).gt.tiny) then
-            ! check that U is unitary
             call am_print('det(U)',abs(det(U)))
             call am_print('U\dag * U',matmul(adjoint(U),U))
-            call am_print('ERROR','U is not unitary.')
+            call am_print('ERROR','U is not unitary.',flags='E')
             stop
         endif
         !
-        ! determine similarity transform to convert spherical into tesseral harmnoics
+        ! determine similarity transform to convert spherical into tesseral harmonics (complex to real)
         B = spherical2tesseral(l)
-        ! if (verbosity.ge.1) then 
-        !     call am_print('B',B)
-        !     call am_print('B\dag * B',matmul(adjoint(B),B))
-        ! endif
+        !
+        ! check that B is unitary
         if (abs(abs(det(B))-1.0_dp).gt.tiny) then
-            ! check that B is unitary
             call am_print('det(B)',abs(det(U)))
-            call am_print('ERROR','B is not unitary.')
+            call am_print('ERROR','B is not unitary.',flags='E')
             stop
         endif
         !
-        ! finally, multiply to obtain the rotation matrix
+        ! convert U to real coordinates
         allocate(R(n,n))
         R = matmul(adjoint(B),matmul(U,B))
-        if (verbosity.ge.1) then 
-            call am_print('R',R)
-        endif
+        ! B IS INTRODUCING ALOT OF NUMERICAL NOISE. TO DO: FIGURE OUT WHY... LOOK AT DET(B), not very close to 1
+!         call am_print('B\dag*B',(matmul(adjoint(B),B)-eye(n))*1.0D10)
+!         call am_print('R\dag*R',(matmul(adjoint(Rc),Rc)-eye(n))*1.0D10)
+!         call am_print('B',B)
+        !
+        ! check that R is unitary
         if (abs(abs(det(R))-1.0_dp).gt.tiny) then
-            ! check that R is unitary
             call am_print('det(R)',abs(det(R)))
             call am_print('R\dag * R',matmul(transpose(R),R))
-            call am_print('ERROR','R is not unitary.')
+            call am_print('ERROR','R is not unitary.',flags='E')
             stop
         endif
         !
@@ -454,7 +476,7 @@ contains
             complex(dp), allocatable :: B(:,:)
             integer :: m,mp
             !
-            invsqrt2 = 0.70710678118655_dp
+            invsqrt2 = 0.707106781186547_dp
             !
             nstates = l*2 + 1
             allocate(B(-l:l,-l:l))
@@ -492,17 +514,17 @@ contains
         end function   spherical2tesseral
     end function   SO3
 
- 	subroutine     test_rotation
+ 	subroutine     test_SO3
  		!
  		implicit none
  		!
         integer  :: l
         real(dp) :: theta_phi(2), dcosines(3), vec(3)
-        real(dp)   , allocatable :: R(:,:) !  the rotation matrix
+        real(dp), allocatable :: R(:,:) !  the rotation matrix
         real(dp) :: aa(4)
-        real(dp) :: A(3,3), B(3,3)
+        real(dp) :: Z(3,3), Y(3,3)
         !
-        vec = real([2.0,1.0,2.0],dp)
+        vec = real([2.0,2.0,1.0],dp)
         !
         dcosines = vec2dcosines(vec)
         !
@@ -515,21 +537,22 @@ contains
         l = 1
         !
         R = SO3(l=l,th=theta_phi(1),phi=theta_phi(2))
+        call am_print('R',R)
         !
-        aa = rot2axis_angle(R)
-        call am_print('aa',aa)
+        ! R is equivalent to first rotating around Y (away from Z) and then around Z
+        Y = axis_angle2rot([0.0_dp, 1.0_dp, 0.0_dp, theta_phi(1)]) ! rot around Y, away from Z
+        Z = axis_angle2rot([0.0_dp, 0.0_dp, 1.0_dp, theta_phi(2)]) ! rot around Z, in XY plane
+        call am_print('Z*Y',matmul(Z,Y))
         !
-        ! check that A*B = R (WORKING)
-        B = axis_angle2rot([0.0_dp, 1.0_dp, 0.0_dp, theta_phi(2)]) ! first rotate around Y
-        A = axis_angle2rot([0.0_dp, 0.0_dp, 1.0_dp, theta_phi(1)]) ! then  rotate around Z
-        call am_print('A*B',matmul(A,B))
-        call am_print('A*B-R',matmul(A,B)-R)
-        ! 
-        call am_print('R*vec',matmul(R,dcosines))
-        
- 		!
+        ! should equal zero
+        call am_print('(Z*Y-R) * 1E5',(matmul(Z,Y)-R)*1.0D5)
+        !
+        ! should equal [0,0,1]
+        call am_print('[001]', matmul(matmul(transpose(Z),matmul(Y,Z)),dcosines) )
+        !
         stop
- 	end subroutine test_rotation
+        !
+ 	end subroutine test_SO3
     
     !subroutine     build_K(tb,uc,K)
     !    !

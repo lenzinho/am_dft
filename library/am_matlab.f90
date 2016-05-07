@@ -60,9 +60,9 @@ module am_matlab
         real(dp), intent(in) :: dcosines(3)
         real(dp) :: theta_phi(2)
         !
-        theta_phi(1)  = acos(dcosines(3))
+        theta_phi(1) = acos(dcosines(3))
         theta_phi(2) = atan(dcosines(2)/(dcosines(1)+1.0D-14))
-       !
+        !
     end function  dcosines2thetaphi
 
     pure function rot2axis_angle(R) result(aa)
@@ -82,7 +82,7 @@ module am_matlab
         tr = trace(Rcp)
         !
         if (abs(tr-3.0_dp).lt.tiny) then
-            aa = [0,0,1,0]
+            aa = real([0,1,0,0],dp)
         elseif (abs(tr+1.0_dp).lt.tiny) then
             do i = 1,3
                 axis(i) = sqrt(max(0.5_dp*(Rcp(i,i)+1),0.0_dp))
@@ -98,6 +98,13 @@ module am_matlab
     end function  rot2axis_angle
 
     pure function axis_angle2rot(aa) result(R)
+        !
+        ! Note the different sign convention from matlab. aa(4) here = -aa(4) in matlab.
+        ! 
+        ! When aa = [0,0,1,45/180*pi] ~ 45 deg rotation around z axis in positive direction.
+        !   x -> (2^(1/2)*x)/2 + (2^(1/2)*y)/2
+        !   y -> (2^(1/2)*y)/2 - (2^(1/2)*x)/2
+        !   z ->                             z
         !
         implicit none
         !

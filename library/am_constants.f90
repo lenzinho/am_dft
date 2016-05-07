@@ -6,6 +6,7 @@ module am_constants
 	!
     integer    , parameter :: sp=kind(0.0E0) !> single precision
     integer    , parameter :: dp=kind(0.0D0) !> double precision
+    integer    , parameter :: qp=selected_real_kind(32) !> quadrupole precision (not in use)
     real(dp)   , parameter :: tiny=1E-6_dp
     real(dp)   , parameter :: halfpi=1.570796326794897
     real(dp)   , parameter :: pi=3.141592653589793
