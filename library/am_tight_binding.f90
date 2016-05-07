@@ -528,7 +528,6 @@ contains
         integer  :: l
         real(dp) :: theta_phi(2), dcosines(3), vec(3)
         real(dp), allocatable :: R(:,:) !  the rotation matrix
-        real(dp) :: aa(4)
         real(dp) :: Z(3,3), Y(3,3)
         !
         vec = real([2.0,2.0,1.0],dp)
