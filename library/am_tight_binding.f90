@@ -136,8 +136,10 @@ contains
                     ! azimuthal quantum number
                     Vsk_label(4,kk) = nlsi(2,ii)
                     Vsk_label(5,kk) = nlsj(2,jj)
-                    ! (flip the indices to get sp ~= ps )
+                    ! if irreducibl atoms are identical flip the indices to get sp ~= ps
+                    if (Vsk_label(2,kk).eq.Vsk_label(3,kk)) then
                     if (Vsk_label(4,kk).gt.Vsk_label(5,kk)) Vsk_label([4,5],kk) = Vsk_label([5,4],kk)
+                    endif
                     ! magnetic quantum number
                     Vsk_label(6,kk) = m
                 enddo
@@ -217,6 +219,11 @@ contains
                 trim(m2spdf(tb%Vsk_label(6,k))), & ! m  (sigma, pi, delta, phi)
                 tb%Vsk(k)                          ! matrix element
         enddo
+        !
+        write(*,'(5x,a)') 'Definitions:'
+        write(*,'(5x,a)') 'i , j : irreducible atoms indicies'
+        write(*,'(5x,a)') 'li,lj : orbitals on irreducible atoms'
+        write(*,'(5x,a)') 'm     : type of overlap'
         !
     end subroutine print_matrix_elements
 
@@ -377,9 +384,13 @@ contains
         !
         ! determine similarity transform to convert spherical into tesseral harmonics (complex to real)
         B = spherical2tesseral(l)
+        ! B IS INTRODUCING ALOT OF NUMERICAL NOISE. TO DO: FIGURE OUT WHY... LOOK AT DET(B), not very close to 1
+        !         call am_print('det(B)',abs(abs(det(B))-1.0_dp))
+        !         call am_print('det(B)',abs(abs(det(B))-1.0_dp).gt.tiny)
+        !         call am_print('det(B)',tiny)
         !
         ! check that B is unitary
-        if (abs(abs(det(B))-1.0_dp).gt.tiny) then
+        if ( abs(abs(det(B))-1.0_dp) .gt. tiny ) then
             call am_print('det(B)',abs(det(U)))
             call am_print('ERROR','B is not unitary.',flags='E')
             stop
@@ -388,10 +399,6 @@ contains
         ! convert U to real coordinates
         allocate(R(n,n))
         R = matmul(adjoint(B),matmul(U,B))
-        ! B IS INTRODUCING ALOT OF NUMERICAL NOISE. TO DO: FIGURE OUT WHY... LOOK AT DET(B), not very close to 1
-!         call am_print('B\dag*B',(matmul(adjoint(B),B)-eye(n))*1.0D10)
-!         call am_print('R\dag*R',(matmul(adjoint(Rc),Rc)-eye(n))*1.0D10)
-!         call am_print('B',B)
         !
         ! check that R is unitary
         if (abs(abs(det(R))-1.0_dp).gt.tiny) then

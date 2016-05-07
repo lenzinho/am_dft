@@ -99,20 +99,18 @@ contains
                     enddo
                 enddo
             enddo
-            ! maps unit cell atom onto -> irreducible cell
+            ! maps (input) unit cell atom onto -> irreducible cell
             if (present(uc)) then
                 allocate(uc%ic_identifier(uc%natoms))
                 do i = 1, uc%natoms
                     ! j = uc%pc_identifier(i) shows to which primitive atom j, unit cell atom i is associated with
                     ! now find... to which irreducible atom k, primitive cell atom j is associated with... k =
-                    do j = 1, ic%natoms
-                        uc%ic_identifier(i) = pc%uc_identifier(ic%pc_identifier(j))
-                    enddo
+                    uc%ic_identifier(i) = pc%ic_identifier(uc%pc_identifier(i))
                 enddo
             endif
             !
             if (opts%verbosity.ge.1) then
-                write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to original: irr->orig)'
+                write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to input: irr->input)'
                 do i = 1, ic%natoms
                     if (modulo(i,10).eq.1) then
                         write(*,*)

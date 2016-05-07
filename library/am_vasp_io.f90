@@ -803,7 +803,7 @@ module am_vasp_io
         fname = 'outfile.POSCAR'
         if ( present(iopt_filename) ) fname = iopt_filename
         header = 'POSCAR'
-        if ( present(iopt_filename) ) header = iopt_header
+        if ( present(iopt_header) )  header = iopt_header
         !
         !
         !
@@ -814,7 +814,7 @@ module am_vasp_io
             !
             call am_print('file',trim(fname),' ... ')
             ! (LINE 1) header
-            write(unit=fid,fmt='(a)') header
+            write(unit=fid,fmt='(a)') trim(header)
             ! (LINE 2) lattice parameter scaling
             write(unit=fid,fmt='(f20.12)') 1.0_dp
             ! (LINES 3-5) basis
