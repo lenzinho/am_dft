@@ -33,7 +33,7 @@ module am_tight_binding
 
 contains
 
-	subroutine     template_matrix_elements(tb,irrpair,ic,opts)
+	subroutine     template_matrix_elements(tb,ipair,ic,opts)
 		!
     	! useful if no states on atoms are defined. Gives each atom all the possible states
     	! correspoding to the L shell (n=2) [ s p   states (1+3=4   states) ]
@@ -44,7 +44,7 @@ contains
 		implicit none
         !
         class(am_class_tb)        , intent(inout) :: tb
-        class(am_class_pair_shell), intent(inout) :: irrpair
+        class(am_class_pair_shell), intent(inout) :: ipair
         class(am_class_irre_cell) , intent(inout) :: ic
         type(am_class_options)    , intent(in) :: opts
         integer, allocatable :: Vsk_label(:,:)
@@ -91,13 +91,13 @@ contains
 			enddo
 			enddo
 		enddo
-		if (opts%verbosity.ge.1) call print_oribtal_basis(irrpair,ic)
+		if (opts%verbosity.ge.1) call print_oribtal_basis(ipair,ic)
         !
         ! quick qestimate to determine how much space to allocate for irreducible matrix elements
         nVsks = 0
-        do k = 1, irrpair%nshells
-            i = irrpair%shell(k)%i
-            j = irrpair%shell(k)%j
+        do k = 1, ipair%nshells
+            i = ipair%shell(k)%i
+            j = ipair%shell(k)%j
             nlsi = unique(ic%atom(i)%orbital([1,2,4],:))
             nlsj = unique(ic%atom(j)%orbital([1,2,4],:))
             do ii = 1, size(nlsi,2)
@@ -113,10 +113,10 @@ contains
         ! 2) (l,l',m) = (-1)^(l-m) * (l',l,m)
         allocate(Vsk_label(6,nVsks))
         kk=0
-        do k = 1, irrpair%nshells
+        do k = 1, ipair%nshells
             ! j irreducible atom shell entered on atom irreducible atom i
-            i = irrpair%shell(k)%i
-            j = irrpair%shell(k)%j
+            i = ipair%shell(k)%i
+            j = ipair%shell(k)%j
             !
             nlsi = unique(ic%atom(i)%orbital([1,2,4],:))
             nlsj = unique(ic%atom(j)%orbital([1,2,4],:))
@@ -131,8 +131,8 @@ contains
                     kk=kk+1
                     Vsk_label(1,kk) = k
                     ! sites
-                    Vsk_label(2,kk) = irrpair%shell(k)%i
-                    Vsk_label(3,kk) = irrpair%shell(k)%j
+                    Vsk_label(2,kk) = ipair%shell(k)%i
+                    Vsk_label(3,kk) = ipair%shell(k)%j
                     ! azimuthal quantum number
                     Vsk_label(4,kk) = nlsi(2,ii)
                     Vsk_label(5,kk) = nlsj(2,jj)
@@ -164,11 +164,11 @@ contains
 		if (opts%verbosity.ge.1) call tb%print_matrix_elements
         !
         contains
-	    subroutine     print_oribtal_basis(irrpair,ic)
+	    subroutine     print_oribtal_basis(ipair,ic)
 		    !
 		    implicit none
             !
-            type(am_class_pair_shell), intent(inout) :: irrpair
+            type(am_class_pair_shell), intent(inout) :: ipair
             type(am_class_irre_cell) , intent(inout) :: ic
     	    integer :: n,l,m,s
     	    integer :: i,j
@@ -567,7 +567,7 @@ contains
     !    implicit none
     !    !
     !    class(am_class_tb), intent(in) :: tb
-    !    class(am_class_pair_shell), intent(in) :: irrpair
+    !    class(am_class_pair_shell), intent(in) :: ipair
     !    real(dp), allocatable, intent(out) :: K(:,:)
     !    integer :: kdim
     !    integer :: k
@@ -1083,12 +1083,12 @@ contains
         !
 	end subroutine test_spherical_harmonic_expansion
 
-!  	subroutine     tight_binding_main(irrpair,ic,opts)
+!  	subroutine     tight_binding_main(ipair,ic,opts)
 !  		!
 !  		implicit none
 !         !
 !         class(am_class_irre_cell):: ic ! irreducible cell
-!         type(am_class_pair_shell):: irrpair ! irreducible pairs
+!         type(am_class_pair_shell):: ipair ! irreducible pairs
 !         type(am_class_options)   :: opts
 !         real(dp),allocatable :: ck1(:,:) ! atom 1: ck(i,k) are the k expansion coefficients for cartesian atomic orbital i quantize with respect to the molecular coordinate system (bond vector aligned along z)
 !         real(dp),allocatable :: ck2(:,:) ! atom 2: ck(i,k) are the k expansion coefficients for cartesian atomic orbital i quantize with respect to the molecular coordinate system (bond vector aligned along z)
@@ -1108,9 +1108,9 @@ contains
 !         enddo
 !         !
 !         !
-!         do k = 1, irrpair%nshells
-!             i = irrpair%shell(k)%i
-!             j = irrpair%shell(k)%j
+!         do k = 1, ipair%nshells
+!             i = ipair%shell(k)%i
+!             j = ipair%shell(k)%j
 !             !
 !             if (opts%verbosity.ge.1) then
 !                 call am_print('quantizing state',unique(ic%atom(i)%state(1:3,:)))
@@ -1118,8 +1118,8 @@ contains
 
 !             ! get expansion coefficients from state = [n,l,m,s,#]
 !             ! the unique() ignores the spin quantum number
-!             ck1 = quantize_to_bond(v=irrpair%shell(k)%tau(1:3,1), state=unique(ic%atom(i)%state(1:3,:)))
-!             ck2 = quantize_to_bond(v=irrpair%shell(k)%tau(1:3,1), state=unique(ic%atom(j)%state(1:3,:)))
+!             ck1 = quantize_to_bond(v=ipair%shell(k)%tau(1:3,1), state=unique(ic%atom(i)%state(1:3,:)))
+!             ck2 = quantize_to_bond(v=ipair%shell(k)%tau(1:3,1), state=unique(ic%atom(j)%state(1:3,:)))
 !             !
 !             ! form outer product of ck1(i,:) and ck2(j,:) for all i and j
             

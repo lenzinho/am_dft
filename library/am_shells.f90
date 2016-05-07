@@ -156,7 +156,7 @@ contains
             endif
         enddo
         write(*,'(5x,a)') 'Definitions:'
-        write(*,'(5x,a)') 'multiplicity (m): number of times pair appears'
+        write(*,'(5x,a)') 'multiplicity (m): number of times pair appear'
         !
     end subroutine get_irreducible_pair_shells
     
@@ -239,19 +239,19 @@ contains
         !
     end function   identify_irreducible_pair_shells
 
-    subroutine     get_pair_shells(pair,ic,pg,sg,pair_cutoff,uc,opts)
+    subroutine     get_pair_shells(pair,pc,pg,sg,pair_cutoff,uc,opts)
         !
         implicit none
         !
         class(am_class_pair_shell), intent(inout) :: pair
-        class(am_class_unit_cell), intent(in) :: ic ! irreducible cell or primitive cell
+        class(am_class_unit_cell), intent(in) :: pc ! irreducible cell or primitive cell
         type(am_class_symmetry) , intent(in) :: sg ! space group
         type(am_class_symmetry) , intent(in) :: pg ! point group
         type(am_class_unit_cell), intent(in) :: uc ! unit cell
         type(am_class_options)  , intent(in) :: opts
         real(dp), intent(inout) :: pair_cutoff
         !
-        character(11) :: ictype
+        character(11) :: pctype
         type(am_class_symmetry) :: rotg ! local point groupas seen by rotating the shell
         type(am_class_symmetry) :: revg ! reversal group of a typical bond in the shell v
         type(am_class_symmetry) :: stab ! stabilizer of a typical bond in the shell v
@@ -266,15 +266,15 @@ contains
         real(dp) :: D(3)
         integer  :: k,i,j
         !
-        select type (ic)
-        type is (am_class_prim_cell); ictype = 'primitive'
-        type is (am_class_irre_cell); ictype = 'irreducible'
+        select type (pc)
+        type is (am_class_prim_cell); pctype = 'primitive'
+        type is (am_class_irre_cell); pctype = 'irreducible'
         class default
-            stop 'ic type is not valid.'
+            stop 'pc type is not valid.'
         end select
         !
         ! print title
-        if (opts%verbosity.ge.1) call am_print_title('Determining '//trim(ictype)//' nearest-neighbor pairs')
+        if (opts%verbosity.ge.1) call am_print_title('Determining '//trim(pctype)//' nearest-neighbor pairs')
         !
         ! set notalk option
         notalk = opts 
@@ -286,28 +286,28 @@ contains
         !
         ! get maxmimum number of pair shells
         nshells=0
-        do i = 1, ic%natoms
+        do i = 1, pc%natoms
             ! get center of sphere in fractional supercell coordinates
-            D = matmul(matmul(inv(uc%bas),ic%bas),ic%tau(:,i))
+            D = matmul(matmul(inv(uc%bas),pc%bas),pc%tau(:,i))
             ! create sphere
             sphere = create_sphere(uc=uc, sphere_center=D, pair_cutoff=pair_cutoff, opts=opts )
             ! get number of pairs
             nshells = nshells + maxval(identify_pairs(sphere=sphere,pg=pg))
         enddo
         !
-        ! allocate pair space, pair pair centered on atom ic%natoms 
+        ! allocate pair space, pair pair centered on atom pc%natoms 
         pair%nshells = nshells
         allocate( pair%shell(pair%nshells) )
         ! 
         k = 0 ! shell index
-        do i = 1, ic%natoms
+        do i = 1, pc%natoms
             !
             ! make a sphere containing atoms a maximum distance of a choosen atom; translate all atoms around the sphere.
             ! this distance is the real-space cut-off radius used in the construction of second-order force constants
             ! its value cannot exceed half the smallest dimension of the supercell
             !
             ! get center of sphere in fractional supercell coordinates
-            D = matmul(matmul(inv(uc%bas),ic%bas),ic%tau(:,i))
+            D = matmul(matmul(inv(uc%bas),pc%bas),pc%tau(:,i))
             !
             ! create sphere
             sphere = create_sphere(uc=uc, sphere_center=D, pair_cutoff=pair_cutoff, opts=opts )
@@ -324,7 +324,7 @@ contains
             if (opts%verbosity.ge.1) then
                 !
                 write(*,'(" ... ",a," atom ",a," at "   ,a,",",a,",",a,  " (frac) has ",a," nearest-neighbor shells")') &
-                    & trim(ictype), trim(int2char(i)), (trim(dbl2char(D(j),4)),j=1,3), trim(int2char(npairs))
+                    & trim(pctype), trim(int2char(i)), (trim(dbl2char(D(j),4)),j=1,3), trim(int2char(npairs))
                 !
                 write(*,'(5x)' ,advance='no')
                 write(*,'(a5)' ,advance='no') 'shell'
@@ -360,12 +360,12 @@ contains
                 if (allocated(ind)) deallocate(ind)
                 allocate(ind,source=pair_member(j,1:pair_nelements(j)))
                 !
-                ! create the jth shell centered on irreducible/unitcell atom i
+                ! create the jth shell centered on primitive atom i
                 k=k+1
                 call pair%shell(k)%copy(uc=sphere)
                 call pair%shell(k)%filter(indices=ind)
                 !
-                pair%shell(k)%i = ic%ic_identifier(i)
+                pair%shell(k)%i = pc%ic_identifier(i)
                 pair%shell(k)%j = pair%shell(k)%ic_identifier(1)
                 !
                 ! print to stdout
@@ -378,7 +378,7 @@ contains
                     call revg%get_reversal_group(sg=sg, v=pair%shell(k)%tau(1:3,1), opts=notalk)
                     write(*,'(5x)'    ,advance='no')
                     write(*,'(i5)'    ,advance='no') j
-                    write(*,'(a6)'    ,advance='no') trim(atm_symb(ic%Z( pair%shell(k)%i )))//'-'//trim(atm_symb(ic%Z( pair%shell(k)%j )))
+                    write(*,'(a6)'    ,advance='no') trim(atm_symb(pc%Z( pair%shell(k)%i )))//'-'//trim(atm_symb(pc%Z( pair%shell(k)%j )))
                     write(*,'(a6)'    ,advance='no') trim(int2char(pair%shell(k)%i))//'-'//trim(int2char(pair%shell(k)%j))
                     write(*,'(i5)'    ,advance='no') pair%shell(k)%natoms
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( stab%pg_identifier ))
@@ -401,12 +401,11 @@ contains
         write(*,'(5x,a)') 'i-j              : irreducible atom indicies'
         !
         contains
-        function       create_sphere(uc,ic,sphere_center,pair_cutoff,opts) result(sphere)
+        function       create_sphere(uc,sphere_center,pair_cutoff,opts) result(sphere)
             !
             implicit none
             !
             type(am_class_unit_cell), intent(in) :: uc
-            type(am_class_irre_cell), intent(in), optional :: ic ! for mapping
             type(am_class_options)  , intent(in) :: opts
             type(am_class_unit_cell) :: sphere
             real(dp), intent(in)  :: sphere_center(3)
