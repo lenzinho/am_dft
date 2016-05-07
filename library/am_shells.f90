@@ -67,7 +67,7 @@ contains
         integer , allocatable :: multiplicity(:)
         integer :: i,j,k
         !
-        if (opts%verbosity.ge.1) call am_print_title('Determining irreducible pair shells')
+        if (opts%verbosity.ge.1) call am_print_title('Determining irreducible nearest-neighbor pairs')
         !
         ! supress output from some subroutines
         notalk = opts
@@ -244,13 +244,14 @@ contains
         implicit none
         !
         class(am_class_pair_shell), intent(inout) :: pair
-        class(am_class_unit_cell), intent(in) :: ic ! irreducible cell, only determine pairs for which atleast one atom is in the primitive cell
+        class(am_class_unit_cell), intent(in) :: ic ! irreducible cell or primitive cell
         type(am_class_symmetry) , intent(in) :: sg ! space group
         type(am_class_symmetry) , intent(in) :: pg ! point group
         type(am_class_unit_cell), intent(in) :: uc ! unit cell
         type(am_class_options)  , intent(in) :: opts
         real(dp), intent(inout) :: pair_cutoff
         !
+        character(11) :: ictype
         type(am_class_symmetry) :: rotg ! local point groupas seen by rotating the shell
         type(am_class_symmetry) :: revg ! reversal group of a typical bond in the shell v
         type(am_class_symmetry) :: stab ! stabilizer of a typical bond in the shell v
@@ -265,8 +266,15 @@ contains
         real(dp) :: D(3)
         integer  :: k,i,j
         !
+        select type (ic)
+        type is (am_class_prim_cell); ictype = 'primitive'
+        type is (am_class_irre_cell); ictype = 'irreducible'
+        class default
+            stop 'ic type is not valid.'
+        end select
+        !
         ! print title
-        if (opts%verbosity.ge.1) call am_print_title('Determining nearest-neighbor atomic pairs')
+        if (opts%verbosity.ge.1) call am_print_title('Determining '//trim(ictype)//' nearest-neighbor pairs')
         !
         ! set notalk option
         notalk = opts 
@@ -315,8 +323,8 @@ contains
             !
             if (opts%verbosity.ge.1) then
                 !
-                write(*,'(" ... irreducible atom ",a," at "   ,a,",",a,",",a,  " (frac) has ",a," nearest-neighbor shells")') &
-                    & trim(int2char(i)), (trim(dbl2char(D(j),4)),j=1,3), trim(int2char(npairs))
+                write(*,'(" ... ",a," atom ",a," at "   ,a,",",a,",",a,  " (frac) has ",a," nearest-neighbor shells")') &
+                    & trim(ictype), trim(int2char(i)), (trim(dbl2char(D(j),4)),j=1,3), trim(int2char(npairs))
                 !
                 write(*,'(5x)' ,advance='no')
                 write(*,'(a5)' ,advance='no') 'shell'
@@ -352,12 +360,12 @@ contains
                 if (allocated(ind)) deallocate(ind)
                 allocate(ind,source=pair_member(j,1:pair_nelements(j)))
                 !
-                ! create the jth shell centered on irreducible atom i
+                ! create the jth shell centered on irreducible/unitcell atom i
                 k=k+1
                 call pair%shell(k)%copy(uc=sphere)
                 call pair%shell(k)%filter(indices=ind)
                 !
-                pair%shell(k)%i = i
+                pair%shell(k)%i = ic%ic_identifier(i)
                 pair%shell(k)%j = pair%shell(k)%ic_identifier(1)
                 !
                 ! print to stdout
