@@ -13,14 +13,19 @@ module am_tight_binding
 
 	private
 
-	type am_class_tb
+	type, public :: am_class_tb
 		!
 		! matrix elements
 		integer :: nSKs ! number of matrix elements
-		real(dp), allocatable :: KS(:,:) ! matrix elements
+		real(dp), allocatable :: SK(:) ! matrix elements
+		!
+		! basis functions
+		integer, allocatable :: SK_label(:,:) ! [i,j,li,lj,m]
 		!
 	contains
-		procedure output_matrix_elements
+		procedure :: template_matrix_elements
+		procedure :: output_matrix_elements
+		procedure :: read_matrix_elements
 	end type am_class_tb
 
 ! 	public :: tight_binding_main
@@ -29,68 +34,321 @@ module am_tight_binding
 
 contains
 
-	subroutine     output_matrix_elements(tb,irrpair,ic,opts)
+	subroutine     tb_basis_to_stdout(irrpair,ic)
 		!
 		implicit none
         !
-        class(am_class_tb)        , intent(in) :: tb
-        class(am_class_pair_shell), intent(inout) :: irrpair
-        class(am_class_unit_cell) , intent(in) :: ic
-        type(am_class_options)    , intent(in) :: opts
+        type(am_class_pair_shell), intent(inout) :: irrpair
+        type(am_class_irre_cell) , intent(inout) :: ic
     	integer :: n,l,m,s
-    	integer :: i,k
+    	integer :: i,j,k
         !
+        k=0
+		do i = 1, ic%natoms
+			write(*,'(a5,a)') ' ... ', 'irreducible atom '//trim(int2char(i))//' contributes '//trim(int2char(ic%atom(i)%norbitals))//' orbitals (#,n,l,m,s):'
+			write(*,'(5x)',advance='no')
+			!
+			do j = 1, ic%atom(i)%norbitals
+				k=k+1
+				n = ic%atom(i)%orbital(1,j)
+				l = ic%atom(i)%orbital(2,j)
+				m = ic%atom(i)%orbital(3,j)
+				s = ic%atom(i)%orbital(4,j)
+				write(*,'(a15)',advance='no') ' ('//trim(int2char(j))//','//trim(int2char(n))//','//&
+					trim(int2char(l))//','//trim(int2char(m))//','//trim(int2char(s))//') '
+				if (mod(k,6).eq.0) then
+					write(*,*)
+					write(*,'(5x)',advance='no')
+				endif
+			enddo
+			!
+			write(*,*)
+			!
+		enddo
+		!
+		k=0
+		do i = 1, irrpair%nshells
+			write(*,'(a5,a)') ' ... ', 'atoms in shell '//trim(int2char(irrpair%shell(i)%j))//' around irreducible atom '//&
+				trim(int2char(irrpair%shell(i)%i))//' contribute '//trim(int2char(irrpair%shell(i)%atom%norbitals))//' orbitals (#,n,l,m,s):'
+			write(*,'(5x)',advance='no')
+			!
+			do j = 1, irrpair%shell(i)%atom%norbitals
+				k=k+1
+				n = irrpair%shell(i)%atom%orbital(1,j)
+				l = irrpair%shell(i)%atom%orbital(2,j)
+				m = irrpair%shell(i)%atom%orbital(3,j)
+				s = irrpair%shell(i)%atom%orbital(4,j)
+				write(*,'(a15)',advance='no') ' ('//trim(int2char(j))//','//trim(int2char(n))//','//&
+					trim(int2char(l))//','//trim(int2char(m))//','//trim(int2char(s))//') '
+				if (mod(k,6).eq.0) then
+					write(*,*)
+					write(*,'(5x)',advance='no')
+				endif
+			enddo
+			!
+			write(*,*)
+			!
+		enddo
+	end subroutine tb_basis_to_stdout
+
+	subroutine     template_matrix_elements(tb,irrpair,ic,opts)
+		!
+    	! useful if no states on atoms are defined. Gives each atom all the possible states
+    	! correspoding to the M shell (n=3) [ s p d states (1+3+5=9 states) ]
+    	!
         ! there will be 1 matrix element for every irreducible pair of orbitals
+		!
+		implicit none
         !
-        if (.not.allocated(tb%KS)) then
-        	!
-        	if (.not.allocated(ic%atom)) then
-	    		! if no states on atoms are defined
-	    		! just give each atom all the possible states correspoding to the M shell (n=3) [ s p d states (1+3+5=9 states) ]
-	    		allocate(ic%atom(ic%natoms))
-	    		!
-	    		do i = 1, ic%natoms
-	    			!
-	    			n = 3
-	    			!
-	    			ic%natom(i)%norbitals = n**2
-	    			!
-	    			allocate(ic%atom(i)%orbital(4, ic%natom(i)%norbitals))
-	    			!
-	    			k=0
-					do l = 0, (n-1)
-					do m = -l, l
-					do s = 1, 2
-						k = k+1
-						ic%natom(i)%norbitals(1,k) = n
-						ic%natom(i)%norbitals(2,k) = l
-						ic%natom(i)%norbitals(3,k) = m
-						ic%natom(i)%norbitals(4,k) = s
-					enddo
-					enddo
-					enddo
+        class(am_class_tb)        , intent(inout) :: tb
+        class(am_class_pair_shell), intent(inout) :: irrpair
+        class(am_class_irre_cell) , intent(inout) :: ic
+        type(am_class_options)    , intent(in) :: opts
+    	integer :: nSKs
+    	integer :: n,l,m,s
+    	integer :: i,k,ii,j
+    	integer, allocatable :: li(:)
+    	integer, allocatable :: lj(:)
+        !
+        if (opts%verbosity.ge.1) call am_print_title('Creating orbital basis functions from template')
+        !
+    	! create basis centered on irreducible atoms
+		allocate(ic%atom(ic%natoms))
+		do i = 1, ic%natoms
+			n = 3
+			! factor of two here accounts for spin
+			ic%atom(i)%norbitals = 2*n**2
+			allocate(ic%atom(i)%orbital(4, ic%atom(i)%norbitals))
+			k=0
+			do l = 0, (n-1)
+			do m = -l, l
+			do s = -1,1,2
+				k = k+1
+				ic%atom(i)%orbital(1,k) = n
+				ic%atom(i)%orbital(2,k) = l
+				ic%atom(i)%orbital(3,k) = m
+				ic%atom(i)%orbital(4,k) = s
+			enddo
+			enddo
+			enddo
+		enddo
+		!
+		! create basis on nearest neighbor atoms to irreducible atoms
+		do i = 1, irrpair%nshells
+			n = 3
+			! factor of two here accounts for spin
+			irrpair%shell(i)%atom%norbitals = 2*n**2
+			allocate(irrpair%shell(i)%atom%orbital(4, irrpair%shell(i)%atom%norbitals ))
+			!
+			k=0
+			do l = 0, (n-1)
+			do m = -l, l
+			do s = -1,1,2
+				k = k+1
+				irrpair%shell(i)%atom%orbital(1,k) = n
+				irrpair%shell(i)%atom%orbital(2,k) = l
+				irrpair%shell(i)%atom%orbital(3,k) = m
+				irrpair%shell(i)%atom%orbital(4,k) = s
+			enddo
+			enddo
+			enddo
+		enddo
+		!
+		!
+		! if (opts%verbosity.ge.1) call tb_basis_to_stdout(irrpair,ic)
+		!
+    	! number of slater koster matrix elements per irreducible pairs = 2*min(l,l')+1 for every l and for every pair
+    	! but note that -m = m.
+    	nSKs = 0
+    	do k = 1, irrpair%nshells
+    		! jth cell entered on atom i
+			li = unique(ic%atom(irrpair%shell(k)%i)%orbital(2,:))
+			lj = unique(irrpair%shell(k)%atom%orbital(2,:))
+			! loop over all combination of orbitals
+			do i = 1, size(li)
+			do j = 1, size(lj)
+    			nSKs = nSKs + abs(min(li(i),lj(j)))+1
+			enddo
+			enddo
+		enddo
+		tb%nSKs = nSKs
+    	if (opts%verbosity.ge.1) call am_print('irreducible matrix elements',tb%nSKs)
+		!
+		! SK_label(:,:) ! [i,j,li,lj,m] i,j are site indices, li,lj are orbital indices, and m is the type of overlap/bond (sigma,pi,delta)
+		if (opts%verbosity.ge.1) write(*,'(a5,7a6,a10)') '     ', '#', 'shell', 'i', 'j', 'li', 'lj', 'm', 'SK'
+		if (opts%verbosity.ge.1) write(*,'(a5,a42,a10)') '     ', repeat(' -----',7), ' '//repeat('-',9)
+		allocate(tb%SK(nSKs))
+		allocate(tb%SK_label(5,nSKs))
+		!
+		ii=0
+    	do k = 1, irrpair%nshells
+    		! li = orbital on irreducible cell atom
+			li = unique(ic%atom(irrpair%shell(k)%i)%orbital(2,:))
+			! lj = orbital on atom in the jth shell around an irreducible cell atom
+			lj = unique(irrpair%shell(k)%atom%orbital(2,:))
+			! loop over all combination of orbitals (outer product of li x lj)
+			do i = 1, size(li)
+			do j = 1, size(lj)
+				! because of cylindrical symmetry, only the matrix elements for which m = m' remain in each li and lj 
+				! also, -m = m, so the irreducible tight binding parameters include only m = 0 through min(li,lj)
+				do m = 0, min(li(i),lj(j))
 					!
-	    		enddo
-        	endif
-        	!
-        	! number of slater koster matrix elements
-        	! (1 matrix element for every irreducible pair of orbitals)
-        	nSKs = 0
-        	do k = 1,pair%nshells
-        		! atoms comprising pair
-				pair%shell(k)%i
-				pair%shell(k)%j
-				! 
-        		nSKs = nSKs + (ic%atom(i)%norbitals * ic%atom(j)%norbitals)
-    		enddo
-    		!
-        	!
-	    endif
+	        		ii=ii+1
+	        		!
+	        		tb%SK_label(1,ii) = irrpair%shell(k)%i
+	        		tb%SK_label(2,ii) = irrpair%shell(k)%j
+	        		tb%SK_label(3,ii) = li( i )
+	        		tb%SK_label(4,ii) = lj( j )
+	        		tb%SK_label(5,ii) = m
+	        		!
+	        		! add a placeholder slater koster parameter to initialize
+	        		tb%SK(ii) = 1.0_dp
+	        		!
+	        		if (opts%verbosity.ge.1) write(*,'(5x,i6,i6, i6,i6,i6,i6,i6, f10.2)') ii, k, tb%SK_label(:,ii), tb%SK(ii)
+				enddo
+			enddo
+			enddo
+		enddo
+		!
+    end subroutine template_matrix_elements
+
+    subroutine     output_matrix_elements(tb)
+    	!
+    	implicit none
+    	!
+    	class(am_class_tb), intent(inout) :: tb
+    	integer :: fid, k
+    	!
+        fid = 1
+        open(unit=fid,file='outfile.tightbinding',status='replace',action='write')
+	        !
+	        write(fid,'(5x,i6)') tb%nSKs
+	    	do k = 1, tb%nSKs
+	    		write(fid,'(5x,i6,5i6,f10.2)') k, tb%SK_label(:,k), tb%SK(k)
+			enddo
+			!
+		close(fid)
+		!
+	end subroutine output_matrix_elements
+
+    subroutine     read_matrix_elements(tb,opts)
+    	!
+    	implicit none
+    	!
+    	class(am_class_tb), intent(inout) :: tb
+        type(am_class_options), intent(in) :: opts
+    	integer :: fid, k, i
+    	real(dp) :: b
+        character(maximum_buffer_size) :: buffer ! read buffer
+        character(len=:), allocatable :: word(:) ! read buffer
+    	!
+    	if (opts%verbosity.ge.1) call am_print_title('Reading tight binding matrix elements')
+    	!
+    	if (opts%verbosity.ge.1) call am_print('input file',trim(opts%tbf))
+    	!
+        fid = 1
+        open(unit=fid,file=trim(opts%tbf),status="old",action='read')
+	        !
+            read(unit=fid,fmt='(a)') buffer
+            word = strsplit(buffer,delimiter=' ')
+            read(word(1),*) tb%nSKs
+	        if (opts%verbosity.ge.1) write(*,'(5x,i6)') tb%nSKs
+	        !
+	        if (allocated(tb%SK_label)) deallocate(tb%SK_label)
+	        if (allocated(tb%SK)) 		deallocate(tb%SK)
+	        !
+	        allocate(tb%SK_label(5,tb%nSKs))
+	        allocate(tb%SK(tb%nSKs))
+	        !
+	    	do k = 1, tb%nSKs
+	    		!
+	            read(unit=fid,fmt='(a)') buffer
+	            word = strsplit(buffer,delimiter=' ')
+	            read(word(1),*) i
+	            read(word(2),*) tb%SK_label(1,i)
+	            read(word(3),*) tb%SK_label(2,i)
+	            read(word(4),*) tb%SK_label(3,i)
+	            read(word(5),*) tb%SK_label(4,i)
+	            read(word(6),*) tb%SK_label(5,i)
+	            read(word(7),*) tb%SK(i)
+	            !
+	            ! if (opts%verbosity.ge.1) write(*,*) i, tb%SK_label(:,i), tb%SK(i)
+	    		if (opts%verbosity.ge.1) write(*,'(5x,i6,5i6,f10.2)') i, tb%SK_label(1:5,i), tb%SK(i)
+			enddo
+			!
+		close(fid)
+		!
+	end subroutine read_matrix_elements
+
+	subroutine     get_Ly_in_Lz_basis(l, V, D)
+		!
+		! Calculates the eigenvalues D and eigevectors My of Ly operator in the Lz basis using raising/lowering operators.
+		!
+		! R. M. Martin, Electronic Structure: Basic Theory and Practical Methods, 1 edition
+		! (Cambridge University Press, Cambridge, UK ; New York, 2008), p 573.
+		!
+		! Romero Nichols "Density Functional Study of Fullerene-Based Solids: Crystal Structure,
+		! Doping, and Electron- Phonon Interaction", Ph.D. Thesis UIUC, p 96.
+		!
+		! C. Cohen-Tannoudji, B. Diu, and F. Laloe, Quantum Mechanics, 1 edition (Wiley-VCH, New
+		! York; Paris, 1992), p 666.
+		!
+		! J. J. Sakurai, Modern Quantum Mechanics, Revised edition (Addison Wesley, Reading, Mass,
+		! 1993). p 207
+		!
+		implicit none
+		!
+		integer    , intent(in) :: l ! l is the orbital quantum number,  
+		complex(dp), intent(out), allocatable :: V(:,:)  ! My is returned as a (l**2+1) x (l**2+1) matrix containing all possible values of m : |m| .le. l
+		real(dp)   , intent(out), allocatable :: D(:)    ! because Ly operator is Hermitian, eigenvalues are real
+		complex(dp), allocatable :: Ly(:,:)
+		integer :: k, nstates, m
+		! 
+		! number of states (m=-l,-l+1,-l+2,...,0,...,l-2,l-1,l)
+		nstates = l**2 + 1
+		!
+		! indices of V refer to value of m
+		allocate(V(nstates,nstates))
+		!
+		! initialize banded Ly matrix
+		allocate(Ly(2,nstates))
+		Ly = 0
+		!
+		! Construct banded Ly matrix in the Lz basis from raising and lower operators
+		! Laloe, p 666; Martin, p 573, Eq N4; Sakurai, p 207. Here, hbar is set to 1.
+		k = 0
+		do m = -l, l-1
+			k=k+1
+			Ly(2,k) = -0.5_dp * cmplx_i * sqrt( real(l*(l+1)-m*(m+1),dp) )
+		enddo
+		!
+		! Diagonalize the Ly matrix
+		call am_zhbev(A_b=Ly,V=V,D=D)
+		!
+		! Equivalent to above, but using full matrix instead
+		! complex(dp), allocatable :: Lyf(:,:)
+		! Lyf = diag(Ly(2,1:k),-1)
+		! Lyf = Lyf + adjoint(Lyf)
+		! call am_print('Lyf',Lyf)
+		! call am_zheev(A=Lyf,V=My,D=D)
+		! call am_print('zheev : V',My)
+		! call am_print('zheev : D',D)
+		!
+	end subroutine get_Ly_in_Lz_basis
+
+! 	subroutine     generate_k_independent_part_of_hamiltonian(tb,irrpair,ic,H)
+! 		!
+! 		implicit none
+! 		class(am_class_tb), intent(inout) :: tb
+! 		!
+! 		!
+
+! 	end subroutine generate_k_independent_part_of_hamiltonian
 
 
-	    ! add output routine here.
-
-    end subroutine output_matrix_elements
+	!
+	! stuff below is not in use
+	!
 
 	pure function  slater_koster(l1,m1,l2,m2,R) result(sk)
 		!
@@ -387,64 +645,6 @@ contains
 			!
         end function r_nl
 	end subroutine atomic_orbital
-
-	subroutine     get_Ly_in_Lz_basis(l, V, D)
-		!
-		! Calculates the eigenvalues D and eigevectors My of Ly operator in the Lz basis using raising/lowering operators.
-		!
-		! R. M. Martin, Electronic Structure: Basic Theory and Practical Methods, 1 edition
-		! (Cambridge University Press, Cambridge, UK ; New York, 2008), p 573.
-		!
-		! Romero Nichols "Density Functional Study of Fullerene-Based Solids: Crystal Structure,
-		! Doping, and Electron- Phonon Interaction", Ph.D. Thesis UIUC, p 96.
-		!
-		! C. Cohen-Tannoudji, B. Diu, and F. Laloe, Quantum Mechanics, 1 edition (Wiley-VCH, New
-		! York; Paris, 1992), p 666.
-		!
-		! J. J. Sakurai, Modern Quantum Mechanics, Revised edition (Addison Wesley, Reading, Mass,
-		! 1993). p 207
-		!
-		implicit none
-		!
-		integer    , intent(in) :: l ! l is the orbital quantum number,  
-		complex(dp), intent(out), allocatable :: V(:,:)  ! My is returned as a (l**2+1) x (l**2+1) matrix containing all possible values of m : |m| .le. l
-		real(dp)   , intent(out), allocatable :: D(:)    ! because Ly operator is Hermitian, eigenvalues are real
-		complex(dp), allocatable :: Ly(:,:)
-		integer :: k, nstates, m
-		! 
-		! number of states (m=-l,-l+1,-l+2,...,0,...,l-2,l-1,l)
-		nstates = l**2 + 1
-		!
-		! indices of V refer to value of m
-		allocate(V(nstates,nstates))
-		!
-		! initialize banded Ly matrix
-		allocate(Ly(2,nstates))
-		Ly = 0
-		!
-		! Construct banded Ly matrix in the Lz basis from raising and lower operators
-		! Laloe, p 666; Martin, p 573, Eq N4; Sakurai, p 207. Here, hbar is set to 1.
-		k = 0
-		do m = -l, l-1
-			k=k+1
-			Ly(2,k) = -0.5_dp * cmplx_i * sqrt( real(l*(l+1)-m*(m+1),dp) )
-		enddo
-		!
-		! Diagonalize the Ly matrix
-		call am_zhbev(A_b=Ly,V=V,D=D)
-		!
-! 		My 
-		!
-		! Equivalent to above, but using full matrix instead
-		! complex(dp), allocatable :: Lyf(:,:)
-		! Lyf = diag(Ly(2,1:k),-1)
-		! Lyf = Lyf + adjoint(Lyf)
-		! call am_print('Lyf',Lyf)
-		! call am_zheev(A=Lyf,V=My,D=D)
-		! call am_print('zheev : V',My)
-		! call am_print('zheev : D',D)
-		!
-	end subroutine get_Ly_in_Lz_basis
 
 ! 	subroutine     quantize_orbitals_to_bond(v,state)
 ! 		!

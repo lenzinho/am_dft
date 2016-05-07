@@ -36,9 +36,9 @@ module am_vasp_io
         !>
         implicit none
         !
-        character(len=*), optional :: iopt_filename
+        character(len=*), optional, intent(in) :: iopt_filename
         character(max_argument_length) :: fname
-        integer, optional :: iopt_verbosity
+        integer, optional, intent(in) :: iopt_verbosity
         integer :: verbosity
         integer , intent(out) :: nkpts                          !> nkpts number of kpoints
         real(dp), allocatable, intent(out) :: kpt(:,:)          !> kpt(3,nkpts) kpoint vectors

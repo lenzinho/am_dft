@@ -7,6 +7,7 @@ module am_options
         real(dp) :: sym_prec
         integer  :: n(3) ! monkhorst pack mesh grid dimensions
         real(dp) :: s(3) ! monkhorst pack mesh grid shift
+        character(max_argument_length) :: tbf
         character(max_argument_length) :: ibzkpt
         character(max_argument_length) :: procar
         character(max_argument_length) :: prjcar
@@ -51,6 +52,7 @@ module am_options
         opts%wan_mmn  = 'wannier90.mmn'
         opts%wan_win  = 'wannier90.win'
         opts%wan_eig  = 'wannier90.eig'
+        opts%tbf      = 'infile.tightbinding'
         opts%supercell        = [1,1,1] ! no supercell
         opts%primitive        = .false. ! reduces unit cell to primitive cel
         opts%conventional     = .false. ! centers unit cell
@@ -163,6 +165,13 @@ module am_options
                     i=i+1
                     call get_command_argument(i,opts%poscar)
                     opts%poscar = trim(opts%poscar)
+                !
+                ! tight binding
+                !
+                case('-tb')
+                    i=i+1
+                    call get_command_argument(i,opts%tbf)
+                    opts%tbf = trim(opts%tbf)
                 !
                 ! wannier
                 !

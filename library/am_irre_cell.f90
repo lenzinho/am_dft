@@ -14,7 +14,7 @@ module am_irre_cell
     private
     
     type, public, extends(am_class_prim_cell) :: am_class_irre_cell
-        !
+        ! atom is used by tight binding
         class(am_class_atom), allocatable :: atom(:)
         !
     contains
@@ -22,8 +22,6 @@ module am_irre_cell
     end type am_class_irre_cell
 
 contains
-
-    
     
     subroutine     get_irreducible(ic,pc,uc,sg,opts)
         !

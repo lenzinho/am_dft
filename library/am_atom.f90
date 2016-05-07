@@ -13,56 +13,9 @@ module am_atom
         integer :: norbitals
         integer, allocatable :: orbital(:,:) ! quantum numbers [n,l,m,s,#], last number in nlms array is the state index starting with H 1s
         !
-    contains
-        procedure :: generate_orbitals
 	end type am_class_atom
 
     contains
-    
-! 	subroutine     generate_orbitals(atom,Z,n_valence_states,n_excited_states)
-! 		!
-! 		! nvalence = number of valence orbitals
-! 		! nexcited = number of excited orbitals
-! 		!
-! 		use am_rank_and_sort
-! 		!
-! 		implicit none
-! 	  	!
-!         class(am_class_atom), intent(inout) :: atom
-! 		integer, intent(in) :: Z, n_valence_states, n_excited_states
-! 		integer, allocatable :: ind(:)
-! 		integer, allocatable :: nlms(:,:) ! quantum numbers, [n,l,m,s,#] state index starting from the first electron on H 1s] last index is electron count
-! 		integer, allocatable :: state(:,:)
-! 		integer :: nmax, nstates
-! 		integer :: n,l,m,s,k
-! 		!
-! 		!
-! 		! generate all possible states for atoms in the periodic table
-! 		nmax = 6
-! 		nstates = 182
-! 		allocate(state(5,nstates))
-! 		k=0
-! 		do n = 1, nmax 
-! 		do l = 0, (n-1)
-! 		do m = -l,l
-! 		do s = 1,2
-! 			k = k+1
-! 			state(1:4,k) = [n,l,m,s]
-! 		enddo
-! 		enddo
-! 		enddo
-! 		enddo
-! 		!
-! 		! Orbitals are filled in the order of increasing n+l;
-! 		! Where two orbitals have the same value of n+l, they are filled in order of increasing n.
-! 		allocate(ind(k))
-! 		call rank(state(1,:)+state(2,:),ind)
-! 		state = state(:,ind)
-! 		state(5,:)=[1:k]
-! 		!
-! 		allocate(atom%state,source=state(:,max(1,(Z-n_valence_states)):(Z+n_excited_states)))
-! 		!
-! 	end subroutine generate_orbitals
 
 	pure function  atm_symb(Z) result(symb)
 		!
@@ -112,4 +65,36 @@ module am_atom
 		!
 	end function   atm_Z
 
+	pure function  spdf2l(spdf) result(l)
+		!
+		character(1), intent(in) :: spdf
+		integer :: l
+		!
+		if     (spdf(1:1).eq.'s') then; l = 0
+		elseif (spdf(1:1).eq.'p') then; l = 1
+		elseif (spdf(1:1).eq.'d') then; l = 2
+		elseif (spdf(1:1).eq.'f') then; l = 3
+		endif
+	end function   spdf2l
+
+	pure function  l2spdf(l) result(spdf)
+		!
+		integer, intent(in) :: l
+		character(1) :: spdf
+		!
+		if     (l.eq.0) then; spdf = 's'
+		elseif (l.eq.1) then; spdf = 'p'
+		elseif (l.eq.2) then; spdf = 'd'
+		elseif (l.eq.3) then; spdf = 'f'
+		endif
+	end function   l2spdf
+
 end module
+
+
+
+
+
+
+
+

@@ -544,23 +544,23 @@ contains
         !
         sc%tau = 1.0D5
         m=0
-        map : do i1 = 0, nint(sum(abs(bscfp(:,1)))) ! sc%natoms
-              do i2 = 0, nint(sum(abs(bscfp(:,2)))) ! sc%natoms
-              do i3 = 0, nint(sum(abs(bscfp(:,3)))) ! sc%natoms
-                  do j = 1, uc%natoms
-                      !
-                      tau_wrk = uc%tau(1:3,j)
-                      ! atomic basis in primitive fractional
-                      tau_wrk = tau_wrk+real([i1,i2,i3],dp)
-                      ! convert to supercell fractional
-                      tau_wrk = matmul(inv_bscfp,tau_wrk)
-                      ! reduce to primitive supercell
-                      tau_wrk = modulo(tau_wrk+opts%sym_prec,1.0_dp) - opts%sym_prec
-                      !
-                      if (.not.issubset(sc%tau,tau_wrk,opts%sym_prec)) then
-                          m = m+1 
-                          sc%tau(1:3,m) = tau_wrk
-                          sc%Z(m) = uc%Z(j)
+        map :   do i1 = 0, nint(sum(abs(bscfp(:,1)))) ! sc%natoms
+                do i2 = 0, nint(sum(abs(bscfp(:,2)))) ! sc%natoms
+                do i3 = 0, nint(sum(abs(bscfp(:,3)))) ! sc%natoms
+                    do j = 1, uc%natoms
+                        !
+                        tau_wrk = uc%tau(1:3,j)
+                        ! atomic basis in primitive fractional
+                        tau_wrk = tau_wrk+real([i1,i2,i3],dp)
+                        ! convert to supercell fractional
+                        tau_wrk = matmul(inv_bscfp,tau_wrk)
+                        ! reduce to primitive supercell
+                        tau_wrk = modulo(tau_wrk+opts%sym_prec,1.0_dp) - opts%sym_prec
+                        !
+                        if (.not.issubset(sc%tau,tau_wrk,opts%sym_prec)) then
+                            m = m+1 
+                            sc%tau(1:3,m) = tau_wrk
+                            sc%Z(m) = uc%Z(j)
                       endif
                       if (m.eq.sc%natoms) then
                           exit map
@@ -592,9 +592,9 @@ contains
         cp%bas=uc%bas
         !
         if (allocated(cp%tau)) deallocate(cp%tau)
-        if (allocated(cp%Z)) deallocate(cp%Z)
-        allocate(cp%tau,source=uc%tau)
-        allocate(cp%Z,source=uc%Z)
+        if (allocated(cp%Z))   deallocate(cp%Z)
+        allocate(cp%tau,       source=uc%tau)
+        allocate(cp%Z,         source=uc%Z)
         !
     end subroutine  copy
    
@@ -604,28 +604,77 @@ contains
         !
         class(am_class_unit_cell), intent(inout) :: uc
         integer , intent(in)  :: indices(:)
-        real(dp), allocatable :: tau(:,:)
-        integer , allocatable :: Z(:)
+        real(dp), allocatable :: temp_tau(:,:)
+        integer , allocatable :: temp(:)
         integer :: i
-        !
-        ! create temporary variables
-        allocate(tau   ,source=uc%tau )
-        allocate(Z,source=uc%Z)
         !
         ! count how many atoms should be passed
         uc%natoms = count(indices.ne.0)
         !
-        deallocate(uc%tau)
-        allocate(uc%tau(3,uc%natoms))
-        do i = 1, uc%natoms
-            uc%tau(:,i)=tau(:,indices(i))
-        enddo
+        if (allocated(uc%tau)) then
+            ! copy to temp
+            allocate(temp_tau,source=uc%tau)
+            ! reallocate space
+            deallocate(uc%tau); allocate(uc%tau(3,uc%natoms))
+            ! transfer variables
+            do i = 1, uc%natoms
+                uc%tau(1:3,i) = temp_tau(1:3,indices(i))
+            enddo
+            ! deallocate temp
+            deallocate(temp_tau)
+        endif
         !
-        deallocate(uc%Z)
-        allocate(uc%Z(uc%natoms))
-        do i = 1, uc%natoms
-            uc%Z(i)=Z(indices(i))
-        enddo
+        if (allocated(uc%Z)) then
+            ! copy to temp
+            allocate(temp,source=uc%Z)
+            ! reallocate space
+            deallocate(uc%Z); allocate(uc%Z(uc%natoms))
+            ! transfer variables
+            do i = 1, uc%natoms
+                uc%Z(i) = temp(indices(i))
+            enddo
+            ! deallocate temp
+            deallocate(temp)
+        endif
+        !
+        if (allocated(uc%uc_identifier)) then
+            ! copy to temp
+            allocate(temp,source=uc%uc_identifier)
+            ! reallocate space
+            deallocate(uc%uc_identifier); allocate(uc%uc_identifier(uc%natoms))
+            ! transfer variables
+            do i = 1, uc%natoms
+                uc%uc_identifier(i) = temp(indices(i))
+            enddo
+            ! deallocate temp
+            deallocate(temp)
+        endif
+        !
+        if (allocated(uc%pc_identifier)) then
+            ! copy to temp
+            allocate(temp,source=uc%pc_identifier)
+            ! reallocate space
+            deallocate(uc%pc_identifier); allocate(uc%pc_identifier(uc%natoms))
+            ! transfer variables
+            do i = 1, uc%natoms
+                uc%pc_identifier(i) = temp(indices(i))
+            enddo
+            ! deallocate temp
+            deallocate(temp)
+        endif
+        !
+        if (allocated(uc%ic_identifier)) then
+            ! copy to temp
+            allocate(temp,source=uc%ic_identifier)
+            ! reallocate space
+            deallocate(uc%ic_identifier); allocate(uc%ic_identifier(uc%natoms))
+            ! transfer variables
+            do i = 1, uc%natoms
+                uc%ic_identifier(i) = temp(indices(i))
+            enddo
+            ! deallocate temp
+            deallocate(temp)
+        endif
         !
     end subroutine  filter
 

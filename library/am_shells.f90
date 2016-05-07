@@ -21,11 +21,13 @@ module am_shells
         ! j th  shell centered on irreducible atom i 
         integer :: i
         integer :: j
+        ! atom is used by tight binding, it defines the orbitals on atoms in the jth shell
+        type(am_class_atom) :: atom
         !
     end type am_shell_cell
     
     type am_class_pair_shell
-        !
+        ! 
         integer, allocatable :: nshells ! how many shells irreducible atoms
         type(am_shell_cell), allocatable :: shell(:) ! shell(k)
         !
@@ -39,45 +41,6 @@ module am_shells
     end type am_class_pair_shell
 
 contains
-
-    
-!    subroutine     get_irreducible_force_constants(pair,ic,pg,sg,opts)
-!        !
-!        implicit none
-!        class(am_class_pair_shell), intent(inout) :: pair
-!        class(am_class_unit_cell) , intent(in) :: ic
-!        type(am_class_symmetry)   , intent(in) :: pg
-!        type(am_class_symmetry)   , intent(in) :: sg
-!        type(am_class_options)    , intent(in) :: opts
-!        integer , allocatable :: irrpair_identifier(:) ! unique indicies i and j (see below)
-!        !
-!        !
-!        irrpair_identifier = pair%identify_irreducible_pair_shells(ic=ic,pg=pg,opts=opts)
-!        
-!!        do i = 1, pair%
-! !       call get_symmetry_adapted_tensor(pg=pg,uc=uc,opts=opts,property='reversal',relations)
-!        !
-!        
-!
-!        !
-!        !! output
-!        !allocate(irrep_pairs,source=ij(1:2,unique(irrpair_identifier)))
-!        !!
-!        !!
-!        !if (opts%verbosity.ge.1) then
-!        !    ind_u = unique(irrpair_identifier)
-!        !    npairs_u = size(ind_u)
-!        !    call am_print('irreducible pair ('//trim(int2char(npairs_u))//')',ij(:,ind_u))
-!        !    !
-!        !    write(*,'(5x)', advance='no')
-!        !    do k = 1,npairs_u
-!        !        i = ij(1,ind_u(k))
-!        !        j = ij(2,ind_u(k))
-!        !        write(*,'(a,"-",a)',advance='no') "("//trim(atm_symb(ic%Z(i))), trim(atm_symb(pair%shell(i,j)%Z(1)))//") "
-!        !    enddo
-!        !    write(*,*)
-!        !endif
-!    end subroutine get_irreducible_force_constants
     
     subroutine     get_irreducible_pair_shells(irrpair,pair,pg,sg,ic,opts)
         !
@@ -95,6 +58,7 @@ contains
         type(am_class_symmetry) :: revg
         type(am_class_symmetry) :: rotg
         type(am_class_options)  :: notalk
+        integer , allocatable :: multiplicity(:)
         integer :: i,j,k
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining irreducible pair shells')
@@ -111,7 +75,7 @@ contains
         ! call am_print('irrpair_identifier',irrpair_identifier)
         !
         ! allocate space
-        irrpair_identifier_unique = unique(abs(irrpair_identifier)) 
+        irrpair_identifier_unique = unique(abs(irrpair_identifier))
         ! call am_print('irrpair_identifier_unique',irrpair_identifier_unique)
         irrpair%nshells = size(irrpair_identifier_unique)
         if (opts%verbosity.ge.1) call am_print('irreducible pair shells',irrpair%nshells)
@@ -120,6 +84,14 @@ contains
         allocate(irrpair%shell(irrpair%nshells))
         do i = 1,irrpair%nshells
             irrpair%shell(i) = pair%shell(irrpair_identifier_unique(i))
+        enddo
+        !
+        allocate(multiplicity(irrpair%nshells))
+        multiplicity=0
+        do k = 1, irrpair%nshells
+        do j = 1, pair%nshells
+            if (irrpair_identifier_unique(k).eq.abs(irrpair_identifier(j))) multiplicity(k) = multiplicity(k) + irrpair%shell(k)%natoms
+        enddo
         enddo
         !
         ! write to stdout
@@ -156,24 +128,26 @@ contains
                 i = irrpair%shell(k)%i
                 j = irrpair%shell(k)%j
                 ! determine stabilizers of a prototypical bond in shell (vector v)
-                call stab%get_stabilizer_group(pg=pg, v=pair%shell(k)%tau(1:3,1), opts=notalk)
+                call stab%get_stabilizer_group(pg=pg, v=irrpair%shell(k)%tau(1:3,1), opts=notalk)
                 ! determine rotations which leaves shell invariant
-                call rotg%get_rotational_group(pg=pg, uc=pair%shell(k), opts=notalk)
+                call rotg%get_rotational_group(pg=pg, uc=irrpair%shell(k), opts=notalk)
                 ! determine reversal group, space symmetries, which interchange the position of atoms at the edges of the bond
-                call revg%get_reversal_group(sg=sg, v=pair%shell(k)%tau(1:3,1), opts=notalk)
+                call revg%get_reversal_group(sg=sg, v=irrpair%shell(k)%tau(1:3,1), opts=notalk)
                 write(*,'(5x)'    ,advance='no')
-                write(*,'(i5)'    ,advance='no') k
+                write(*,'(i5)'    ,advance='no') k ! shell
                 write(*,'(a6)'    ,advance='no') trim(atm_symb(ic%Z(i)))//'-'//trim(atm_symb(irrpair%shell(k)%Z(1))) ! trim(atm_symb(pair%shell(k)%Z(1)))
-                write(*,'(i5)'    ,advance='no') pair%shell(k)%natoms
+                write(*,'(i5)'    ,advance='no') multiplicity(k)
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( stab%pg_identifier ))
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( rotg%pg_identifier ))
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( revg%pg_identifier ))
-                write(*,'(f10.3)' ,advance='no') norm2(matmul(pair%shell(k)%bas,pair%shell(k)%tau(1:3,1)))
-                write(*,'(3f10.3)',advance='no') matmul(pair%shell(k)%bas,pair%shell(k)%tau(1:3,1))
-                write(*,'(3f10.3)',advance='no') pair%shell(k)%tau(1:3,1)
+                write(*,'(f10.3)' ,advance='no') norm2(matmul(irrpair%shell(k)%bas,irrpair%shell(k)%tau(1:3,1)))
+                write(*,'(3f10.3)',advance='no') matmul(irrpair%shell(k)%bas,irrpair%shell(k)%tau(1:3,1))
+                write(*,'(3f10.3)',advance='no') irrpair%shell(k)%tau(1:3,1)
                 write(*,*)
             endif
         enddo
+        write(*,'(5x,a)') 'Definitions:'
+        write(*,'(5x,a)') 'multiplicity (m): number of times pair appears'
         !
     end subroutine get_irreducible_pair_shells
     
@@ -289,7 +263,7 @@ contains
         notalk = opts 
         notalk%verbosity = 0
         !
-        ! set pair cutoff radius (smaller than half the smallest cell dimension, lapger than the smallest distance between atoms)
+        ! set pair cutoff radius (smaller than half the smallest cell dimension, larger than the smallest distance between atoms)
         pair_cutoff = minval([norm2(uc%bas(:,:),1)/real(2,dp), pair_cutoff])
         call am_print('pair cutoff radius',pair_cutoff,' ... ')
         !
@@ -317,10 +291,8 @@ contains
             !
             ! get center of sphere in fractional supercell coordinates
             D = matmul(matmul(inv(uc%bas),ic%bas),ic%tau(:,i))
-            !
             ! create sphere
             sphere = create_sphere(uc=uc, sphere_center=D, pair_cutoff=pair_cutoff, opts=opts )
-            !
             ! identify atoms in the whole sphere that can be mapped onto each other by point symmetry operations and return the identifier of the pair for each atom (including the center atom)
             ind_u = identify_pairs(sphere=sphere,pg=pg)
             ! get number of pairs
@@ -447,6 +419,7 @@ contains
                 ! sphere%tau(:,i) = reduce_to_wigner_seitz(pnt=sphere%tau(:,i),grid_points=grid_points,bas=uc%bas,sym_prec=opts%sym_prec)
                 sphere%tau(:,i) = modulo(sphere%tau(:,i) + 0.5_dp + opts%sym_prec, 1.0_dp) - 0.5_dp - opts%sym_prec
                 ! take note of points within the predetermied pair cutoff radius
+                ! right now, pair cutoff is in fractional. should use cartesian coordinats.
                 if (norm2(matmul(sphere%bas,sphere%tau(:,i))).le.pair_cutoff + opts%sym_prec) then
                     j=j+1
                     atoms_inside(j) = i
@@ -556,6 +529,45 @@ contains
         enddo
         !
     end function   transform_2nd_order_force_constants
+
+
+!    subroutine     get_irreducible_force_constants(pair,ic,pg,sg,opts)
+!        !
+!        implicit none
+!        class(am_class_pair_shell), intent(inout) :: pair
+!        class(am_class_unit_cell) , intent(in) :: ic
+!        type(am_class_symmetry)   , intent(in) :: pg
+!        type(am_class_symmetry)   , intent(in) :: sg
+!        type(am_class_options)    , intent(in) :: opts
+!        integer , allocatable :: irrpair_identifier(:) ! unique indicies i and j (see below)
+!        !
+!        !
+!        irrpair_identifier = pair%identify_irreducible_pair_shells(ic=ic,pg=pg,opts=opts)
+!        
+!!        do i = 1, pair%
+! !       call get_symmetry_adapted_tensor(pg=pg,uc=uc,opts=opts,property='reversal',relations)
+!        !
+!        
+!
+!        !
+!        !! output
+!        !allocate(irrep_pairs,source=ij(1:2,unique(irrpair_identifier)))
+!        !!
+!        !!
+!        !if (opts%verbosity.ge.1) then
+!        !    ind_u = unique(irrpair_identifier)
+!        !    npairs_u = size(ind_u)
+!        !    call am_print('irreducible pair ('//trim(int2char(npairs_u))//')',ij(:,ind_u))
+!        !    !
+!        !    write(*,'(5x)', advance='no')
+!        !    do k = 1,npairs_u
+!        !        i = ij(1,ind_u(k))
+!        !        j = ij(2,ind_u(k))
+!        !        write(*,'(a,"-",a)',advance='no') "("//trim(atm_symb(ic%Z(i))), trim(atm_symb(pair%shell(i,j)%Z(1)))//") "
+!        !    enddo
+!        !    write(*,*)
+!        !endif
+!    end subroutine get_irreducible_force_constants
 
 end module am_shells
 
