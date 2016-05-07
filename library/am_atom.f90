@@ -89,6 +89,18 @@ module am_atom
 		endif
 	end function   l2spdf
 
+	pure function  m2spdf(m) result(sigma_pi_delta_phi)
+		!
+		integer, intent(in) :: m
+		character(5) :: sigma_pi_delta_phi
+		!
+		if     (m.eq.0) then; sigma_pi_delta_phi = 'sigma'
+		elseif (m.eq.1) then; sigma_pi_delta_phi = 'pi'
+		elseif (m.eq.2) then; sigma_pi_delta_phi = 'delta'
+		elseif (m.eq.3) then; sigma_pi_delta_phi = 'phi'
+		endif
+	end function   m2spdf
+
 end module
 
 

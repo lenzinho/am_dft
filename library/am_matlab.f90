@@ -38,8 +38,6 @@ module am_matlab
         
     function      R2axis_angle(R) result(aa)
         !
-        use am_mkl, only : det
-        !
         implicit none
         !
         real(dp), intent(in) :: R(3,3)
@@ -47,10 +45,12 @@ module am_matlab
         real(dp) :: aa(4) ! axis & angle [x,y,z,th]
         real(dp) :: tr, phi, axis(3), d
         integer  :: i
-        real(dp) :: signs(3),  m_upper(3), flip(3), shifted(3)
+        ! real(dp) :: signs(3),  m_upper(3), flip(3), shifted(3)
+        !
         !
         ! if R is a rotoinversion, get the angle and axis of the rotational part only (without the inversion)
-        Rcp = R*sign(1.0_dp,det(R))
+        d = R(1,1)*R(2,2)*R(3,3)-R(1,1)*R(2,3)*R(3,2)-R(1,2)*R(2,1)*R(3,3)+R(1,2)*R(2,3)*R(3,1)+R(1,3)*R(2,1)*R(3,2)-R(1,3)*R(2,2)*R(3,1)
+        Rcp = R*sign(1.0_dp,d)
         !
         tr = trace(Rcp)
         !

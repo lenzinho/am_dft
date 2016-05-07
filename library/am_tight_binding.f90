@@ -25,8 +25,9 @@ module am_tight_binding
 		!
 	contains
 		procedure :: template_matrix_elements
-		procedure :: output_matrix_elements
-		procedure :: read_matrix_elements
+		procedure :: print_matrix_elements ! to stdout
+        procedure :: write_matrix_elements ! to file
+		procedure :: read_matrix_elements  ! from fil
         
 	end type am_class_tb
 
@@ -46,6 +47,8 @@ contains
         class(am_class_pair_shell), intent(inout) :: irrpair
         class(am_class_irre_cell) , intent(inout) :: ic
         type(am_class_options)    , intent(in) :: opts
+        integer, allocatable :: Vsk_label(:,:)
+        integer, allocatable :: Vsk_label_unique(:,:)
         logical :: is_spin_polarized
     	integer :: nVsks
     	integer :: n,l,m,s
@@ -88,71 +91,78 @@ contains
 			enddo
 			enddo
 		enddo
-		if (opts%verbosity.ge.1) call tb_basis_to_stdout(irrpair,ic)
+		if (opts%verbosity.ge.1) call print_oribtal_basis(irrpair,ic)
+        !
+        ! quick qestimate to determine how much space to allocate for irreducible matrix elements
+        nVsks = 0
+        do k = 1, irrpair%nshells
+            i = irrpair%shell(k)%i
+            j = irrpair%shell(k)%j
+            nlsi = unique(ic%atom(i)%orbital([1,2,4],:))
+            nlsj = unique(ic%atom(j)%orbital([1,2,4],:))
+            do ii = 1, size(nlsi,2)
+            do jj = 1, size(nlsj,2)
+                  nVsks = nVsks + abs(min( nlsi(2,ii), nlsj(2,jj) )) + 1
+            enddo
+            enddo
+        enddo
 		!
-    	! number of slater koster matrix elements per irreducible pairs = 2*min(l,l')+1 for every l and for every pair
-    	! but note that -m = m.
-    	nVsks = 0
-    	do k = 1, irrpair%nshells
-    		! j irreducible atom shell entered on atom irreducible atom i
+    	! now, really determine the number of irreducible matrix elements
+        ! to determine number of slater koster matrix elements per irreducible pairs, use the facts that:
+        ! 1) (l,l',m) = (l,l',-m)
+        ! 2) (l,l',m) = (-1)^(l-m) * (l',l,m)
+        allocate(Vsk_label(6,nVsks))
+        kk=0
+        do k = 1, irrpair%nshells
+            ! j irreducible atom shell entered on atom irreducible atom i
             i = irrpair%shell(k)%i
             j = irrpair%shell(k)%j
             !
             nlsi = unique(ic%atom(i)%orbital([1,2,4],:))
             nlsj = unique(ic%atom(j)%orbital([1,2,4],:))
             !
-			! loop over all combination of orbitals (outer product of li x lj)
-			do ii = 1, size(nlsi,2)
-			do jj = 1, size(nlsj,2)
-    			nVsks = nVsks + abs(min( nlsi(2,ii), nlsj(2,jj) )) + 1
-			enddo
-			enddo
-		enddo
-		tb%nVsks = nVsks
-    	if (opts%verbosity.ge.1) call am_print('irreducible matrix elements',tb%nVsks)
-		!
-		! Vsk_label(:,:) ! [i,j,li,lj,m] i,j are site indices, li,lj are orbital indices, and m is the type of overlap/bond (sigma,pi,delta)
-		if (opts%verbosity.ge.1) write(*,'(a5,7a6,a10)') '     ', '#', 'shell', 'i', 'j', 'li', 'lj', 'm', 'Vsk'
-		if (opts%verbosity.ge.1) write(*,'(a5,a42,a10)') '     ', repeat(' -----',7), ' '//repeat('-',9)
-		allocate(tb%Vsk(nVsks))
-		allocate(tb%Vsk_label(5,nVsks))
-		!
-		kk=0
-    	do k = 1, irrpair%nshells
-    		! j irreducible atom shell entered on atom irreducible atom i
-            i = irrpair%shell(k)%i
-            j = irrpair%shell(k)%j
-            !
-            nlsi = unique(ic%atom(i)%orbital([1,2,4],:))
-            nlsj = unique(ic%atom(j)%orbital([1,2,4],:))
-            !
-			! loop over all combination of orbitals (outer product of li x lj)
-			do ii = 1, size(nlsi,2)
-			do jj = 1, size(nlsj,2)
-				! because of cylindrical symmetry, only the matrix elements for which m = m' remain in each li and lj 
-				! also, -m = m, so the irreducible tight binding parameters include only m = 0 through min(li,lj)
-				do m = 0, abs(min( nlsi(2,ii) , nlsj(2,jj) ))
-					!
-	        		kk=kk+1
-	        		!
-	        		tb%Vsk_label(1,kk) = irrpair%shell(k)%i
-	        		tb%Vsk_label(2,kk) = irrpair%shell(k)%j
-	        		tb%Vsk_label(3,kk) = nlsi(2,ii)
-	        		tb%Vsk_label(4,kk) = nlsj(2,jj)
-	        		tb%Vsk_label(5,kk) = m
-	        		!
-	        		! add a placeholder slater koster parameter to initialize
-	        		tb%Vsk(kk) = 1.0_dp
-	        		!
-	        		if (opts%verbosity.ge.1) write(*,'(5x,i6,i6, i6,i6,i6,i6,i6, f10.2)') kk, k, tb%Vsk_label(:,kk), tb%Vsk(kk)
-				enddo
-			enddo
-			enddo
+            ! loop over all combination of orbitals (outer product of li x lj)
+            do ii = 1, size(nlsi,2)
+            do jj = 1, size(nlsj,2)
+                ! because of cylindrical symmetry, only the matrix elements for which m = m' remain in each li and lj 
+                ! also, -m = m, so the irreducible tight binding parameters include only m = 0 through min(li,lj)
+                do m = 0, abs(min( nlsi(2,ii) , nlsj(2,jj) ))
+                    !
+                    kk=kk+1
+                    Vsk_label(1,kk) = k
+                    ! sites
+                    Vsk_label(2,kk) = irrpair%shell(k)%i
+                    Vsk_label(3,kk) = irrpair%shell(k)%j
+                    ! azimuthal quantum number
+                    Vsk_label(4,kk) = nlsi(2,ii)
+                    Vsk_label(5,kk) = nlsj(2,jj)
+                    ! (flip the indices to get sp ~= ps )
+                    if (Vsk_label(4,kk).gt.Vsk_label(5,kk)) Vsk_label([4,5],kk) = Vsk_label([5,4],kk)
+                    ! magnetic quantum number
+                    Vsk_label(6,kk) = m
+                enddo
+            enddo
+            enddo
         enddo
         !
-        contains
+        ! get unique (irreducible matrix elements)
+        Vsk_label_unique = unique(Vsk_label)
         !
-	    subroutine     tb_basis_to_stdout(irrpair,ic)
+        tb%nVsks = size(Vsk_label_unique,2)
+        !
+        allocate(tb%Vsk(nVsks))
+        allocate(tb%Vsk_label(6,nVsks))
+        do k = 1, tb%nVsks
+            ! copy irreducible labels
+            tb%Vsk_label(:,k) = Vsk_label_unique(:,k)
+            ! add a placeholder slater koster parameter to initialize
+            tb%Vsk(k) = 1.0_dp
+        enddo
+        !
+		if (opts%verbosity.ge.1) call tb%print_matrix_elements
+        !
+        contains
+	    subroutine     print_oribtal_basis(irrpair,ic)
 		    !
 		    implicit none
             !
@@ -175,16 +185,42 @@ contains
 				    s = ic%atom(i)%orbital(4,j)
 				    write(*,'(a2,i2,a1,i2,a1,i2,a1,i2,a2)',advance='no') ' (', n, ',', l, ',', m, ',', s, ') '
 			    enddo
-			    !
 			    write(*,*)
-			    !
 		    enddo
-		    !
-	    end subroutine tb_basis_to_stdout
-        !
+	    end subroutine print_oribtal_basis
     end subroutine template_matrix_elements
 
-    subroutine     output_matrix_elements(tb)
+    subroutine     print_matrix_elements(tb)
+        !
+        use am_atom, only : l2spdf, m2spdf
+        !
+        implicit none
+        !
+        class(am_class_tb), intent(in) :: tb
+        integer :: k
+        !
+        ! call am_print_title('Tight binding irreducible matrix elements')
+        !
+        call am_print('irreducible matrix elements',tb%nVsks)
+        !
+        write(*,'(a5,7a6,a10)') '     ', '#', 'shell', 'i', 'j', 'li', 'lj', 'm', 'Vsk'
+        write(*,'(a5,a42,a10)') '     ', repeat(' -----',7), ' '//repeat('-',9)
+        !
+        do k = 1, tb%nVsks
+            write(*,'(5x, i6, 3i6, 3a6, f10.3)') &
+                k, &
+                tb%Vsk_label(1,k), &               ! shell
+                tb%Vsk_label(2,k), &               ! site i
+                tb%Vsk_label(3,k), &               ! site j
+                trim(l2spdf(tb%Vsk_label(4,k))), & ! li (s,p,d,f)
+                trim(l2spdf(tb%Vsk_label(5,k))), & ! lj (s,p,d,f)
+                trim(m2spdf(tb%Vsk_label(6,k))), & ! m  (sigma, pi, delta, phi)
+                tb%Vsk(k)                          ! matrix element
+        enddo
+        !
+    end subroutine print_matrix_elements
+
+    subroutine     write_matrix_elements(tb)
     	!
     	implicit none
     	!
@@ -194,14 +230,21 @@ contains
         fid = 1
         open(unit=fid,file='outfile.tightbinding',status='replace',action='write')
 	        !
-	        write(fid,'(5x,i6)') tb%nVsks
-	    	do k = 1, tb%nVsks
-	    		write(fid,'(5x,i6,5i6,f10.2)') k, tb%Vsk_label(:,k), tb%Vsk(k)
-			enddo
+	        write(fid,'(i6)') tb%nVsks
+            do k = 1, tb%nVsks
+            write(fid,'(3i6, 3i6, f)') &
+                tb%Vsk_label(1,k), & ! shell
+                tb%Vsk_label(2,k), & ! site i
+                tb%Vsk_label(3,k), & ! site j
+                tb%Vsk_label(4,k), & ! li (s,p,d,f)
+                tb%Vsk_label(5,k), & ! lj (s,p,d,f)
+                tb%Vsk_label(6,k), & ! m  (sigma, pi, delta, phi)
+                tb%Vsk(k) ! matrix element
+            enddo
 			!
 		close(fid)
 		!
-	end subroutine output_matrix_elements
+	end subroutine write_matrix_elements
 
     subroutine     read_matrix_elements(tb,opts)
     	!
@@ -224,31 +267,31 @@ contains
             read(unit=fid,fmt='(a)') buffer
             word = strsplit(buffer,delimiter=' ')
             read(word(1),*) tb%nVsks
-	        if (opts%verbosity.ge.1) write(*,'(5x,i6)') tb%nVsks
 	        !
 	        if (allocated(tb%Vsk_label)) deallocate(tb%Vsk_label)
-	        if (allocated(tb%Vsk)) 		deallocate(tb%Vsk)
+	        if (allocated(tb%Vsk)) 		 deallocate(tb%Vsk)
 	        !
-	        allocate(tb%Vsk_label(5,tb%nVsks))
+	        allocate(tb%Vsk_label(6,tb%nVsks))
 	        allocate(tb%Vsk(tb%nVsks))
-	        !
-	    	do k = 1, tb%nVsks
-	    		!
-	            read(unit=fid,fmt='(a)') buffer
-	            word = strsplit(buffer,delimiter=' ')
-	            read(word(1),*) i
-	            read(word(2),*) tb%Vsk_label(1,i)
-	            read(word(3),*) tb%Vsk_label(2,i)
-	            read(word(4),*) tb%Vsk_label(3,i)
-	            read(word(5),*) tb%Vsk_label(4,i)
-	            read(word(6),*) tb%Vsk_label(5,i)
-	            read(word(7),*) tb%Vsk(i)
-	            !
-	            ! if (opts%verbosity.ge.1) write(*,*) i, tb%Vsk_label(:,i), tb%Vsk(i)
-	    		if (opts%verbosity.ge.1) write(*,'(5x,i6,5i6,f10.2)') i, tb%Vsk_label(1:5,i), tb%Vsk(i)
-			enddo
-			!
-		close(fid)
+            !
+            do k = 1, tb%nVsks
+                read(unit=fid,fmt='(a)') buffer
+                word = strsplit(buffer,delimiter=' ')
+            
+                read(word(1),*) tb%Vsk_label(1,k) ! shell
+                read(word(2),*) tb%Vsk_label(2,k) ! site i
+                read(word(3),*) tb%Vsk_label(3,k) ! site j
+                read(word(4),*) tb%Vsk_label(4,k) ! li (s,p,d,f)
+                read(word(5),*) tb%Vsk_label(5,k) ! lj (s,p,d,f)
+                read(word(6),*) tb%Vsk_label(6,k) ! m  (sigma, pi, delta, phi)
+                read(word(7),*) tb%Vsk(k)         ! matrix element
+                !
+            enddo
+            !
+            call tb%print_matrix_elements
+            !
+            !
+        close(fid)
 		!
 	end subroutine read_matrix_elements
 
@@ -308,7 +351,7 @@ contains
 		!
     end subroutine get_Ly_in_Lz_basis
 
-    function      spherical_to_tesseral(l) result(B)
+    function       spherical_to_tesseral(l) result(B)
         ! R. R. Sharma, Phys. Rev. B. 19, 2813 (1979).
         !     [1    0    0    0     0     0    0    0     0  ]
         !     [0   0.7   0   0.7i   0     0    0    0     0  ]
@@ -362,7 +405,7 @@ contains
         enddo
         enddo
         !
-    end function spherical_to_tesseral
+    end function   spherical_to_tesseral
     
  	subroutine     test_rotation
  		!
@@ -459,11 +502,7 @@ contains
  		call am_print('th',th)
         call am_print('phi',phi)
  		!
-  
         stop
-        
-        
-        
  	end subroutine test_rotation
     
     !subroutine     build_K(tb,uc,K)
