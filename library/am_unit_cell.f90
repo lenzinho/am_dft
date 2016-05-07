@@ -20,18 +20,19 @@ module am_unit_cell
         real(dp) :: bas(3,3) !> column vectors a(1:3,i), a(1:3,j), a(1:3,k)
         integer  :: natoms   !> number of atoms
         real(dp), allocatable :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates
-        integer , allocatable :: Z(:) !> protons
-        integer , allocatable :: uc_identifier(:) ! idenitfies corresponding atom in unit cell
-        integer , allocatable :: pc_identifier(:) ! idenitfies corresponding atom in primitive cell
-        integer , allocatable :: ic_identifier(:) ! idenitfies corresponding atom in irreducible cell
+        integer , allocatable :: Z(:) !> identifies type of element
+        integer , allocatable :: uc_identifier(:) ! identifies corresponding atom in unit cell
+        integer , allocatable :: pc_identifier(:) ! identifies corresponding atom in primitive cell
+        integer , allocatable :: ic_identifier(:) ! identifies corresponding atom in irreducible cell
     contains
         procedure :: load_poscar
         procedure :: write_poscar
         procedure :: get_supercell
         procedure :: copy
-        procedure :: filter 
+        procedure :: filter
         procedure :: initialize
     end type am_class_unit_cell
+
 
 contains
 
@@ -489,12 +490,12 @@ contains
         !
         implicit none
         !
-        class(am_class_unit_cell), intent(inout) :: sc
-        class(am_class_unit_cell) , intent(in) :: uc
+        class(am_class_unit_cell), intent(out) :: sc
+        class(am_class_unit_cell), intent(in)  :: uc
         real(dp), intent(in) :: bscfp(3,3)
         real(dp) :: inv_bscfp(3,3)
         real(dp) :: tau_wrk(3)
-        integer :: i1, i2, i3, j, m
+        integer :: i1, i2, i3, j, m, i
         type(am_class_options), intent(in) :: opts
         !
         if (opts%verbosity.ge.1) call am_print_title('Expanding to supercell')
@@ -541,26 +542,28 @@ contains
         !
         allocate(sc%tau(3,sc%natoms))
         allocate(sc%Z(sc%natoms))
+        allocate(sc%uc_identifier(sc%natoms)) ! map
         !
         sc%tau = 1.0D5
         m=0
-        map :   do i1 = 0, nint(sum(abs(bscfp(:,1)))) ! sc%natoms
-                do i2 = 0, nint(sum(abs(bscfp(:,2)))) ! sc%natoms
-                do i3 = 0, nint(sum(abs(bscfp(:,3)))) ! sc%natoms
-                    do j = 1, uc%natoms
-                        !
-                        tau_wrk = uc%tau(1:3,j)
-                        ! atomic basis in primitive fractional
-                        tau_wrk = tau_wrk+real([i1,i2,i3],dp)
-                        ! convert to supercell fractional
-                        tau_wrk = matmul(inv_bscfp,tau_wrk)
-                        ! reduce to primitive supercell
-                        tau_wrk = modulo(tau_wrk+opts%sym_prec,1.0_dp) - opts%sym_prec
-                        !
-                        if (.not.issubset(sc%tau,tau_wrk,opts%sym_prec)) then
-                            m = m+1 
-                            sc%tau(1:3,m) = tau_wrk
-                            sc%Z(m) = uc%Z(j)
+        map : do i1 = 0, nint(sum(abs(bscfp(:,1)))) ! sc%natoms
+              do i2 = 0, nint(sum(abs(bscfp(:,2)))) ! sc%natoms
+              do i3 = 0, nint(sum(abs(bscfp(:,3)))) ! sc%natoms
+                  do j = 1, uc%natoms
+                      !
+                      tau_wrk = uc%tau(1:3,j)
+                      ! atomic basis in primitive fractional
+                      tau_wrk = tau_wrk+real([i1,i2,i3],dp)
+                      ! convert to supercell fractional
+                      tau_wrk = matmul(inv_bscfp,tau_wrk)
+                      ! reduce to primitive supercell
+                      tau_wrk = modulo(tau_wrk+opts%sym_prec,1.0_dp) - opts%sym_prec
+                      !
+                      if (.not.issubset(sc%tau,tau_wrk,opts%sym_prec)) then
+                          m = m+1 
+                          sc%tau(1:3,m) = tau_wrk
+                          sc%Z(m) = uc%Z(j)
+                          sc%uc_identifier(m) = j
                       endif
                       if (m.eq.sc%natoms) then
                           exit map
@@ -579,6 +582,47 @@ contains
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
         !
+        ! <MAP>
+        ! mapping of each atom in the sphere to the corresponding unit cell atom was already performed in the creation of the supercell
+        ! now map each supercell atom the corresponding primitive atom if the mapping from uc->pc was already established
+        if (allocated(uc%pc_identifier)) then
+            allocate(sc%pc_identifier(sc%natoms))
+            do i = 1, sc%natoms
+                sc%pc_identifier(i) = uc%pc_identifier( sc%uc_identifier(i) )
+            enddo
+            !
+            if (opts%verbosity.ge.1) then
+                write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to primitive cell: sc->pc)'
+                do i = 1, sc%natoms
+                    if (modulo(i,10).eq.1) then
+                        write(*,*)
+                        write(*,'(5x)',advance='no')
+                    endif
+                    write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(sc%pc_identifier(i)))
+                enddo
+                write(*,*)
+            endif
+        endif
+        ! now map each supercell atom the corresponding irreducible cell atom if the mapping from uc->ic was already established
+        if (allocated(uc%ic_identifier)) then
+            allocate(sc%ic_identifier(sc%natoms))
+            do i = 1, sc%natoms
+                sc%ic_identifier(i) = uc%ic_identifier( sc%uc_identifier(i) )
+            enddo
+            !
+            if (opts%verbosity.ge.1) then
+                write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to irreducible cell: sc->ic)'
+                do i = 1, sc%natoms
+                    if (modulo(i,10).eq.1) then
+                        write(*,*)
+                        write(*,'(5x)',advance='no')
+                    endif
+                    write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(sc%ic_identifier(i)))
+                enddo
+                write(*,*)
+            endif
+        endif
+        ! </MAP>
     end subroutine  get_supercell
 
     pure subroutine copy(cp,uc)
@@ -592,9 +636,25 @@ contains
         cp%bas=uc%bas
         !
         if (allocated(cp%tau)) deallocate(cp%tau)
-        if (allocated(cp%Z))   deallocate(cp%Z)
-        allocate(cp%tau,       source=uc%tau)
-        allocate(cp%Z,         source=uc%Z)
+        allocate(cp%tau,source=uc%tau)
+        !
+        if (allocated(cp%Z)) deallocate(cp%Z)
+        allocate(cp%Z,source=uc%Z)
+        !
+        if (allocated(uc%uc_identifier)) then
+        if (allocated(cp%uc_identifier)) deallocate(cp%uc_identifier)
+        allocate(cp%uc_identifier,source=uc%uc_identifier)
+        endif
+        !
+        if (allocated(uc%pc_identifier)) then
+        if (allocated(cp%pc_identifier)) deallocate(cp%pc_identifier)
+        allocate(cp%pc_identifier,source=uc%pc_identifier)
+        endif
+        !
+        if (allocated(uc%ic_identifier)) then
+        if (allocated(cp%ic_identifier)) deallocate(cp%ic_identifier)
+        allocate(cp%ic_identifier,source=uc%ic_identifier)
+        endif
         !
     end subroutine  copy
    
@@ -604,88 +664,106 @@ contains
         !
         class(am_class_unit_cell), intent(inout) :: uc
         integer , intent(in)  :: indices(:)
-        real(dp), allocatable :: temp_tau(:,:)
-        integer , allocatable :: temp(:)
+        real(dp), allocatable :: tau(:,:)
+        integer , allocatable :: Z(:) ! multipurpose
         integer :: i
+        !
         !
         ! count how many atoms should be passed
         uc%natoms = count(indices.ne.0)
         !
+        ! transfer stuff
+        !
+        ! tau
         if (allocated(uc%tau)) then
-            ! copy to temp
-            allocate(temp_tau,source=uc%tau)
+            ! setup temporary variable
+            allocate(tau,source=uc%tau)
+            ! clear original variable
+            deallocate(uc%tau)
             ! reallocate space
-            deallocate(uc%tau); allocate(uc%tau(3,uc%natoms))
-            ! transfer variables
+            allocate(uc%tau(3,uc%natoms))
+            ! transfer content through filter
             do i = 1, uc%natoms
-                uc%tau(1:3,i) = temp_tau(1:3,indices(i))
+                uc%tau(:,i) = tau(:,indices(i))
             enddo
-            ! deallocate temp
-            deallocate(temp_tau)
+            ! deallocate
+            deallocate(tau)
         endif
-        !
+        ! Z
         if (allocated(uc%Z)) then
-            ! copy to temp
-            allocate(temp,source=uc%Z)
+            ! setup temporary variable
+            allocate(Z,source=uc%Z)
+            ! clear original variable
+            deallocate(uc%Z)
             ! reallocate space
-            deallocate(uc%Z); allocate(uc%Z(uc%natoms))
-            ! transfer variables
+            allocate(uc%Z(uc%natoms))
+            ! transfer content through filter
             do i = 1, uc%natoms
-                uc%Z(i) = temp(indices(i))
+                uc%Z(i) = Z(indices(i))
             enddo
-            ! deallocate temp
-            deallocate(temp)
+            ! deallocate
+            deallocate(Z)
         endif
-        !
+        ! uc_identifier
         if (allocated(uc%uc_identifier)) then
-            ! copy to temp
-            allocate(temp,source=uc%uc_identifier)
+            ! setup temporary variable
+            allocate(Z,source=uc%uc_identifier)
+            ! clear original variable
+            deallocate(uc%uc_identifier)
             ! reallocate space
-            deallocate(uc%uc_identifier); allocate(uc%uc_identifier(uc%natoms))
-            ! transfer variables
+            allocate(uc%uc_identifier(uc%natoms))
+            ! transfer content through filter
             do i = 1, uc%natoms
-                uc%uc_identifier(i) = temp(indices(i))
+                uc%uc_identifier(i) = Z(indices(i))
             enddo
-            ! deallocate temp
-            deallocate(temp)
+            ! deallocate
+            deallocate(Z)
         endif
-        !
+        ! pc_identifier
         if (allocated(uc%pc_identifier)) then
-            ! copy to temp
-            allocate(temp,source=uc%pc_identifier)
+            ! setup temporary variable
+            allocate(Z,source=uc%pc_identifier)
+            ! clear original variable
+            deallocate(uc%pc_identifier)
             ! reallocate space
-            deallocate(uc%pc_identifier); allocate(uc%pc_identifier(uc%natoms))
-            ! transfer variables
+            allocate(uc%pc_identifier(uc%natoms))
+            ! transfer content through filter
             do i = 1, uc%natoms
-                uc%pc_identifier(i) = temp(indices(i))
+                uc%pc_identifier(i) = Z(indices(i))
             enddo
-            ! deallocate temp
-            deallocate(temp)
+            ! deallocate
+            deallocate(Z)
         endif
-        !
+        ! ic_identifier
         if (allocated(uc%ic_identifier)) then
-            ! copy to temp
-            allocate(temp,source=uc%ic_identifier)
+            ! setup temporary variable
+            allocate(Z,source=uc%ic_identifier)
+            ! clear original variable
+            deallocate(uc%ic_identifier)
             ! reallocate space
-            deallocate(uc%ic_identifier); allocate(uc%ic_identifier(uc%natoms))
-            ! transfer variables
+            allocate(uc%ic_identifier(uc%natoms))
+            ! transfer content through filter
             do i = 1, uc%natoms
-                uc%ic_identifier(i) = temp(indices(i))
+                uc%ic_identifier(i) = Z(indices(i))
             enddo
-            ! deallocate temp
-            deallocate(temp)
+            ! deallocate
+            deallocate(Z)
         endif
+        ! 
         !
     end subroutine  filter
 
-    subroutine      initialize(uc,bas,tau,Z)
+    subroutine      initialize(uc,bas,tau,Z,uc_identifier,pc_identifier,ic_identifier)
         !
         implicit none
         !
-        class(am_class_unit_cell) , intent(inout) :: uc
+        class(am_class_unit_cell) , intent(out) :: uc
         real(dp), intent(in) :: bas(3,3)
         real(dp), intent(in) :: tau(:,:)
         integer , intent(in) :: Z(:)
+        integer , intent(in), optional :: uc_identifier(:)
+        integer , intent(in), optional :: pc_identifier(:)
+        integer , intent(in), optional :: ic_identifier(:)
         !
         uc%bas = bas
         !
@@ -694,6 +772,10 @@ contains
         allocate(uc%tau,source=tau)
         !
         allocate(uc%Z,source=Z)
+        !
+        if (present(uc_identifier)) allocate(uc%uc_identifier,source=uc_identifier)
+        if (present(pc_identifier)) allocate(uc%pc_identifier,source=pc_identifier)
+        if (present(ic_identifier)) allocate(uc%ic_identifier,source=ic_identifier)
         !
     end subroutine  initialize
 

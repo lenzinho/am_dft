@@ -18,12 +18,18 @@ module am_shells
 
     type, public, extends(am_class_unit_cell) :: am_shell_cell
         ! 
-        ! j th  shell centered on irreducible atom i 
+        ! j th shell centered on irreducible atom i 
         integer :: i
         integer :: j
-        ! atom is used by tight binding, it defines the orbitals on atoms in the jth shell
-        type(am_class_atom) :: atom
-        !
+        ! <Inherited from am_class_unit_cell>
+        ! real(dp) :: bas(3,3) !> column vectors a(1:3,i), a(1:3,j), a(1:3,k)
+        ! integer  :: natoms   !> number of atoms
+        ! real(dp), allocatable :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates
+        ! integer , allocatable :: Z(:) !> identifies type of element
+        ! integer , allocatable :: uc_identifier(:) ! identifies corresponding atom in unit cell
+        ! integer , allocatable :: pc_identifier(:) ! identifies corresponding atom in primitive cell
+        ! integer , allocatable :: ic_identifier(:) ! identifies corresponding atom in irreducible cell
+        ! </Inherited from am_class_unit_cell>
     end type am_shell_cell
     
     type am_class_pair_shell
@@ -99,6 +105,7 @@ contains
             !
             write(*,'(5x)' ,advance='no')
             write(*,'(a5)' ,advance='no') 'shell'
+            write(*,'(a6)' ,advance='no') 'Zi-Zj'
             write(*,'(a6)' ,advance='no') 'i-j'
             write(*,'(a5)' ,advance='no') 'm'
             write(*,'(a8)' ,advance='no') 'stab.'
@@ -110,6 +117,7 @@ contains
             write(*,*)
             write(*,'(5x)' ,advance='no')
             write(*,'(a5)' ,advance='no')      repeat('-',5)
+            write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
             write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
             write(*,'(a5)' ,advance='no') ' '//repeat('-',4)
             write(*,'(a8)', advance='no') ' '//repeat('-',7)
@@ -135,7 +143,8 @@ contains
                 call revg%get_reversal_group(sg=sg, v=irrpair%shell(k)%tau(1:3,1), opts=notalk)
                 write(*,'(5x)'    ,advance='no')
                 write(*,'(i5)'    ,advance='no') k ! shell
-                write(*,'(a6)'    ,advance='no') trim(atm_symb(ic%Z(i)))//'-'//trim(atm_symb(irrpair%shell(k)%Z(1))) ! trim(atm_symb(pair%shell(k)%Z(1)))
+                write(*,'(a6)'    ,advance='no') trim(atm_symb(ic%Z( irrpair%shell(k)%i )))//'-'//trim(atm_symb(ic%Z( irrpair%shell(k)%j )))
+                write(*,'(a6)'    ,advance='no') trim(int2char(irrpair%shell(k)%i))//'-'//trim(int2char(irrpair%shell(k)%j))
                 write(*,'(i5)'    ,advance='no') multiplicity(k)
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( stab%pg_identifier ))
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( rotg%pg_identifier ))
@@ -291,8 +300,10 @@ contains
             !
             ! get center of sphere in fractional supercell coordinates
             D = matmul(matmul(inv(uc%bas),ic%bas),ic%tau(:,i))
+            !
             ! create sphere
             sphere = create_sphere(uc=uc, sphere_center=D, pair_cutoff=pair_cutoff, opts=opts )
+            !
             ! identify atoms in the whole sphere that can be mapped onto each other by point symmetry operations and return the identifier of the pair for each atom (including the center atom)
             ind_u = identify_pairs(sphere=sphere,pg=pg)
             ! get number of pairs
@@ -309,6 +320,7 @@ contains
                 !
                 write(*,'(5x)' ,advance='no')
                 write(*,'(a5)' ,advance='no') 'shell'
+                write(*,'(a6)' ,advance='no') 'Zi-Zj'
                 write(*,'(a6)' ,advance='no') 'i-j'
                 write(*,'(a5)' ,advance='no') 'm'
                 write(*,'(a8)' ,advance='no') 'stab.'
@@ -320,6 +332,7 @@ contains
                 write(*,*)
                 write(*,'(5x)' ,advance='no')
                 write(*,'(a5)' ,advance='no')      repeat('-',5)
+                write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
                 write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
                 write(*,'(a5)' ,advance='no') ' '//repeat('-',4)
                 write(*,'(a8)', advance='no') ' '//repeat('-',7)
@@ -341,9 +354,11 @@ contains
                 !
                 ! create the jth shell centered on irreducible atom i
                 k=k+1
-                call pair%shell(k)%initialize(bas=ic%bas,tau=sphere%tau(:,ind),Z=sphere%Z(ind))
+                call pair%shell(k)%copy(uc=sphere)
+                call pair%shell(k)%filter(indices=ind)
+                !
                 pair%shell(k)%i = i
-                pair%shell(k)%j = j
+                pair%shell(k)%j = pair%shell(k)%ic_identifier(1)
                 !
                 ! print to stdout
                 if (opts%verbosity.ge.1) then
@@ -355,7 +370,8 @@ contains
                     call revg%get_reversal_group(sg=sg, v=pair%shell(k)%tau(1:3,1), opts=notalk)
                     write(*,'(5x)'    ,advance='no')
                     write(*,'(i5)'    ,advance='no') j
-                    write(*,'(a6)'    ,advance='no') trim(atm_symb(ic%Z(i)))//'-'//trim(atm_symb(pair%shell(k)%Z(1)))
+                    write(*,'(a6)'    ,advance='no') trim(atm_symb(ic%Z( pair%shell(k)%i )))//'-'//trim(atm_symb(ic%Z( pair%shell(k)%j )))
+                    write(*,'(a6)'    ,advance='no') trim(int2char(pair%shell(k)%i))//'-'//trim(int2char(pair%shell(k)%j))
                     write(*,'(i5)'    ,advance='no') pair%shell(k)%natoms
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( stab%pg_identifier ))
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( rotg%pg_identifier ))
@@ -374,13 +390,15 @@ contains
         write(*,'(5x,a)') 'stabilizer (stab): point symmetries which leave a prototypical bond in shell invariant'
         write(*,'(5x,a)') 'rotational (rot) : point symmetries which leave shell invariant'
         write(*,'(5x,a)') 'reversal   (rev) : (im)proper rotational parts of space symmetries which flip bond endpoints'
+        write(*,'(5x,a)') 'i-j              : irreducible atom indicies'
         !
         contains
-        function       create_sphere(uc,sphere_center,pair_cutoff,opts) result(sphere)
+        function       create_sphere(uc,ic,sphere_center,pair_cutoff,opts) result(sphere)
             !
             implicit none
             !
             type(am_class_unit_cell), intent(in) :: uc
+            type(am_class_irre_cell), intent(in), optional :: ic ! for mapping
             type(am_class_options)  , intent(in) :: opts
             type(am_class_unit_cell) :: sphere
             real(dp), intent(in)  :: sphere_center(3)
@@ -430,7 +448,6 @@ contains
             ! sphere is in fractional. which means, if a supercell was created by expanding the basis by a factor of 2, the fractional distance between atoms shrunk by half.
             sphere%tau = matmul(bas,sphere%tau)
             sphere%bas = matmul(inv(bas),sphere%bas)
-            !
             !
             ! check that there is one atom at the origin
             check_center = .false.
@@ -531,6 +548,7 @@ contains
     end function   transform_2nd_order_force_constants
 
 
+    
 !    subroutine     get_irreducible_force_constants(pair,ic,pg,sg,opts)
 !        !
 !        implicit none
@@ -568,7 +586,7 @@ contains
 !        !    write(*,*)
 !        !endif
 !    end subroutine get_irreducible_force_constants
-
+    
 end module am_shells
 
 

@@ -892,19 +892,24 @@ contains
     subroutine     symmetry_action(sg,uc,flags,iopt_fname,oopt_PM,oopt_P,opts)
         !
         ! PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
+        ! 
+        ! flags = 'relax_pbc', '2cart'
         !
         implicit none
         !
         class(am_class_symmetry) , intent(in) :: sg
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options)  , intent(in) :: opts
-        character(*)            , intent(in) :: flags ! if flags='relax_pbc', do not return atoms to primitive cell. if no matching atom is found, return index 0 for that orbit.
+        character(*)            , intent(in) :: flags ! if flags='relax_pbc', do not return atoms to primitive cell. if no matching atom is found, return index 0 for that orbit. 
         character(*), optional  , intent(in) :: iopt_fname
         integer, optional, allocatable, intent(out) :: oopt_PM(:,:)
         integer, optional, allocatable, intent(out) :: oopt_P(:,:,:)
-        integer, allocatable :: P(:,:,:)
-        integer, allocatable :: PM(:,:)
-        integer :: fid
+        integer,  allocatable :: P(:,:,:)
+        integer,  allocatable :: PM(:,:)
+        !real(dp), allocatable :: Ru(:,:,:) ! units - NOT YET IMPLEMENTED
+        !real(dp), allocatable :: Tu(:,:)   ! units - NOT YET IMPLEMENTED
+        real(dp), allocatable :: aa(:,:)
+        integer  :: fid
         character(10) :: buffer
         integer :: i,j,k,m ! loop variables
         character(:), allocatable :: xyz(:) ! basis functions output
@@ -922,6 +927,21 @@ contains
         P = rep_permutation(sg=sg,uc=uc,flags=flags,opts=opts)
         if (present(oopt_P)) allocate(oopt_P,source=P)
         !
+        !    ! NOT YET IMPLEMENTED BELOW
+        !if( index(flags,'2cart').ne.0) then
+        !    allocate(Ru,mold=sg%R)
+        !    allocate(Tu,mold=sg%T)
+        !    do i = 1,sg%nsyms
+        !        Ru(1:3,1:3,i)=ps_frac2cart(R_frac=sg%R(1:3,1:3,i),bas=uc%bas)
+        !    enddo
+        !    do i = 1,sg%nsyms
+        !        Tu(1:3,i)=matmul(uc%bas,sg%T(1:3,i))
+        !    enddo
+        !else
+        !    allocate(Ru,source=sg%R)
+        !    allocate(Tu,source=sg%T)
+        !endif
+        !
         allocate(PM(uc%natoms,sg%nsyms))
         !
         !
@@ -937,13 +957,19 @@ contains
         enddo
         if (present(oopt_PM)) allocate(oopt_PM,source=PM)
         !
+        allocate(aa(4,sg%nsyms))
+        do i = 1,sg%nsyms
+            aa(1:4,i)=R2axis_angle(R=ps_frac2cart(R_frac=sg%R(1:3,1:3,i),bas=uc%bas))
+        enddo
+        !
         if (present(iopt_fname)) then 
             !
             fid = 1
             open(unit=fid,file=trim(iopt_fname),status="replace",action='write')
                 ! HEADER INFO
-                write(fid,'(a)') 'Ellipses indicate linear combinations of linear x, y, z or quadratic x^2, y^2, z^2, xy, yz, zx functions. In order to form a compact table, these longer lines are not printed.'
-                write(fid,'(a)') 'Coefficients obtained in the transformation of linear and quadratic functions are rounded to integers. This is exact in fractional coordinates, where rotational matrices contain only 0, +1, -1, but not for cartesian coordinats which are unitary.'
+                write(fid,'(a)') 'ax/th        : Axis and angle rotations are in cartesian coordinates'
+                write(fid,'(a)') 'p orb, d orb : Coefficients are round to integers. Exact in fractional coordinates, where rotational matrices contain only 0, +1, -1, but not for cartesian coordinats which are unitary.'
+                write(fid,'(a)') '               Ellipses are linear combinations of linear x, y, z or quadratic x^2, y^2, z^2, xy, yz, zx functions, which are not printed for clarity.'
                 !
                 ! SYMMETRY NUMBER
                 write(fid,'(5x)',advance='no')
@@ -966,9 +992,9 @@ contains
                     write(fid,fmt3,advance='no') ' '//repeat('-',9)
                 enddo
                 write(fid,*)
-                ! POINT-SYMMMETRY IDENTIFIED
+                ! POINT-SYMMETRY IDENTIFIED
                 write(fid,'(5x)',advance='no')
-                write(fid,fmt1,advance='no') 'SF'
+                write(fid,fmt1,advance='no') 'schf.'
                 do i = 1, sg%nsyms
                     write(fid,fmt3,advance='no') trim(decode_pointsymmetry(sg%ps_identifier(i)))
                 enddo
@@ -984,6 +1010,42 @@ contains
                     write(fid,*)
                 enddo
                 enddo
+                ! HEADER / SEPERATOR
+                write(fid,'(5x)',advance='no')
+                write(fid,fmt1,advance='no') 'ax/th'
+                do i = 1, sg%nsyms
+                    write(fid,fmt3,advance='no') ' '//repeat('-',9)
+                enddo
+                write(fid,*)
+                ! POINT-SYMMETRY ROTATION AXIS  (CART)
+                allocate(character(1)::xyz(3))
+                i=0
+                i = i + 1; xyz(i)='x'
+                i = i + 1; xyz(i)='y'
+                i = i + 1; xyz(i)='z'
+                do j = 1,3
+                write(fid,'(5x)',advance='no')
+                write(fid,fmt1,advance='no') 'ax_'//trim(xyz(j))
+                do i = 1, sg%nsyms
+                    write(fid,fmt4,advance='no') aa(j,i)
+                enddo
+                write(fid,*)
+                enddo
+                deallocate(xyz)
+                ! POINT-SYMMETRY ROTATION ANGLE (CART)
+                write(fid,'(5x)',advance='no')
+                write(fid,fmt1,advance='no') 'R_th'
+                do i = 1, sg%nsyms
+                    write(fid,fmt4,advance='no') aa(4,i)*180.0_dp/pi
+                enddo
+                write(fid,*)
+                ! HEADER / SEPERATOR
+                write(fid,'(5x)',advance='no')
+                write(fid,fmt1,advance='no') 'trans'
+                do i = 1, sg%nsyms
+                    write(fid,fmt3,advance='no') ' '//repeat('-',9)
+                enddo
+                write(fid,*)
                 ! TRANSLATIONAL COMPONENTS (FRAC)
                 if (allocated(sg%T)) then
                 do j = 1,3

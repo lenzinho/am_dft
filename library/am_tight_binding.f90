@@ -12,89 +12,31 @@ module am_tight_binding
 	implicit none
 
 	private
+    
+    public :: test_rotation
 
 	type, public :: am_class_tb
 		!
 		! matrix elements
-		integer :: nSKs ! number of matrix elements
-		real(dp), allocatable :: SK(:) ! matrix elements
-		!
-		! basis functions
-		integer, allocatable :: SK_label(:,:) ! [i,j,li,lj,m]
+		integer :: nVsks ! number of irreducible matrix elements
+		real(dp), allocatable :: Vsk(:) ! irreducible matrix elements
+		integer , allocatable :: Vsk_label(:,:) ! irreducible matrix element labels [i,j,li,lj,m]
+        ! i irreducible cell atom, jth neighbor shell around i, li orbital on i, lj orbital on j, m overlap
 		!
 	contains
 		procedure :: template_matrix_elements
 		procedure :: output_matrix_elements
 		procedure :: read_matrix_elements
+        
 	end type am_class_tb
 
-! 	public :: tight_binding_main
-! 	public :: test_orbitals
-	!public :: test_functions
-
 contains
-
-	subroutine     tb_basis_to_stdout(irrpair,ic)
-		!
-		implicit none
-        !
-        type(am_class_pair_shell), intent(inout) :: irrpair
-        type(am_class_irre_cell) , intent(inout) :: ic
-    	integer :: n,l,m,s
-    	integer :: i,j,k
-        !
-        k=0
-		do i = 1, ic%natoms
-			write(*,'(a5,a)') ' ... ', 'irreducible atom '//trim(int2char(i))//' contributes '//trim(int2char(ic%atom(i)%norbitals))//' orbitals (#,n,l,m,s):'
-			write(*,'(5x)',advance='no')
-			!
-			do j = 1, ic%atom(i)%norbitals
-				k=k+1
-				n = ic%atom(i)%orbital(1,j)
-				l = ic%atom(i)%orbital(2,j)
-				m = ic%atom(i)%orbital(3,j)
-				s = ic%atom(i)%orbital(4,j)
-				write(*,'(a15)',advance='no') ' ('//trim(int2char(j))//','//trim(int2char(n))//','//&
-					trim(int2char(l))//','//trim(int2char(m))//','//trim(int2char(s))//') '
-				if (mod(k,6).eq.0) then
-					write(*,*)
-					write(*,'(5x)',advance='no')
-				endif
-			enddo
-			!
-			write(*,*)
-			!
-		enddo
-		!
-		k=0
-		do i = 1, irrpair%nshells
-			write(*,'(a5,a)') ' ... ', 'atoms in shell '//trim(int2char(irrpair%shell(i)%j))//' around irreducible atom '//&
-				trim(int2char(irrpair%shell(i)%i))//' contribute '//trim(int2char(irrpair%shell(i)%atom%norbitals))//' orbitals (#,n,l,m,s):'
-			write(*,'(5x)',advance='no')
-			!
-			do j = 1, irrpair%shell(i)%atom%norbitals
-				k=k+1
-				n = irrpair%shell(i)%atom%orbital(1,j)
-				l = irrpair%shell(i)%atom%orbital(2,j)
-				m = irrpair%shell(i)%atom%orbital(3,j)
-				s = irrpair%shell(i)%atom%orbital(4,j)
-				write(*,'(a15)',advance='no') ' ('//trim(int2char(j))//','//trim(int2char(n))//','//&
-					trim(int2char(l))//','//trim(int2char(m))//','//trim(int2char(s))//') '
-				if (mod(k,6).eq.0) then
-					write(*,*)
-					write(*,'(5x)',advance='no')
-				endif
-			enddo
-			!
-			write(*,*)
-			!
-		enddo
-	end subroutine tb_basis_to_stdout
 
 	subroutine     template_matrix_elements(tb,irrpair,ic,opts)
 		!
     	! useful if no states on atoms are defined. Gives each atom all the possible states
-    	! correspoding to the M shell (n=3) [ s p d states (1+3+5=9 states) ]
+    	! correspoding to the L shell (n=2) [ s p   states (1+3=4   states) ]
+        ! correspoding to the M shell (n=3) [ s p d states (1+3+5=9 states) ]
     	!
         ! there will be 1 matrix element for every irreducible pair of orbitals
 		!
@@ -104,112 +46,142 @@ contains
         class(am_class_pair_shell), intent(inout) :: irrpair
         class(am_class_irre_cell) , intent(inout) :: ic
         type(am_class_options)    , intent(in) :: opts
-    	integer :: nSKs
+        logical :: is_spin_polarized
+    	integer :: nVsks
     	integer :: n,l,m,s
-    	integer :: i,k,ii,j
-    	integer, allocatable :: li(:)
-    	integer, allocatable :: lj(:)
+    	integer :: i,j,k,ii,jj,kk
+        integer, allocatable :: nlsi(:,:)
+        integer, allocatable :: nlsj(:,:)
+        !
+        is_spin_polarized = .false.
         !
         if (opts%verbosity.ge.1) call am_print_title('Creating orbital basis functions from template')
         !
-    	! create basis centered on irreducible atoms
+    	! create basis on each irreducible atoms
 		allocate(ic%atom(ic%natoms))
 		do i = 1, ic%natoms
-			n = 3
-			! factor of two here accounts for spin
-			ic%atom(i)%norbitals = 2*n**2
+			n = 2
+			! number of orbitals
+            ic%atom(i)%norbitals = n**2
+            ! factor of two here accounts for spin
+            if (is_spin_polarized) ic%atom(i)%norbitals = 2*ic%atom(i)%norbitals
+            !
 			allocate(ic%atom(i)%orbital(4, ic%atom(i)%norbitals))
 			k=0
 			do l = 0, (n-1)
 			do m = -l, l
-			do s = -1,1,2
-				k = k+1
-				ic%atom(i)%orbital(1,k) = n
-				ic%atom(i)%orbital(2,k) = l
-				ic%atom(i)%orbital(3,k) = m
-				ic%atom(i)%orbital(4,k) = s
-			enddo
-			enddo
-			enddo
-		enddo
-		!
-		! create basis on nearest neighbor atoms to irreducible atoms
-		do i = 1, irrpair%nshells
-			n = 3
-			! factor of two here accounts for spin
-			irrpair%shell(i)%atom%norbitals = 2*n**2
-			allocate(irrpair%shell(i)%atom%orbital(4, irrpair%shell(i)%atom%norbitals ))
-			!
-			k=0
-			do l = 0, (n-1)
-			do m = -l, l
-			do s = -1,1,2
-				k = k+1
-				irrpair%shell(i)%atom%orbital(1,k) = n
-				irrpair%shell(i)%atom%orbital(2,k) = l
-				irrpair%shell(i)%atom%orbital(3,k) = m
-				irrpair%shell(i)%atom%orbital(4,k) = s
-			enddo
+                if (is_spin_polarized) then
+			        do s = -1,1,2
+				        k = k+1
+				        ic%atom(i)%orbital(1,k) = n
+				        ic%atom(i)%orbital(2,k) = l
+				        ic%atom(i)%orbital(3,k) = m
+				        ic%atom(i)%orbital(4,k) = s
+                    enddo
+                else
+				        k = k+1
+				        ic%atom(i)%orbital(1,k) = n
+				        ic%atom(i)%orbital(2,k) = l
+				        ic%atom(i)%orbital(3,k) = m
+				        ic%atom(i)%orbital(4,k) = 0
+                endif
 			enddo
 			enddo
 		enddo
-		!
-		!
-		! if (opts%verbosity.ge.1) call tb_basis_to_stdout(irrpair,ic)
+		if (opts%verbosity.ge.1) call tb_basis_to_stdout(irrpair,ic)
 		!
     	! number of slater koster matrix elements per irreducible pairs = 2*min(l,l')+1 for every l and for every pair
     	! but note that -m = m.
-    	nSKs = 0
+    	nVsks = 0
     	do k = 1, irrpair%nshells
-    		! jth cell entered on atom i
-			li = unique(ic%atom(irrpair%shell(k)%i)%orbital(2,:))
-			lj = unique(irrpair%shell(k)%atom%orbital(2,:))
-			! loop over all combination of orbitals
-			do i = 1, size(li)
-			do j = 1, size(lj)
-    			nSKs = nSKs + abs(min(li(i),lj(j)))+1
+    		! j irreducible atom shell entered on atom irreducible atom i
+            i = irrpair%shell(k)%i
+            j = irrpair%shell(k)%j
+            !
+            nlsi = unique(ic%atom(i)%orbital([1,2,4],:))
+            nlsj = unique(ic%atom(j)%orbital([1,2,4],:))
+            !
+			! loop over all combination of orbitals (outer product of li x lj)
+			do ii = 1, size(nlsi,2)
+			do jj = 1, size(nlsj,2)
+    			nVsks = nVsks + abs(min( nlsi(2,ii), nlsj(2,jj) )) + 1
 			enddo
 			enddo
 		enddo
-		tb%nSKs = nSKs
-    	if (opts%verbosity.ge.1) call am_print('irreducible matrix elements',tb%nSKs)
+		tb%nVsks = nVsks
+    	if (opts%verbosity.ge.1) call am_print('irreducible matrix elements',tb%nVsks)
 		!
-		! SK_label(:,:) ! [i,j,li,lj,m] i,j are site indices, li,lj are orbital indices, and m is the type of overlap/bond (sigma,pi,delta)
-		if (opts%verbosity.ge.1) write(*,'(a5,7a6,a10)') '     ', '#', 'shell', 'i', 'j', 'li', 'lj', 'm', 'SK'
+		! Vsk_label(:,:) ! [i,j,li,lj,m] i,j are site indices, li,lj are orbital indices, and m is the type of overlap/bond (sigma,pi,delta)
+		if (opts%verbosity.ge.1) write(*,'(a5,7a6,a10)') '     ', '#', 'shell', 'i', 'j', 'li', 'lj', 'm', 'Vsk'
 		if (opts%verbosity.ge.1) write(*,'(a5,a42,a10)') '     ', repeat(' -----',7), ' '//repeat('-',9)
-		allocate(tb%SK(nSKs))
-		allocate(tb%SK_label(5,nSKs))
+		allocate(tb%Vsk(nVsks))
+		allocate(tb%Vsk_label(5,nVsks))
 		!
-		ii=0
+		kk=0
     	do k = 1, irrpair%nshells
-    		! li = orbital on irreducible cell atom
-			li = unique(ic%atom(irrpair%shell(k)%i)%orbital(2,:))
-			! lj = orbital on atom in the jth shell around an irreducible cell atom
-			lj = unique(irrpair%shell(k)%atom%orbital(2,:))
+    		! j irreducible atom shell entered on atom irreducible atom i
+            i = irrpair%shell(k)%i
+            j = irrpair%shell(k)%j
+            !
+            nlsi = unique(ic%atom(i)%orbital([1,2,4],:))
+            nlsj = unique(ic%atom(j)%orbital([1,2,4],:))
+            !
 			! loop over all combination of orbitals (outer product of li x lj)
-			do i = 1, size(li)
-			do j = 1, size(lj)
+			do ii = 1, size(nlsi,2)
+			do jj = 1, size(nlsj,2)
 				! because of cylindrical symmetry, only the matrix elements for which m = m' remain in each li and lj 
 				! also, -m = m, so the irreducible tight binding parameters include only m = 0 through min(li,lj)
-				do m = 0, min(li(i),lj(j))
+				do m = 0, abs(min( nlsi(2,ii) , nlsj(2,jj) ))
 					!
-	        		ii=ii+1
+	        		kk=kk+1
 	        		!
-	        		tb%SK_label(1,ii) = irrpair%shell(k)%i
-	        		tb%SK_label(2,ii) = irrpair%shell(k)%j
-	        		tb%SK_label(3,ii) = li( i )
-	        		tb%SK_label(4,ii) = lj( j )
-	        		tb%SK_label(5,ii) = m
+	        		tb%Vsk_label(1,kk) = irrpair%shell(k)%i
+	        		tb%Vsk_label(2,kk) = irrpair%shell(k)%j
+	        		tb%Vsk_label(3,kk) = nlsi(2,ii)
+	        		tb%Vsk_label(4,kk) = nlsj(2,jj)
+	        		tb%Vsk_label(5,kk) = m
 	        		!
 	        		! add a placeholder slater koster parameter to initialize
-	        		tb%SK(ii) = 1.0_dp
+	        		tb%Vsk(kk) = 1.0_dp
 	        		!
-	        		if (opts%verbosity.ge.1) write(*,'(5x,i6,i6, i6,i6,i6,i6,i6, f10.2)') ii, k, tb%SK_label(:,ii), tb%SK(ii)
+	        		if (opts%verbosity.ge.1) write(*,'(5x,i6,i6, i6,i6,i6,i6,i6, f10.2)') kk, k, tb%Vsk_label(:,kk), tb%Vsk(kk)
 				enddo
 			enddo
 			enddo
-		enddo
-		!
+        enddo
+        !
+        contains
+        !
+	    subroutine     tb_basis_to_stdout(irrpair,ic)
+		    !
+		    implicit none
+            !
+            type(am_class_pair_shell), intent(inout) :: irrpair
+            type(am_class_irre_cell) , intent(inout) :: ic
+    	    integer :: n,l,m,s
+    	    integer :: i,j
+            !
+		    do i = 1, ic%natoms
+			    write(*,'(a5,a)',advance='no') ' ... ', 'irreducible atom '//trim(int2char(i))//' contributes '//trim(int2char(ic%atom(i)%norbitals))//' orbitals (n,l,m,s):'
+			    !
+			    do j = 1, ic%atom(i)%norbitals
+				    if (mod(j,6).eq.1) then
+					    write(*,*)
+					    write(*,'(5x)',advance='no')
+				    endif
+				    n = ic%atom(i)%orbital(1,j)
+				    l = ic%atom(i)%orbital(2,j)
+				    m = ic%atom(i)%orbital(3,j)
+				    s = ic%atom(i)%orbital(4,j)
+				    write(*,'(a2,i2,a1,i2,a1,i2,a1,i2,a2)',advance='no') ' (', n, ',', l, ',', m, ',', s, ') '
+			    enddo
+			    !
+			    write(*,*)
+			    !
+		    enddo
+		    !
+	    end subroutine tb_basis_to_stdout
+        !
     end subroutine template_matrix_elements
 
     subroutine     output_matrix_elements(tb)
@@ -222,9 +194,9 @@ contains
         fid = 1
         open(unit=fid,file='outfile.tightbinding',status='replace',action='write')
 	        !
-	        write(fid,'(5x,i6)') tb%nSKs
-	    	do k = 1, tb%nSKs
-	    		write(fid,'(5x,i6,5i6,f10.2)') k, tb%SK_label(:,k), tb%SK(k)
+	        write(fid,'(5x,i6)') tb%nVsks
+	    	do k = 1, tb%nVsks
+	    		write(fid,'(5x,i6,5i6,f10.2)') k, tb%Vsk_label(:,k), tb%Vsk(k)
 			enddo
 			!
 		close(fid)
@@ -251,29 +223,29 @@ contains
 	        !
             read(unit=fid,fmt='(a)') buffer
             word = strsplit(buffer,delimiter=' ')
-            read(word(1),*) tb%nSKs
-	        if (opts%verbosity.ge.1) write(*,'(5x,i6)') tb%nSKs
+            read(word(1),*) tb%nVsks
+	        if (opts%verbosity.ge.1) write(*,'(5x,i6)') tb%nVsks
 	        !
-	        if (allocated(tb%SK_label)) deallocate(tb%SK_label)
-	        if (allocated(tb%SK)) 		deallocate(tb%SK)
+	        if (allocated(tb%Vsk_label)) deallocate(tb%Vsk_label)
+	        if (allocated(tb%Vsk)) 		deallocate(tb%Vsk)
 	        !
-	        allocate(tb%SK_label(5,tb%nSKs))
-	        allocate(tb%SK(tb%nSKs))
+	        allocate(tb%Vsk_label(5,tb%nVsks))
+	        allocate(tb%Vsk(tb%nVsks))
 	        !
-	    	do k = 1, tb%nSKs
+	    	do k = 1, tb%nVsks
 	    		!
 	            read(unit=fid,fmt='(a)') buffer
 	            word = strsplit(buffer,delimiter=' ')
 	            read(word(1),*) i
-	            read(word(2),*) tb%SK_label(1,i)
-	            read(word(3),*) tb%SK_label(2,i)
-	            read(word(4),*) tb%SK_label(3,i)
-	            read(word(5),*) tb%SK_label(4,i)
-	            read(word(6),*) tb%SK_label(5,i)
-	            read(word(7),*) tb%SK(i)
+	            read(word(2),*) tb%Vsk_label(1,i)
+	            read(word(3),*) tb%Vsk_label(2,i)
+	            read(word(4),*) tb%Vsk_label(3,i)
+	            read(word(5),*) tb%Vsk_label(4,i)
+	            read(word(6),*) tb%Vsk_label(5,i)
+	            read(word(7),*) tb%Vsk(i)
 	            !
-	            ! if (opts%verbosity.ge.1) write(*,*) i, tb%SK_label(:,i), tb%SK(i)
-	    		if (opts%verbosity.ge.1) write(*,'(5x,i6,5i6,f10.2)') i, tb%SK_label(1:5,i), tb%SK(i)
+	            ! if (opts%verbosity.ge.1) write(*,*) i, tb%Vsk_label(:,i), tb%Vsk(i)
+	    		if (opts%verbosity.ge.1) write(*,'(5x,i6,5i6,f10.2)') i, tb%Vsk_label(1:5,i), tb%Vsk(i)
 			enddo
 			!
 		close(fid)
@@ -305,7 +277,7 @@ contains
 		integer :: k, nstates, m
 		! 
 		! number of states (m=-l,-l+1,-l+2,...,0,...,l-2,l-1,l)
-		nstates = l**2 + 1
+		nstates = l*2 + 1
 		!
 		! indices of V refer to value of m
 		allocate(V(nstates,nstates))
@@ -334,16 +306,248 @@ contains
 		! call am_print('zheev : V',My)
 		! call am_print('zheev : D',D)
 		!
-	end subroutine get_Ly_in_Lz_basis
+    end subroutine get_Ly_in_Lz_basis
 
-! 	subroutine     generate_k_independent_part_of_hamiltonian(tb,irrpair,ic,H)
-! 		!
-! 		implicit none
-! 		class(am_class_tb), intent(inout) :: tb
-! 		!
-! 		!
-
-! 	end subroutine generate_k_independent_part_of_hamiltonian
+    function      spherical_to_tesseral(l) result(B)
+        ! R. R. Sharma, Phys. Rev. B. 19, 2813 (1979).
+        !     [1    0    0    0     0     0    0    0     0  ]
+        !     [0   0.7   0   0.7i   0     0    0    0     0  ]
+        !     [0    0    1    0     0     0    0    0     0  ]
+        !     [0  -0.7   0   0.7i   0     0    0    0     0  ]
+        ! B = [0    0    0    0    0.7    0    0    0    0.7i]
+        !     [0    0    0    0     0    0.7   0   0.7i   0  ]
+        !     [0    0    0    0     0     0    1    0     0  ]
+        !     [0    0    0    0     0   -0.7   0   0.7i   0  ]
+        !     [0    0    0    0    0.7    0    0    0   -0.7i]
+        implicit none
+        !
+		integer, intent(in) :: l ! l is the orbital quantum number
+		integer  :: nstates
+        real(dp) :: invsqrt2
+        complex(dp), allocatable :: B(:,:)
+        integer :: m,mp
+        !
+        invsqrt2 = 0.70710678118655_dp
+        !
+        nstates = l*2 + 1
+        allocate(B(-l:l,-l:l))
+        B = 0.0_dp
+        !
+		do m = -l, l
+        do mp= -l, l
+            ! Real orbitals which are given by Y_{l0}.
+            if (m.eq.mp) then
+            if (m.eq.0 ) then
+                B(m,mp) = 1.0_dp
+            endif
+            endif
+            ! Real orbitals which are given by (Y_{l-m} + (-1)^m Y_{lm}^\ast)/sqrt(2)
+			if (mp.lt.0) then
+                if (mp.eq.-m) then
+                    B(m,mp) = CMPLX(invsqrt2, 0.0_dp)
+                endif
+                if (mp.eq.m) then
+                    B(m,mp) = CMPLX(((-1)**m)*invsqrt2, 0.0_dp)
+                endif
+            endif
+            ! Real orbitals which are given by i*(Y_{l-m} - (-1)^m Y_{lm}^\ast)/sqrt(2)
+			if (mp.gt.0) then
+                if (mp.eq.-m) then
+                    B(m,mp) = CMPLX(0.0_dp, invsqrt2)
+                endif
+                if (mp.eq.m) then
+                    B(m,mp) = CMPLX(0.0_dp, -((-1)**m)*invsqrt2)
+                endif
+            endif
+        enddo
+        enddo
+        !
+    end function spherical_to_tesseral
+    
+ 	subroutine     test_rotation
+ 		!
+ 		implicit none
+ 		!
+        integer :: l
+ 		complex(dp), allocatable :: V(:,:)
+ 		real(dp)   , allocatable :: D(:)
+        real(dp)   :: th, phi, dcosines(3), vec(3)
+        complex(dp), allocatable :: th_mat(:,:)
+        complex(dp), allocatable :: phi_mat(:,:)
+        complex(dp), allocatable :: U(:,:)
+        complex(dp), allocatable :: B(:,:)
+        real(dp)   , allocatable :: R(:,:) !  the rotation matrix
+        real(dp) :: aa(4)
+        !
+        !
+        l = 1
+        !
+        ! 0 s, 1 p, 3 d, 4 f
+        call get_Ly_in_Lz_basis(l=l, V=V, D=D)
+        !
+        call am_print('V',V)
+        call am_print('D',D)
+        !
+        th = 30.0*pi/180.0_dp
+        phi= 00.0*pi/180.0_dp
+ 		call am_print('th',th)
+        call am_print('phi',phi)
+        !
+        th_mat  = diag(exp(cmplx_i*th*D))
+        phi_mat = diag(exp(cmplx_i*phi*D))
+ 		call am_print('th_mat',th_mat)
+        call am_print('phi_mat',phi_mat)
+        !
+        U = matmul(matmul(V,th_mat),matmul(adjoint(V),phi_mat))
+        call am_print('U',U)
+        !
+        ! check that U is unitary
+        call am_print('det(U)',abs(det(U)))
+        if (abs(abs(det(U))-1.0_dp).gt.tiny) then
+            call am_print('det(U)',abs(det(U)))
+            call am_print('ERROR','U is not unitary.')
+            stop
+        endif
+        !
+        ! convert from spherical to tesseral harmonics 
+        B = spherical_to_tesseral(l)
+        call am_print('B',B)
+        call am_print('B\dagB',matmul(adjoint(B),B))
+        !
+        ! check that B is unitary
+        call am_print('det(B)',abs(det(B)))
+        if (abs(abs(det(B))-1.0_dp).gt.tiny) then
+            call am_print('det(B)',abs(det(U)))
+            call am_print('ERROR','B is not unitary.')
+            stop
+        endif
+        !
+        !
+        R = matmul(adjoint(B),matmul(U,B))
+        call am_print('R',R)
+        call am_print('det(R)',abs(det(R)))
+        if (abs(abs(det(U))-1.0_dp).gt.tiny) then
+            call am_print('det(R)',abs(det(U)))
+            call am_print('ERROR','R is not unitary.')
+            stop
+        endif
+        !
+        aa = R2axis_angle(R)
+        call am_print('aa',aa)
+        
+        
+        
+        !
+        ! convert from spherical to tesseral harmonics 
+        !
+        !
+        vec = [0,0,1]
+        !
+ 		if (norm2(vec).gt.tiny) then
+ 		    dcosines = vec/norm2(vec)
+ 		else
+ 		    dcosines = real([0,0,1],dp)
+        endif
+ 		! th is polar angle (measured from z axis)
+        ! phi is azimulthal angle (around z axis)
+ 		th = acos(dcosines(3))
+ 		phi = atan(dcosines(2)/(dcosines(1)+1.0D-14))
+ 		
+        !
+        call am_print('vec',vec)
+        call am_print('dcosines',dcosines)
+ 		call am_print('th',th)
+        call am_print('phi',phi)
+ 		!
+  
+        stop
+        
+        
+        
+ 	end subroutine test_rotation
+    
+    !subroutine     build_K(tb,uc,K)
+    !    !
+    !    ! k-independent part of the Hamiltonian
+    !    implicit none
+    !    !
+    !    class(am_class_tb), intent(in) :: tb
+    !    class(am_class_pair_shell), intent(in) :: irrpair
+    !    real(dp), allocatable, intent(out) :: K(:,:)
+    !    integer :: kdim
+    !    integer :: k
+    !    integer :: i,j,alpha,beta,ii,jj,iuc,juc
+    !    !
+    !    ! determine size of K
+    !    kdim = 0
+    !    do i = 1, uc%natoms
+    !        kdim = kdim + ic%atom( uc%ic_identifier(i) )%norbitals
+    !    enddo
+    !    allocate(K(kdim,kdim))
+    !    K = 0.0_dp
+    !    !
+    !    ! build K_{i,alpha,j,beta} i,j are primitive atom indices; alpha, beta are orbital indices
+    !    ! in reality, make K a matrix rather than a tensor by using a compound index ii = (i,alpha) and jj = (j,beta), i.e. K_{ii,jj}
+    !    ii=0
+    !    do iuc = 1, uc%natoms
+    !        i = uc%ic_identifier(iuc)
+    !        do alpha = 1, ic%atom( i )%norbitals
+    !            ii=ii+1
+    !            !
+    !            !
+    !            jj=0
+    !            do juc = 1, uc%natoms
+    !                j = uc%ic_identifier(juc)
+    !                do beta = 1, ic%atom( j )%norbitals
+    !                    jj=jj+1
+    !                    !
+    !                    ! orbitals quantum numbers [n,l,m,s]
+    !                    li = ic%atom(i)%orbital(2,alpha)
+    !                    lj = ic%atom(j)%orbital(2,beta)
+    !                    mi = ic%atom(i)%orbital(3,alpha)
+    !                    mj = ic%atom(j)%orbital(3,beta)
+    !                    !
+    !                    ! this is not right because the index j below is shell
+    !                    ! here, it is being used as a primitive cell index.
+    !                    ! NOT CORRECT!
+    !                    ! NOT CORRECT!
+    !                    ! NOT CORRECT!
+    !                    do k = 1, tb%nVsks
+    !                        if (mi.eq.mj) then
+    !                        if (i .eq.Vsk_label(1,k)) then
+    !                        if (j .eq.Vsk_label(2,k)) then
+    !                        if (li.eq.Vsk_label(3,k)) then
+    !                        if (lj.eq.Vsk_label(4,k)) then
+    !                        if (m .eq.Vsk_label(5,k)) then
+    !                        K(ii,jj) = Vsk(k)
+    !                        endif
+    !                        endif
+    !                        endif
+    !                        endif
+    !                        endif
+    !                        endif
+    !                    enddo
+    !                    ! Vsk_label(:,:) ! irreducible matrix element labels [i,j,li,lj,m]
+    !                   !  K(ii,jj) =
+    !
+    !                enddo
+    !            enddo
+    !        enddo
+    !    enddo
+    !    
+    !    
+    !        
+    !        
+    !        !i  = tb%Vsk_label(1,k)
+    !        !j  = tb%Vsk_label(2,k)
+    !        !li = tb%Vsk_label(3,k)
+    !        !lj = tb%Vsk_label(4,k)
+    !        !m  = tb%Vsk_label(5,k)
+    !
+    !    enddo
+    !    !
+    !
+    !end subroutine build_K
 
 
 	!
@@ -646,55 +850,7 @@ contains
         end function r_nl
 	end subroutine atomic_orbital
 
-! 	subroutine     quantize_orbitals_to_bond(v,state)
-! 		!
-! 		implicit none
-! 		!
-! 		real(dp), intent(in) :: v(3)   ! bond vector
-! 		integer , intent(in) :: state(:,:) ! contains a list of all states on atom 1
-! 		complex(dp), allocatable :: V(:,:)
-! 		real(dp)   , allocatable :: D(:)
-! 		integer :: nstates
-! 		!
-! 		! get number of states on atom of interest
-! 		nstates = size(state,2)
-! 		!
-! 		! generate a direct sum over l m by m matrices corresponding to the basis on Ly in Lz
-! 		do i = 1,1! , nstates
-! 			!
-! 			! set l for state [n,l,m,s,#]
-! 			l = state(2,i)
-! 			!
-! 			! get eigenvectors V and eigenvalues D of Ly in Lz basis
-! 			call get_Ly_in_Lz_basis(l=l, V=V, D=D)
-! 			!
-! 			!
-! 		!
-! 		!
-! 		! get rotated coordinate system ...
-! 		! z axis is at th = 0. this operation below brings vector v parallel with z axis, pointing up.
-! 		! if v=[0,0,0] no quantization is needed. keep vector aligned as it already is, i.e. z pointing along z.
-! 		if (norm2(v).gt.tiny) then
-! 		    dcosines = v/norm2(v)
-! 		else
-! 		    dcosines = real([0,0,1],dp)
-! 		endif
-! 		!
-! 		th = acos(dcosines(3))
-! 		phi = atan(dcosines(2)/(dcosines(1)+1.0D-14))
-! 		!
-! 		!
-! 		!
 
-
-
-! 		! 
-! 		! 
-! 		call am_print('My',My)
-! 		!
-! 		call am_print('D',D)
-! 		!
-! 	end subroutine quantize_orbitals_to_bond
 
 ! 	subroutine     test_orbitals()
 ! 		!
@@ -887,22 +1043,6 @@ contains
 	! stuff that is broken
 	! stuff that is broken
 	! stuff that is broken
-
-
-
-
-! 	pure function spdf2l(spdf) result(l)
-! 		!
-! 		character(1), intent(in) :: spdf
-! 		integer :: l
-! 		!
-! 		if     (spdf(1:1).eq.'s') then; l = 0
-! 		elseif (spdf(1:1).eq.'p') then; l = 1
-! 		elseif (spdf(1:1).eq.'d') then; l = 2
-! 		elseif (spdf(1:1).eq.'f') then; l = 3
-! 		endif
-! 	end function  spdf2l
-
 
 
 

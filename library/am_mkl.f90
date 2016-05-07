@@ -18,6 +18,10 @@ module am_mkl
         module procedure am_zdotc, am_ddot    
     end interface ! dot
 
+    interface det
+        module procedure zdet, ddet
+    end interface ! det
+
 contains
 
     ! eucledian norm of vector
@@ -102,7 +106,60 @@ contains
     
     ! get determinant by LU facorization
 
-    function       det(A) result(d)
+    function       zdet(A) result(d)
+        ! 
+        use am_stdout
+        !
+        implicit none
+        !
+        complex(dp), intent(in)  :: A(:,:)
+        complex(dp) :: d
+        complex(dp), allocatable :: C(:,:)
+        integer , allocatable :: ipiv(:)
+        integer :: pivots
+        integer :: m, n, info
+        integer :: i 
+        !
+        !
+        m = size(A,1)
+        n = size(A,2)
+        if (m.ne.n) then
+          call am_print('ERROR','Determinant is only defined for square matrices',flags='E')
+          stop
+        endif
+        allocate(ipiv(m))
+        !
+        ! remove numerical singularites by regularization
+        allocate(C,source=A)
+        do i = 1, m
+            C(i,i) = C(i,i) + eps
+        enddo
+        !
+        ! perform LU factorization
+        call zgetrf( m, m, C, m, ipiv, info )
+        if (info.ne.0) then
+            call am_print('ERROR',info,flags='E')
+            stop
+        endif
+        !
+        ! get determinant
+        d=1.0_dp
+        do i = 1, m
+            d = d*C(i,i)
+        enddo
+        !
+        ! correct for number of pivots
+        pivots = count( abs([1:m]-ipiv) .ne. 0 )
+        d = d*(-1)**pivots
+        !
+        ! LAPACK does not contain routines for computing determinants, although determinants can be obtained following
+        ! the use of a factorization routine. For example, for the PLU factorization the determinant is the product of
+        ! the diagonal elements of U and the sign of P, that is - for an odd number of permutations and + for an even
+        ! number. But aware that determinants can readliy overflow, or underflow.
+        !
+    end function   zdet
+
+    function       ddet(A) result(d)
         ! 
         use am_stdout
         !
@@ -153,8 +210,8 @@ contains
         ! the diagonal elements of U and the sign of P, that is - for an odd number of permutations and + for an even
         ! number. But aware that determinants can readliy overflow, or underflow.
         !
-    end function   det
-
+    end function   ddet
+    
     ! LU decomposition
 
     subroutine     lu(A)

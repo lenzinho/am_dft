@@ -3,6 +3,8 @@ module am_matlab
     use am_constants
 
     implicit none
+    
+    public
 
     interface linspace
         module procedure linspace_double, linspace_integer
@@ -28,11 +30,66 @@ module am_matlab
         module procedure dmeshgrid, imeshgrid
     end interface ! meshgrid
     
-contains
+    contains
 
     !
     ! matlab-inspired functions
     !
+        
+    function      R2axis_angle(R) result(aa)
+        !
+        use am_mkl, only : det
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: R(3,3)
+        real(dp) :: Rcp(3,3)
+        real(dp) :: aa(4) ! axis & angle [x,y,z,th]
+        real(dp) :: tr, phi, axis(3), d
+        integer  :: i
+        real(dp) :: signs(3),  m_upper(3), flip(3), shifted(3)
+        !
+        ! if R is a rotoinversion, get the angle and axis of the rotational part only (without the inversion)
+        Rcp = R*sign(1.0_dp,det(R))
+        !
+        tr = trace(Rcp)
+        !
+        if (abs(tr-3.0_dp).lt.tiny) then
+            aa = [0,0,1,0]
+        elseif (abs(tr+1.0_dp).lt.tiny) then
+            !
+            do i = 1,3
+                axis(i) = sqrt(max( 0.5_dp*(Rcp(i,i)+1),0.0_dp))
+            enddo
+            where (abs(axis).lt.tiny) axis = 0.0_dp
+            !!
+            !m_upper = [Rcp(2,3),Rcp(1,3),Rcp(1,2)]
+            !do i = 1,3
+            !    signs(i) = sign(1.0_dp,m_upper(i))
+            !enddo
+            !where (abs(signs).lt.tiny) signs = 0.0_dp
+            !!
+            !if (sum(signs).ge.0) then
+            !    flip = real([1,1,1],dp)
+            !elseif (.not.any(abs(signs).lt.tiny)) then
+            !    flip = -signs
+            !else
+            !    shifted = [signs(3),signs(1),signs(2)]
+            !    flip = shifted
+            !    where (shifted.eq.0) flip = flip + 1.0_dp
+            !endif
+            !axis = axis * flip;
+            aa(1:3) = axis
+            aa(4)   = pi
+        else
+            !
+            phi = acos( (tr-1.0_dp)/2.0_dp )
+            axis = [Rcp(3,2)-Rcp(2,3),Rcp(1,3)-Rcp(3,1),Rcp(2,1)-Rcp(1,2)]/(2.0_dp*sin(phi))
+            aa(1:3) = axis
+            aa(4)   = phi
+        endif
+        !
+    end function  R2axis_angle
 
     pure function adjoint(A)
         !

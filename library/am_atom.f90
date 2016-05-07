@@ -11,7 +11,7 @@ module am_atom
 	type am_class_atom
 		!
         integer :: norbitals
-        integer, allocatable :: orbital(:,:) ! quantum numbers [n,l,m,s,#], last number in nlms array is the state index starting with H 1s
+        integer, allocatable :: orbital(:,:) ! quantum numbers [n,l,m,s]
         !
 	end type am_class_atom
 
