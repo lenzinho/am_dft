@@ -28,6 +28,7 @@ module am_shells
         ! integer , allocatable :: pc_identifier(:) ! identifies corresponding atom in primitive cell
         ! integer , allocatable :: ic_identifier(:) ! identifies corresponding atom in irreducible cell
         ! </Inherited from am_class_unit_cell>
+        !
     end type am_shell_cell
 
     type, public :: am_class_pair_shell

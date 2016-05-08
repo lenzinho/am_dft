@@ -20,14 +20,14 @@ module am_tight_binding
 		! matrix elements
 		integer :: nVsks ! number of irreducible matrix elements
 		real(dp), allocatable :: Vsk(:) ! irreducible matrix elements
-		integer , allocatable :: Vsk_label(:,:) ! irreducible matrix element labels [i,j,li,lj,m]
+		integer , allocatable :: Vsk_label(:,:) ! irreducible matrix element labels [k,i,j,li,lj,m]
         ! i irreducible cell atom, jth neighbor shell around i, li orbital on i, lj orbital on j, m overlap
 		!
 	contains
 		procedure :: template_matrix_elements
 		procedure :: print_matrix_elements ! to stdout
         procedure :: write_matrix_elements ! to file
-		procedure :: read_matrix_elements  ! from fil
+		procedure :: read_matrix_elements  ! from file
         
 	end type am_class_tb
 
@@ -51,12 +51,21 @@ contains
         integer, allocatable :: Vsk_label_unique(:,:)
         logical :: is_spin_polarized
     	integer :: nVsks
+        integer, allocatable :: slist(:)
+        integer :: smax
     	integer :: n,l,m,s
     	integer :: i,j,k,ii,jj,kk
         integer, allocatable :: nlsi(:,:)
         integer, allocatable :: nlsj(:,:)
         !
         is_spin_polarized = .false.
+        if (is_spin_polarized) then
+            allocate(slist,source=[-1,1])
+            smax = size(slist)
+        else
+            allocate(slist,source=[0])
+            smax = size(slist)
+        endif
         !
         if (opts%verbosity.ge.1) call am_print_title('Creating orbital basis functions from template')
         !
@@ -66,34 +75,27 @@ contains
 			n = 2
 			! number of orbitals
             ic%atom(i)%norbitals = n**2
-            ! factor of two here accounts for spin
+            ! multiply by two for spin polarized case
             if (is_spin_polarized) ic%atom(i)%norbitals = 2*ic%atom(i)%norbitals
-            !
+            ! allocate space for orbitals
 			allocate(ic%atom(i)%orbital(4, ic%atom(i)%norbitals))
+            ! generate orbitals
 			k=0
 			do l = 0, (n-1)
 			do m = -l, l
-                if (is_spin_polarized) then
-			        do s = -1,1,2
-				        k = k+1
-				        ic%atom(i)%orbital(1,k) = n
-				        ic%atom(i)%orbital(2,k) = l
-				        ic%atom(i)%orbital(3,k) = m
-				        ic%atom(i)%orbital(4,k) = s
-                    enddo
-                else
-				        k = k+1
-				        ic%atom(i)%orbital(1,k) = n
-				        ic%atom(i)%orbital(2,k) = l
-				        ic%atom(i)%orbital(3,k) = m
-				        ic%atom(i)%orbital(4,k) = 0
-                endif
+		        do s = 1, smax
+			        k = k+1
+			        ic%atom(i)%orbital(1,k) = n
+			        ic%atom(i)%orbital(2,k) = l
+			        ic%atom(i)%orbital(3,k) = m
+			        ic%atom(i)%orbital(4,k) = slist(s)
+                enddo
 			enddo
 			enddo
 		enddo
 		if (opts%verbosity.ge.1) call print_oribtal_basis(ip,ic)
         !
-        ! quick qestimate to determine how much space to allocate for irreducible matrix elements
+        ! quick estimate to determine how much space to allocate for irreducible matrix elements
         nVsks = 0
         do k = 1, ip%nshells
             i = ip%shell(k)%i
@@ -117,10 +119,9 @@ contains
             ! j irreducible atom shell entered on atom irreducible atom i
             i = ip%shell(k)%i
             j = ip%shell(k)%j
-            !
+            ! make a list of orbital indices which omits degeneracies in m the magnetic quantum nmber
             nlsi = unique(ic%atom(i)%orbital([1,2,4],:))
             nlsj = unique(ic%atom(j)%orbital([1,2,4],:))
-            !
             ! loop over all combination of orbitals (outer product of li x lj)
             do ii = 1, size(nlsi,2)
             do jj = 1, size(nlsj,2)
@@ -136,7 +137,7 @@ contains
                     ! azimuthal quantum number
                     Vsk_label(4,kk) = nlsi(2,ii)
                     Vsk_label(5,kk) = nlsj(2,jj)
-                    ! if irreducibl atoms are identical flip the indices to get sp ~= ps
+                    ! if irreducible atoms are identical flip the indices to get sp ~= ps
                     if (Vsk_label(2,kk).eq.Vsk_label(3,kk)) then
                     if (Vsk_label(4,kk).gt.Vsk_label(5,kk)) Vsk_label([4,5],kk) = Vsk_label([5,4],kk)
                     endif
@@ -560,88 +561,48 @@ contains
         !
  	end subroutine test_SO3
     
-    !subroutine     build_K(tb,uc,K)
-    !    !
-    !    ! k-independent part of the Hamiltonian
-    !    implicit none
-    !    !
-    !    class(am_class_tb), intent(in) :: tb
-    !    class(am_class_pair_shell), intent(in) :: ip
-    !    real(dp), allocatable, intent(out) :: K(:,:)
-    !    integer :: kdim
-    !    integer :: k
-    !    integer :: i,j,alpha,beta,ii,jj,iuc,juc
-    !    !
-    !    ! determine size of K
-    !    kdim = 0
-    !    do i = 1, uc%natoms
-    !        kdim = kdim + ic%atom( uc%ic_identifier(i) )%norbitals
-    !    enddo
-    !    allocate(K(kdim,kdim))
-    !    K = 0.0_dp
-    !    !
-    !    ! build K_{i,alpha,j,beta} i,j are primitive atom indices; alpha, beta are orbital indices
-    !    ! in reality, make K a matrix rather than a tensor by using a compound index ii = (i,alpha) and jj = (j,beta), i.e. K_{ii,jj}
-    !    ii=0
-    !    do iuc = 1, uc%natoms
-    !        i = uc%ic_identifier(iuc)
-    !        do alpha = 1, ic%atom( i )%norbitals
-    !            ii=ii+1
-    !            !
-    !            !
-    !            jj=0
-    !            do juc = 1, uc%natoms
-    !                j = uc%ic_identifier(juc)
-    !                do beta = 1, ic%atom( j )%norbitals
-    !                    jj=jj+1
-    !                    !
-    !                    ! orbitals quantum numbers [n,l,m,s]
-    !                    li = ic%atom(i)%orbital(2,alpha)
-    !                    lj = ic%atom(j)%orbital(2,beta)
-    !                    mi = ic%atom(i)%orbital(3,alpha)
-    !                    mj = ic%atom(j)%orbital(3,beta)
-    !                    !
-    !                    ! this is not right because the index j below is shell
-    !                    ! here, it is being used as a primitive cell index.
-    !                    ! NOT CORRECT!
-    !                    ! NOT CORRECT!
-    !                    ! NOT CORRECT!
-    !                    do k = 1, tb%nVsks
-    !                        if (mi.eq.mj) then
-    !                        if (i .eq.Vsk_label(1,k)) then
-    !                        if (j .eq.Vsk_label(2,k)) then
-    !                        if (li.eq.Vsk_label(3,k)) then
-    !                        if (lj.eq.Vsk_label(4,k)) then
-    !                        if (m .eq.Vsk_label(5,k)) then
-    !                        K(ii,jj) = Vsk(k)
-    !                        endif
-    !                        endif
-    !                        endif
-    !                        endif
-    !                        endif
-    !                        endif
-    !                    enddo
-    !                    ! Vsk_label(:,:) ! irreducible matrix element labels [i,j,li,lj,m]
-    !                   !  K(ii,jj) =
-    !
-    !                enddo
-    !            enddo
-    !        enddo
-    !    enddo
-    !    
-    !    
-    !        
-    !        
-    !        !i  = tb%Vsk_label(1,k)
-    !        !j  = tb%Vsk_label(2,k)
-    !        !li = tb%Vsk_label(3,k)
-    !        !lj = tb%Vsk_label(4,k)
-    !        !m  = tb%Vsk_label(5,k)
-    !
-    !    enddo
-    !    !
-    !
-    !end subroutine build_K
+!     subroutine     build_K(tb,uc,ic,pp,ip,K)
+!        !
+!        ! k-independent part of the Hamiltonian
+!        implicit none
+!        !
+!        class(am_class_tb), intent(in) :: tb ! tight binding parametrs
+!        class(am_class_unit_cell) , intent(in) :: uc ! irreducible cell
+!        class(am_class_irre_cell) , intent(in) :: ic ! irreducible cell
+!        class(am_class_pair_shell), intent(in) :: pp ! primitive pairs
+!        class(am_class_pair_shell), intent(in) :: ip ! irreducible pairs
+!        real(dp), allocatable, intent(out) :: K(:,:,:) ! matrix elements for each shell
+!        integer :: kdim
+!        integer :: k
+!        integer :: i,j,alpha,beta,ii,jj,iuc,juc
+!        !
+!        ! determine size of K
+!        kdim = 0
+!        do i = 1, uc%natoms
+!            kdim = kdim + ic%atom( uc%ic_identifier(i) )%norbitals
+!        enddo
+!        allocate(K(kdim,kdim))
+!        K = 0.0_dp
+!        !
+!        ! build K_{i,alpha,j,beta} i,j are primitive atom indices; alpha, beta are orbital indices
+!        ! in reality, make K a matrix rather than a tensor by using a compound index ii = (i,alpha) and jj = (j,beta), i.e. K_{ii,jj}
+!        ii=0
+!        do iuc = 1, uc%natoms
+!            i = uc%ic_identifier(iuc)
+!            do alpha = 1, ic%atom( i )%norbitals
+!                ii=ii+1
+!                !
+
+!            enddo
+!        enddo
+       
+       
+           
+           
+!        enddo
+!        !
+    
+!     end subroutine build_K
 
 
 	!
@@ -944,76 +905,6 @@ contains
         end function r_nl
 	end subroutine atomic_orbital
 
-
-
-! 	subroutine     test_orbitals()
-! 		!
-! 		implicit none
-! 		!
-! 	    real(dp),allocatable :: r(:)   ! real space spherical coordinates
-!         real(dp),allocatable :: th(:)  ! real space spherical coordinates
-!         real(dp),allocatable :: phi(:) ! real space spherical coordinates
-! 		integer ,allocatable :: state(:,:)
-! 		real(dp),allocatable :: psi_r(:,:)
-!         real(dp),allocatable :: psi_th(:,:)
-!         real(dp),allocatable :: psi_phi(:,:)
-!         real(dp),allocatable :: overlap(:,:)
-!         real(dp),allocatable :: overlap_r(:,:)
-!         real(dp),allocatable :: overlap_th(:,:)
-!         real(dp),allocatable :: overlap_phi(:,:)
-!         complex(dp), allocatable :: My(:,:)
-! 		integer :: n,l,m
-! 		integer :: nstates
-! 		integer :: i
-! 		!
-! 		!
-! 		allocate(state(3,100))
-! 		nstates=0
-! 		do n = 1,2
-! 		do l = 0,n-1
-! 		do m = -l,l
-! 			nstates=nstates+1
-! 			state(:,nstates)=[n,l,m]
-! 		enddo
-! 		enddo
-! 		enddo 
-! 		call am_print('state',state(:,1:nstates))
-! 		!
-! 		! setup points on which wave function will be evaluated
-! 		call setup_query_points_for_wavefunction(r=r,th=th,phi=phi,flags='mesh,surf')
-! 		!
-! 		! evalute wave functions
-! 		allocate(psi_r(size(r),nstates))
-!         allocate(psi_th(size(th),nstates))
-!         allocate(psi_phi(size(phi),nstates))
-! 		do i = 1,nstates
-! 			!
-! 			n = state(1,i)
-! 			l = state(2,i)
-! 			m = state(3,i)
-! 			!
-! 			call atomic_orbital(n=n,l=l,m=m,r=r,th=th,phi=phi,psi_r=psi_r(:,i),psi_th=psi_th(:,i),psi_phi=psi_phi(:,i))
-!             !
-!         enddo
-! 		!
-! 		! calculate overlaps
-!         overlap_r=am_dgemm(psi_r,psi_r,flags='AT')
-!         overlap_th=am_dgemm(psi_th,psi_th,flags='AT')
-!         overlap_phi=am_dgemm(psi_phi,psi_phi,flags='AT')
-! 		call am_print('r overlap',overlap_r)
-!         call am_print('th overlap',overlap_th)
-!         call am_print('phi overlap',overlap_phi)
-!         !
-!         ! calculated final overlap
-!         allocate(overlap(nstates,nstates))
-!         overlap = overlap_r * overlap_th * overlap_phi
-!         call am_print('full overlap',overlap)
-!         !
-!         call am_print('real(My)',Real(My))
-!         call am_print('complex(My)',Aimag(My))
-!         !
-! 	end subroutine test_orbitals
-
 	subroutine     test_spherical_harmonic_expansion()
 		!
 		implicit none
@@ -1082,184 +973,78 @@ contains
         !
 	end subroutine test_spherical_harmonic_expansion
 
-!  	subroutine     tight_binding_main(ip,ic,opts)
-!  		!
-!  		implicit none
-!         !
-!         class(am_class_irre_cell):: ic ! irreducible cell
-!         type(am_class_pair_shell):: ip ! irreducible pairs
-!         type(am_class_options)   :: opts
-!         real(dp),allocatable :: ck1(:,:) ! atom 1: ck(i,k) are the k expansion coefficients for cartesian atomic orbital i quantize with respect to the molecular coordinate system (bond vector aligned along z)
-!         real(dp),allocatable :: ck2(:,:) ! atom 2: ck(i,k) are the k expansion coefficients for cartesian atomic orbital i quantize with respect to the molecular coordinate system (bond vector aligned along z)
-!         real(dp),allocatable :: dmat(:,:) ! delta matrix
-!         integer :: i,j,k
-!         !
-!         if (opts%verbosity.ge.1) call am_print_title('Quantizing irreducible orbitals with respect to irreducible bonds (pair shells)')
-!         !
-!         ! generate orbitals or load them from input
-!         ! note, this procedure below does not necessarily generate all m degenerates states for a given l.
-!         ! this, however is a necessary condition when quantizing the orbital with respect to the bond vector
-!         ! need to modify it below. requested input should be s p d f and their combinations s,sp,spd, spds* , etc.
-!         allocate(ic%atom(ic%natoms))
-!         do i = 1, ic%natoms
-!             ! last number in nlms array is the state index starting with H 1s
-!             call ic%atom(i)%generate_states(Z=ic%Z(i),n_valence_states=4,n_excited_states=4)
-!         enddo
-!         !
-!         !
-!         do k = 1, ip%nshells
-!             i = ip%shell(k)%i
-!             j = ip%shell(k)%j
-!             !
-!             if (opts%verbosity.ge.1) then
-!                 call am_print('quantizing state',unique(ic%atom(i)%state(1:3,:)))
-!             endif
-
-!             ! get expansion coefficients from state = [n,l,m,s,#]
-!             ! the unique() ignores the spin quantum number
-!             ck1 = quantize_to_bond(v=ip%shell(k)%tau(1:3,1), state=unique(ic%atom(i)%state(1:3,:)))
-!             ck2 = quantize_to_bond(v=ip%shell(k)%tau(1:3,1), state=unique(ic%atom(j)%state(1:3,:)))
-!             !
-!             ! form outer product of ck1(i,:) and ck2(j,:) for all i and j
-            
-!             stop
-!         enddo
-
-!     end subroutine tight_binding_main
- !
-
-
-
-
-
-
-	! stuff that is broken
-	! stuff that is broken
-	! stuff that is broken
-	! stuff that is broken
-
-
-
-
-! 	function       quantize_to_bond(v,l,m) result(overlap)
-! 		!
-!         ! quantize all states on a given atom with respect to vector v
-!         ! 
-! 		implicit none
-! 		!
-! 		real(dp), intent(in) :: v(3)   ! bond vector
-! 		integer , intent(in) :: l(:)   ! l and m of the state that is to be quantized with respect to v
-! 		integer , intent(in) :: m(:)   ! l(:) and m(:) vectors are used to probe multiple states at once.
-! 	    real(dp),allocatable :: r(:)   ! real space spherical coordinates
+!   subroutine     test_orbitals()
+!       !
+!       implicit none
+!       !
+!       real(dp),allocatable :: r(:)   ! real space spherical coordinates
 !         real(dp),allocatable :: th(:)  ! real space spherical coordinates
 !         real(dp),allocatable :: phi(:) ! real space spherical coordinates
-! 		real(dp),allocatable :: psi1_r(:,:)
-!         real(dp),allocatable :: psi1_th(:,:)
-!         real(dp),allocatable :: psi1_phi(:,:)
-! 		real(dp),allocatable :: psi2_r(:,:)
-!         real(dp),allocatable :: psi2_th(:,:)
-!         real(dp),allocatable :: psi2_phi(:,:)
-!         real(dp),allocatable :: overlap(:,:) ! overlap corresponds to expansion coefficients
+!       integer ,allocatable :: state(:,:)
+!       real(dp),allocatable :: psi_r(:,:)
+!         real(dp),allocatable :: psi_th(:,:)
+!         real(dp),allocatable :: psi_phi(:,:)
+!         real(dp),allocatable :: overlap(:,:)
 !         real(dp),allocatable :: overlap_r(:,:)
 !         real(dp),allocatable :: overlap_th(:,:)
 !         real(dp),allocatable :: overlap_phi(:,:)
-!         real(dp):: dcosines(3)
-!         real(dp):: offset_th
-!         real(dp):: offset_phi
-! 		integer :: np,lp,mp
-! 		integer :: nstates
-! 		integer :: i
-!         !
-! 		! setup points on which wave function will be evaluated
-! 		call setup_query_points_for_wavefunction(r=r,th=th,phi=phi,flags='mesh,surf')
-! 		!
-! 		! setup s,p,d,f states in cartesian coordinates
-! 		! l = 0 , states = 1; for n = 1, total states = 1
-! 		! l = 1 , states = 3; for n = 2, total states = 4
-! 		! l = 2 , states = 5; for n = 3, total states = 9
-! 		! l = 3 , states = 7; for n = 4, total states = 16
-! 		np = 4
-! 		nstates = np**2
-! 		allocate(state(3,nstates))
-! 		do lp = 0,np-1
-! 		do mp = -lp,lp
-! 			state(:,nstates)=[np,lp,mp]
-! 		enddo
-! 		enddo
-! 		!
-! 		! setup atomic orbitals in cartesian coordinates
-! 		allocate(psi1_r(size(r),1))
-!         allocate(psi1_th(size(th),1))
-!         allocate(psi1_phi(size(phi),1))
-! 		do i = 1,nstates
-! 			!
-! 			np = state(1,i)
-! 			lp = state(2,i)
-! 			mp = state(3,i)
-! 			!
-! 			call atomic_orbital(n=np,l=lp,m=mp,r=r,th=th,phi=phi, &
-!                 psi_r  =psi1_r(:,i), &
-!                 psi_th =psi1_th(:,i),&
-!                 psi_phi=psi1_phi(:,i))
+!         complex(dp), allocatable :: My(:,:)
+!       integer :: n,l,m
+!       integer :: nstates
+!       integer :: i
+!       !
+!       !
+!       allocate(state(3,100))
+!       nstates=0
+!       do n = 1,2
+!       do l = 0,n-1
+!       do m = -l,l
+!           nstates=nstates+1
+!           state(:,nstates)=[n,l,m]
+!       enddo
+!       enddo
+!       enddo 
+!       call am_print('state',state(:,1:nstates))
+!       !
+!       ! setup points on which wave function will be evaluated
+!       call setup_query_points_for_wavefunction(r=r,th=th,phi=phi,flags='mesh,surf')
+!       !
+!       ! evalute wave functions
+!       allocate(psi_r(size(r),nstates))
+!         allocate(psi_th(size(th),nstates))
+!         allocate(psi_phi(size(phi),nstates))
+!       do i = 1,nstates
+!           !
+!           n = state(1,i)
+!           l = state(2,i)
+!           m = state(3,i)
+!           !
+!           call atomic_orbital(n=n,l=l,m=m,r=r,th=th,phi=phi,psi_r=psi_r(:,i),psi_th=psi_th(:,i),psi_phi=psi_phi(:,i))
 !             !
 !         enddo
-!         !
-!         ! rotate coordinate system ...
-!         ! z axis is at th = 0. this operation below brings vector v parallel with z axis, pointing up.
-!         ! if v=[0,0,0] no quantization is needed. keep vector aligned as it already is, i.e. z pointing along z.
-!         if (norm2(v).gt.tiny) then
-!             dcosines = v/norm2(v)
-!         else
-!             dcosines = real([0,0,1],dp)
-!         endif
-!         !
-!         offset_th = acos(dcosines(3))
-!         offset_phi = atan(dcosines(2)/(dcosines(1)+1.0D-14))
-!         !
-!         th  = th - offset_th
-!         phi = phi - offset_phi
-!         !
-!         call am_print('v',v)
-!         call am_print('directional cosines',dcosines)
-!         call am_print('offset theta',offset_th)
-!         call am_print('offset phi',offset_phi)
-!         !
-!         ! determine atomic orbitals with respect to bond coordinate system
-!         ! define new z axis to be parallel with bond. Recall R*f(x) = f(inv(R)*x))
-! 		nstates = size(l)
-! 		allocate(psi2_r(size(r),nstates))
-!         allocate(psi2_th(size(th),nstates))
-!         allocate(psi2_phi(size(phi),nstates))
-! 		do i = 1, nstates
-! 			!
-! 			lp = l(i)
-! 			mp = m(i)
-!             !
-! 			call atomic_orbital(n=np,l=l,m=m,r=r,th=th,phi=phi,&
-!                 psi_r  =psi2_r(:,i), &
-!                 psi_th =psi2_th(:,i),&
-!                 psi_phi=psi2_phi(:,i))
-!             !
-!         enddo
-!         !
-! 		! calculate overlaps
-!         !overlap_r=matmul(transpose(psi1_r),psi2_r)
-!         !overlap_th=matmul(transpose(psi1_th),psi2_th)
-!         !overlap_phi=matmul(transpose(psi1_phi),psi2_phi)
-!         overlap_r=am_dgemm(  psi1_r,  psi2_r,  flags='AT')
-!         overlap_th=am_dgemm( psi1_th, psi2_th, flags='AT')
-!         overlap_phi=am_dgemm(psi1_phi,psi2_phi,flags='AT')
-!         !
-! 		call am_print('r overlap',overlap_r)
+!       !
+!       ! calculate overlaps
+!         overlap_r=am_dgemm(psi_r,psi_r,flags='AT')
+!         overlap_th=am_dgemm(psi_th,psi_th,flags='AT')
+!         overlap_phi=am_dgemm(psi_phi,psi_phi,flags='AT')
+!       call am_print('r overlap',overlap_r)
 !         call am_print('th overlap',overlap_th)
 !         call am_print('phi overlap',overlap_phi)
 !         !
 !         ! calculated final overlap
 !         allocate(overlap(nstates,nstates))
 !         overlap = overlap_r * overlap_th * overlap_phi
-!         !
 !         call am_print('full overlap',overlap)
-! 	end function   quantize_to_bond
+!         !
+!         call am_print('real(My)',Real(My))
+!         call am_print('complex(My)',Aimag(My))
+!         !
+!   end subroutine test_orbitals
+
+
+
+
+
 
 
 end module am_tight_binding
