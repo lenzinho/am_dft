@@ -13,11 +13,13 @@ module am_atom
         integer :: norbitals
         integer, allocatable :: orbital(:,:) ! quantum numbers [n,l,m,s]
         !
+    contains
+    	procedure :: gen_orbitals
 	end type am_class_atom
 
     contains
 
-	pure function  atm_symb(Z) result(symb)
+	pure function   atm_symb(Z) result(symb)
 		!
 		implicit none
 		!
@@ -37,9 +39,9 @@ module am_atom
 		!
 		symb=symbs(Z)
 		!
-	end function   atm_symb
+	end function    atm_symb
 
-	pure function  atm_Z(symb) result(Z)
+	pure function   atm_Z(symb) result(Z)
 		!
 		implicit none
 		!
@@ -63,9 +65,9 @@ module am_atom
 		 endif
 		enddo
 		!
-	end function   atm_Z
+	end function    atm_Z
 
-	pure function  spdf2l(spdf) result(l)
+	pure function   spdf2l(spdf) result(l)
 		!
 		character(1), intent(in) :: spdf
 		integer :: l
@@ -75,9 +77,9 @@ module am_atom
 		elseif (spdf(1:1).eq.'d') then; l = 2
 		elseif (spdf(1:1).eq.'f') then; l = 3
 		endif
-	end function   spdf2l
+	end function    spdf2l
 
-	pure function  l2spdf(l) result(spdf)
+	pure function   l2spdf(l) result(spdf)
 		!
 		integer, intent(in) :: l
 		character(1) :: spdf
@@ -87,9 +89,9 @@ module am_atom
 		elseif (l.eq.2) then; spdf = 'd'
 		elseif (l.eq.3) then; spdf = 'f'
 		endif
-	end function   l2spdf
+	end function    l2spdf
 
-	pure function  m2spdf(m) result(sigma_pi_delta_phi)
+	pure function   m2spdf(m) result(sigma_pi_delta_phi)
 		!
 		integer, intent(in) :: m
 		character(5) :: sigma_pi_delta_phi
@@ -99,7 +101,68 @@ module am_atom
 		elseif (m.eq.2) then; sigma_pi_delta_phi = 'delta'
 		elseif (m.eq.3) then; sigma_pi_delta_phi = 'phi'
 		endif
-	end function   m2spdf
+	end function    m2spdf
+
+	subroutine      gen_orbitals(atom,orbital_flags)
+		!
+		implicit none
+		!
+		class(am_class_atom) :: atom
+		character(*), intent(in) :: orbital_flags
+		character(2) :: orbital_name ! 1s, 2s, 2p, 3s, 3p, etc
+		integer, allocatable :: slist(:)
+		integer :: n, m, l, s, smax, k
+		!
+		!
+		if (index(orbital_flags,'spin polarized')) then
+            allocate(slist,source=[-1,1])
+            smax = size(slist)
+		else
+            allocate(slist,source=[0])
+            smax = size(slist)
+		endif
+		!
+		!
+		atom%norbitals = 0
+		do n = 1,4
+		do l = 0, (n-1)
+			!
+			orbital_name(1:2) = trim(int2char(n))//trim(l2spdf(l))
+			!
+			if (index(orbital_flags,orbital_name).ne.0) then
+				do m = -l, l
+		        do s = 1, smax
+			        atom%norbitals = atom%norbitals + 1
+	            enddo
+				enddo
+			endif
+		enddo
+		enddo
+		!
+		!
+		allocate(atom%orbital(4,atom%norbitals))
+		!
+		k = 0
+		do n = 1,4
+		do l = 0, (n-1)
+			!
+			orbital_name(1:2) = trim(int2char(n))//trim(l2spdf(l))
+			!
+			if (index(orbital_flags,orbital_name).ne.0) then
+				do m = -l, l
+		        do s = 1, smax
+			        k = k+1
+			        atom%orbital(1,k) = n
+			        atom%orbital(2,k) = l
+			        atom%orbital(3,k) = m
+			        atom%orbital(4,k) = slist(s)
+	            enddo
+				enddo
+			endif
+		enddo
+		enddo
+		!
+	end subroutine  gen_orbitals
 
 end module
 

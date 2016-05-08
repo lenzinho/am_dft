@@ -15,10 +15,16 @@ module am_shells
     private
 
     type, public, extends(am_class_unit_cell) :: am_shell_cell
-        ! 
-        ! j th shell centered on irreducible atom i 
+        !
+        ! identifies irreducible atoms
         integer :: i
         integer :: j
+        ! identifies primitive atoms
+        integer :: m
+        integer :: n
+        ! tight binding matrix elements
+        real(dp), allocatable :: K(:,:)
+        !
         ! <Inherited from am_class_unit_cell>
         ! real(dp) :: bas(3,3) !> column vectors a(1:3,i), a(1:3,j), a(1:3,k)
         ! integer  :: natoms   !> number of atoms
@@ -36,8 +42,8 @@ module am_shells
         integer :: nshells ! how many shells irreducible atoms
         type(am_shell_cell), allocatable :: shell(:) ! shell(k)
         !
-        integer, allocatable :: ip_identifier(:)
-        integer, allocatable :: pp_identifier(:)
+        integer, allocatable :: ip_identifier(:) ! identifies irreducible pair
+        integer, allocatable :: pp_identifier(:) ! identifies primitive cell pair
         !
     contains
         !
@@ -139,16 +145,19 @@ contains
                 write(*,'(a5)' ,advance='no') 'shell'
                 write(*,'(a6)' ,advance='no') 'Zi-Zj'
                 write(*,'(a6)' ,advance='no') 'i-j'
+                write(*,'(a6)' ,advance='no') 'm-n'
                 write(*,'(a5)' ,advance='no') 'm'
                 write(*,'(a8)' ,advance='no') 'stab.'
                 write(*,'(a8)' ,advance='no') 'rot.'
                 write(*,'(a8)' ,advance='no') 'rev.'
                 write(*,'(a10)',advance='no') '|v(cart)|'
                 write(*,'(a30)',advance='no') centertitle('v(cart)',30)
+                write(*,'(a10)',advance='no') '|v(frac)|'
                 write(*,'(a30)',advance='no') centertitle('v(frac)',30)
                 write(*,*)
                 write(*,'(5x)' ,advance='no')
                 write(*,'(a5)' ,advance='no')      repeat('-',5)
+                write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
                 write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
                 write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
                 write(*,'(a5)' ,advance='no') ' '//repeat('-',4)
@@ -157,6 +166,7 @@ contains
                 write(*,'(a8)', advance='no') ' '//repeat('-',7)
                 write(*,'(a10)',advance='no') ' '//repeat('-',9)
                 write(*,'(a30)',advance='no') ' '//repeat('-',29)
+                write(*,'(a10)',advance='no') ' '//repeat('-',9)
                 write(*,'(a30)',advance='no') ' '//repeat('-',29)
                 write(*,*)
                 !
@@ -177,6 +187,9 @@ contains
                 pp%shell(k)%i = pc%ic_identifier(i)
                 pp%shell(k)%j = pp%shell(k)%ic_identifier(1)
                 !
+                pp%shell(k)%m = pc%pc_identifier(i)
+                pp%shell(k)%n = pp%shell(k)%pc_identifier(1)
+                !
                 ! print to stdout
                 if (opts%verbosity.ge.1) then
                     ! determine stabilizers of a prototypical bond in shell (vector v)
@@ -189,12 +202,14 @@ contains
                     write(*,'(i5)'    ,advance='no') j
                     write(*,'(a6)'    ,advance='no') trim(atm_symb(pc%Z( pp%shell(k)%i )))//'-'//trim(atm_symb(pc%Z( pp%shell(k)%j )))
                     write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%i))//'-'//trim(int2char(pp%shell(k)%j))
+                    write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%m))//'-'//trim(int2char(pp%shell(k)%n))
                     write(*,'(i5)'    ,advance='no') pp%shell(k)%natoms
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( stab%pg_identifier ))
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( rotg%pg_identifier ))
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( revg%pg_identifier ))
                     write(*,'(f10.3)' ,advance='no') norm2(matmul(pp%shell(k)%bas,pp%shell(k)%tau(1:3,1)))
                     write(*,'(3f10.3)',advance='no') matmul(pp%shell(k)%bas,pp%shell(k)%tau(1:3,1))
+                    write(*,'(f10.3)' ,advance='no') norm2(pp%shell(k)%tau(1:3,1))
                     write(*,'(3f10.3)',advance='no') pp%shell(k)%tau(1:3,1)
                     write(*,*)
                 endif
@@ -203,11 +218,13 @@ contains
             !
         enddo ! primitive cell atoms
         ! write some definitions just to remember
-        write(*,'(5x,a)') 'Definitions:'
-        write(*,'(5x,a)') 'stabilizer (stab): point symmetries which leave a prototypical bond in shell invariant'
-        write(*,'(5x,a)') 'rotational (rot) : point symmetries which leave shell invariant'
-        write(*,'(5x,a)') 'reversal   (rev) : (im)proper rotational parts of space symmetries which flip bond endpoints'
-        write(*,'(5x,a)') 'i-j              : irreducible atom indicies'
+        write(*,'(a5,a)') ' ... ', 'Definitions:'
+        write(*,'(5x,a)') ' - i, j             : irreducible indicies'
+        write(*,'(5x,a)') ' - m, n             : primitive indicies'
+        write(*,'(5x,a)') ' - multiplicity (m) : pair apperences'
+        write(*,'(5x,a)') ' - stabilizer (stab): point symmetries which leave a representative bond in shell invariant'
+        write(*,'(5x,a)') ' - rotational (rot) : point symmetries which leave shell invariant'
+        write(*,'(5x,a)') ' - reversal   (rev) : (im)proper rotational parts of space symmetries which flip bond endpoints'
         !
         contains
         function       create_sphere(uc,sphere_center,pair_cutoff,opts) result(sphere)
@@ -386,16 +403,19 @@ contains
             write(*,'(a5)' ,advance='no') 'shell'
             write(*,'(a6)' ,advance='no') 'Zi-Zj'
             write(*,'(a6)' ,advance='no') 'i-j'
+            write(*,'(a6)' ,advance='no') 'm-n'
             write(*,'(a5)' ,advance='no') 'm'
             write(*,'(a8)' ,advance='no') 'stab.'
             write(*,'(a8)' ,advance='no') 'rot.'
             write(*,'(a8)' ,advance='no') 'rev.'
             write(*,'(a10)',advance='no') '|v(cart)|'
             write(*,'(a30)',advance='no') centertitle('v(cart)',30)
+            write(*,'(a10)',advance='no') '|v(frac)|'
             write(*,'(a30)',advance='no') centertitle('v(frac)',30)
             write(*,*)
             write(*,'(5x)' ,advance='no')
             write(*,'(a5)' ,advance='no')      repeat('-',5)
+            write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
             write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
             write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
             write(*,'(a5)' ,advance='no') ' '//repeat('-',4)
@@ -404,6 +424,7 @@ contains
             write(*,'(a8)', advance='no') ' '//repeat('-',7)
             write(*,'(a10)',advance='no') ' '//repeat('-',9)
             write(*,'(a30)',advance='no') ' '//repeat('-',29)
+            write(*,'(a10)',advance='no') ' '//repeat('-',9)
             write(*,'(a30)',advance='no') ' '//repeat('-',29)
             write(*,*)
             !
@@ -424,12 +445,14 @@ contains
                 write(*,'(i5)'    ,advance='no') k ! shell
                 write(*,'(a6)'    ,advance='no') trim(atm_symb(ic%Z( ip%shell(k)%i )))//'-'//trim(atm_symb(ic%Z( ip%shell(k)%j )))
                 write(*,'(a6)'    ,advance='no') trim(int2char(ip%shell(k)%i))//'-'//trim(int2char(ip%shell(k)%j))
+                write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%m))//'-'//trim(int2char(pp%shell(k)%n))
                 write(*,'(i5)'    ,advance='no') multiplicity(k)
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( stab%pg_identifier ))
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( rotg%pg_identifier ))
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( revg%pg_identifier ))
                 write(*,'(f10.3)' ,advance='no') norm2(matmul(ip%shell(k)%bas,ip%shell(k)%tau(1:3,1)))
                 write(*,'(3f10.3)',advance='no') matmul(ip%shell(k)%bas,ip%shell(k)%tau(1:3,1))
+                write(*,'(f10.3)' ,advance='no') norm2(ip%shell(k)%tau(1:3,1))
                 write(*,'(3f10.3)',advance='no') ip%shell(k)%tau(1:3,1)
                 write(*,*)
             endif
@@ -468,9 +491,14 @@ contains
         endif
         !
         if (opts%verbosity.ge.1) then
-            write(*,'(a5,a)') ' ... ','Definitions:'
-            write(*,'(5x,a)') 'multiplicity (m): number of times pair appear'
-            write(*,'(5x,a)') 'negative mappings indicate that endpoints have been flipped'
+            write(*,'(a5,a)') ' ... ', 'Definitions:'
+            write(*,'(5x,a)') ' - i, j             : irreducible indicies'
+            write(*,'(5x,a)') ' - m, n             : primitive indicies'
+            write(*,'(5x,a)') ' - multiplicity (m) : pair apperences'
+            write(*,'(5x,a)') ' - stabilizer (stab): point symmetries which leave a representative bond in shell invariant'
+            write(*,'(5x,a)') ' - rotational (rot) : point symmetries which leave shell invariant'
+            write(*,'(5x,a)') ' - reversal   (rev) : (im)proper rotational parts of space symmetries which flip bond endpoints'
+            write(*,'(5x,a)') ' - negative mappings indicate that endpoints have been flipped'
         endif
         !
         contains
