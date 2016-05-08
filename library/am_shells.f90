@@ -35,252 +35,24 @@ module am_shells
         integer :: nshells ! how many shells irreducible atoms
         type(am_shell_cell), allocatable :: shell(:) ! shell(k)
         !
-        integer, allocatable :: ipair_identifier(:)
-        integer, allocatable :: ppair_identifier(:)
+        integer, allocatable :: ip_identifier(:)
+        integer, allocatable :: pp_identifier(:)
         !
     contains
         !
-        procedure :: get_pair_shells
-        procedure :: get_irreducible_pair_shells
-        procedure :: identify_irreducible_pair_shells
+        procedure :: get_primitive
+        procedure :: get_irreducible
         !
     end type am_class_pair_shell
 
 contains
     
-    subroutine     get_irreducible_pair_shells(ipair,pair,pg,sg,ic,opts)
+    subroutine     get_primitive(pp,pc,pg,sg,pair_cutoff,uc,opts)
         !
         implicit none
         !
-        class(am_class_pair_shell) , intent(out) :: ipair
-        class(am_class_pair_shell) , intent(inout) :: pair
-        type(am_class_symmetry)    , intent(in) :: pg
-        type(am_class_symmetry)    , intent(in) :: sg
-        class(am_class_unit_cell)  , intent(in) :: ic
-        type(am_class_options)     , intent(in) :: opts
-        integer , allocatable :: ipair_identifier(:) ! can have negative, it means bond was flipped!
-        integer , allocatable :: ipair_identifier_unique(:) ! strictly positive
-        type(am_class_symmetry) :: stab
-        type(am_class_symmetry) :: revg
-        type(am_class_symmetry) :: rotg
-        type(am_class_options)  :: notalk
-        integer , allocatable :: multiplicity(:)
-        integer :: i,j,k
-        !
-        if (opts%verbosity.ge.1) call am_print_title('Determining irreducible nearest-neighbor pairs')
-        !
-        ! supress output from some subroutines
-        notalk = opts
-        notalk%verbosity = 0
-        !
-        ! output shells
-        if (opts%verbosity.ge.1) call am_print('pair shells',pair%nshells)
-        !
-        ! determine irreducible pair shells
-        ipair_identifier = identify_irreducible_pair_shells(pair=pair,pg=pg,ic=ic,opts=opts)
-        ! call am_print('ipair_identifier',ipair_identifier)
-        !
-        ! allocate space
-        ipair_identifier_unique = unique(abs(ipair_identifier))
-        ! call am_print('ipair_identifier_unique',ipair_identifier_unique)
-        ipair%nshells = size(ipair_identifier_unique)
-        if (opts%verbosity.ge.1) call am_print('irreducible pair shells',ipair%nshells)
-        !
-        ! create ipair instance
-        allocate(ipair%shell(ipair%nshells))
-        do i = 1,ipair%nshells
-            ipair%shell(i) = pair%shell(ipair_identifier_unique(i))
-        enddo
-        !
-        allocate(multiplicity(ipair%nshells))
-        multiplicity=0
-        do k = 1, ipair%nshells
-        do j = 1, pair%nshells
-            if (ipair_identifier_unique(k).eq.abs(ipair_identifier(j))) multiplicity(k) = multiplicity(k) + ipair%shell(k)%natoms
-        enddo
-        enddo
-        !
-        ! write to stdout
-        if (opts%verbosity.ge.1) then
-            !
-            write(*,'(5x)' ,advance='no')
-            write(*,'(a5)' ,advance='no') 'shell'
-            write(*,'(a6)' ,advance='no') 'Zi-Zj'
-            write(*,'(a6)' ,advance='no') 'i-j'
-            write(*,'(a5)' ,advance='no') 'm'
-            write(*,'(a8)' ,advance='no') 'stab.'
-            write(*,'(a8)' ,advance='no') 'rot.'
-            write(*,'(a8)' ,advance='no') 'rev.'
-            write(*,'(a10)',advance='no') '|v(cart)|'
-            write(*,'(a30)',advance='no') centertitle('v(cart)',30)
-            write(*,'(a30)',advance='no') centertitle('v(frac)',30)
-            write(*,*)
-            write(*,'(5x)' ,advance='no')
-            write(*,'(a5)' ,advance='no')      repeat('-',5)
-            write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
-            write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
-            write(*,'(a5)' ,advance='no') ' '//repeat('-',4)
-            write(*,'(a8)', advance='no') ' '//repeat('-',7)
-            write(*,'(a8)', advance='no') ' '//repeat('-',7)
-            write(*,'(a8)', advance='no') ' '//repeat('-',7)
-            write(*,'(a10)',advance='no') ' '//repeat('-',9)
-            write(*,'(a30)',advance='no') ' '//repeat('-',29)
-            write(*,'(a30)',advance='no') ' '//repeat('-',29)
-            write(*,*)
-            !
-        endif
-        do k = 1, ipair%nshells
-            !
-            ! print to stdout
-            if (opts%verbosity.ge.1) then
-                i = ipair%shell(k)%i
-                j = ipair%shell(k)%j
-                ! determine stabilizers of a prototypical bond in shell (vector v)
-                call stab%get_stabilizer_group(pg=pg, v=ipair%shell(k)%tau(1:3,1), opts=notalk)
-                ! determine rotations which leaves shell invariant
-                call rotg%get_rotational_group(pg=pg, uc=ipair%shell(k), opts=notalk)
-                ! determine reversal group, space symmetries, which interchange the position of atoms at the edges of the bond
-                call revg%get_reversal_group(sg=sg, v=ipair%shell(k)%tau(1:3,1), opts=notalk)
-                write(*,'(5x)'    ,advance='no')
-                write(*,'(i5)'    ,advance='no') k ! shell
-                write(*,'(a6)'    ,advance='no') trim(atm_symb(ic%Z( ipair%shell(k)%i )))//'-'//trim(atm_symb(ic%Z( ipair%shell(k)%j )))
-                write(*,'(a6)'    ,advance='no') trim(int2char(ipair%shell(k)%i))//'-'//trim(int2char(ipair%shell(k)%j))
-                write(*,'(i5)'    ,advance='no') multiplicity(k)
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( stab%pg_identifier ))
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( rotg%pg_identifier ))
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( revg%pg_identifier ))
-                write(*,'(f10.3)' ,advance='no') norm2(matmul(ipair%shell(k)%bas,ipair%shell(k)%tau(1:3,1)))
-                write(*,'(3f10.3)',advance='no') matmul(ipair%shell(k)%bas,ipair%shell(k)%tau(1:3,1))
-                write(*,'(3f10.3)',advance='no') ipair%shell(k)%tau(1:3,1)
-                write(*,*)
-            endif
-        enddo
-        !
-        ! create map
-        allocate(pair%ppair_identifier  , source = [1:pair%nshells])
-        allocate(pair%ipair_identifier  , source = ipair_identifier)
-        allocate(ipair%ipair_identifier , source = [1:ipair%nshells])
-        allocate(ipair%ppair_identifier(ipair%nshells))
-        do i = 1, ipair%nshells
-            ipair%ppair_identifier(i) = ipair_identifier_unique(i)
-        enddo
-        !
-        if (opts%verbosity.ge.1) then
-            write(*,'(a5,a)',advance='no') ' ... ', 'pair mapping (to irreducible: prim->irr)'
-            do i = 1, pair%nshells
-                if (modulo(i,11).eq.1) then
-                    write(*,*)
-                    write(*,'(5x)',advance='no')
-                endif
-                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(pair%ipair_identifier(i)))
-            enddo
-            write(*,*)
-            !
-            write(*,'(a5,a)',advance='no') ' ... ', 'pair mapping (to primitive: irr->prim)'
-            do i = 1, ipair%nshells
-                if (modulo(i,11).eq.1) then
-                    write(*,*)
-                    write(*,'(5x)',advance='no')
-                endif
-                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(ipair%ppair_identifier(i)))
-            enddo
-            write(*,*)
-            !
-        endif
-        !
-        if (opts%verbosity.ge.1) then
-            write(*,'(a5,a)') ' ... ','Definitions:'
-            write(*,'(5x,a)') 'multiplicity (m): number of times pair appear'
-            write(*,'(5x,a)') 'negative mappings indicate pairs with flipped endpoints'
-        endif
-        !
-    end subroutine get_irreducible_pair_shells
-    
-    function       identify_irreducible_pair_shells(pair,pg,ic,opts) result(ipair_identifier)
-        !
-        ! negative ipair_identifier is returned for bonds that are flipped
-        !
-        implicit none
-        !
-        class(am_class_pair_shell), intent(in) :: pair
-        type(am_class_symmetry)   , intent(in) :: pg
-        class(am_class_unit_cell) , intent(in) :: ic
-        type(am_class_options)    , intent(in) :: opts
-        type(am_class_options)  :: notalk
-        type(am_class_symmetry) :: stab ! stabilizer of vector v
-        integer , allocatable :: Z(:,:) ! Z of each atom in pair
-        integer , allocatable :: s(:) ! stabilizer point group identifier
-        real(dp), allocatable :: d(:) ! distances of atoms
-        integer , allocatable :: ipair_identifier(:) ! can have negative, it means bond was flipped!
-        logical , allocatable :: isflipped(:)
-        real(dp) :: v(3)
-        integer :: i,j,k
-        !
-        ! supress output from some subroutines
-        notalk = opts
-        notalk%verbosity = 0
-        !
-        ! set total number of pairs as the sum of the number of shells on each atom 
-        ! note that totalshells is not the absolute number of pairs, it is the number of shells on all atoms; i.e. the number of unique pairs all atoms have by themselves without referencing other atoms.
-        !
-        ! allocate space 
-        allocate(d(pair%nshells))   ! distance between pair of atoms (having atoms the same distance apart is a prerequesit for the bond to be the same)
-        allocate(s(pair%nshells))   ! stabilizer group identifier (having the same stabilier group is a prerequesit for the bond to be the same)
-        allocate(Z(2,pair%nshells)) ! atomic number of elements in pair (having the same types of atoms is a prerequesit for the bond to be the same)
-        allocate(isflipped(pair%nshells)) ! indicates which pairs were flipped in the comparison, returns negative ipair_identifier if the corresponding bond was flipped
-        !
-        isflipped = .false.
-        do k = 1, pair%nshells
-            ! get bond vector
-            v = pair%shell(k)%tau(:,1)
-            ! record distances
-            d(k) = norm2(matmul(pair%shell(k)%bas,v))
-            ! record sorted pair
-            Z(1:2,k) = [ic%Z(pair%shell(k)%i), pair%shell(k)%Z(1)]
-            if (Z(1,k).gt.Z(2,k)) then
-                isflipped(k) = .true.
-                Z([1,2],k) = Z([2,1],k)
-            endif
-            ! record stabilzier group
-            call stab%get_stabilizer_group(pg=pg, v=v, opts=notalk)
-            s(k) = stab%pg_identifier
-            ! possible write shell for debuging
-            ! call pair%shell(i,j)%write_poscar(file_output_poscar='shell_'//trim(int2char(i))//'_'//trim(int2char(j)))
-        enddo
-        !
-        ! compare all the prerequisists listed above (distances, atom types, and bond stabilizer) to figure out which pairs are irreducible
-        allocate(ipair_identifier(pair%nshells))
-        ipair_identifier = 0
-        do i = 1, pair%nshells
-            if (ipair_identifier(i).eq.0) then
-                do j = 1, pair%nshells
-                    ! check that bond length is the same
-                    if ( abs(d(i)-d(j)).lt.opts%sym_prec) then
-                    ! check that atoms are the same type
-                    if ( all(Z(1:2,i).eq.Z(1:2,j)) ) then
-                    ! check that stabilizers are the same
-                    if ( s(i).eq.s(j) ) then
-                        ipair_identifier(j) = i
-                    endif
-                    endif
-                    endif
-                enddo
-            endif
-        enddo
-        !
-        ! indicate which atoms have been flipped with negative sign
-        do k = 1, pair%nshells
-            if (isflipped(k)) ipair_identifier(k) = -ipair_identifier(k)
-        enddo
-        !
-    end function   identify_irreducible_pair_shells
-
-    subroutine     get_pair_shells(pair,pc,pg,sg,pair_cutoff,uc,opts)
-        !
-        implicit none
-        !
-        class(am_class_pair_shell), intent(inout) :: pair
-        class(am_class_unit_cell), intent(in) :: pc ! irreducible cell or primitive cell
+        class(am_class_pair_shell), intent(inout) :: pp ! primitive pairs
+        class(am_class_unit_cell), intent(in) :: pc ! primitive cell
         type(am_class_symmetry) , intent(in) :: sg ! space group
         type(am_class_symmetry) , intent(in) :: pg ! point group
         type(am_class_unit_cell), intent(in) :: uc ! unit cell
@@ -331,9 +103,9 @@ contains
             nshells = nshells + maxval(identify_pairs(sphere=sphere,pg=pg))
         enddo
         !
-        ! allocate pair space, pair pair centered on atom pc%natoms 
-        pair%nshells = nshells
-        allocate( pair%shell(pair%nshells) )
+        ! allocate pair space, pair centered on atom pc%natoms 
+        pp%nshells = nshells
+        allocate( pp%shell(pp%nshells) )
         ! 
         k = 0 ! shell index
         do i = 1, pc%natoms
@@ -398,31 +170,31 @@ contains
                 !
                 ! create the jth shell centered on primitive atom i
                 k=k+1
-                call pair%shell(k)%copy(uc=sphere)
-                call pair%shell(k)%filter(indices=ind)
+                call pp%shell(k)%copy(uc=sphere)
+                call pp%shell(k)%filter(indices=ind)
                 !
-                pair%shell(k)%i = pc%ic_identifier(i)
-                pair%shell(k)%j = pair%shell(k)%ic_identifier(1)
+                pp%shell(k)%i = pc%ic_identifier(i)
+                pp%shell(k)%j = pp%shell(k)%ic_identifier(1)
                 !
                 ! print to stdout
                 if (opts%verbosity.ge.1) then
                     ! determine stabilizers of a prototypical bond in shell (vector v)
-                    call stab%get_stabilizer_group(pg=pg, v=pair%shell(k)%tau(1:3,1), opts=notalk)
+                    call stab%get_stabilizer_group(pg=pg, v=pp%shell(k)%tau(1:3,1), opts=notalk)
                     ! determine rotations which leaves shell invariant
-                    call rotg%get_rotational_group(pg=pg, uc=pair%shell(k), opts=notalk)
+                    call rotg%get_rotational_group(pg=pg, uc=pp%shell(k), opts=notalk)
                     ! determine reversal group, space symmetries, which interchange the position of atoms at the edges of the bond
-                    call revg%get_reversal_group(sg=sg, v=pair%shell(k)%tau(1:3,1), opts=notalk)
+                    call revg%get_reversal_group(sg=sg, v=pp%shell(k)%tau(1:3,1), opts=notalk)
                     write(*,'(5x)'    ,advance='no')
                     write(*,'(i5)'    ,advance='no') j
-                    write(*,'(a6)'    ,advance='no') trim(atm_symb(pc%Z( pair%shell(k)%i )))//'-'//trim(atm_symb(pc%Z( pair%shell(k)%j )))
-                    write(*,'(a6)'    ,advance='no') trim(int2char(pair%shell(k)%i))//'-'//trim(int2char(pair%shell(k)%j))
-                    write(*,'(i5)'    ,advance='no') pair%shell(k)%natoms
+                    write(*,'(a6)'    ,advance='no') trim(atm_symb(pc%Z( pp%shell(k)%i )))//'-'//trim(atm_symb(pc%Z( pp%shell(k)%j )))
+                    write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%i))//'-'//trim(int2char(pp%shell(k)%j))
+                    write(*,'(i5)'    ,advance='no') pp%shell(k)%natoms
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( stab%pg_identifier ))
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( rotg%pg_identifier ))
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( revg%pg_identifier ))
-                    write(*,'(f10.3)' ,advance='no') norm2(matmul(pair%shell(k)%bas,pair%shell(k)%tau(1:3,1)))
-                    write(*,'(3f10.3)',advance='no') matmul(pair%shell(k)%bas,pair%shell(k)%tau(1:3,1))
-                    write(*,'(3f10.3)',advance='no') pair%shell(k)%tau(1:3,1)
+                    write(*,'(f10.3)' ,advance='no') norm2(matmul(pp%shell(k)%bas,pp%shell(k)%tau(1:3,1)))
+                    write(*,'(3f10.3)',advance='no') matmul(pp%shell(k)%bas,pp%shell(k)%tau(1:3,1))
+                    write(*,'(3f10.3)',advance='no') pp%shell(k)%tau(1:3,1)
                     write(*,*)
                 endif
                 !
@@ -552,7 +324,234 @@ contains
             enddo
             !
         end function   identify_pairs
-    end subroutine get_pair_shells
+    end subroutine get_primitive
+
+    subroutine     get_irreducible(ip,pp,pg,sg,ic,opts)
+        !
+        implicit none
+        !
+        class(am_class_pair_shell) , intent(out) :: ip
+        class(am_class_pair_shell) , intent(inout) :: pp
+        type(am_class_symmetry)    , intent(in) :: pg
+        type(am_class_symmetry)    , intent(in) :: sg
+        class(am_class_unit_cell)  , intent(in) :: ic
+        type(am_class_options)     , intent(in) :: opts
+        integer , allocatable :: ip_identifier(:) ! can have negative, it means bond was flipped!
+        integer , allocatable :: ip_identifier_unique(:) ! strictly positive
+        type(am_class_symmetry) :: stab
+        type(am_class_symmetry) :: revg
+        type(am_class_symmetry) :: rotg
+        type(am_class_options)  :: notalk
+        integer , allocatable :: multiplicity(:)
+        integer :: i,j,k
+        !
+        if (opts%verbosity.ge.1) call am_print_title('Determining irreducible nearest-neighbor pairs')
+        !
+        ! supress output from some subroutines
+        notalk = opts
+        notalk%verbosity = 0
+        !
+        ! output shells
+        if (opts%verbosity.ge.1) call am_print('pair shells',pp%nshells)
+        !
+        ! determine irreducible pair shells
+        ip_identifier = identify_irreducible(pp=pp,pg=pg,ic=ic,opts=opts)
+        ! call am_print('ip_identifier',ip_identifier)
+        !
+        ! allocate space
+        ip_identifier_unique = unique(abs(ip_identifier))
+        ! call am_print('ip_identifier_unique',ip_identifier_unique)
+        ip%nshells = size(ip_identifier_unique)
+        if (opts%verbosity.ge.1) call am_print('irreducible pair shells',ip%nshells)
+        !
+        ! create ip instance
+        allocate(ip%shell(ip%nshells))
+        do i = 1,ip%nshells
+            ip%shell(i) = pp%shell(ip_identifier_unique(i))
+        enddo
+        !
+        allocate(multiplicity(ip%nshells))
+        multiplicity=0
+        do k = 1, ip%nshells
+        do j = 1, pp%nshells
+            if (ip_identifier_unique(k).eq.abs(ip_identifier(j))) multiplicity(k) = multiplicity(k) + ip%shell(k)%natoms
+        enddo
+        enddo
+        !
+        ! write to stdout
+        if (opts%verbosity.ge.1) then
+            !
+            write(*,'(5x)' ,advance='no')
+            write(*,'(a5)' ,advance='no') 'shell'
+            write(*,'(a6)' ,advance='no') 'Zi-Zj'
+            write(*,'(a6)' ,advance='no') 'i-j'
+            write(*,'(a5)' ,advance='no') 'm'
+            write(*,'(a8)' ,advance='no') 'stab.'
+            write(*,'(a8)' ,advance='no') 'rot.'
+            write(*,'(a8)' ,advance='no') 'rev.'
+            write(*,'(a10)',advance='no') '|v(cart)|'
+            write(*,'(a30)',advance='no') centertitle('v(cart)',30)
+            write(*,'(a30)',advance='no') centertitle('v(frac)',30)
+            write(*,*)
+            write(*,'(5x)' ,advance='no')
+            write(*,'(a5)' ,advance='no')      repeat('-',5)
+            write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
+            write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
+            write(*,'(a5)' ,advance='no') ' '//repeat('-',4)
+            write(*,'(a8)', advance='no') ' '//repeat('-',7)
+            write(*,'(a8)', advance='no') ' '//repeat('-',7)
+            write(*,'(a8)', advance='no') ' '//repeat('-',7)
+            write(*,'(a10)',advance='no') ' '//repeat('-',9)
+            write(*,'(a30)',advance='no') ' '//repeat('-',29)
+            write(*,'(a30)',advance='no') ' '//repeat('-',29)
+            write(*,*)
+            !
+        endif
+        do k = 1, ip%nshells
+            !
+            ! print to stdout
+            if (opts%verbosity.ge.1) then
+                i = ip%shell(k)%i
+                j = ip%shell(k)%j
+                ! determine stabilizers of a prototypical bond in shell (vector v)
+                call stab%get_stabilizer_group(pg=pg, v=ip%shell(k)%tau(1:3,1), opts=notalk)
+                ! determine rotations which leaves shell invariant
+                call rotg%get_rotational_group(pg=pg, uc=ip%shell(k), opts=notalk)
+                ! determine reversal group, space symmetries, which interchange the position of atoms at the edges of the bond
+                call revg%get_reversal_group(sg=sg, v=ip%shell(k)%tau(1:3,1), opts=notalk)
+                write(*,'(5x)'    ,advance='no')
+                write(*,'(i5)'    ,advance='no') k ! shell
+                write(*,'(a6)'    ,advance='no') trim(atm_symb(ic%Z( ip%shell(k)%i )))//'-'//trim(atm_symb(ic%Z( ip%shell(k)%j )))
+                write(*,'(a6)'    ,advance='no') trim(int2char(ip%shell(k)%i))//'-'//trim(int2char(ip%shell(k)%j))
+                write(*,'(i5)'    ,advance='no') multiplicity(k)
+                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( stab%pg_identifier ))
+                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( rotg%pg_identifier ))
+                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( revg%pg_identifier ))
+                write(*,'(f10.3)' ,advance='no') norm2(matmul(ip%shell(k)%bas,ip%shell(k)%tau(1:3,1)))
+                write(*,'(3f10.3)',advance='no') matmul(ip%shell(k)%bas,ip%shell(k)%tau(1:3,1))
+                write(*,'(3f10.3)',advance='no') ip%shell(k)%tau(1:3,1)
+                write(*,*)
+            endif
+        enddo
+        !
+        ! create map
+        allocate(pp%pp_identifier  , source = [1:pp%nshells])
+        allocate(pp%ip_identifier  , source = ip_identifier)
+        allocate(ip%ip_identifier , source = [1:ip%nshells])
+        allocate(ip%pp_identifier(ip%nshells))
+        do i = 1, ip%nshells
+            ip%pp_identifier(i) = ip_identifier_unique(i)
+        enddo
+        !
+        if (opts%verbosity.ge.1) then
+            write(*,'(a5,a)',advance='no') ' ... ', 'pair mapping (from primitive: prim->irr)'
+            do i = 1, pp%nshells
+                if (modulo(i,11).eq.1) then
+                    write(*,*)
+                    write(*,'(5x)',advance='no')
+                endif
+                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(pp%ip_identifier(i)))
+            enddo
+            write(*,*)
+            !
+            write(*,'(a5,a)',advance='no') ' ... ', 'pair mapping (to primitive: irr->prim)'
+            do i = 1, ip%nshells
+                if (modulo(i,11).eq.1) then
+                    write(*,*)
+                    write(*,'(5x)',advance='no')
+                endif
+                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(ip%pp_identifier(i)))
+            enddo
+            write(*,*)
+            !
+        endif
+        !
+        if (opts%verbosity.ge.1) then
+            write(*,'(a5,a)') ' ... ','Definitions:'
+            write(*,'(5x,a)') 'multiplicity (m): number of times pair appear'
+            write(*,'(5x,a)') 'negative mappings indicate that endpoints have been flipped'
+        endif
+        !
+        contains
+        function       identify_irreducible(pp,pg,ic,opts) result(ip_identifier)
+            !
+            ! negative ip_identifier is returned for bonds that are flipped
+            !
+            implicit none
+            !
+            class(am_class_pair_shell), intent(in) :: pp ! primitive pairs
+            type(am_class_symmetry)   , intent(in) :: pg ! point group
+            class(am_class_unit_cell) , intent(in) :: ic ! irreducible cell
+            type(am_class_options)    , intent(in) :: opts
+            type(am_class_options)  :: notalk
+            type(am_class_symmetry) :: stab ! stabilizer of vector v
+            integer , allocatable :: Z(:,:) ! Z of each atom in pair
+            integer , allocatable :: s(:) ! stabilizer point group identifier
+            real(dp), allocatable :: d(:) ! distances of atoms
+            integer , allocatable :: ip_identifier(:) ! can have negative, it means bond was flipped!
+            logical , allocatable :: isflipped(:)
+            real(dp) :: v(3)
+            integer :: i,j,k
+            !
+            ! supress output from some subroutines
+            notalk = opts
+            notalk%verbosity = 0
+            !
+            ! set total number of pairs as the sum of the number of shells on each atom 
+            ! note that totalshells is not the absolute number of pairs, it is the number of shells on all atoms; i.e. the number of unique pairs all atoms have by themselves without referencing other atoms.
+            !
+            ! allocate space 
+            allocate(d(pp%nshells))   ! distance between pair of atoms (having atoms the same distance apart is a prerequesit for the bond to be the same)
+            allocate(s(pp%nshells))   ! stabilizer group identifier (having the same stabilier group is a prerequesit for the bond to be the same)
+            allocate(Z(2,pp%nshells)) ! atomic number of elements in pair (having the same types of atoms is a prerequesit for the bond to be the same)
+            allocate(isflipped(pp%nshells)) ! indicates which pairs were flipped in the comparison, returns negative ip_identifier if the corresponding bond was flipped
+            !
+            isflipped = .false.
+            do k = 1, pp%nshells
+                ! get bond vector
+                v = pp%shell(k)%tau(:,1)
+                ! record distances
+                d(k) = norm2(matmul(pp%shell(k)%bas,v))
+                ! record sorted pair
+                Z(1:2,k) = [ic%Z(pp%shell(k)%i), pp%shell(k)%Z(1)]
+                if (Z(1,k).gt.Z(2,k)) then
+                    isflipped(k) = .true.
+                    Z([1,2],k) = Z([2,1],k)
+                endif
+                ! record stabilzier group
+                call stab%get_stabilizer_group(pg=pg, v=v, opts=notalk)
+                s(k) = stab%pg_identifier
+                ! possible write shell for debuging
+                ! call pair%shell(i,j)%write_poscar(file_output_poscar='shell_'//trim(int2char(i))//'_'//trim(int2char(j)))
+            enddo
+            !
+            ! compare all the prerequisists listed above (distances, atom types, and bond stabilizer) to figure out which pairs are irreducible
+            allocate(ip_identifier(pp%nshells))
+            ip_identifier = 0
+            do i = 1, pp%nshells
+                if (ip_identifier(i).eq.0) then
+                    do j = 1, pp%nshells
+                        ! check that bond length is the same
+                        if ( abs(d(i)-d(j)).lt.opts%sym_prec) then
+                        ! check that atoms are the same type
+                        if ( all(Z(1:2,i).eq.Z(1:2,j)) ) then
+                        ! check that stabilizers are the same
+                        if ( s(i).eq.s(j) ) then
+                            ip_identifier(j) = i
+                        endif
+                        endif
+                        endif
+                    enddo
+                endif
+            enddo
+            !
+            ! indicate which atoms have been flipped with negative sign
+            do k = 1, pp%nshells
+                if (isflipped(k)) ip_identifier(k) = -ip_identifier(k)
+            enddo
+            !
+        end function   identify_irreducible
+    end subroutine get_irreducible
 
     pure function  transform_2nd_order_force_constants(M,R,PM) result(RM)
         !
@@ -600,10 +599,10 @@ contains
 !        type(am_class_symmetry)   , intent(in) :: pg
 !        type(am_class_symmetry)   , intent(in) :: sg
 !        type(am_class_options)    , intent(in) :: opts
-!        integer , allocatable :: ipair_identifier(:) ! unique indicies i and j (see below)
+!        integer , allocatable :: ip_identifier(:) ! unique indicies i and j (see below)
 !        !
 !        !
-!        ipair_identifier = pair%identify_irreducible_pair_shells(ic=ic,pg=pg,opts=opts)
+!        ip_identifier = pair%identify_irreducible(ic=ic,pg=pg,opts=opts)
 !        
 !!        do i = 1, pair%
 ! !       call get_symmetry_adapted_tensor(pg=pg,uc=uc,opts=opts,property='reversal',relations)
@@ -612,11 +611,11 @@ contains
 !
 !        !
 !        !! output
-!        !allocate(irrep_pairs,source=ij(1:2,unique(ipair_identifier)))
+!        !allocate(irrep_pairs,source=ij(1:2,unique(ip_identifier)))
 !        !!
 !        !!
 !        !if (opts%verbosity.ge.1) then
-!        !    ind_u = unique(ipair_identifier)
+!        !    ind_u = unique(ip_identifier)
 !        !    npairs_u = size(ind_u)
 !        !    call am_print('irreducible pair ('//trim(int2char(npairs_u))//')',ij(:,ind_u))
 !        !    !
