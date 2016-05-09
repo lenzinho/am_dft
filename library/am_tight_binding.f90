@@ -6,6 +6,7 @@ module am_tight_binding
     use am_options
     use am_shells
     use am_irre_cell
+    use am_prim_cell
     use am_symmetry
     use am_mkl
 
@@ -19,15 +20,15 @@ module am_tight_binding
 		!
 		! matrix elements
 		integer :: nVsks ! number of irreducible matrix elements
-		real(dp), allocatable :: Vsk(:) ! irreducible matrix elements
+		real(dp), allocatable :: Vsk(:)   ! irreducible matrix elements
 		integer , allocatable :: ind(:,:) ! ind([i,n,l,m,s,j,n,l,m,s,k],:)
         ! i irreducible cell atom, jth neighbor shell around i, li orbital on i, lj orbital on j, m overlap
 		!
 	contains
-        procedure :: print_matrix_elements ! to stdout gets segmentationa fault for some reason...
+        procedure :: print_Vsk ! to stdout gets segmentationa fault for some reason...
         procedure :: get_Vsk
         procedure :: set_Vsk
-		procedure :: template_matrix_elements
+		procedure :: template_Vsk
         procedure :: build_K
 !         procedure :: write_matrix_elements ! to file
 ! 		procedure :: read_matrix_elements  ! from file
@@ -96,7 +97,7 @@ contains
         !
     end subroutine set_Vsk
 
-	subroutine     template_matrix_elements(tb,ip,ic,opts)
+	subroutine     template_Vsk(tb,ip,ic,opts)
 		!
     	! Useful if no states on atoms are defined. Gives each atom all the possible states
         !
@@ -165,7 +166,7 @@ contains
         allocate(tb%Vsk(tb%nVsks))
         tb%Vsk = 1.0_dp
         ! write matrix elements to stdout
-		if (opts%verbosity.ge.1) call tb%print_matrix_elements()
+		if (opts%verbosity.ge.1) call tb%print_Vsk()
         !
         contains
 	    subroutine     print_orbital_basis(ip,ic)
@@ -194,9 +195,9 @@ contains
 			    write(*,*)
 		    enddo
 	    end subroutine print_orbital_basis
-    end subroutine template_matrix_elements
+    end subroutine template_Vsk
 
-    subroutine     print_matrix_elements(tb)
+    subroutine     print_Vsk(tb)
         !
         use am_atom, only : l2spdf, m2spdf
         !
@@ -233,7 +234,7 @@ contains
         write(*,'(5x,a)') 'li,lj : orbitals on irreducible atoms'
         write(*,'(5x,a)') 'm     : type of overlap'
         !
-    end subroutine print_matrix_elements
+    end subroutine print_Vsk
 
 !     subroutine     write_matrix_elements(tb)
 !     	!
@@ -302,7 +303,7 @@ contains
 !                 !
 !             enddo
 !             !
-!             call tb%print_matrix_elements
+!             call tb%print_Vsk
 !             !
 !             !
 !         close(fid)
@@ -527,6 +528,76 @@ contains
             enddo
             !
         end function   spherical2tesseral
+
+        ! NOT IN USE
+
+        function       borrowed_spherical2tesseral(l) result(cb)
+            !*************************************************************************
+            ! expands the real orbitals (s,px,py,...) in terms of the spherical
+            ! harmonic. the columns of the matrix b are the expansion coefficients.
+            ! if l = 0 and l = 2, the matrix is organized as follows:
+            !
+            ! b(:,0) -> s               =              y_{00}
+            ! b(:.1) -> p_z             =              y_{10}
+            ! b(:,2) -> p_x             =   2^{-1/2} ( y_{1-1} - y_{11} )
+            ! b(:,3) -> p_y             = i*2^{-1/2} ( y_{1-1} + y_{11} )
+            ! b(:,4) -> d_{3z^2 - r^2}  =              y_{20}
+            ! b(:,5) -> d_{xz}          =   2^{-1/2} ( y_{2-1} - y_{21} )
+            ! b(:,6) -> d_{yz}          = i*2^{-1/2} ( y_{2-1} + y_{21} )
+            ! b(:,7) -> d_{x^2-y^2}     =   2^{-1/2} ( y_{2-2} + y_{22} )
+            ! b(:,8) -> d_{xy}          = i*2^{-1/2} ( y_{2-2} - y_{22} )
+            !
+            ! the matrix b for this case is given by
+            !     [1    0    0    0    0    0    0     0     0  ]
+            !     [0    0   0.7  0.7i  0    0    0     0     0  ]
+            !     [0    1    0    0    0    0    0     0     0  ]
+            !     [0    0  -0.7  0.7i  0    0    0     0     0  ]
+            ! b = [0    0    0    0    0    0    0    0.7   0.7i]
+            !     [0    0    0    0    0   0.7  0.7i   0     0  ]
+            !     [0    0    0    0    1    0    0     0     0  ]
+            !     [0    0    0    0    0  -0.7  0.7i   0     0  ] 
+            !     [0    0    0    0    0    0    0    0.7  -0.7i]
+            !
+            ! need the coefficients    
+            implicit none
+
+            integer, intent(in)           :: l
+            complex(dp)  :: cb(l**2:((l+1)**2 - 1),l**2:((l+1)**2 - 1))
+            real(dp), parameter       :: invsqrt2 = 0.70710678118655d0
+            integer                       :: lint, lintsq, m, mprime
+            complex(dp)               :: b(0:((l+1)**2 - 1),0:((l+1)**2 - 1))
+            if (l < 0) stop 'realorbitals: l must be greater than 0.0_dp'
+            if (l < 0) stop 'realorbitals: l must be greater than 0.0_dp'
+            if (l < l) stop 'realorbitals: l must be greater than l'
+            b = cmplx(0.0_dp, 0.0_dp)
+            ! case 1: real orbitals which are given by y_{l0}.
+            do lint = 0, l
+                lintsq = lint*lint
+                b(lintsq + lint, lintsq) = 1.0_dp
+            end do
+            ! case 2: real orbitals which are given by (y_{l-m} + (-1)^m y_{lm}^\ast)/sqrt(2),
+            !         where m is a positive integer.
+            do lint = 1, l
+                lintsq = lint*lint
+                do m = 1, lint
+                    mprime = 2*(m-1) + 1
+                    b(lintsq + lint - m, lintsq + mprime) = cmplx(invsqrt2, 0.0_dp)
+                    b(lintsq+lint+m, lintsq + mprime) = cmplx(((-1)**m)*invsqrt2, 0.0_dp)
+            end do ! m
+            end do ! lint
+            ! case 3: real orbitals which are given by i*(y_{l-m} - (-1)^m y_{lm}^\ast)/sqrt(2),
+            !         where m is a positive integer.
+            do lint = 1, l
+                lintsq = lint*lint
+                do m = 1, lint
+                    mprime = 2*m
+                    b(lintsq + lint - m, lintsq + mprime) = cmplx(0.0_dp, invsqrt2)
+                    b(lintsq+lint+m, lintsq + mprime) = cmplx(0.0_dp, -((-1)**m)*invsqrt2)
+            end do ! m
+            end do ! lint
+            ! copy just the expansion coefficients of interest (l=l thru l=l).
+            cb = b(l**2:((l+1)**2-1), l**2:((l+1)**2-1))
+        end function   borrowed_spherical2tesseral
     end function   SO3
 
  	subroutine     test_SO3
@@ -538,7 +609,7 @@ contains
         real(dp), allocatable :: R(:,:) !  the rotation matrix
         real(dp) :: Z(3,3), Y(3,3)
         !
-        vec = real([2.0,2.0,1.0],dp)
+        vec = real([3.0,2.0,1.0],dp)
         !
         dcosines = vec2dcosines(vec)
         !
@@ -556,10 +627,13 @@ contains
         ! R is equivalent to first rotating around Y (away from Z) and then around Z
         Y = axis_angle2rot([0.0_dp, 1.0_dp, 0.0_dp, theta_phi(1)]) ! rot around Y, away from Z
         Z = axis_angle2rot([0.0_dp, 0.0_dp, 1.0_dp, theta_phi(2)]) ! rot around Z, in XY plane
-        call am_print('Z*Y',matmul(Z,Y))
+        call am_print('Y*Z',matmul(Z,Y))
+        call am_print('Y',Y)
+        call am_print('Z',Z)
+
         !
         ! should equal zero
-        call am_print('(Z*Y-R) * 1E5',(matmul(Z,Y)-R)*1.0D5)
+        call am_print('(Z*Y-R)',(matmul(Z,Y)-R))
         !
         ! should equal [0,0,1]
         call am_print('[001]', matmul(matmul(transpose(Z),matmul(Y,Z)),dcosines) )
@@ -603,12 +677,49 @@ contains
 
             call am_print('K'//trim(int2char(k)), ip%shell( k )%K )
         enddo
-
-
-
-
     end subroutine build_K
 
+    function       get_Hamiltonian(ip,ic,pp,pc,kpt) result(H)
+        !
+        ! k-independent part of the Hamiltonian
+        !
+        implicit none
+        !
+        class(am_class_pair_shell), intent(in) :: ip ! irreducible pairs
+        type(am_class_irre_cell)  , intent(in) :: ic ! irreducible cell
+        type(am_class_pair_shell) , intent(in) :: pp ! primitive pairs
+        type(am_class_prim_cell)  , intent(in) :: pc ! primitive cell
+        real(dp)                  , intent(in) :: kpt(3) ! fractional
+        complex(dp), allocatable :: H(:,:)
+        integer :: Hdim ! hamiltonian dimensions
+        integer, allocatable :: H_start(:), H_end(:)
+        integer :: k ! shell index
+        integer :: m, n ! primitive atom indices
+        integer :: i ! loop variable
+        !
+        ! allocate space for Hamiltonian and determine the subsections of the Hamiltonian corresponding to each primitive atom
+        Hdim = 0
+        allocate(H_start(pc%natoms))
+        allocate(H_end(pc%natoms))
+        do i = 1, pc%natoms
+            H_start(i) = Hdim + 1
+            Hdim = Hdim + ic%atom( pc%ic_id(i) )%norbitals
+            H_end(i)  = Hdim
+        enddo
+        allocate(H(Hdim,Hdim))
+        !
+        ! construct Hamiltonian
+        do k = 1, pp%nshells
+            ! primitive atom indicies
+            m = pp%shell( k )%m
+            n = pp%shell( k )%n
+            !
+            H(H_start(m):H_end(m), H_start(n):H_end(n)) = H(H_start(m):H_end(m), H_start(n):H_end(n)) &
+                    & + ip%shell( pp%ip_id(k) )%K
+            !
+            call am_print('H'//trim(int2char(k)),H)
+        enddo
+    end function   get_Hamiltonian
 
 	!
 	! stuff below is not in use

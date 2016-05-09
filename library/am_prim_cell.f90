@@ -115,11 +115,11 @@ contains
         !
         !
         ! transfer atomic species by comparing atomic coordinates
-        allocate(prim%pc_identifier(prim%natoms),source=[1:prim%natoms])
-        allocate(prim%uc_identifier(prim%natoms)); prim%uc_identifier = 0
-        allocate(uc%pc_identifier(uc%natoms)); uc%pc_identifier=0
-        if (.not.allocated(uc%uc_identifier)) then
-            allocate(uc%uc_identifier,source=[1:uc%natoms])
+        allocate(prim%pc_id(prim%natoms),source=[1:prim%natoms])
+        allocate(prim%uc_id(prim%natoms)); prim%uc_id = 0
+        allocate(uc%pc_id(uc%natoms)); uc%pc_id=0
+        if (.not.allocated(uc%uc_id)) then
+            allocate(uc%uc_id,source=[1:uc%natoms])
         endif
         !
         allocate(prim%Z(prim%natoms))
@@ -128,12 +128,12 @@ contains
             isfirst = .true.
             search_for_atom : do j = 1, uc%natoms
                 if ( all(abs(prim%tau(1:3,i)-modulo( matmul(uc2prim,uc%tau(1:3,j))+opts%sym_prec,1.0_dp)+opts%sym_prec).lt.opts%sym_prec) ) then
-                    uc%pc_identifier(j) = i
+                    uc%pc_id(j) = i
                     prim%Z(i) = uc%Z(j)
                     !
                     if (isfirst) then
                         isfirst = .false.
-                        prim%uc_identifier(i) = j
+                        prim%uc_id(i) = j
                     endif
                 endif
             enddo search_for_atom
@@ -155,7 +155,7 @@ contains
                     write(*,*)
                     write(*,'(5x)',advance='no')
                 endif
-                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(uc%pc_identifier(i)))
+                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(uc%pc_id(i)))
             enddo
             write(*,*)
             !
@@ -165,7 +165,7 @@ contains
                     write(*,*)
                     write(*,'(5x)',advance='no')
                 endif
-                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(prim%uc_identifier(i)))
+                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(prim%uc_id(i)))
             enddo
             write(*,*)
         endif

@@ -98,7 +98,7 @@ contains
         !
         ! get conjugacy class members
         ! members(nclass,maxval(class_nelements))
-        class_member = member(pg%cc_identifier)
+        class_member = member(pg%cc_id)
         !
         ! initialize A. 
         ! using LU factorization instead of applying rref in order to incorporate effect of symmetry on tensor at each step.

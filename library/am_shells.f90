@@ -30,9 +30,9 @@ module am_shells
         ! integer  :: natoms   !> number of atoms
         ! real(dp), allocatable :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates
         ! integer , allocatable :: Z(:) !> identifies type of element
-        ! integer , allocatable :: uc_identifier(:) ! identifies corresponding atom in unit cell
-        ! integer , allocatable :: pc_identifier(:) ! identifies corresponding atom in primitive cell
-        ! integer , allocatable :: ic_identifier(:) ! identifies corresponding atom in irreducible cell
+        ! integer , allocatable :: uc_id(:) ! identifies corresponding atom in unit cell
+        ! integer , allocatable :: pc_id(:) ! identifies corresponding atom in primitive cell
+        ! integer , allocatable :: ic_id(:) ! identifies corresponding atom in irreducible cell
         ! </Inherited from am_class_unit_cell>
         !
     end type am_shell_cell
@@ -42,8 +42,8 @@ module am_shells
         integer :: nshells ! how many shells irreducible atoms
         type(am_shell_cell), allocatable :: shell(:) ! shell(k)
         !
-        integer, allocatable :: ip_identifier(:) ! identifies irreducible pair
-        integer, allocatable :: pp_identifier(:) ! identifies primitive cell pair
+        integer, allocatable :: ip_id(:) ! identifies irreducible pair
+        integer, allocatable :: pp_id(:) ! identifies primitive cell pair
         !
     contains
         !
@@ -127,7 +127,7 @@ contains
             ! create sphere
             sphere = create_sphere(uc=uc, sphere_center=D, pair_cutoff=pair_cutoff, opts=opts )
             !
-            ! identify atoms in the whole sphere that can be mapped onto each other by point symmetry operations and return the identifier of the pair for each atom (including the center atom)
+            ! identify atoms in the whole sphere that can be mapped onto each other by point symmetry operations and return the id of the pair for each atom (including the center atom)
             ind_u = identify_pairs(sphere=sphere,pg=pg)
             ! get number of pairs
             npairs = maxval(ind_u)
@@ -184,11 +184,11 @@ contains
                 call pp%shell(k)%copy(uc=sphere)
                 call pp%shell(k)%filter(indices=ind)
                 !
-                pp%shell(k)%i = pc%ic_identifier(i)
-                pp%shell(k)%j = pp%shell(k)%ic_identifier(1)
+                pp%shell(k)%i = pc%ic_id(i)
+                pp%shell(k)%j = pp%shell(k)%ic_id(1)
                 !
-                pp%shell(k)%m = pc%pc_identifier(i)
-                pp%shell(k)%n = pp%shell(k)%pc_identifier(1)
+                pp%shell(k)%m = pc%pc_id(i)
+                pp%shell(k)%n = pp%shell(k)%pc_id(1)
                 !
                 ! print to stdout
                 if (opts%verbosity.ge.1) then
@@ -204,9 +204,9 @@ contains
                     write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%i))//'-'//trim(int2char(pp%shell(k)%j))
                     write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%m))//'-'//trim(int2char(pp%shell(k)%n))
                     write(*,'(i5)'    ,advance='no') pp%shell(k)%natoms
-                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( stab%pg_identifier ))
-                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( rotg%pg_identifier ))
-                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( revg%pg_identifier ))
+                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( stab%pg_id ))
+                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( rotg%pg_id ))
+                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( revg%pg_id ))
                     write(*,'(f10.3)' ,advance='no') norm2(matmul(pp%shell(k)%bas,pp%shell(k)%tau(1:3,1)))
                     write(*,'(3f10.3)',advance='no') matmul(pp%shell(k)%bas,pp%shell(k)%tau(1:3,1))
                     write(*,'(f10.3)' ,advance='no') norm2(pp%shell(k)%tau(1:3,1))
@@ -354,8 +354,8 @@ contains
         type(am_class_symmetry)    , intent(in) :: sg
         class(am_class_unit_cell)  , intent(in) :: ic
         type(am_class_options)     , intent(in) :: opts
-        integer , allocatable :: ip_identifier(:) ! can have negative, it means bond was flipped!
-        integer , allocatable :: ip_identifier_unique(:) ! strictly positive
+        integer , allocatable :: ip_id(:) ! can have negative, it means bond was flipped!
+        integer , allocatable :: ip_id_unique(:) ! strictly positive
         type(am_class_symmetry) :: stab
         type(am_class_symmetry) :: revg
         type(am_class_symmetry) :: rotg
@@ -373,26 +373,26 @@ contains
         if (opts%verbosity.ge.1) call am_print('pair shells',pp%nshells)
         !
         ! determine irreducible pair shells
-        ip_identifier = identify_irreducible(pp=pp,pg=pg,ic=ic,opts=opts)
-        ! call am_print('ip_identifier',ip_identifier)
+        ip_id = identify_irreducible(pp=pp,pg=pg,ic=ic,opts=opts)
+        ! call am_print('ip_id',ip_id)
         !
         ! allocate space
-        ip_identifier_unique = unique(abs(ip_identifier))
-        ! call am_print('ip_identifier_unique',ip_identifier_unique)
-        ip%nshells = size(ip_identifier_unique)
+        ip_id_unique = unique(abs(ip_id))
+        ! call am_print('ip_id_unique',ip_id_unique)
+        ip%nshells = size(ip_id_unique)
         if (opts%verbosity.ge.1) call am_print('irreducible pair shells',ip%nshells)
         !
         ! create ip instance
         allocate(ip%shell(ip%nshells))
         do i = 1,ip%nshells
-            ip%shell(i) = pp%shell(ip_identifier_unique(i))
+            ip%shell(i) = pp%shell(ip_id_unique(i))
         enddo
         !
         allocate(multiplicity(ip%nshells))
         multiplicity=0
         do k = 1, ip%nshells
         do j = 1, pp%nshells
-            if (ip_identifier_unique(k).eq.abs(ip_identifier(j))) multiplicity(k) = multiplicity(k) + ip%shell(k)%natoms
+            if (ip_id_unique(k).eq.abs(ip_id(j))) multiplicity(k) = multiplicity(k) + ip%shell(k)%natoms
         enddo
         enddo
         !
@@ -447,9 +447,9 @@ contains
                 write(*,'(a6)'    ,advance='no') trim(int2char(ip%shell(k)%i))//'-'//trim(int2char(ip%shell(k)%j))
                 write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%m))//'-'//trim(int2char(pp%shell(k)%n))
                 write(*,'(i5)'    ,advance='no') multiplicity(k)
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( stab%pg_identifier ))
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( rotg%pg_identifier ))
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( revg%pg_identifier ))
+                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( stab%pg_id ))
+                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( rotg%pg_id ))
+                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( revg%pg_id ))
                 write(*,'(f10.3)' ,advance='no') norm2(matmul(ip%shell(k)%bas,ip%shell(k)%tau(1:3,1)))
                 write(*,'(3f10.3)',advance='no') matmul(ip%shell(k)%bas,ip%shell(k)%tau(1:3,1))
                 write(*,'(f10.3)' ,advance='no') norm2(ip%shell(k)%tau(1:3,1))
@@ -459,12 +459,12 @@ contains
         enddo
         !
         ! create map
-        allocate(pp%pp_identifier  , source = [1:pp%nshells])
-        allocate(pp%ip_identifier  , source = ip_identifier)
-        allocate(ip%ip_identifier , source = [1:ip%nshells])
-        allocate(ip%pp_identifier(ip%nshells))
+        allocate(pp%pp_id  , source = [1:pp%nshells])
+        allocate(pp%ip_id  , source = ip_id)
+        allocate(ip%ip_id , source = [1:ip%nshells])
+        allocate(ip%pp_id(ip%nshells))
         do i = 1, ip%nshells
-            ip%pp_identifier(i) = ip_identifier_unique(i)
+            ip%pp_id(i) = ip_id_unique(i)
         enddo
         !
         if (opts%verbosity.ge.1) then
@@ -474,7 +474,7 @@ contains
                     write(*,*)
                     write(*,'(5x)',advance='no')
                 endif
-                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(pp%ip_identifier(i)))
+                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(pp%ip_id(i)))
             enddo
             write(*,*)
             !
@@ -484,7 +484,7 @@ contains
                     write(*,*)
                     write(*,'(5x)',advance='no')
                 endif
-                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(ip%pp_identifier(i)))
+                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(ip%pp_id(i)))
             enddo
             write(*,*)
             !
@@ -502,9 +502,9 @@ contains
         endif
         !
         contains
-        function       identify_irreducible(pp,pg,ic,opts) result(ip_identifier)
+        function       identify_irreducible(pp,pg,ic,opts) result(ip_id)
             !
-            ! negative ip_identifier is returned for bonds that are flipped
+            ! negative ip_id is returned for bonds that are flipped
             !
             implicit none
             !
@@ -515,9 +515,9 @@ contains
             type(am_class_options)  :: notalk
             type(am_class_symmetry) :: stab ! stabilizer of vector v
             integer , allocatable :: Z(:,:) ! Z of each atom in pair
-            integer , allocatable :: s(:) ! stabilizer point group identifier
+            integer , allocatable :: s(:) ! stabilizer point group id
             real(dp), allocatable :: d(:) ! distances of atoms
-            integer , allocatable :: ip_identifier(:) ! can have negative, it means bond was flipped!
+            integer , allocatable :: ip_id(:) ! can have negative, it means bond was flipped!
             logical , allocatable :: isflipped(:)
             real(dp) :: v(3)
             integer :: i,j,k
@@ -531,9 +531,9 @@ contains
             !
             ! allocate space 
             allocate(d(pp%nshells))   ! distance between pair of atoms (having atoms the same distance apart is a prerequesit for the bond to be the same)
-            allocate(s(pp%nshells))   ! stabilizer group identifier (having the same stabilier group is a prerequesit for the bond to be the same)
+            allocate(s(pp%nshells))   ! stabilizer group id (having the same stabilier group is a prerequesit for the bond to be the same)
             allocate(Z(2,pp%nshells)) ! atomic number of elements in pair (having the same types of atoms is a prerequesit for the bond to be the same)
-            allocate(isflipped(pp%nshells)) ! indicates which pairs were flipped in the comparison, returns negative ip_identifier if the corresponding bond was flipped
+            allocate(isflipped(pp%nshells)) ! indicates which pairs were flipped in the comparison, returns negative ip_id if the corresponding bond was flipped
             !
             isflipped = .false.
             do k = 1, pp%nshells
@@ -549,16 +549,16 @@ contains
                 endif
                 ! record stabilzier group
                 call stab%get_stabilizer_group(pg=pg, v=v, opts=notalk)
-                s(k) = stab%pg_identifier
+                s(k) = stab%pg_id
                 ! possible write shell for debuging
                 ! call pair%shell(i,j)%write_poscar(file_output_poscar='shell_'//trim(int2char(i))//'_'//trim(int2char(j)))
             enddo
             !
             ! compare all the prerequisists listed above (distances, atom types, and bond stabilizer) to figure out which pairs are irreducible
-            allocate(ip_identifier(pp%nshells))
-            ip_identifier = 0
+            allocate(ip_id(pp%nshells))
+            ip_id = 0
             do i = 1, pp%nshells
-                if (ip_identifier(i).eq.0) then
+                if (ip_id(i).eq.0) then
                     do j = 1, pp%nshells
                         ! check that bond length is the same
                         if ( abs(d(i)-d(j)).lt.opts%sym_prec) then
@@ -566,7 +566,7 @@ contains
                         if ( all(Z(1:2,i).eq.Z(1:2,j)) ) then
                         ! check that stabilizers are the same
                         if ( s(i).eq.s(j) ) then
-                            ip_identifier(j) = i
+                            ip_id(j) = i
                         endif
                         endif
                         endif
@@ -576,7 +576,7 @@ contains
             !
             ! indicate which atoms have been flipped with negative sign
             do k = 1, pp%nshells
-                if (isflipped(k)) ip_identifier(k) = -ip_identifier(k)
+                if (isflipped(k)) ip_id(k) = -ip_id(k)
             enddo
             !
         end function   identify_irreducible
@@ -628,10 +628,10 @@ contains
 !        type(am_class_symmetry)   , intent(in) :: pg
 !        type(am_class_symmetry)   , intent(in) :: sg
 !        type(am_class_options)    , intent(in) :: opts
-!        integer , allocatable :: ip_identifier(:) ! unique indicies i and j (see below)
+!        integer , allocatable :: ip_id(:) ! unique indicies i and j (see below)
 !        !
 !        !
-!        ip_identifier = pair%identify_irreducible(ic=ic,pg=pg,opts=opts)
+!        ip_id = pair%identify_irreducible(ic=ic,pg=pg,opts=opts)
 !        
 !!        do i = 1, pair%
 ! !       call get_symmetry_adapted_tensor(pg=pg,uc=uc,opts=opts,property='reversal',relations)
@@ -640,11 +640,11 @@ contains
 !
 !        !
 !        !! output
-!        !allocate(irrep_pairs,source=ij(1:2,unique(ip_identifier)))
+!        !allocate(irrep_pairs,source=ij(1:2,unique(ip_id)))
 !        !!
 !        !!
 !        !if (opts%verbosity.ge.1) then
-!        !    ind_u = unique(ip_identifier)
+!        !    ind_u = unique(ip_id)
 !        !    npairs_u = size(ind_u)
 !        !    call am_print('irreducible pair ('//trim(int2char(npairs_u))//')',ij(:,ind_u))
 !        !    !

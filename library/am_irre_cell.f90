@@ -84,29 +84,29 @@ contains
         ! <MAP>
             ! Note: ind(1:k) are indices on primitive cell atoms correspond to irreducible cell atoms
             ! maps irreducible cell atom onto -> irreducible cell
-            allocate(ic%ic_identifier,source=[1:ic%natoms])
+            allocate(ic%ic_id,source=[1:ic%natoms])
             ! maps irreducible cell atom onto -> primitive cell
-            allocate(ic%pc_identifier,source=ind(1:k))
+            allocate(ic%pc_id,source=ind(1:k))
             ! maps irreducible cell atom onto -> unit cell
-            allocate(ic%uc_identifier,source=pc%uc_identifier(ind(1:k)))
+            allocate(ic%uc_id,source=pc%uc_id(ind(1:k)))
             ! maps primitive cell atom onto -> irreducible cell
-            allocate(pc%ic_identifier(pc%natoms))
+            allocate(pc%ic_id(pc%natoms))
             do i = 1, ic%natoms
                 ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
                 ! PM(1,:) shows all atoms onto which atom 1 is mapped by all space symmetry operations
                 do j = 1, pc%natoms
                     do k = 1, sg%nsyms
-                        if (PM(j,k).eq.i) pc%ic_identifier(j) = i
+                        if (PM(j,k).eq.i) pc%ic_id(j) = i
                     enddo
                 enddo
             enddo
             ! maps (input) unit cell atom onto -> irreducible cell
             if (present(uc)) then
-                allocate(uc%ic_identifier(uc%natoms))
+                allocate(uc%ic_id(uc%natoms))
                 do i = 1, uc%natoms
-                    ! j = uc%pc_identifier(i) shows to which primitive atom j, unit cell atom i is associated with
+                    ! j = uc%pc_id(i) shows to which primitive atom j, unit cell atom i is associated with
                     ! now find... to which irreducible atom k, primitive cell atom j is associated with... k =
-                    uc%ic_identifier(i) = pc%ic_identifier(uc%pc_identifier(i))
+                    uc%ic_id(i) = pc%ic_id(uc%pc_id(i))
                 enddo
             endif
             !
@@ -117,7 +117,7 @@ contains
                         write(*,*)
                         write(*,'(5x)',advance='no')
                     endif
-                    write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(ic%uc_identifier(i)))
+                    write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(ic%uc_id(i)))
                 enddo
                 write(*,*)
                 !
@@ -127,7 +127,7 @@ contains
                         write(*,*)
                         write(*,'(5x)',advance='no')
                     endif
-                    write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(ic%pc_identifier(i)))
+                    write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(ic%pc_id(i)))
                 enddo
                 write(*,*)
                 !
@@ -137,7 +137,7 @@ contains
                         write(*,*)
                         write(*,'(5x)',advance='no')
                     endif
-                    write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(pc%ic_identifier(i)))
+                    write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(pc%ic_id(i)))
                 enddo
                 write(*,*)
                 !
@@ -148,7 +148,7 @@ contains
                             write(*,*)
                             write(*,'(5x)',advance='no')
                         endif
-                        write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(uc%ic_identifier(i)))
+                        write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(uc%ic_id(i)))
                     enddo
                     write(*,*)
                 endif

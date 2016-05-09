@@ -23,9 +23,9 @@ module am_symmetry
         integer :: nsyms
         real(dp), allocatable :: R(:,:,:)         !> symmetry elements (operate on fractional atomic basis)
         real(dp), allocatable :: T(:,:)           !> symmetry elements (operate on fractional atomic basis)
-        integer , allocatable :: cc_identifier(:) !> integer assiging each element to a conjugacy class
-        integer , allocatable :: ps_identifier(:) !> integer which identifies point symmetries (see decode_pointsymmetry)
-        integer               :: pg_identifier    !> integer which identifies the point group
+        integer , allocatable :: cc_id(:) !> integer assiging each element to a conjugacy class
+        integer , allocatable :: ps_id(:) !> integer which identifies point symmetries (see decode_pointsymmetry)
+        integer               :: pg_id    !> integer which identifies the point group
     contains
         !
         procedure :: copy
@@ -105,7 +105,7 @@ contains
         !
     end function   ps_cart2frac
 
-    function       ps_schoenflies(R) result(ps_identifier)
+    function       ps_schoenflies(R) result(ps_id)
         !>
         !> Point symmetries in fractional coordinates so that they are nice integers which can be easily classified.
         !>
@@ -118,7 +118,7 @@ contains
         real(dp), intent(in) :: R(3,3)
         real(dp) :: tr
         real(dp) :: d
-        integer :: ps_identifier
+        integer :: ps_id
         !
         ! get trace and determinant (fractional)
         tr  = trace(R)
@@ -128,20 +128,20 @@ contains
         ! Point Groups and Space Groups. 1 edition. Oxford?: New York: Oxford University
         ! Press, 2010. page 138, table 3.8.
         !
-        ps_identifier = 0
-        if     ( (abs(tr - 3).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_identifier = 1  ! 'e'
-        elseif ( (abs(tr + 1).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_identifier = 2  ! 'c_2'
-        elseif ( (abs(tr - 0).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_identifier = 3  ! 'c_3'
-        elseif ( (abs(tr - 1).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_identifier = 4  ! 'c_4'
-        elseif ( (abs(tr - 2).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_identifier = 5  ! 'c_6'
-        elseif ( (abs(tr + 3).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_identifier = 6  ! 'i'
-        elseif ( (abs(tr - 1).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_identifier = 7  ! 's_2'
-        elseif ( (abs(tr - 0).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_identifier = 8  ! 's_6'
-        elseif ( (abs(tr + 1).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_identifier = 9  ! 's_4'
-        elseif ( (abs(tr + 2).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_identifier = 10 ! 's_3'
+        ps_id = 0
+        if     ( (abs(tr - 3).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_id = 1  ! 'e'
+        elseif ( (abs(tr + 1).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_id = 2  ! 'c_2'
+        elseif ( (abs(tr - 0).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_id = 3  ! 'c_3'
+        elseif ( (abs(tr - 1).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_id = 4  ! 'c_4'
+        elseif ( (abs(tr - 2).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_id = 5  ! 'c_6'
+        elseif ( (abs(tr + 3).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_id = 6  ! 'i'
+        elseif ( (abs(tr - 1).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_id = 7  ! 's_2'
+        elseif ( (abs(tr - 0).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_id = 8  ! 's_6'
+        elseif ( (abs(tr + 1).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_id = 9  ! 's_4'
+        elseif ( (abs(tr + 2).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_id = 10 ! 's_3'
         endif
         !
-        if (ps_identifier .eq. 0) then
+        if (ps_id .eq. 0) then
             call am_print('ERROR','Unable to identify point symmetry.',flags='E')
             call am_print('R (frac)',R)
             call am_print('tr (frac)',tr)
@@ -155,14 +155,14 @@ contains
     ! schoenflies decode
     !
 
-    function       decode_pointsymmetry(ps_identifier) result(schoenflies)
+    function       decode_pointsymmetry(ps_id) result(schoenflies)
         !
         implicit none
         !
-        integer, intent(in) :: ps_identifier
+        integer, intent(in) :: ps_id
         character(len=string_length_schoenflies) :: schoenflies
         !
-        select case (ps_identifier)
+        select case (ps_id)
         case(1);  schoenflies = 'e'
         case(2);  schoenflies = 'c_2'
         case(3);  schoenflies = 'c_3'
@@ -179,7 +179,7 @@ contains
         end select
     end function   decode_pointsymmetry
 
-    function       decode_pointgroup(pg_identifier) result(point_group_name)
+    function       decode_pointgroup(pg_id) result(point_group_name)
         ! Hermann-Mauguin     Shubnikov[1]        Schoenflies     Orbifold    Coxeter 
         ! 1                   1\                  C1              11          [ ]+    
         ! -1                  \tilde{2}           S2 (=Ci)        ×           [2+,2+] 
@@ -216,10 +216,10 @@ contains
         !
         implicit none
         !
-        integer, intent(in) :: pg_identifier
+        integer, intent(in) :: pg_id
         character(string_length_schoenflies) :: point_group_name
         !
-        select case (pg_identifier)
+        select case (pg_id)
                 case(1);  point_group_name = 'c_1'
                 case(2);  point_group_name = 's_2'
                 case(3);  point_group_name = 'c_2'
@@ -254,12 +254,12 @@ contains
                 case(32); point_group_name = 'o_h'
             case default
                 call am_print('ERROR','Schoenflies code for point-group unknown.',flags='E')
-                call am_print('pg_identifier',pg_identifier)
+                call am_print('pg_id',pg_id)
                 stop
             end select
     end function   decode_pointgroup
 
-    function       point_group_schoenflies(ps_identifier) result(pg_identifier)
+    function       point_group_schoenflies(ps_id) result(pg_id)
         !>
         !> Refs:
         !>
@@ -276,7 +276,7 @@ contains
         !>
         !> Adapted from VASP
         !>
-        !>   pg_identifier --> point_group_name
+        !>   pg_id --> point_group_name
         !>     1 --> c_1       9 --> c_3      17 --> d_4      25 --> c_6v
         !>     2 --> s_2      10 --> s_6      18 --> c_4v     26 --> d_3h
         !>     3 --> c_2      11 --> d_3      19 --> d_2d     27 --> d_6h
@@ -288,33 +288,33 @@ contains
         !>
         implicit none
         !
-        integer, intent(in) :: ps_identifier(:)
+        integer, intent(in) :: ps_id(:)
         integer :: nsyms
         integer :: ni, nc2, nc3, nc4, nc6, ns2, ns6, ns4, ns3, ne
-        integer :: pg_identifier
+        integer :: pg_id
         !
-        pg_identifier = 0
+        pg_id = 0
         !
         ! trivial cases first
         !
-        nsyms = size(ps_identifier)
-        if     (nsyms .eq. 1 ) then; pg_identifier=1;  return
-        elseif (nsyms .eq. 48) then; pg_identifier=32; return
-        elseif (nsyms .eq. 16) then; pg_identifier=20; return
-        elseif (nsyms .eq. 3 ) then; pg_identifier=9;  return
+        nsyms = size(ps_id)
+        if     (nsyms .eq. 1 ) then; pg_id=1;  return
+        elseif (nsyms .eq. 48) then; pg_id=32; return
+        elseif (nsyms .eq. 16) then; pg_id=20; return
+        elseif (nsyms .eq. 3 ) then; pg_id=9;  return
         endif
         !
         ni=0; nc2=0; nc3=0; nc4=0; nc6=0; ns2=0; ns6=0; ns4=0; ns3=0
-        ne  = count(ps_identifier.eq.1)  ! 'e' identity
-        nc2 = count(ps_identifier.eq.2)  ! 'c_2'
-        nc3 = count(ps_identifier.eq.3)  ! 'c_3'
-        nc4 = count(ps_identifier.eq.4)  ! 'c_4'
-        nc6 = count(ps_identifier.eq.5)  ! 'c_6'
-        ni  = count(ps_identifier.eq.6)  ! 'i' inversion
-        ns2 = count(ps_identifier.eq.7)  ! 's_2'
-        ns6 = count(ps_identifier.eq.8)  ! 's_6'
-        ns4 = count(ps_identifier.eq.9)  ! 's_4'
-        ns3 = count(ps_identifier.eq.10) ! 's_3'
+        ne  = count(ps_id.eq.1)  ! 'e' identity
+        nc2 = count(ps_id.eq.2)  ! 'c_2'
+        nc3 = count(ps_id.eq.3)  ! 'c_3'
+        nc4 = count(ps_id.eq.4)  ! 'c_4'
+        nc6 = count(ps_id.eq.5)  ! 'c_6'
+        ni  = count(ps_id.eq.6)  ! 'i' inversion
+        ns2 = count(ps_id.eq.7)  ! 's_2'
+        ns6 = count(ps_id.eq.8)  ! 's_6'
+        ns4 = count(ps_id.eq.9)  ! 's_4'
+        ns3 = count(ps_id.eq.10) ! 's_3'
         !
         if (ni.gt.1) then
             call am_print('ERROR','More than one inversion operator found.',flags='E')
@@ -329,44 +329,44 @@ contains
         endif
         !
         if (nsyms.eq.2)   then
-            if (ni.eq.1)  then; pg_identifier=2;  return; endif
-            if (nc2.eq.1) then; pg_identifier=3;  return; endif
-            if (ns2.eq.1) then; pg_identifier=4;  return; endif
+            if (ni.eq.1)  then; pg_id=2;  return; endif
+            if (nc2.eq.1) then; pg_id=3;  return; endif
+            if (ns2.eq.1) then; pg_id=4;  return; endif
         endif
         if (nsyms.eq.4)   then
-            if (ni.eq.1)  then; pg_identifier=5;  return; endif
-            if (nc2.eq.3) then; pg_identifier=6;  return; endif
-            if (ns2.eq.2) then; pg_identifier=7;  return; endif
-            if (nc4.eq.1) then; pg_identifier=14; return; endif
-            if (ns4.eq.2) then; pg_identifier=15; return; endif
+            if (ni.eq.1)  then; pg_id=5;  return; endif
+            if (nc2.eq.3) then; pg_id=6;  return; endif
+            if (ns2.eq.2) then; pg_id=7;  return; endif
+            if (nc4.eq.1) then; pg_id=14; return; endif
+            if (ns4.eq.2) then; pg_id=15; return; endif
         endif
         if (nsyms.eq.6)   then
-            if (ni.eq.1)  then; pg_identifier=10; return; endif
-            if (nc2.eq.3) then; pg_identifier=11; return; endif
-            if (ns2.eq.3) then; pg_identifier=12; return; endif
-            if (nc2.eq.1) then; pg_identifier=21; return; endif
-            if (ns2.eq.1) then; pg_identifier=22; return; endif
+            if (ni.eq.1)  then; pg_id=10; return; endif
+            if (nc2.eq.3) then; pg_id=11; return; endif
+            if (ns2.eq.3) then; pg_id=12; return; endif
+            if (nc2.eq.1) then; pg_id=21; return; endif
+            if (ns2.eq.1) then; pg_id=22; return; endif
         endif
         if (nsyms.eq.8)  then
-            if (ns2.eq.3) then; pg_identifier=8;  return; endif
-            if (ns2.eq.1) then; pg_identifier=16; return; endif
-            if (ns2.eq.0) then; pg_identifier=17; return; endif
-            if (ns2.eq.4) then; pg_identifier=18; return; endif
-            if (ns2.eq.2) then; pg_identifier=19; return; endif
+            if (ns2.eq.3) then; pg_id=8;  return; endif
+            if (ns2.eq.1) then; pg_id=16; return; endif
+            if (ns2.eq.0) then; pg_id=17; return; endif
+            if (ns2.eq.4) then; pg_id=18; return; endif
+            if (ns2.eq.2) then; pg_id=19; return; endif
         endif
         if (nsyms.eq.12)  then
-            if (ns2.eq.3) then; pg_identifier=13; return; endif
-            if (ns2.eq.1) then; pg_identifier=23; return; endif
-            if (nc2.eq.7) then; pg_identifier=24; return; endif
-            if (ns2.eq.6) then; pg_identifier=25; return; endif
-            if (ns2.eq.4) then; pg_identifier=26; return; endif
-            if (nc3.eq.8) then; pg_identifier=28; return; endif
+            if (ns2.eq.3) then; pg_id=13; return; endif
+            if (ns2.eq.1) then; pg_id=23; return; endif
+            if (nc2.eq.7) then; pg_id=24; return; endif
+            if (ns2.eq.6) then; pg_id=25; return; endif
+            if (ns2.eq.4) then; pg_id=26; return; endif
+            if (nc3.eq.8) then; pg_id=28; return; endif
         endif
         if (nsyms.eq.24)  then
-            if (nc6.eq.2) then; pg_identifier=27; return; endif
-            if (ni.eq.1)  then; pg_identifier=29; return; endif
-            if (nc4.eq.6) then; pg_identifier=30; return; endif
-            if (ns4.eq.6) then; pg_identifier=31; return; endif
+            if (nc6.eq.2) then; pg_id=27; return; endif
+            if (ni.eq.1)  then; pg_id=29; return; endif
+            if (nc4.eq.6) then; pg_id=30; return; endif
+            if (ns4.eq.6) then; pg_id=31; return; endif
             endif
         ! if it makes it this far, it means nothing matches. return an error immediately. 
         call am_print('ERROR','Unable to identify point group',flags='E')
@@ -433,13 +433,13 @@ contains
         call sg%create(R=seitz(1:3,1:3,:),T=seitz(1:3,4,:))
         !
         ! determine conjugacy classes (needs identity first)
-        sg%cc_identifier = get_conjugacy_classes(rep=seitz,flags='seitz')
+        sg%cc_id = get_conjugacy_classes(rep=seitz,flags='seitz')
         !
         ! sort space group symmetries based on parameters
         call sg%sort(sort_parameter=sg%T(1,:),iopt_direction='ascend')
         call sg%sort(sort_parameter=sg%T(2,:),iopt_direction='ascend')
         call sg%sort(sort_parameter=sg%T(3,:),iopt_direction='ascend')
-        call sg%sort(sort_parameter=real(sg%cc_identifier,dp),iopt_direction='ascend')
+        call sg%sort(sort_parameter=real(sg%cc_id,dp),iopt_direction='ascend')
         !
         ! name the (im-)proper part of space symmetry
         call sg%name_symmetries(opts=notalk)
@@ -482,7 +482,7 @@ contains
         if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,' ... ')
         !
         ! determine conjugacy classes (needs identity first, inversion second)
-        pg%cc_identifier = get_conjugacy_classes(rep=pg%R)
+        pg%cc_id = get_conjugacy_classes(rep=pg%R)
         !
         ! sort point group symmetries based on parameters
         allocate(sort_parameter(pg%nsyms))
@@ -490,14 +490,14 @@ contains
         call pg%sort(sort_parameter=sort_parameter,iopt_direction='ascend')
         do i = 1, pg%nsyms; sort_parameter(i) = det(pg%R(:,:,i)); enddo
         call pg%sort(sort_parameter=sort_parameter,iopt_direction='ascend')
-        call pg%sort(sort_parameter=real(pg%cc_identifier,dp),iopt_direction='ascend')
+        call pg%sort(sort_parameter=real(pg%cc_id,dp),iopt_direction='ascend')
         !
         ! name point symmetries
         call pg%name_symmetries(opts=opts)
         !
         ! name point group
-        pg%pg_identifier = point_group_schoenflies(pg%ps_identifier)
-        if (opts%verbosity.ge.1) call am_print('point group',decode_pointgroup(pg%pg_identifier),' ... ')
+        pg%pg_id = point_group_schoenflies(pg%ps_id)
+        if (opts%verbosity.ge.1) call am_print('point group',decode_pointgroup(pg%pg_id),' ... ')
         !
         ! determine character table
         call pg%determine_character_table(opts=opts)
@@ -541,14 +541,14 @@ contains
         call rg%create(R=unique(wrkspace(1:3,1:3,1:m)))
         !
         ! determine conjugacy classes (needs identity first)
-        rg%cc_identifier = get_conjugacy_classes(rep=rg%R)
+        rg%cc_id = get_conjugacy_classes(rep=rg%R)
         !
         ! name the (im-)proper part of space symmetry
         call rg%name_symmetries(opts=notalk)
         !
         ! name "point group" - NOTE: not really a point group because translational components of space symmetries were ignored in the genereation process
         ! this would be the name of the group, if the group were symmorphic (in which case it will match the real point group name)... 
-        rg%pg_identifier = point_group_schoenflies(rg%ps_identifier)
+        rg%pg_id = point_group_schoenflies(rg%ps_id)
         !
     end subroutine get_rotational_group
 
@@ -579,11 +579,11 @@ contains
         ! create group
         call vg%create(R=pg%R(:,:,pack(indicies,mask)))
         ! determine conjugacy classes (needs identity first, inversion second)
-        vg%cc_identifier = get_conjugacy_classes(rep=vg%R)
+        vg%cc_id = get_conjugacy_classes(rep=vg%R)
         ! name point symmetries
         call vg%name_symmetries(opts=opts)
         ! name point group
-        vg%pg_identifier = point_group_schoenflies(vg%ps_identifier)
+        vg%pg_id = point_group_schoenflies(vg%ps_id)
         !
     end subroutine get_stabilizer_group
     
@@ -616,11 +616,11 @@ contains
         call revg%create(R=sg%R(:,:,pack(indicies,mask)),T=sg%T(:,pack(indicies,mask)))
         ! determine conjugacy classes (needs identity first, inversion second)
         seitz = rep_seitz(R=revg%R,T=revg%T) 
-        revg%cc_identifier = get_conjugacy_classes(rep=seitz)
+        revg%cc_id = get_conjugacy_classes(rep=seitz)
         ! name point symmetries
         call revg%name_symmetries(opts=opts)
         ! name point group
-        revg%pg_identifier = point_group_schoenflies(revg%ps_identifier)
+        revg%pg_id = point_group_schoenflies(revg%ps_id)
         !
     end subroutine get_reversal_group
 
@@ -670,20 +670,20 @@ contains
         cayley_table = get_cayley_table(rep=rep,flags=flags)
         !
         ! identify which class symmetry belongs to
-        ! identifier(nsyms)
-        sg%cc_identifier = get_conjugacy_classes(rep=rep,flags=flags)
+        ! id(nsyms)
+        sg%cc_id = get_conjugacy_classes(rep=rep,flags=flags)
         !
         ! get number of classes
-        nclasses = maxval(sg%cc_identifier)
+        nclasses = maxval(sg%cc_id)
         ! if (opts%verbosity.ge.1) call am_print('conjugacy classes',nclasses,' ... ')
         !
         ! get number of elements in each class
         ! class_nelements(nclasses)
-        class_nelements = nelements(sg%cc_identifier)
+        class_nelements = nelements(sg%cc_id)
         !
         ! record indicies of each class_member element for each class (use the first class_member of class as class representative)
         ! members(nclass,maxval(class_nelements)) 
-        class_member = member(sg%cc_identifier)
+        class_member = member(sg%cc_id)
         ! call am_print('class memebers',class_member,' ... ')
         !
         ! get class coefficients (thenumber of times class k appears in the pdocut o class j and k )
@@ -763,7 +763,7 @@ contains
             !
             write(*,'(5x,a10)',advance='no') ' '
             do i = 1, nclasses
-                write(*,'(a5)',advance='no') trim(decode_pointsymmetry(sg%ps_identifier(class_member(i,1))))
+                write(*,'(a5)',advance='no') trim(decode_pointsymmetry(sg%ps_id(class_member(i,1))))
             enddo
             write(*,*)
             !
@@ -867,24 +867,24 @@ contains
         type(am_class_options), intent(in) :: opts
         integer :: i
         !
-        if (allocated(sg%ps_identifier)) deallocate(sg%ps_identifier)
-        allocate(sg%ps_identifier(sg%nsyms))
+        if (allocated(sg%ps_id)) deallocate(sg%ps_id)
+        allocate(sg%ps_id(sg%nsyms))
         !
         do i = 1, sg%nsyms
-            sg%ps_identifier(i) = ps_schoenflies(sg%R(:,:,i))
+            sg%ps_id(i) = ps_schoenflies(sg%R(:,:,i))
         enddo
         !
         if (opts%verbosity.ge.1) then
-            call am_print('number of e   point symmetries',count(sg%ps_identifier.eq.1),' ... ')
-            call am_print('number of c_2 point symmetries',count(sg%ps_identifier.eq.2),' ... ')
-            call am_print('number of c_3 point symmetries',count(sg%ps_identifier.eq.3),' ... ')
-            call am_print('number of c_4 point symmetries',count(sg%ps_identifier.eq.4),' ... ')
-            call am_print('number of c_6 point symmetries',count(sg%ps_identifier.eq.5),' ... ')
-            call am_print('number of i   point symmetries',count(sg%ps_identifier.eq.6),' ... ')
-            call am_print('number of s_2 point symmetries',count(sg%ps_identifier.eq.7),' ... ')
-            call am_print('number of s_6 point symmetries',count(sg%ps_identifier.eq.8),' ... ')
-            call am_print('number of s_4 point symmetries',count(sg%ps_identifier.eq.9),' ... ')
-            call am_print('number of s_3 point symmetries',count(sg%ps_identifier.eq.10),' ... ')
+            call am_print('number of e   point symmetries',count(sg%ps_id.eq.1),' ... ')
+            call am_print('number of c_2 point symmetries',count(sg%ps_id.eq.2),' ... ')
+            call am_print('number of c_3 point symmetries',count(sg%ps_id.eq.3),' ... ')
+            call am_print('number of c_4 point symmetries',count(sg%ps_id.eq.4),' ... ')
+            call am_print('number of c_6 point symmetries',count(sg%ps_id.eq.5),' ... ')
+            call am_print('number of i   point symmetries',count(sg%ps_id.eq.6),' ... ')
+            call am_print('number of s_2 point symmetries',count(sg%ps_id.eq.7),' ... ')
+            call am_print('number of s_6 point symmetries',count(sg%ps_id.eq.8),' ... ')
+            call am_print('number of s_4 point symmetries',count(sg%ps_id.eq.9),' ... ')
+            call am_print('number of s_3 point symmetries',count(sg%ps_id.eq.10),' ... ')
         endif
         !
     end subroutine name_symmetries
@@ -982,7 +982,7 @@ contains
                 write(fid,'(5x)',advance='no')
                 write(fid,fmt1,advance='no') 'class'
                 do i = 1, sg%nsyms
-                    write(fid,fmt5,advance='no') sg%cc_identifier(i)
+                    write(fid,fmt5,advance='no') sg%cc_id(i)
                 enddo
                 write(fid,*)
                 ! HEADER / SEPERATOR
@@ -996,7 +996,7 @@ contains
                 write(fid,'(5x)',advance='no')
                 write(fid,fmt1,advance='no') 'schf.'
                 do i = 1, sg%nsyms
-                    write(fid,fmt3,advance='no') trim(decode_pointsymmetry(sg%ps_identifier(i)))
+                    write(fid,fmt3,advance='no') trim(decode_pointsymmetry(sg%ps_id(i)))
                 enddo
                 write(fid,*)
                 ! POINT SYMMETRY COMPONENTS (FRAC)
@@ -1234,11 +1234,11 @@ contains
         type(am_class_symmetry) , intent(in) :: sg
         !
         cp%nsyms         = sg%nsyms
-        cp%pg_identifier = sg%pg_identifier
-        if (allocated(sg%cc_identifier)) allocate(cp%cc_identifier  , source=sg%cc_identifier)
+        cp%pg_id = sg%pg_id
+        if (allocated(sg%cc_id)) allocate(cp%cc_id  , source=sg%cc_id)
         if (allocated(sg%R))             allocate(cp%R              , source=sg%R)
         if (allocated(sg%T))             allocate(cp%T              , source=sg%T)
-        if (allocated(sg%ps_identifier)) allocate(cp%ps_identifier  , source=sg%ps_identifier)
+        if (allocated(sg%ps_id)) allocate(cp%ps_id  , source=sg%ps_id)
         !
     end subroutine copy
    
@@ -1270,8 +1270,8 @@ contains
         !
         if (allocated(sg%R)) sg%R = sg%R(:,:,sorted_indices)
         if (allocated(sg%T)) sg%T = sg%T(:,sorted_indices)
-        if (allocated(sg%ps_identifier)) sg%ps_identifier = sg%ps_identifier(sorted_indices)
-        if (allocated(sg%cc_identifier)) sg%cc_identifier = sg%cc_identifier(sorted_indices)
+        if (allocated(sg%ps_id)) sg%ps_id = sg%ps_id(sorted_indices)
+        if (allocated(sg%cc_id)) sg%cc_id = sg%cc_id(sorted_indices)
         !
     end subroutine symsort
 
@@ -1657,7 +1657,7 @@ contains
         ! 
     end subroutine put_identity_first
 
-    function       get_conjugacy_classes(rep,flags) result(cc_identifier)
+    function       get_conjugacy_classes(rep,flags) result(cc_id)
         !
         ! for AX = XB, if elements A and B are conjugate pairs for some other element X in the group, then they are in the same class
         !
@@ -1669,7 +1669,7 @@ contains
         character(*), intent(in), optional :: flags
         integer, allocatable :: cayley_table(:,:) ! cayley table
         integer, allocatable :: sinv(:) ! sinv(nsyms) index of the inverse of symmetry element i
-        integer, allocatable :: cc_identifier(:)
+        integer, allocatable :: cc_id(:)
         integer, allocatable :: celem(:)
         ! integer, allocatable :: class_member(:,:) ! used to sort based on determinant
         ! integer, allocatable :: indices(:)        ! used to sort based on determinant
@@ -1689,8 +1689,8 @@ contains
         endif
         !
         ! allocate space for conjugacy class
-        allocate(cc_identifier(nsyms))
-        cc_identifier = 0
+        allocate(cc_id(nsyms))
+        cc_id = 0
         !
         ! get element inverse
         sinv = get_inverse_indices(cayley_table)
@@ -1701,7 +1701,7 @@ contains
         ! determine conjugacy classes
         k = 0
         do i = 1, nsyms
-        if (cc_identifier(i).eq.0) then
+        if (cc_id(i).eq.0) then
             k=k+1
             ! conjugate each element with all other group elements
             ! A = X(j) * B * X(j)^-1
@@ -1709,9 +1709,9 @@ contains
                 celem(j) = cayley_table(j,cayley_table(i,sinv(j)))
             enddo
             ! for each subgroup element created by conjugation find the corresponding index of the element in the group
-            ! in order to save the class cc_identifier number
+            ! in order to save the class cc_id number
             do j = 1, nsyms
-                cc_identifier( celem(j) ) = k
+                cc_id( celem(j) ) = k
             enddo
             !
         endif
@@ -1719,10 +1719,10 @@ contains
         nclasses = k
         !
         ! relabel classes based on number of elements in each class
-        call relabel_based_on_occurances(cc_identifier)
+        call relabel_based_on_occurances(cc_id)
         !
         ! relabel classes based on det of class representative
-        ! class_member = member(cc_identifier)
+        ! class_member = member(cc_id)
         ! allocate(ccdet(nclasses)) 
         ! do i = 1,nclasses
         !     ccdet(i) = det( rep(:,:,class_member(i,1)) )
@@ -1736,16 +1736,16 @@ contains
         !     relabel_indices(indices(i)) = i
         ! enddo
         ! do i = 1, nsyms
-        !     cc_identifier(i) = relabel_indices( cc_identifier(i) )
+        !     cc_id(i) = relabel_indices( cc_id(i) )
         ! enddo
         !
         ! make sure the identity is in the first class
-        ! cc_identifier(i=1) is the class of the first element (the identity); swap it's location with whaterver elements are in the first class
-        where (cc_identifier.eq.1) cc_identifier = cc_identifier(1)
-        cc_identifier(1)=1
+        ! cc_id(i=1) is the class of the first element (the identity); swap it's location with whaterver elements are in the first class
+        where (cc_id.eq.1) cc_id = cc_id(1)
+        cc_id(1)=1
         !
         ! check that classes are disjoint and complete
-        if (any(cc_identifier.eq.0)) then
+        if (any(cc_id.eq.0)) then
             call am_print('ERROR','Not every element in the group has been asigned a conjugacy class.',flags='E')
             stop
         endif
@@ -1821,7 +1821,7 @@ contains
         !
     end function   get_inverse_indices
 
-    function       get_coset(g_identifier,H_identifier,cayley_table,flags) result(ind)
+    function       get_coset(g_id,H_id,cayley_table,flags) result(ind)
         !
         ! In mathematics, if G is a group, and H is a subgroup of G, and g is an element of G, then:
         ! gH = { gh : h an element of H } is the left coset of H in G with respect to g, and
@@ -1830,21 +1830,21 @@ contains
         !
         implicit none
         !
-        integer, intent(in) :: g_identifier
-        integer, intent(in) :: H_identifier(:)
+        integer, intent(in) :: g_id
+        integer, intent(in) :: H_id(:)
         integer, intent(in) :: cayley_table(:,:)
         character(*), intent(in) :: flags ! left/right
         integer, allocatable :: ind(:)
         integer :: i, m
         !
-        m = size(H_identifier)
+        m = size(H_id)
         !
         allocate(ind(m))
         !
         do i = 1, m
             ! left/right coset, coonjucate 
-            if     (index(flags,'right')) then; ind(i) = cayley_table(H_identifier(i),g_identifier)
-            elseif (index(flags,'left' )) then; ind(i) = cayley_table(g_identifier,H_identifier(i))
+            if     (index(flags,'right')) then; ind(i) = cayley_table(H_id(i),g_id)
+            elseif (index(flags,'left' )) then; ind(i) = cayley_table(g_id,H_id(i))
             else
                 call am_print('ERROR','Flag '//trim(flags)//' not valid.',flags='E')
                 stop
@@ -1854,32 +1854,32 @@ contains
     end function   get_coset
 
     ! 
-    ! functions which operate on conjugate classes identifiers
+    ! functions which operate on conjugate classes ids
     ! 
 
-    function       member(identifier) result(class_member)
+    function       member(id) result(class_member)
         !
         implicit none
         !
-        integer, allocatable, intent(in) :: identifier(:)
+        integer, allocatable, intent(in) :: id(:)
         integer, allocatable :: class_nelements(:) ! number of elements in each class
         integer, allocatable :: class_member(:,:) ! members(nclass,maxval(class_nelements))
         integer :: i, j, k
         integer :: nsyms
         integer :: nclasses
         !
-        nsyms = size(identifier,1)
+        nsyms = size(id,1)
         !
-        nclasses = maxval(identifier)
+        nclasses = maxval(id)
         !
-        class_nelements = nelements(identifier)
+        class_nelements = nelements(id)
         !
         allocate(class_member(nclasses,maxval(class_nelements)))
         class_member = 0
         do i = 1, nclasses
             k=0
             do j = 1, nsyms
-                if (identifier(j).eq.i) then
+                if (id(j).eq.i) then
                     k=k+1
                     class_member(i,k) = j
                 endif
@@ -1887,21 +1887,21 @@ contains
         enddo
     end function   member
 
-    function       nelements(identifier) result(class_nelements)
+    function       nelements(id) result(class_nelements)
         !
         implicit none
         !
-        integer, intent(in)  :: identifier(:)
+        integer, intent(in)  :: id(:)
         integer, allocatable :: class_nelements(:)
         integer :: nclasses
         integer :: i
         !
-        nclasses = maxval(identifier)
+        nclasses = maxval(id)
         !
         allocate(class_nelements(nclasses))
         !
         do i = 1, nclasses
-            class_nelements(i) = count(i.eq.identifier)
+            class_nelements(i) = count(i.eq.id)
         enddo
     end function   nelements
 

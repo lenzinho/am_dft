@@ -21,9 +21,9 @@ module am_unit_cell
         integer  :: natoms   !> number of atoms
         real(dp), allocatable :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates
         integer , allocatable :: Z(:) !> identifies type of element
-        integer , allocatable :: uc_identifier(:) ! identifies corresponding atom in unit cell
-        integer , allocatable :: pc_identifier(:) ! identifies corresponding atom in primitive cell
-        integer , allocatable :: ic_identifier(:) ! identifies corresponding atom in irreducible cell
+        integer , allocatable :: uc_id(:) ! identifies corresponding atom in unit cell
+        integer , allocatable :: pc_id(:) ! identifies corresponding atom in primitive cell
+        integer , allocatable :: ic_id(:) ! identifies corresponding atom in irreducible cell
     contains
         procedure :: load_poscar
         procedure :: write_poscar
@@ -542,7 +542,7 @@ contains
         !
         allocate(sc%tau(3,sc%natoms))
         allocate(sc%Z(sc%natoms))
-        allocate(sc%uc_identifier(sc%natoms)) ! map
+        allocate(sc%uc_id(sc%natoms)) ! map
         !
         sc%tau = 1.0D5
         m=0
@@ -563,7 +563,7 @@ contains
                           m = m+1 
                           sc%tau(1:3,m) = tau_wrk
                           sc%Z(m) = uc%Z(j)
-                          sc%uc_identifier(m) = j
+                          sc%uc_id(m) = j
                       endif
                       if (m.eq.sc%natoms) then
                           exit map
@@ -585,10 +585,10 @@ contains
         ! <MAP>
         ! mapping of each atom in the sphere to the corresponding unit cell atom was already performed in the creation of the supercell
         ! now map each supercell atom the corresponding primitive atom if the mapping from uc->pc was already established
-        if (allocated(uc%pc_identifier)) then
-            allocate(sc%pc_identifier(sc%natoms))
+        if (allocated(uc%pc_id)) then
+            allocate(sc%pc_id(sc%natoms))
             do i = 1, sc%natoms
-                sc%pc_identifier(i) = uc%pc_identifier( sc%uc_identifier(i) )
+                sc%pc_id(i) = uc%pc_id( sc%uc_id(i) )
             enddo
             !
             if (opts%verbosity.ge.1) then
@@ -598,16 +598,16 @@ contains
                         write(*,*)
                         write(*,'(5x)',advance='no')
                     endif
-                    write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(sc%pc_identifier(i)))
+                    write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(sc%pc_id(i)))
                 enddo
                 write(*,*)
             endif
         endif
         ! now map each supercell atom the corresponding irreducible cell atom if the mapping from uc->ic was already established
-        if (allocated(uc%ic_identifier)) then
-            allocate(sc%ic_identifier(sc%natoms))
+        if (allocated(uc%ic_id)) then
+            allocate(sc%ic_id(sc%natoms))
             do i = 1, sc%natoms
-                sc%ic_identifier(i) = uc%ic_identifier( sc%uc_identifier(i) )
+                sc%ic_id(i) = uc%ic_id( sc%uc_id(i) )
             enddo
             !
             if (opts%verbosity.ge.1) then
@@ -617,7 +617,7 @@ contains
                         write(*,*)
                         write(*,'(5x)',advance='no')
                     endif
-                    write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(sc%ic_identifier(i)))
+                    write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(sc%ic_id(i)))
                 enddo
                 write(*,*)
             endif
@@ -641,19 +641,19 @@ contains
         if (allocated(cp%Z)) deallocate(cp%Z)
         allocate(cp%Z,source=uc%Z)
         !
-        if (allocated(uc%uc_identifier)) then
-        if (allocated(cp%uc_identifier)) deallocate(cp%uc_identifier)
-        allocate(cp%uc_identifier,source=uc%uc_identifier)
+        if (allocated(uc%uc_id)) then
+        if (allocated(cp%uc_id)) deallocate(cp%uc_id)
+        allocate(cp%uc_id,source=uc%uc_id)
         endif
         !
-        if (allocated(uc%pc_identifier)) then
-        if (allocated(cp%pc_identifier)) deallocate(cp%pc_identifier)
-        allocate(cp%pc_identifier,source=uc%pc_identifier)
+        if (allocated(uc%pc_id)) then
+        if (allocated(cp%pc_id)) deallocate(cp%pc_id)
+        allocate(cp%pc_id,source=uc%pc_id)
         endif
         !
-        if (allocated(uc%ic_identifier)) then
-        if (allocated(cp%ic_identifier)) deallocate(cp%ic_identifier)
-        allocate(cp%ic_identifier,source=uc%ic_identifier)
+        if (allocated(uc%ic_id)) then
+        if (allocated(cp%ic_id)) deallocate(cp%ic_id)
+        allocate(cp%ic_id,source=uc%ic_id)
         endif
         !
     end subroutine  copy
@@ -704,47 +704,47 @@ contains
             ! deallocate
             deallocate(Z)
         endif
-        ! uc_identifier
-        if (allocated(uc%uc_identifier)) then
+        ! uc_id
+        if (allocated(uc%uc_id)) then
             ! setup temporary variable
-            allocate(Z,source=uc%uc_identifier)
+            allocate(Z,source=uc%uc_id)
             ! clear original variable
-            deallocate(uc%uc_identifier)
+            deallocate(uc%uc_id)
             ! reallocate space
-            allocate(uc%uc_identifier(uc%natoms))
+            allocate(uc%uc_id(uc%natoms))
             ! transfer content through filter
             do i = 1, uc%natoms
-                uc%uc_identifier(i) = Z(indices(i))
+                uc%uc_id(i) = Z(indices(i))
             enddo
             ! deallocate
             deallocate(Z)
         endif
-        ! pc_identifier
-        if (allocated(uc%pc_identifier)) then
+        ! pc_id
+        if (allocated(uc%pc_id)) then
             ! setup temporary variable
-            allocate(Z,source=uc%pc_identifier)
+            allocate(Z,source=uc%pc_id)
             ! clear original variable
-            deallocate(uc%pc_identifier)
+            deallocate(uc%pc_id)
             ! reallocate space
-            allocate(uc%pc_identifier(uc%natoms))
+            allocate(uc%pc_id(uc%natoms))
             ! transfer content through filter
             do i = 1, uc%natoms
-                uc%pc_identifier(i) = Z(indices(i))
+                uc%pc_id(i) = Z(indices(i))
             enddo
             ! deallocate
             deallocate(Z)
         endif
-        ! ic_identifier
-        if (allocated(uc%ic_identifier)) then
+        ! ic_id
+        if (allocated(uc%ic_id)) then
             ! setup temporary variable
-            allocate(Z,source=uc%ic_identifier)
+            allocate(Z,source=uc%ic_id)
             ! clear original variable
-            deallocate(uc%ic_identifier)
+            deallocate(uc%ic_id)
             ! reallocate space
-            allocate(uc%ic_identifier(uc%natoms))
+            allocate(uc%ic_id(uc%natoms))
             ! transfer content through filter
             do i = 1, uc%natoms
-                uc%ic_identifier(i) = Z(indices(i))
+                uc%ic_id(i) = Z(indices(i))
             enddo
             ! deallocate
             deallocate(Z)
@@ -753,7 +753,7 @@ contains
         !
     end subroutine  filter
 
-    subroutine      initialize(uc,bas,tau,Z,uc_identifier,pc_identifier,ic_identifier)
+    subroutine      initialize(uc,bas,tau,Z,uc_id,pc_id,ic_id)
         !
         implicit none
         !
@@ -761,9 +761,9 @@ contains
         real(dp), intent(in) :: bas(3,3)
         real(dp), intent(in) :: tau(:,:)
         integer , intent(in) :: Z(:)
-        integer , intent(in), optional :: uc_identifier(:)
-        integer , intent(in), optional :: pc_identifier(:)
-        integer , intent(in), optional :: ic_identifier(:)
+        integer , intent(in), optional :: uc_id(:)
+        integer , intent(in), optional :: pc_id(:)
+        integer , intent(in), optional :: ic_id(:)
         !
         uc%bas = bas
         !
@@ -773,9 +773,9 @@ contains
         !
         allocate(uc%Z,source=Z)
         !
-        if (present(uc_identifier)) allocate(uc%uc_identifier,source=uc_identifier)
-        if (present(pc_identifier)) allocate(uc%pc_identifier,source=pc_identifier)
-        if (present(ic_identifier)) allocate(uc%ic_identifier,source=ic_identifier)
+        if (present(uc_id)) allocate(uc%uc_id,source=uc_id)
+        if (present(pc_id)) allocate(uc%pc_id,source=pc_id)
+        if (present(ic_id)) allocate(uc%ic_id,source=ic_id)
         !
     end subroutine  initialize
 
