@@ -24,27 +24,28 @@ module am_tight_binding
         ! i irreducible cell atom, jth neighbor shell around i, li orbital on i, lj orbital on j, m overlap
 		!
 	contains
-        procedure :: get_V
-        procedure :: set_V
+        procedure :: print_matrix_elements ! to stdout gets segmentationa fault for some reason...
+        procedure :: get_Vsk
+        procedure :: set_Vsk
 		procedure :: template_matrix_elements
+        procedure :: build_K
 !         procedure :: write_matrix_elements ! to file
 ! 		procedure :: read_matrix_elements  ! from file
-        
 	end type am_class_tb
 
 contains
 
     ! functions which operate on matrix element indices
 
-    function       get_V(tb,ind) result(Vsk)
+    function       get_Vsk(tb,ind) result(Vsk)
         ! returns the corresponding matrix element given the indices
         ! ind = [i,ni,li,mi,si,j,nj,lj,mj,sj,k]
         implicit none
         !
         class(am_class_tb), intent(in) :: tb
-        integer, intent(in) :: ind(1:11)
+        integer, intent(in) :: ind(11)
         real(dp) :: Vsk
-        integer :: i,j
+        integer  :: i,j
         !
         search : do j = 1, tb%nVsks
             !
@@ -56,13 +57,16 @@ contains
             !
             Vsk = tb%Vsk(j)
             !
-            exit search
+            return
             !
         enddo search
         !
-    end function   get_V
+        ! if nothing matches return zero
+        Vsk = 0.0_dp
+        !
+    end function   get_Vsk
 
-    subroutine     set_V(tb,ind,Vsk)
+    subroutine     set_Vsk(tb,ind,Vsk)
         ! set the corresponding matrix element given the indices
         ! ind = [i,ni,li,mi,si,j,nj,lj,mj,sj,k]
         implicit none
@@ -82,64 +86,15 @@ contains
             !
             tb%Vsk(j) = Vsk
             !
-            exit search
+            return
             !
         enddo search
         !
-    end subroutine set_V
-
-    function       get_ind(ic,i,alpha,j,beta,k) result(ind)
-        ! returns matrix element indices given irreducible atoms (i,j), orbitals (alpha,beta), anda shell k
-        ! ind = [i,ni,li,mi,si,j,nj,lj,mj,sj,k]
-        implicit none
+        ! if nothing matches return error
+        call am_print('ERROR','Cannot find where to set Vsk',flags='E')
+        stop
         !
-        type(am_class_irre_cell), intent(in) :: ic
-        integer, intent(in) :: i,j,alpha,beta,k
-        integer :: ind(11)
-        !
-        ind(1)  = i
-        ind(2)  = ic%atom(i)%orbital(1,alpha)
-        ind(3)  = ic%atom(i)%orbital(2,alpha)
-        ind(4)  = ic%atom(i)%orbital(3,alpha)
-        ind(5)  = ic%atom(j)%orbital(4,alpha)
-        ind(6)  = j
-        ind(7)  = ic%atom(j)%orbital(1,beta)
-        ind(8)  = ic%atom(j)%orbital(2,beta)
-        ind(9)  = ic%atom(j)%orbital(3,beta)
-        ind(10) = ic%atom(j)%orbital(4,beta)
-        ind(11) = k
-        !
-        ! impose symmetry requirements
-        !
-        ! 1) (l,l',m) = (l,l',-m)
-        ind(4)=abs(ind(4))
-        ind(9)=abs(ind(9))
-        !
-        ! 2) (l,l',m) = (-1)^(l-m) * (l',l,m)
-        ! if irreducible atoms are identical, flipped orbitals are related
-        if (ind(1).eq.ind(6)) then !  i = j
-            if (ind(2).gt.ind(7))  ind = flip_orbitals(ind) ! n > n'
-            if (ind(5).gt.ind(10)) ind = flip_orbitals(ind) ! s > s'
-            if (ind(4).gt.ind(9))  ind = flip_orbitals(ind) ! l > l'
-        endif
-        !
-        !
-    end function   get_ind
-
-    function       flip_orbitals(ind) result(ind_flipped)
-        ! returns the corresponding matrix element given the indices
-        ! convert
-        ! ind = [i,ni,li,mi,si, j,nj,lj,mj,sj, k]
-        ! to
-        ! ind = [j,nj,lj,mj,sj, i,ni,li,mi,si, k]
-        implicit none
-        !
-        integer, intent(in) :: ind(1:11)
-        integer :: ind_flipped(1:11)
-        !
-        ind_flipped([1,2,3,4,5, 6,7,8,9,10, 11]) = ind([6,7,8,9,10, 1,2,3,4,5, 11])
-        !
-    end function   flip_orbitals
+    end subroutine set_Vsk
 
 	subroutine     template_matrix_elements(tb,ip,ic,opts)
 		!
@@ -180,51 +135,37 @@ contains
         enddo
         call am_print('total matrix elements',nVsks)
 		!
-    	! determine irreducible matrix elements using:
-        ! 0) matrix element vanishes unless m = m'
-        ! 1) (l,l',m) = (l,l',-m)
-        ! 2) (l,l',m) = (-1)^(l-m) * (l',l,m)
+    	! determine irreducible matrix elements
         label_dim = 11
         allocate(ind(label_dim,nVsks))
         kk=0
         do k = 1, ip%nshells
-            ! j irreducible atom shell entered on atom irreducible atom i
+            ! irreducible atoms i and j
             i = ip%shell(k)%i
             j = ip%shell(k)%j
             ! loop over all combination of orbitals (outer product of li x lj)
             do alpha = 1, ic%atom(i)%norbitals
             do beta  = 1, ic%atom(j)%norbitals
-                !
-                ! 0) matrix element vanishes unless m = m'
+                ! matrix element vanishes unless m = m'
                 if (ic%atom(i)%orbital(3,alpha).eq.ic%atom(j)%orbital(3,beta)) then
-                    !
                     kk=kk+1
-                    ! these symmetries are enforced in get_ind
-                    ! 1) (l,l',m) = (l,l',-m)
-                    ! 2) (l,l',m) = (-1)^(l-m) * (l',l,m)
-                    ind(:,kk) = get_ind(ic=ic,i=i,alpha=alpha,j=j,beta=beta,k=k)
+                    ! (l,l',m) = (l,l',-m) and (l,l',m) = (-1)^(l-m) * (l',l,m) symmetries enforced in get_Vsk_ind
+                    ind(:,kk) = ic%get_Vsk_ind(i=i,alpha=alpha,j=j,beta=beta,k=k)
                     !
                 endif
             enddo
             enddo
         enddo
-        !
+        ! get number of matrix elements equal to zero (those for which m/=m')
         call am_print('null matrix elements',nVsks-kk)
-        !
+        ! determine irrducible matrix elements
         tb%ind = unique(ind(:,1:kk))
-        !
+        ! allocate space and initialize irrducible matrix elements as 1.0
         tb%nVsks = size(tb%ind,2)
         allocate(tb%Vsk(tb%nVsks))
-        !
-        tb%Vsk = 0.0_dp
-        !
-        do k = 1, tb%nVsks
-            !
-            tb%Vsk(k) = 1.0_dp
-            !
-        enddo
-        !
-		if (opts%verbosity.ge.1) call print_matrix_elements(tb)
+        tb%Vsk = 1.0_dp
+        ! write matrix elements to stdout
+		if (opts%verbosity.ge.1) call tb%print_matrix_elements()
         !
         contains
 	    subroutine     print_orbital_basis(ip,ic)
@@ -261,7 +202,7 @@ contains
         !
         implicit none
         !
-        type(am_class_tb), intent(in) :: tb
+        class(am_class_tb), intent(in) :: tb
         integer :: k
         !
         !
@@ -627,90 +568,46 @@ contains
         !
  	end subroutine test_SO3
     
-!     subroutine     build_K(tb,ic,ip)
-!         !
-!         ! k-independent part of the Hamiltonian
-!         !
-!         implicit none
-!         !
-!         class(am_class_tb), intent(in) :: tb ! tight binding parametrs
-!         class(am_class_irre_cell) , intent(in) :: ic ! irreducible cell
-!         class(am_class_pair_shell), intent(inout) :: ip ! irreducible pairs
-!         integer :: k, i, j, kk
-!         integer :: Ki, Kj ! matrix element dimensions
-!         integer :: ii, jj ! orbital indices
-!         integer :: li, lj ! azimuthal quantum number
-!         integer :: mi, mj ! magnetic quantum number
-!         integer :: si, sj ! spin quantum number
-!         !
-!         ! loop over irreducible pairs
-!         do k = 1, ip%nshells
-!             ! irreducible atom indices
-!             i = ip%shell( k )%i
-!             j = ip%shell( k )%j
-!             ! get number of orbitals (size of matrix)
-!             Ki = ic%atom( i )%norbitals
-!             Kj = ic%atom( j )%norbitals
-!             ! allocate space
-!             allocate( ip%shell( k )%K(Ki,Kj) )
-!             ! loop over orbitals
-!             do ii = 1, Ki
-!             do jj = 1, Kj
-!                 !
-!                 ! find the corresponding irreducible matrix element
-!                 do kk = 1, tb%nVsks
-!                     !
-!                     li = ic%atom( i )%orbital(2,k)
-!                     lj = ic%atom( j )%orbital(2,k)
-!                     mi = ic%atom( i )%orbital(3,k)
-!                     mj = ic%atom( j )%orbital(3,k)
-!                     si = ic%atom( i )%orbital(4,k)
-!                     sj = ic%atom( j )%orbital(4,k)
-!                     !
-!                     if (tb%ind(1,kk).eq.k) then
-!                     if (tb%ind(2,kk).eq.i) then
-!                     if (tb%ind(3,kk).eq.j) then
-!                     if (tb%ind(4,kk).eq.li) then
-!                     if (tb%ind(5,kk).eq.lj) then
-!                     if (tb%ind(6,kk).eq.si) then
-!                     if (tb%ind(6,kk).eq.si) then
+    subroutine     build_K(tb,ic,ip)
+        !
+        ! k-independent part of the Hamiltonian
+        !
+        implicit none
+        !
+        class(am_class_tb),         intent(in) :: tb ! tight binding parametrs
+        class(am_class_irre_cell) , intent(in) :: ic ! irreducible cell
+        class(am_class_pair_shell), intent(inout) :: ip ! irreducible pairs
+        integer :: k ! shell index
+        integer :: i, j ! i and j irreducible atoms 
+        integer :: Ki,Kj ! number of orbitals on i and j
+        integer :: alpha, beta ! orbital indices on i and j
+        !
+        ! loop over irreducible pairs
+        do k = 1, ip%nshells
+            ! irreducible atom indices
+            i = ip%shell( k )%i
+            j = ip%shell( k )%j
+            ! get number of orbitals (size of matrix)
+            Ki = ic%atom( i )%norbitals
+            Kj = ic%atom( j )%norbitals
+            ! allocate space
+            allocate( ip%shell( k )%K(Ki,Kj) )
+            ! loop over orbitals
+            do alpha = 1, Ki
+            do beta  = 1, Kj
+                !
+                ip%shell( k )%K( alpha, beta ) = tb%get_Vsk(ind= ic%get_Vsk_ind(i=i,alpha=alpha,j=j,beta=beta,k=k) )
+                !
+            enddo
+            enddo
 
-
-!                     ip%shell( k )%K( ii, jj ) = tb%Vsk(kk)
-
-
-
-!                     endif ! 5 - lj
-!                     endif ! 4 - li
-!                     endif ! 3 - j
-!                     endif ! 2 - i
-!                     endif ! 1 - k
-
-!                 enddo
-!                     ! azimuthal quantum number
-!                     ind(4,kk) = nlsi(2,ii)
-!                     ind(5,kk) = nlsj(2,jj)
-!                     ! if irreducible atoms are identical flip the indices to get sp ~= ps
-!                     if (ind(2,kk).eq.ind(3,kk)) then
-!                     if (ind(4,kk).gt.ind(5,kk)) ind([4,5],kk) = ind([5,4],kk)
-!                     endif
-!                     ! magnetic quantum number
-!                     ind(6,kk) = m
-
-! !                 ic%atom( i )%norbitals
-! !                 ic%atom( j )%norbitals
-
-! !                 ic%atom(i)%orbital(1:4,k) ! [n,l,m,s]
-! !                 ic%atom(j)%orbital(1:4,k) ! [n,l,m,s]
-
-!             enddo
-!             enddo
-!         enddo
+            call am_print('K'//trim(int2char(k)), ip%shell( k )%K )
+        enddo
 
 
 
 
-!     end subroutine build_K
+    end subroutine build_K
 
 
 	!
