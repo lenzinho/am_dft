@@ -15,8 +15,8 @@ module am_dispersion
         integer :: nbands
         integer :: nkpts
         !
-        real(dp), allocatable :: E(:,:)       ! E(nbands,nkpts) energies
-        real(dp), allocatable :: w(:,:,:,:,:) ! w(nbands,nkpts,nspins,norbitals,nions) band character weights
+        real(dp), allocatable :: E(:,:)            ! E(nbands,nkpts) energies
+        real(dp), allocatable :: lmproj(:,:,:,:,:) ! lmproj(nspins,norbitals,nions,nbands,nkpts) band character weights
         ! projection information:
         integer :: nspins
         integer :: norbitals
@@ -47,7 +47,7 @@ contains
                          nspins   = dr%nspins,&
                          norbitals= dr%norbitals,&
                          orbitals = dr%orbitals,&
-                         lmproj   = dr%w,&
+                         lmproj   = dr%lmproj,&
                          E        = dr%E,&
                          kpt      = bz%kpt,&
                          w        = bz%w,&
@@ -70,7 +70,7 @@ contains
                            nbands = dr%nbands,&
                            nspins = dr%nspins,&
                            E      = dr%E,&
-                           lmproj = dr%w,&
+                           lmproj = dr%lmproj,&
                            kpt    = bz%kpt,&
                            w      = bz%w,&
                            iopt_filename=opts%eigenval,&
@@ -170,7 +170,7 @@ contains
                     do l = 1, dr%norbitals
                     do n = 1, dr%nspins
                         !> lmproj(nbands,nkpts,nspins,norbitals,nions)
-                        write(fid,'(f13.5)',advance='no') dr%w(j,i,n,l,m)
+                        write(fid,'(f13.5)',advance='no') dr%lmproj(n,l,m,j,i)
                     enddo
                     enddo
                     enddo

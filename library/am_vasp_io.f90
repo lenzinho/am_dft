@@ -188,7 +188,7 @@ module am_vasp_io
         real(dp), allocatable, intent(out), optional :: kpt(:,:)  !> kpt(3,nkpts) kpoint
         real(dp), allocatable, intent(out), optional :: w(:)      !> w(nkpts) weights (normalized)
         character(:), allocatable, intent(out), optional :: orbitals(:)     !> orbitals(norbitals) names of orbitals
-        real(dp), allocatable, intent(out), optional :: lmproj(:,:,:,:,:)   !> lmproj(nbands,nkpts,nspins,norbitals,nions)
+        real(dp), allocatable, intent(out), optional :: lmproj(:,:,:,:,:)   !> lmproj(nspins,norbitals,nions,nbands,nkpts)
         !
         integer :: fid ! file id
         character(maximum_buffer_size) :: buffer ! read buffer
@@ -280,7 +280,7 @@ module am_vasp_io
                             if (verbosity .ge. 1) write(*,'(a5,a,100(x,a))' ) ' ... ', 'orbitals =', ( trim(orbitals(l)), l = 1, norbitals)
                         endif
                         !> lmproj(nspins,norbitals,nions,nbands,nkpts)
-                        if (present(lmproj)) allocate(lmproj(nbands,nkpts,nspins,norbitals,nions))
+                        if (present(lmproj)) allocate(lmproj(nspins,norbitals,nions,nbands,nkpts))
                         !
                     endif
                     ! (LINE 9,10) 
@@ -292,7 +292,7 @@ module am_vasp_io
                         if (present(lmproj)) then
                             do m = 1, norbitals
                                 !> lmproj(nspins,norbitals,nions,nbands,nkpts) (spins not implemented yet!)
-                                read(word(m+1),*) lmproj(j,i,1,m,l)
+                                read(word(m+1),*) lmproj(1,m,l,j,i)
                             enddo
                         endif
                     enddo
@@ -592,14 +592,14 @@ module am_vasp_io
                         if (verbosity .ge. 1) call am_print('number of bands',nbands,' ... ')
                         if (verbosity .ge. 1) call am_print('number of spins',nspins,' ... ')
                         if (present(E)) allocate(E(nbands,nkpts))
-                        !> lmproj(nbands,nkpts,nspins,norbitals,nions) projections for spins
+                        !> lmproj(nspins,norbitals,nions,nbands,nkpts) projections for spins
                         !> this array contains the projection character onto everything from oribtals, to ions, to spins
                         !> for systems with 2 spins, the spin component of lmproj is binary with 0 or 1
                         !> for dirac spinors with 4 spin components (spin orbit coupling), the spin component of lmproj takes on non-integer values
                         nions = 1
                         norbitals = 1
                         if (present(lmproj)) then
-                            allocate(lmproj(nbands,nkpts,nspins,norbitals,nions))
+                            allocate(lmproj(nspins,norbitals,nions,nbands,nkpts))
                             lmproj = 0.0_dp
                         endif
                         !
@@ -612,7 +612,7 @@ module am_vasp_io
                             read(word(m+1),*) E(j_and_m,i)
                         endif
                         !> lmproj(nbands,nkpts,nspins,norbitals,nions) projections for spins
-                        lmproj(j_and_m,i,m,1,1) = 1.0_dp
+                        lmproj(m,1,1,j_and_m,i) = 1.0_dp
                     enddo
                     !
                 enddo

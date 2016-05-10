@@ -17,8 +17,7 @@ module am_dos
         integer :: nEs
         real(dp), allocatable :: E(:)          ! energies
         real(dp), allocatable :: dos(:)        ! dos(nEs)
-        real(dp), allocatable :: w(:,:,:)      ! w(nEs,norbitals,nions) pdos weights
-        real(dp), allocatable :: pdos(:,:,:,:) ! pdos(nspins,norbitals,nions,nEs)
+        real(dp), allocatable :: lmproj(:,:,:,:) ! lmproj(nEs,nspins,norbitals,nions) pdos weights
     contains
         procedure :: tetrahedra_pdos
         procedure :: outfile_dosprojected
@@ -64,10 +63,10 @@ contains
         if (opts%verbosity.ge.1) call am_print('energy increments dE',      dE            ,' ... ')
         if (opts%verbosity.ge.1) call am_print('number of probing energies',dos%nEs       ,' ... ')
         !
-        allocate(dos%pdos(dr%nspins,dr%norbitals,dr%nions,dos%nEs))
+        allocate(dos%lmproj(dr%nspins,dr%norbitals,dr%nions,dos%nEs))
         allocate(dos%dos(dos%nEs))
         !
-        dos%pdos = 0.0_dp
+        dos%lmproj = 0.0_dp
         dos%dos  = 0.0_dp
         !
         ! two things
@@ -90,9 +89,9 @@ contains
                 do m = 1,dr%nspins
                 do n = 1,dr%norbitals
                 do o = 1,dr%nions
-                    !> pdos(nspins,norbitals,nions,nEs)
-                    !> lmproj(nspins,norbitals,nions,nbands,nkpts)
-                    dos%pdos(m,n,o,i) = dos%pdos(m,n,o,i) + tet%w(k)*tet%volume(k)*sum(w * dr%w(m,n,o,j,tet%tet(:,k)) )/real(dr%nspins,dp) ! per spin
+                    !> dos%lmproj(nEs,nspins,norbitals,nions)
+                    !> dr%lmproj(nspins,norbitals,nions,nbands,nkpts)
+                    dos%lmproj(i,m,n,o) = dos%lmproj(i,m,n,o) + tet%w(k)*tet%volume(k)*sum(w * dr%lmproj(m,n,o,j,tet%tet(:,k)) )/real(dr%nspins,dp) ! per spin
                 enddo
                 enddo
                 enddo
@@ -101,7 +100,7 @@ contains
                 !
             enddo
             enddo
-            write(*,*) dos%E(i), sum(dos%pdos(:,:,:,i)), dos%dos(i)
+            write(*,*) dos%E(i), sum(dos%lmproj(:,:,:,i)), dos%dos(i)
         enddo
         !
     end subroutine tetrahedra_pdos
@@ -175,7 +174,7 @@ contains
                 do l = 1, dr%norbitals
                 do n = 1, dr%nspins
                     !> lmproj(nspins,norbitals,nions,nbands,nkpts)
-                    write(fid,'(f13.5)',advance='no') dos%pdos(n,l,m,i)
+                    write(fid,'(f13.5)',advance='no') dos%lmproj(n,l,m,i)
                 enddo
                 enddo
                 enddo
