@@ -23,7 +23,7 @@ module am_shells
         integer :: m
         integer :: n
         ! tight binding matrix elements
-        real(dp), allocatable :: K(:,:)
+        real(dp), allocatable :: Vsk(:,:)
         !
         ! <Inherited from am_class_unit_cell>
         ! real(dp) :: bas(3,3) !> column vectors a(1:3,i), a(1:3,j), a(1:3,k)

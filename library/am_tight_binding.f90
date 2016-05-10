@@ -36,7 +36,7 @@ module am_tight_binding
 
 contains
 
-    ! functions which operate on matrix element indices
+    ! functions which operate on Vsk
 
     function       get_Vsk(tb,ind) result(Vsk)
         ! returns the corresponding matrix element given the indices
@@ -236,124 +236,131 @@ contains
         !
     end subroutine print_Vsk
 
-!     subroutine     write_matrix_elements(tb)
-!     	!
-!     	implicit none
-!     	!
-!     	class(am_class_tb), intent(inout) :: tb
-!     	integer :: fid, k
-!     	!
-!         fid = 1
-!         open(unit=fid,file='outfile.tightbinding',status='replace',action='write')
-! 	        !
-! 	        write(fid,'(i6)') tb%nVsks
-!             do k = 1, tb%nVsks
-!             write(fid,'(3i6, 3i6, f)') &
-!                 tb%ind(1,k), & ! shell
-!                 tb%ind(2,k), & ! site i
-!                 tb%ind(3,k), & ! site j
-!                 tb%ind(4,k), & ! li (s,p,d,f)
-!                 tb%ind(5,k), & ! lj (s,p,d,f)
-!                 tb%ind(6,k), & ! m  (sigma, pi, delta, phi)
-!                 tb%Vsk(k) ! matrix element
-!             enddo
-! 			!
-! 		close(fid)
-! 		!
-! 	end subroutine write_matrix_elements
+    subroutine     build_Vsk(tb,ic,ip)
+        !
+        ! Get k-independent part of the Hamiltonian, ip%shell(k)%Vsk
+        !
+        implicit none
+        !
+        class(am_class_tb),         intent(in) :: tb ! tight binding parametrs
+        class(am_class_irre_cell) , intent(in) :: ic ! irreducible cell
+        class(am_class_pair_shell), intent(inout) :: ip ! irreducible pairs
+        integer :: k ! shell index
+        integer :: i, j ! i and j irreducible atoms 
+        integer :: Ki,Kj ! number of orbitals on i and j
+        integer :: alpha, beta ! orbital indices on i and j
+        !
+        ! loop over irreducible pairs
+        do k = 1, ip%nshells
+            ! irreducible atom indices
+            i = ip%shell( k )%i
+            j = ip%shell( k )%j
+            ! get number of orbitals (size of matrix)
+            Ki = ic%atom( i )%norbitals
+            Kj = ic%atom( j )%norbitals
+            ! allocate space
+            allocate( ip%shell( k )%Vsk(Ki,Kj) )
+            ! loop over orbitals
+            do alpha = 1, Ki
+            do beta  = 1, Kj
+                !
+                ip%shell( k )%Vsk( alpha, beta ) = tb%get_Vsk(ind=ic%get_Vsk_ind(i=i,alpha=alpha,j=j,beta=beta,k=k))
+                !
+            enddo
+            enddo
 
-!     subroutine     read_matrix_elements(tb,opts)
-!     	!
-!     	implicit none
-!     	!
-!     	class(am_class_tb), intent(inout) :: tb
-!         type(am_class_options), intent(in) :: opts
-!         character(maximum_buffer_size) :: buffer ! read buffer
-!         character(len=:), allocatable :: word(:) ! read buffer
-!         integer :: fid, k
-!     	!
-!     	if (opts%verbosity.ge.1) call am_print_title('Reading tight binding matrix elements')
-!     	!
-!     	if (opts%verbosity.ge.1) call am_print('input file',trim(opts%tbf))
-!     	!
-!         fid = 1
-!         open(unit=fid,file=trim(opts%tbf),status="old",action='read')
-! 	        !
-!             read(unit=fid,fmt='(a)') buffer
-!             word = strsplit(buffer,delimiter=' ')
-!             read(word(1),*) tb%nVsks
-! 	        !
-! 	        if (allocated(tb%ind)) deallocate(tb%ind)
-! 	        if (allocated(tb%Vsk)) 		 deallocate(tb%Vsk)
-! 	        !
-! 	        allocate(tb%ind(6,tb%nVsks))
-! 	        allocate(tb%Vsk(tb%nVsks))
-!             !
-!             do k = 1, tb%nVsks
-!                 read(unit=fid,fmt='(a)') buffer
-!                 word = strsplit(buffer,delimiter=' ')
-            
-!                 read(word(1),*) tb%ind(1,k) ! shell
-!                 read(word(2),*) tb%ind(2,k) ! site i
-!                 read(word(3),*) tb%ind(3,k) ! site j
-!                 read(word(4),*) tb%ind(4,k) ! li (s,p,d,f)
-!                 read(word(5),*) tb%ind(5,k) ! lj (s,p,d,f)
-!                 read(word(6),*) tb%ind(6,k) ! m  (sigma, pi, delta, phi)
-!                 read(word(7),*) tb%Vsk(k)         ! matrix element
-!                 !
-!             enddo
-!             !
-!             call tb%print_Vsk
-!             !
-!             !
-!         close(fid)
-! 		!
-! 	end subroutine read_matrix_elements
+            call am_print('K'//trim(int2char(k)), ip%shell( k )%Vsk )
+        enddo
+    end subroutine build_Vsk
+
+    subroutine     write_Vsk(tb)
+    	!
+        implicit none
+        !
+        class(am_class_tb), intent(inout) :: tb
+        integer :: fid, k
+        !
+        fid = 1
+        open(unit=fid,file='outfile.tightbinding',status='replace',action='write')
+        !
+        call am_print('irreducible matrix elements',tb%nVsks)
+            !
+            write(fid,'(i6)') tb%nVsks
+            !
+            write(fid,'(5x,11a3,a20)') 'i','n','l','m','s','j','n','l','m','s','sh','Vsk'
+            !
+            do k = 1, tb%nVsks
+                write(fid,'(5x, 11i3, f20.8)') &
+                            tb%ind( 1,k), & ! atom 1     
+                            tb%ind( 2,k), & ! n   1
+                            tb%ind( 3,k), & ! l   1 (s,p,d,f)
+                            tb%ind( 4,k), & ! m   1 (sigma, pi, delta, phi)
+                            tb%ind( 5,k), & ! s   1
+                            tb%ind( 6,k), & ! atom 2
+                            tb%ind( 7,k), & ! n   2
+                            tb%ind( 8,k), & ! l   2 (s,p,d,f)
+                            tb%ind( 9,k), & ! m   2 (sigma, pi, delta, phi)
+                            tb%ind(10,k), & ! s   2
+                            tb%ind(11,k), & ! shell
+                            tb%Vsk(k)       ! matrix element
+            enddo
+            !
+        close(fid)
+        !
+	end subroutine write_Vsk
+
+    subroutine     read_Vsk(tb,opts)
+    	!
+    	implicit none
+    	!
+    	class(am_class_tb), intent(inout) :: tb
+        type(am_class_options), intent(in) :: opts
+        character(maximum_buffer_size) :: buffer ! read buffer
+        character(len=:), allocatable :: word(:) ! read buffer
+        integer :: fid, k
+    	!
+    	if (opts%verbosity.ge.1) call am_print_title('Reading tight binding matrix elements')
+    	!
+    	if (opts%verbosity.ge.1) call am_print('input file',trim(opts%tbf))
+    	!
+        fid = 1
+        open(unit=fid,file=trim(opts%tbf),status="old",action='read')
+	        !
+            read(unit=fid,fmt='(a)') buffer
+            word = strsplit(buffer,delimiter=' ')
+            read(word(1),*) tb%nVsks
+	        !
+	        allocate(tb%ind(11,tb%nVsks))
+	        allocate(tb%Vsk(tb%nVsks))
+            !
+            do k = 1, tb%nVsks
+                read(unit=fid,fmt='(a)') buffer
+                word = strsplit(buffer,delimiter=' ')
+                !
+                read(word( 1),*) tb%ind( 1,k) ! atom 1     
+                read(word( 2),*) tb%ind( 2,k) ! n   1
+                read(word( 3),*) tb%ind( 3,k) ! l   1 (s,p,d,f)
+                read(word( 4),*) tb%ind( 4,k) ! m   1 (sigma, pi, delta, phi)
+                read(word( 5),*) tb%ind( 5,k) ! s   1
+                read(word( 6),*) tb%ind( 6,k) ! atom 2
+                read(word( 7),*) tb%ind( 7,k) ! n   2
+                read(word( 8),*) tb%ind( 8,k) ! l   2 (s,p,d,f)
+                read(word( 9),*) tb%ind( 9,k) ! m   2 (sigma, pi, delta, phi)
+                read(word(10),*) tb%ind(10,k) ! s   2
+                read(word(11),*) tb%ind(11,k) ! shell
+                read(word(12),*) tb%Vsk(k)    ! matrix element
+                !
+            enddo
+            !
+            call tb%print_Vsk
+            !
+        close(fid)
+		!
+	end subroutine read_Vsk
+
+    ! functions used to setup hamiltonian
 
     function       SO3(l,th,phi) result(R)
-        !
-        ! Definitions:
-        ! l       angular quantum number
-        ! theta   polar angle (rotate away from Z axis, i.e. around Y axis)
-        ! phi     azimuthal angle (rotate around Z axis)
-        !
-        ! For l = 1 (p orbitals transform like x, y, z), R is equivalent to a rotation around the Y
-        ! axis, followed by a rotation around the Z axis. That is,
-        !
-        !         R = Z*Y with
-        !
-        !         Y = axis_angle2rot([0.0_dp, 1.0_dp, 0.0_dp, theta_phi(1)])
-        !         Z = axis_angle2rot([0.0_dp, 0.0_dp, 1.0_dp, theta_phi(2)])
-        !
-        ! The operation
-        !       
-        !         K = Z' * Y * Z
-        ! 
-        !         takes directional cosines of {th,phi} to [0 0 1]. That is,
-        !
-        !             [ sin(th)cos(phi) ]   [ 0 ]
-        !         K * [ sin(th)sin(phi) ] = [ 0 ]
-        !             [     cos(th)     ]   [ 1 ]
-        !
-        ! Equivalently, using the transpose distributive properties, (A*B)' = B'*A', and the fact that K is unitary, inv(K) = K':
-        !
-        !         K' = Z' * Y' * Z
-        !
-        !              [ 0 ]   [ sin(th)cos(phi) ]
-        !         K' * [ 0 ] = [ sin(th)sin(phi) ]
-        !              [ 1 ]   [     cos(th)     ]
-        !
-        ! Quick matlab script (note different sign conventions for theta/phi in vrrotvec2mat vs. that used here)
-        !
-        !     v = [3 2 1]';
-        !     dcosines = v/norm(v);
-        !     theta_phi(1) = acos(dcosines(3));
-        !     theta_phi(2) = atan(dcosines(2)/(dcosines(1)+1E-14));
-        !     Y=vrrotvec2mat([0 1 0 -theta_phi(1)]);
-        !     Z=vrrotvec2mat([0 0 1 -theta_phi(2)]);
-        !     R=(Z*Y)
-        !     K=(Z'*Y*Z)
-        !     K*dcosines
         !
         implicit none
         !
@@ -393,7 +400,7 @@ contains
         U = matmul(matmul(V,T),matmul(adjoint(V),P))
         !
         ! determine similarity transform to convert spherical into tesseral harmonics (complex to real)
-        B = spherical2tesseral(l)
+        B = tesseral(l)
         !
         ! convert U to real coordinates
         allocate(R(n,n))
@@ -428,7 +435,7 @@ contains
             enddo
             !
         end function   Ly
-        function       spherical2tesseral(l) result(B)
+        function       tesseral(l) result(B)
             !
             ! latex equations
             !
@@ -466,8 +473,48 @@ contains
             enddo
             enddo
             !
-        end function   spherical2tesseral
+        end function   tesseral
     end function   SO3
+
+    function       SO3_rotations(llist,th,phi,is_spin_polarized) result(R)
+        !
+        implicit none
+        !
+        integer , intent(in) :: llist(:)
+        real(dp), intent(in) :: th,phi
+        logical , intent(in) :: is_spin_polarized
+        real(dp), allocatable :: R(:,:)
+        integer , allocatable :: l_start(:)
+        integer , allocatable :: l_end(:)
+        integer :: i, n, lsize
+        !
+        lsize = size(l)
+        !
+        allocate(l_start(lsize))
+        allocate(l_end(lsize))
+        !
+        n = 0
+        do i = 1,lsize
+            l_start(i) = n + 1
+            n = n + 2*llist(i)+1
+            l_end(i) = n
+        enddo
+        !
+        allocate(R(n,n))
+        R = 0.0_dp
+        !
+        ! construct a direct sum of rotations
+        do i = 1, lsize
+            R(l_start(i):l_end(i),l_start(i):l_end(i)) = SO3(l=llist(i),th,phi)
+        enddo
+        !
+        if (is_spin_polarized) then
+            ! need to add something to account for the different spins. perhaps a kroner product of the R matrix obtained above and the corresponding rotations using the pauling spin matrices?
+            call am_print('ERROR','spin polarized is not yet supported.')
+            stop
+        endif
+        !
+    end function   SO3_rotations
 
  	subroutine     test_SO3
  		!
@@ -509,48 +556,11 @@ contains
         stop
         !
  	end subroutine test_SO3
-    
-    subroutine     build_K(tb,ic,ip)
-        !
-        ! k-independent part of the Hamiltonian
-        !
-        implicit none
-        !
-        class(am_class_tb),         intent(in) :: tb ! tight binding parametrs
-        class(am_class_irre_cell) , intent(in) :: ic ! irreducible cell
-        class(am_class_pair_shell), intent(inout) :: ip ! irreducible pairs
-        integer :: k ! shell index
-        integer :: i, j ! i and j irreducible atoms 
-        integer :: Ki,Kj ! number of orbitals on i and j
-        integer :: alpha, beta ! orbital indices on i and j
-        !
-        ! loop over irreducible pairs
-        do k = 1, ip%nshells
-            ! irreducible atom indices
-            i = ip%shell( k )%i
-            j = ip%shell( k )%j
-            ! get number of orbitals (size of matrix)
-            Ki = ic%atom( i )%norbitals
-            Kj = ic%atom( j )%norbitals
-            ! allocate space
-            allocate( ip%shell( k )%K(Ki,Kj) )
-            ! loop over orbitals
-            do alpha = 1, Ki
-            do beta  = 1, Kj
-                !
-                ip%shell( k )%K( alpha, beta ) = tb%get_Vsk(ind= ic%get_Vsk_ind(i=i,alpha=alpha,j=j,beta=beta,k=k) )
-                !
-            enddo
-            enddo
-
-            call am_print('K'//trim(int2char(k)), ip%shell( k )%K )
-        enddo
-    end subroutine build_K
 
     function       get_Hamiltonian(ip,ic,pp,pc,kpt) result(H)
-        !
-        ! k-independent part of the Hamiltonian
-        !
+        ! 
+        ! Get tight binding Hamiltonian at kpt.
+        ! 
         implicit none
         !
         class(am_class_pair_shell), intent(in) :: ip ! irreducible pairs
@@ -558,12 +568,19 @@ contains
         type(am_class_pair_shell) , intent(in) :: pp ! primitive pairs
         type(am_class_prim_cell)  , intent(in) :: pc ! primitive cell
         real(dp)                  , intent(in) :: kpt(3) ! fractional
-        complex(dp), allocatable :: H(:,:)
-        integer :: Hdim ! hamiltonian dimensions
+        complex(dp), allocatable, target :: H(:,:)
         integer, allocatable :: H_start(:), H_end(:)
-        integer :: k ! shell index
-        integer :: m, n ! primitive atom indices
-        integer :: i ! loop variable
+        complex(dp), pointer :: H_sub(:,:) 
+        integer :: Hdim ! hamiltonian dimensions
+        real(dp) :: E ! exponential factor in bloch sum
+        real(dp) :: T ! similarity transform usd to get molecular axis paralle to z
+        real(dp) :: R ! vector connecting atom to shell
+        integer  :: k ! shell index
+        integer  :: m ! primitive atom 1 index 
+        integer  :: n ! primitive atom 2 index
+        integer  :: i ! loop variable
+        logical  :: is_spin_polarized
+
         !
         ! allocate space for Hamiltonian and determine the subsections of the Hamiltonian corresponding to each primitive atom
         Hdim = 0
@@ -572,22 +589,56 @@ contains
         do i = 1, pc%natoms
             H_start(i) = Hdim + 1
             Hdim = Hdim + ic%atom( pc%ic_id(i) )%norbitals
-            H_end(i)  = Hdim
+            H_end(i) = Hdim
         enddo
+        !
+        ! nonspin polarized have s = 0; spin polarized, s = {-1,1}
+        if (any(ic%atom(:)%orbital(4,:).ne.0)) then
+            is_spin_polarized = .false.
+        else
+            is_spin_polarized = .true.
+        endif
+        !
+        ! allocate and initialize
         allocate(H(Hdim,Hdim))
+        H = 0.0_dp
         !
         ! construct Hamiltonian
         do k = 1, pp%nshells
             ! primitive atom indicies
             m = pp%shell( k )%m
             n = pp%shell( k )%n
-            !
-            H(H_start(m):H_end(m), H_start(n):H_end(n)) = H(H_start(m):H_end(m), H_start(n):H_end(n)) &
-                    & + ip%shell( pp%ip_id(k) )%K
+            ! set pointer to subsection of hamiltonian
+            H_sub => H(H_start(m):H_end(m), H_start(n):H_end(n))
+            ! loop over atoms in shell
+            do j = 1, pp%shell( k )%natoms
+                ! get vector connecting primitive atom to atom j in shell k
+                R = pp%shell(k)%tau%(1:3,j)
+                ! get rotation that will transform matrix elements
+
+
+                ! WORKING ON STUFF HERE.... 
+                ! T = SO3_rotations(llist=[ic%atom(m)%azimuthal,ic%atom(n)%azimuthal],th=th,phi=phi,is_spin_polarized=is_spin_polarized)
+
+
+
+                ! get exponent factor
+                E = exp(-cmplx_i*dot_product(R,kpt))
+                ! multiply everything and add to the sum
+                H_sub = H_sub + matmul(transpose(T), matmul(ip%shell(pp%ip_id(k))%Vsk, T)) * E
+                !
+            enddo
             !
             call am_print('H'//trim(int2char(k)),H)
+            !
         enddo
     end function   get_Hamiltonian
+
+
+
+
+
+
 
 	!
 	! stuff below is not in use

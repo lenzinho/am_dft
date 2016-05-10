@@ -44,15 +44,14 @@ contains
         notalk = opts
         notalk%verbosity=0
         !
-        if (opts%verbosity.ge.1) call am_print('number of atoms in primitive cell',pc%natoms,' ... ')
+        if (opts%verbosity.ge.1) call am_print('primitive cell atoms',pc%natoms,' ... ')
         !
         ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-        call sg%symmetry_action(uc=pc,flags='',oopt_PM=PM,opts=notalk)
+        PM = map_permutation( rep_permutation(sg=sg,pnt=pc%tau,flags='',opts=opts) )
         !
         allocate(mask(pc%natoms))
         allocate(ind(pc%natoms))
         mask = .true.
-        !
         !
         ! determine irreducible atoms, i.e. get all atoms, in increments, which have not been already mapped onto by a space symmetry operation
         ! thus, primitive cell atom i corresponds to irreducible atom k ...
@@ -73,7 +72,7 @@ contains
         allocate(ic%tau,source=pc%tau(:,ind(1:k)))
         allocate(ic%Z,source=pc%Z(ind(1:k)))
         !
-        if (opts%verbosity.ge.1) call am_print('number of atoms in irreducible cell',ic%natoms,' ... ')
+        if (opts%verbosity.ge.1) call am_print('irreducible cell atoms',ic%natoms,' ... ')
         if (opts%verbosity.ge.1) then
             call am_print_two_matrices_side_by_side(name='irreducible atomic basis',&
                 Atitle='fractional',A=transpose(ic%tau),&

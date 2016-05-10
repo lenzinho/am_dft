@@ -40,15 +40,16 @@ module am_vasp_io
         character(max_argument_length) :: fname
         integer, optional, intent(in) :: iopt_verbosity
         integer :: verbosity
-        integer , intent(out) :: nkpts                          !> nkpts number of kpoints
-        real(dp), allocatable, intent(out) :: kpt(:,:)          !> kpt(3,nkpts) kpoint vectors
-        real(dp), allocatable, intent(out) :: w(:)              !> weights normalized
-        integer , allocatable :: w_int(:)                       !> w_int(nkpts) weights
-        integer , intent(out), optional :: ntets                !> ntets number of tetrahedra
+        integer ,              intent(out), optional :: nkpts   !> nkpts number of kpoints
+        real(dp), allocatable, intent(out), optional :: kpt(:,:)!> kpt(3,nkpts) kpoint vectors
+        real(dp), allocatable, intent(out), optional :: w(:)    !> weights normalized
+        integer ,              intent(out), optional :: ntets   !> ntets number of tetrahedra
         real(dp), allocatable, intent(out), optional :: vtet(:) !> vtet(ntets) tetrahedron volume
         integer , allocatable, intent(out), optional :: tet(:,:)!> tet(4,ntets) tetrahedron connection table
         real(dp), allocatable, intent(out), optional :: wtet(:) !> wtet(ntets) weights
+        integer  :: nkpts_internal, ntets_internal
         real(dp) :: vtet_tmp
+        integer, allocatable :: w_int(:) ! w_int(nkpts) integer weights
         !
         integer :: iostat
         integer :: fid ! file id
@@ -76,65 +77,77 @@ module am_vasp_io
             read(unit=fid,fmt='(a)') buffer
             word = strsplit(buffer,delimiter=' ')
             !> nkpts number of kpoints
-            read(word(1),*) nkpts
+            read(word(1),*) nkpts_internal
+            if (present(nkpts)) nkpts = nkpts_internal
+            if (verbosity .ge. 1) call am_print('number of kpoints',nkpts_internal,' ... ')
             !
-            if (verbosity .ge. 1) call am_print('number of kpoints',nkpts,' ... ')
-            !
-            allocate(kpt(3,nkpts))
-            allocate(w_int(nkpts))
+            if (present(kpt)) allocate(kpt(3,nkpts_internal))
+            allocate(w_int(nkpts_internal))
             ! (LINE 3) Reciprocal lattice
             read(fid,'(a)')
             ! (LINE 4) 0.00000000000000    0.00000000000000    0.00000000000000             1
-            do i = 1, nkpts
+            do i = 1, nkpts_internal
                 read(unit=fid,fmt='(a)') buffer
                 word = strsplit(buffer,delimiter=' ')
                 !> kpt(3,nkpts) kpoint vectors
-                read(word(1),*) kpt(1,i)
-                read(word(2),*) kpt(2,i)
-                read(word(3),*) kpt(3,i)
+                if (present(kpt)) then
+                    read(word(1),*) kpt(1,i)
+                    read(word(2),*) kpt(2,i)
+                    read(word(3),*) kpt(3,i)
+                endif
                 !> w_int(nkpts) weights
                 read(word(4),*) w_int(i)
             enddo
             !> normalized weights
-            allocate(w(nkpts))
-            w = w_int/real(sum(w_int),dp)
+            if (present(w)) then
+                allocate(w(nkpts_internal))
+                w = w_int/real(sum(w_int),dp)
+            endif
             ! (LINE 820) Tetrahedra
-            if (present(vtet).and.present(tet).and.present(wtet)) then
+            if (present(vtet).or.present(tet).or.present(wtet)) then
                 !
                 read(unit=fid,fmt='(a)',iostat=iostat) buffer
                 if ( iostat .eq. 0 ) then
                 if ( buffer(1:1) .eq. "T" ) then
-                
                     ! (LINE 821) 3976    0.00000559453079
                     read(unit=fid,fmt='(a)') buffer
                     word = strsplit(buffer,delimiter=' ')
                     !> ntets number of tetrahedra
-                    read(word(1),*) ntets
+                    read(word(1),*) ntets_internal
+                    if (present(ntets)) ntets = ntets_internal
+                    if (verbosity .ge. 1) call am_print('number of tetrahedra',ntets_internal,' ... ')
                     !> vtet(ntets) tetrahedron volume
                     read(word(2),*) vtet_tmp
-                    allocate(vtet(ntets))
-                    vtet = vtet_tmp
+                    if (present(vtet)) then
+                        allocate(vtet(ntets_internal))
+                        vtet = vtet_tmp
+                    endif
                     !
-                    if (verbosity .ge. 1) call am_print('number of tetrahedra',ntets,' ... ')
                     if (verbosity .ge. 1) call am_print('tetrahedron volume (equal for all tetrahedra)',vtet_tmp,' ... ')
                     !
-                    allocate(tet(4,ntets))
-                    allocate(wtet(ntets))
+                    if (present(tet))  allocate(tet(4,ntets_internal))
+                    if (present(wtet)) allocate(wtet(ntets_internal))
                     ! (LINE 822)  24         1         2         2        17
-                    do i = 1, ntets
+                    do i = 1, ntets_internal
                         read(unit=fid,fmt='(a)') buffer
                         word = strsplit(buffer,delimiter=' ')
                         !> wtet(ntets) weights
-                        read(word(1),*) wtet(i)
+                        if (present(wtet)) then
+                            read(word(1),*) wtet(i)
+                        endif
                         !> tet(4,ntets) tetrahedron connection table
-                        read(word(2),*) tet(1,i)
-                        read(word(3),*) tet(2,i)
-                        read(word(4),*) tet(3,i)
-                        read(word(5),*) tet(4,i)
+                        if (present(tet)) then
+                            read(word(2),*) tet(1,i)
+                            read(word(3),*) tet(2,i)
+                            read(word(4),*) tet(3,i)
+                            read(word(5),*) tet(4,i)
+                        endif
                     enddo
                     if (verbosity.ge.1) then
-                        if (i.gt.10) call am_print('corner indicies of first ten tetrahedra',transpose(tet(:,1:10)),' ... ')
-                        if (i.le.10) call am_print('corner indicies tetrahedra',transpose(tet),' ... ')
+                        if (present(tet)) then
+                            if (i.gt.10) call am_print('irreducible k-point indicies of first ten tetrahedra',transpose(tet(:,1:10)),' ... ')
+                            if (i.le.10) call am_print('irreducible k-point indicies tetrahedra',transpose(tet),' ... ')
+                        endif
                     endif
                 endif
                 endif

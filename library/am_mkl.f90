@@ -15,7 +15,7 @@ module am_mkl
     end interface ! norm
 
     interface dot
-        module procedure am_zdotc, am_ddot    
+        module procedure am_zdotc, am_ddot
     end interface ! dot
 
     interface det

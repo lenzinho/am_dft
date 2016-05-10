@@ -1,6 +1,6 @@
 module am_wannier
 	!
-	use am_unit_cell
+	use am_prim_cell
 	use am_constants
 	use am_stdout
 	use am_matlab
@@ -26,12 +26,6 @@ module am_wannier
 	end type am_class_wannier
 
 contains
-
-	!
-	! create real space mesh
-	!
-
-	!	function
 
 
 	!
@@ -230,15 +224,15 @@ contains
 	! other
 	!
 
-	subroutine     fourier_interpolation(wan,uc,bz,opts)
+	subroutine     fourier_interpolation(wan,pc,bz,opts)
     	!
     	use am_brillouin_zone
     	!
     	implicit none
     	!
     	class(am_class_wannier), intent(inout) :: wan
-    	type(am_class_bz), intent(inout) :: bz
-		type(am_class_unit_cell), intent(in) :: uc
+    	type(am_class_bz)      , intent(inout) :: bz
+		type(am_class_prim_cell), intent(in) :: pc
 		type(am_class_options) :: opts
 		real(dp), allocatable :: fourier_points(:,:)
 		!

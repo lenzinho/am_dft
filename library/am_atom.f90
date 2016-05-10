@@ -12,6 +12,7 @@ module am_atom
 		!
         integer :: norbitals
         integer, allocatable :: orbital(:,:) ! quantum numbers [n,l,m,s]
+        integer, allocatable :: azimuthal(:) ! list of l oribtal angular momenta, used for the construction of SO3 irrep rotation
         !
     contains
     	procedure :: gen_orbitals
@@ -112,9 +113,10 @@ module am_atom
 		character(2) :: orbital_name ! 1s, 2s, 2p, 3s, 3p, etc
 		integer, allocatable :: slist(:)
 		integer :: n, m, l, s, smax, k
+		integer :: nazimuthals
 		!
 		!
-		if (index(orbital_flags,'spin polarized')) then
+		if (index(orbital_flags,'spin_polarized')) then
             allocate(slist,source=[-1,1])
             smax = size(slist)
 		else
@@ -122,7 +124,8 @@ module am_atom
             smax = size(slist)
 		endif
 		!
-		!
+		! just determine the sizes of atom%azimuthal and atom%orbital here 
+		nazimuthals = 0
 		atom%norbitals = 0
 		do n = 1,4
 		do l = 0, (n-1)
@@ -130,6 +133,9 @@ module am_atom
 			orbital_name(1:2) = trim(int2char(n))//trim(l2spdf(l))
 			!
 			if (index(orbital_flags,orbital_name).ne.0) then
+				!
+				nazimuthals = nazimuthals + 1
+				!
 				do m = -l, l
 		        do s = 1, smax
 			        atom%norbitals = atom%norbitals + 1
@@ -139,16 +145,22 @@ module am_atom
 		enddo
 		enddo
 		!
-		!
+		! 
 		allocate(atom%orbital(4,atom%norbitals))
+		allocate(atom%azimuthal(nazimuthals))
 		!
+		nazimuthals = 0
 		k = 0
-		do n = 1,4
+		do n = 1, 4
 		do l = 0, (n-1)
 			!
 			orbital_name(1:2) = trim(int2char(n))//trim(l2spdf(l))
 			!
 			if (index(orbital_flags,orbital_name).ne.0) then
+				!
+				nazimuthals = nazimuthals + 1
+				atom%azimuthal(nazimuthals) = l
+				!
 				do m = -l, l
 		        do s = 1, smax
 			        k = k+1
