@@ -17,6 +17,9 @@ module am_symmetry
     public :: member
     public :: nelements
     public :: decode_pointgroup
+
+    public :: rep_permutation ! for: get_irreducible
+    public :: map_permutation ! for: get_irreducible
     
     type, public :: am_class_symmetry 
         integer :: nsyms
@@ -925,7 +928,6 @@ contains
         fmt5 = '(i10)'
         !
         PM = map_permutation( rep_permutation(sg=sg,pnt=uc%tau,flags=flags,opts=opts) )
-        if (present(oopt_PM)) allocate(oopt_PM,source=PM)
         !
         allocate(aa(4,sg%nsyms))
         do i = 1,sg%nsyms
@@ -1443,10 +1445,10 @@ contains
         !
         implicit none
         !
-        type(am_class_symmetry) , intent(in) :: sg
-        real(dp)                , intent(in) :: pnt(:,:)
-        character(*)            , intent(in) :: flags
-        type(am_class_options)  , intent(in) :: opts
+        type(am_class_symmetry), intent(in) :: sg
+        real(dp)               , intent(in) :: pnt(:,:)
+        character(*)           , intent(in) :: flags
+        type(am_class_options) , intent(in) :: opts
         integer, allocatable :: rep(:,:,:)
         real(dp) :: tau_rot(3)
         integer :: i,j,k
@@ -1530,17 +1532,22 @@ contains
         !
         implicit none
         !
-        integer, allocatable, intent(in) :: oopt_P(:,:,:)
+        integer, allocatable, intent(in) :: P(:,:,:)
         integer, allocatable :: PM(:,:)
         integer, allocatable :: ind(:)
+        integer :: natoms,nsyms
+        integer :: i
         !
-        ind = [1:size(P,2)]
+        natoms = size(P,1)
+        nsyms  = size(P,3)
         !
-        allocate(PM(uc%natoms,sg%nsyms))
+        ind = [1:natoms]
+        !
+        allocate(PM(natoms,nsyms))
         PM=0
         !
-        do i = 1, size(P,3)
-            PM(:,i) = matmul(P(:,:,i),[1:n])
+        do i = 1, nsyms
+            PM(:,i) = matmul(P(:,:,i),ind)
         enddo
         !
     end function   map_permutation

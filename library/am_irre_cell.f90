@@ -35,6 +35,7 @@ contains
         type(am_class_options), intent(in) :: opts
         type(am_class_options) :: notalk
         integer, allocatable :: PM(:,:)
+        integer, allocatable :: P(:,:,:)
         logical, allocatable :: mask(:)
         integer, allocatable :: ind(:)
         integer :: i,j,k
@@ -47,7 +48,8 @@ contains
         if (opts%verbosity.ge.1) call am_print('primitive cell atoms',pc%natoms,' ... ')
         !
         ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-        PM = map_permutation( rep_permutation(sg=sg,pnt=pc%tau,flags='',opts=opts) )
+        P  = rep_permutation(sg=sg,pnt=pc%tau,flags='',opts=opts)
+        PM = map_permutation( P )
         !
         allocate(mask(pc%natoms))
         allocate(ind(pc%natoms))

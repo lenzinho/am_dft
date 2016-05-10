@@ -29,7 +29,7 @@ module am_tight_binding
         procedure :: get_Vsk
         procedure :: set_Vsk
 		procedure :: template_Vsk
-        procedure :: build_K
+        procedure :: build_Vsk
 !         procedure :: write_matrix_elements ! to file
 ! 		procedure :: read_matrix_elements  ! from file
 	end type am_class_tb
@@ -476,27 +476,27 @@ contains
         end function   tesseral
     end function   SO3
 
-    function       SO3_rotations(llist,th,phi,is_spin_polarized) result(R)
+    function       SO3_rotations(azimuthal,th,phi,is_spin_polarized) result(R)
         !
         implicit none
         !
-        integer , intent(in) :: llist(:)
+        integer , intent(in) :: azimuthal(:)
         real(dp), intent(in) :: th,phi
         logical , intent(in) :: is_spin_polarized
         real(dp), allocatable :: R(:,:)
         integer , allocatable :: l_start(:)
         integer , allocatable :: l_end(:)
-        integer :: i, n, lsize
+        integer :: i, n, m
         !
-        lsize = size(l)
+        m = size(azimuthal)
         !
-        allocate(l_start(lsize))
-        allocate(l_end(lsize))
+        allocate(l_start(m))
+        allocate(l_end(m))
         !
         n = 0
-        do i = 1,lsize
+        do i = 1,m
             l_start(i) = n + 1
-            n = n + 2*llist(i)+1
+            n = n + 2*azimuthal(i)+1
             l_end(i) = n
         enddo
         !
@@ -504,8 +504,8 @@ contains
         R = 0.0_dp
         !
         ! construct a direct sum of rotations
-        do i = 1, lsize
-            R(l_start(i):l_end(i),l_start(i):l_end(i)) = SO3(l=llist(i),th,phi)
+        do i = 1, m
+            R(l_start(i):l_end(i),l_start(i):l_end(i)) = SO3(l=azimuthal(i),th=th,phi=phi)
         enddo
         !
         if (is_spin_polarized) then
@@ -572,13 +572,13 @@ contains
         integer, allocatable :: H_start(:), H_end(:)
         complex(dp), pointer :: H_sub(:,:) 
         integer :: Hdim ! hamiltonian dimensions
+        real(dp), allocatable :: T(:,:) ! similarity transform usd to get molecular axis paralle to z
+        real(dp) :: R(3) ! vector connecting atom to shell
         real(dp) :: E ! exponential factor in bloch sum
-        real(dp) :: T ! similarity transform usd to get molecular axis paralle to z
-        real(dp) :: R ! vector connecting atom to shell
         integer  :: k ! shell index
         integer  :: m ! primitive atom 1 index 
         integer  :: n ! primitive atom 2 index
-        integer  :: i ! loop variable
+        integer  :: i,j ! loop variable
         logical  :: is_spin_polarized
 
         !
@@ -591,13 +591,6 @@ contains
             Hdim = Hdim + ic%atom( pc%ic_id(i) )%norbitals
             H_end(i) = Hdim
         enddo
-        !
-        ! nonspin polarized have s = 0; spin polarized, s = {-1,1}
-        if (any(ic%atom(:)%orbital(4,:).ne.0)) then
-            is_spin_polarized = .false.
-        else
-            is_spin_polarized = .true.
-        endif
         !
         ! allocate and initialize
         allocate(H(Hdim,Hdim))
@@ -613,12 +606,12 @@ contains
             ! loop over atoms in shell
             do j = 1, pp%shell( k )%natoms
                 ! get vector connecting primitive atom to atom j in shell k
-                R = pp%shell(k)%tau%(1:3,j)
+                R = pp%shell(k)%tau(1:3,j)
                 ! get rotation that will transform matrix elements
 
 
                 ! WORKING ON STUFF HERE.... 
-                ! T = SO3_rotations(llist=[ic%atom(m)%azimuthal,ic%atom(n)%azimuthal],th=th,phi=phi,is_spin_polarized=is_spin_polarized)
+                ! T = SO3_rotations(azimuthal=[ic%atom(m)%azimuthal,ic%atom(n)%azimuthal],th=th,phi=phi,is_spin_polarized=is_spin_polarized)
 
 
 

@@ -1,107 +1,89 @@
 module am_dispersion
 
+    use am_brillouin_zone
+    use am_prim_cell
+    use am_symmetry
+    use am_constants
+    use am_stdout
+    use am_vasp_io
+    use am_mkl
+    use am_options
+
     implicit none
 
     type, public :: am_class_disp
+        !
         integer :: nbands
+        integer :: nkpts
+        !
         real(dp), allocatable :: E(:,:)     ! E(nbands,nkpts) energies
-        real(dp), allocatable :: w(:,:,:,:) ! w(nbands,nkpts,norbitals,nions) band character weights
+        real(dp), allocatable :: w(:,:,:,:) ! w(nbands,nkpts,nspins,norbitals,nions) band character weights
+        ! projection information:
+        integer :: nspins
+        integer :: norbitals
+        integer :: nions
+        character(:), allocatable :: orbitals(:) ! orbitals(norbitals) names of orbitals
     contains
-        ! load vasp files into bz class
         procedure :: load_procar
         procedure :: load_eigenval
-        procedure :: load_ibzkpt => load_ibzkpt_bz
-        ! high level i/o
         procedure :: write_bandcharacter ! requires load_eigenval or load_procar
         ! 
-    end type am_class_bz
+    end type am_class_disp
 
 contains
 
-    subroutine     load_procar(bz,opts)
+    subroutine     load_procar(dr,bz,opts)
         ! 
-        ! Reads the PROCAR file, look below: code is short and self explanatory.
-        !
-        use am_options
-        use am_vasp_io
-        use am_unit_cell
+        ! Reads the PROCAR file.
         !
         implicit none
         !
-        class(am_class_bz), intent(inout) :: bz
+        class(am_class_disp), intent(out) :: dr
+        class(am_class_bz)  , intent(out) :: bz
         type(am_class_options), intent(in) :: opts
         !
-        call read_procar(nkpts=bz%nkpts,&
-            nbands=bz%nbands,&
-            nions=bz%nions,&
-            norbitals=bz%norbitals,&
-            nspins=bz%nspins,&
-            E=bz%E,&
-            occ=bz%occ,&
-            kpt=bz%kpt,&
-            w=bz%w,&
-            orbitals=bz%orbitals,&
-            lmproj=bz%lmproj,&
-            iopt_filename=opts%procar,&
-            iopt_verbosity=opts%verbosity)
+        call read_procar(nkpts    = dr%nkpts,&
+                         nbands   = dr%nbands,&
+                         nions    = dr%nions,&
+                         nspins   = dr%nspins,&
+                         norbitals= dr%norbitals,&
+                         orbitals = dr%orbitals,&
+                         lmproj   = dr%w,&
+                         E        = bz%E,&
+                         kpt      = bz%kpt,&
+                         w        = bz%w,&
+                         iopt_filename =opts%procar,&
+                         iopt_verbosity=opts%verbosity)
         !
     end subroutine load_procar
 
-    subroutine     load_eigenval(bz,opts)
+    subroutine     load_eigenval(dr,bz,opts)
         ! 
-        ! Reads the eigenval file, look below: code is short and self explanatory.
-        !
-        use am_vasp_io
-        use am_options
-        use am_unit_cell
+        ! Reads the eigenval file.
         !
         implicit none
         !
-        class(am_class_bz), intent(inout) :: bz
+        class(am_class_disp), intent(out) :: dr
+        class(am_class_bz)  , intent(out) :: bz
         type(am_class_options), intent(in) :: opts
         !
-        call read_eigenval(nkpts=bz%nkpts,&
-            nbands=bz%nbands,&
-            nspins=bz%nspins,&
-            nelecs=bz%nelecs,&
-            kpt=bz%kpt,&
-            w=bz%w,&
-            E=bz%E,&
-            lmproj=bz%lmproj,&
-            iopt_filename=opts%eigenval,&
-            iopt_verbosity=opts%verbosity)
+        call read_eigenval(nkpts  = dr%nkpts,&
+                           nbands = dr%nbands,&
+                           nspins = dr%nspins,&
+                           nelecs = dr%nelecs,&
+                           lmproj = dr%w,&
+                           kpt    = bz%kpt,&
+                           w      = bz%w,&
+                           E      = bz%E,&
+                           iopt_filename=opts%eigenval,&
+                           iopt_verbosity=opts%verbosity)
         !
-        bz%nions=1
-        bz%norbitals=1
-        allocate(character(15) :: bz%orbitals(1))
-        bz%orbitals='tot'
+        dr%nions=1
+        dr%norbitals=1
+        allocate(character(15) :: dr%orbitals(1))
+        dr%orbitals='tot'
         !
     end subroutine load_eigenval
-
-    subroutine     load_ibzkpt_bz(bz,opts)
-        ! 
-        ! Reads the IBZKPT file, look below: code is short and self explanatory.
-        !
-        use am_options
-        !
-        implicit none
-        !
-        class(am_class_bz), intent(inout) :: bz
-        type(am_class_options), intent(in) :: opts
-        type(am_class_tetrahedra) :: tet
-        !
-        call read_ibzkpt(&
-            nkpts = bz%nkpts,&
-            kpt   = bz%kpt,&
-            w     = bz%w,&
-            ntets = tet%ntets,&
-            vtet  = tet%volume,&
-            tet   = tet%corner,&
-            wtet  = tet%w,&
-            iopt_filename = opts%ibzkpt,&
-            iopt_verbosity = opts%verbosity )
-        !
-    end subroutine load_ibzkpt_bz
 
     subroutine     write_bandcharacter(bz,pc,pg,opts)
         ! 
@@ -111,7 +93,8 @@ contains
         !
         implicit none
         !
-        class(am_class_bz), intent(in) :: bz !> brillouin zone class
+        class(am_class_disp), intent(in) :: dr ! brillouin zone class
+        class(am_class_bz), intent(in) :: bz ! brillouin zone class
         type(am_class_prim_cell), intent(in) :: pc
         type(am_class_symmetry) , intent(in) :: pg
         type(am_class_options), intent(in) :: opts

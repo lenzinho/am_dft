@@ -306,14 +306,16 @@ contains
             !
             type(am_class_unit_cell), intent(in) :: sphere
             type(am_class_symmetry) , intent(in) :: pg ! rotational group (space symmetries which have translational part set to zero and are still compatbile with the atomic basis)
+            integer , allocatable :: P(:,:,:)
             integer , allocatable :: PM(:,:) ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
             real(dp), allocatable :: d(:)    ! d(npairs) array containing distances between atoms
             integer , allocatable :: indices(:)
             integer , allocatable :: ind_u(:)
             integer :: i, jj, j, k
             !
-            ! write action file and get permutation map PM(sphere%natoms,sg%nsyms) which shows how space symmetries permute atomic positions
-            call pg%symmetry_action(uc=sphere,oopt_PM=PM,flags='relax_pbc',opts=notalk)
+            ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
+            P  = rep_permutation(sg=pg,pnt=sphere%tau,flags='',opts=opts)
+            PM = map_permutation( P )
             !
             ! get distance of atoms
             allocate(d(sphere%natoms))

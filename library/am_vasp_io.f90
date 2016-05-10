@@ -183,12 +183,12 @@ module am_vasp_io
         integer , intent(out) :: nions     !> nions number of ions
         integer , intent(out) :: norbitals !> norbitals number of orbitals
         integer , intent(out) :: nspins    !> nspins number of spins
-        real(dp), allocatable, intent(out) :: E(:,:)    !> E(nbands,nkpts) energies
-        real(dp), allocatable, intent(out) :: occ(:,:)  !> occ(nbands,nkpts) occupancies
-        real(dp), allocatable, intent(out) :: kpt(:,:)  !> kpt(3,nkpts) kpoint
-        real(dp), allocatable, intent(out) :: w(:)      !> w(nkpts) weights (normalized)
-        character(len=:), allocatable, intent(out) :: orbitals(:) !> orbitals(norbitals) names of orbitals
-        real(dp), allocatable, intent(out) :: lmproj(:,:,:,:,:)   !> lmproj(nspins,norbitals,nions,nbands,nkpts)
+        real(dp), allocatable, intent(out), optional :: E(:,:)    !> E(nbands,nkpts) energies
+        real(dp), allocatable, intent(out), optional :: occ(:,:)  !> occ(nbands,nkpts) occupancies
+        real(dp), allocatable, intent(out), optional :: kpt(:,:)  !> kpt(3,nkpts) kpoint
+        real(dp), allocatable, intent(out), optional :: w(:)      !> w(nkpts) weights (normalized)
+        character(:), allocatable, intent(out), optional :: orbitals(:)     !> orbitals(norbitals) names of orbitals
+        real(dp), allocatable, intent(out), optional :: lmproj(:,:,:,:,:)   !> lmproj(nbands,nkpts,nspins,norbitals,nions)
         !
         integer :: fid ! file id
         character(maximum_buffer_size) :: buffer ! read buffer
@@ -230,10 +230,10 @@ module am_vasp_io
             !> occ(nbands,nkpts) occupancies
             !> kpt(3,nkpts) kpoint
             !> w(nkpts) normalized weights
-            allocate(E(nbands,nkpts))
-            allocate(occ(nbands,nkpts))
-            allocate(kpt(3,nkpts))
-            allocate(w(nkpts))
+            if (present(E))   allocate(E(nbands,nkpts))
+            if (present(occ)) allocate(occ(nbands,nkpts))
+            if (present(kpt)) allocate(kpt(3,nkpts))
+            if (present(w))   allocate(w(nkpts))
             !
             do i = 1,nkpts
                 ! (LINE 3,62) skip line
@@ -243,10 +243,14 @@ module am_vasp_io
                 word = strsplit(buffer,delimiter=' ')
                 !> kpt(3,nkpts) kpoint
                 !> w(nkpts) normalized weights
-                read(word(4),*) kpt(1,i)
-                read(word(5),*) kpt(2,i)
-                read(word(6),*) kpt(3,i)
-                read(word(9),*) w(i)
+                if (present(kpt)) then
+                    read(word(4),*) kpt(1,i)
+                    read(word(5),*) kpt(2,i)
+                    read(word(6),*) kpt(3,i)
+                endif
+                if (present(w)) then
+                    read(word(9),*) w(i)
+                endif
                 !
                 do j = 1, nbands
                     ! (LINE 5,64) skip line
@@ -256,8 +260,8 @@ module am_vasp_io
                     word = strsplit(buffer,delimiter=' ')
                     !> E(nbands,nkpts) energies
                     !> occ(nbands,nkpts) occupancies
-                    read(word(5),*) E(j,i)
-                    read(word(8),*) occ(j,i)
+                    if (present(E))   read(word(5),*) E(j,i)
+                    if (present(occ)) read(word(8),*) occ(j,i)
                     ! (LINE 7,66) skip line
                     read(unit=fid,fmt=*)
                     ! (LINE 8,67) ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    tot
@@ -268,13 +272,15 @@ module am_vasp_io
                         norbitals = size(word)-2 ! minus 2 to account for the ion, which is not an orbital, and the total!
                         if (verbosity .ge. 1) call am_print('number of orbitals',norbitals,' ... ')
                         !> orbitals(norbitals) names of orbitals
-                        allocate(character(len=15) :: orbitals(norbitals))
-                        do l = 1, norbitals
-                            orbitals(l) = word(l+1)
-                        enddo
-                        if (verbosity .ge. 1) write(*,'(a5,a,100(x,a))' ) ' ... ', 'orbitals =', ( trim(orbitals(l)), l = 1, norbitals)
+                        if (present(orbitals)) then
+                            allocate(character(len=15) :: orbitals(norbitals))
+                            do l = 1, norbitals
+                                orbitals(l) = word(l+1)
+                            enddo
+                            if (verbosity .ge. 1) write(*,'(a5,a,100(x,a))' ) ' ... ', 'orbitals =', ( trim(orbitals(l)), l = 1, norbitals)
+                        endif
                         !> lmproj(nspins,norbitals,nions,nbands,nkpts)
-                        allocate(lmproj(nspins,norbitals,nions,nbands,nkpts))
+                        if (present(lmproj)) allocate(lmproj(nbands,nkpts,nspins,norbitals,nions))
                         !
                     endif
                     ! (LINE 9,10) 
@@ -283,10 +289,12 @@ module am_vasp_io
                     do l = 1, nions
                         read(unit=fid,fmt='(a)') buffer
                         word = strsplit(buffer,delimiter=' ')
-                        do m = 1, norbitals
-                            !> lmproj(nspins,norbitals,nions,nbands,nkpts) (spins not implemented yet!)
-                            read(word(m+1),*) lmproj(1,m,l,j,i)
-                        enddo
+                        if (present(lmproj)) then
+                            do m = 1, norbitals
+                                !> lmproj(nspins,norbitals,nions,nbands,nkpts) (spins not implemented yet!)
+                                read(word(m+1),*) lmproj(j,i,1,m,l)
+                            enddo
+                        endif
                     enddo
                     ! (LINE 11 = 60) tot  0.447  0.006  0.003  0.018  0.000  0.000  0.000  0.000  0.000  0.474
                     read(unit=fid,fmt=*)
