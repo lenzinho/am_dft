@@ -2,7 +2,6 @@ module am_dispersion
 
     use am_brillouin_zone
     use am_prim_cell
-    use am_symmetry
     use am_constants
     use am_stdout
     use am_vasp_io
@@ -11,13 +10,13 @@ module am_dispersion
 
     implicit none
 
-    type, public :: am_class_disp
+    type, public :: am_class_dr
         !
         integer :: nbands
         integer :: nkpts
         !
-        real(dp), allocatable :: E(:,:)     ! E(nbands,nkpts) energies
-        real(dp), allocatable :: w(:,:,:,:) ! w(nbands,nkpts,nspins,norbitals,nions) band character weights
+        real(dp), allocatable :: E(:,:)       ! E(nbands,nkpts) energies
+        real(dp), allocatable :: w(:,:,:,:,:) ! w(nbands,nkpts,nspins,norbitals,nions) band character weights
         ! projection information:
         integer :: nspins
         integer :: norbitals
@@ -28,7 +27,7 @@ module am_dispersion
         procedure :: load_eigenval
         procedure :: write_bandcharacter ! requires load_eigenval or load_procar
         ! 
-    end type am_class_disp
+    end type am_class_dr
 
 contains
 
@@ -38,7 +37,7 @@ contains
         !
         implicit none
         !
-        class(am_class_disp), intent(out) :: dr
+        class(am_class_dr), intent(out) :: dr
         class(am_class_bz)  , intent(out) :: bz
         type(am_class_options), intent(in) :: opts
         !
@@ -49,7 +48,7 @@ contains
                          norbitals= dr%norbitals,&
                          orbitals = dr%orbitals,&
                          lmproj   = dr%w,&
-                         E        = bz%E,&
+                         E        = dr%E,&
                          kpt      = bz%kpt,&
                          w        = bz%w,&
                          iopt_filename =opts%procar,&
@@ -63,18 +62,17 @@ contains
         !
         implicit none
         !
-        class(am_class_disp), intent(out) :: dr
+        class(am_class_dr), intent(out) :: dr
         class(am_class_bz)  , intent(out) :: bz
         type(am_class_options), intent(in) :: opts
         !
         call read_eigenval(nkpts  = dr%nkpts,&
                            nbands = dr%nbands,&
                            nspins = dr%nspins,&
-                           nelecs = dr%nelecs,&
+                           E      = dr%E,&
                            lmproj = dr%w,&
                            kpt    = bz%kpt,&
                            w      = bz%w,&
-                           E      = bz%E,&
                            iopt_filename=opts%eigenval,&
                            iopt_verbosity=opts%verbosity)
         !
@@ -85,7 +83,7 @@ contains
         !
     end subroutine load_eigenval
 
-    subroutine     write_bandcharacter(bz,pc,pg,opts)
+    subroutine     write_bandcharacter(dr,bz,pc,opts)
         ! 
         ! Creates write.bandcharacter, which contains the energy and character of the bands read either from EIGENVAL using bz%load_eigenval() or PROCAR using bz%load_procar()
         !
@@ -93,10 +91,9 @@ contains
         !
         implicit none
         !
-        class(am_class_disp), intent(in) :: dr ! brillouin zone class
+        class(am_class_dr), intent(in) :: dr ! dispersion relations
         class(am_class_bz), intent(in) :: bz ! brillouin zone class
         type(am_class_prim_cell), intent(in) :: pc
-        type(am_class_symmetry) , intent(in) :: pg
         type(am_class_options), intent(in) :: opts
         real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
         real(dp) :: k1(3) ! point for kdiff
@@ -116,20 +113,20 @@ contains
             !
             ! STDOUT
             !
-            if (opts%verbosity.ge.1) call am_print('number of kpoints', bz%nkpts,' ... ')
-            if (opts%verbosity.ge.1) call am_print('number of bands', bz%nbands ,' ... ')
-            if (opts%verbosity.ge.1) call am_print('number of ions', bz%nions ,' ... ')
-            if (opts%verbosity.ge.1) call am_print('number of orbitals', bz%norbitals ,' ... ')
-            if (opts%verbosity.ge.1) call am_print('number of spins', bz%nspins ,' ... ')
-            if (opts%verbosity.ge.1) call am_print('number of columns', bz%nspins*bz%norbitals ,' ... ')
+            if (opts%verbosity.ge.1) call am_print('number of kpoints',  bz%nkpts,' ... ')
+            if (opts%verbosity.ge.1) call am_print('number of bands',    dr%nbands ,' ... ')
+            if (opts%verbosity.ge.1) call am_print('number of ions',     dr%nions ,' ... ')
+            if (opts%verbosity.ge.1) call am_print('number of orbitals', dr%norbitals ,' ... ')
+            if (opts%verbosity.ge.1) call am_print('number of spins',    dr%nspins ,' ... ')
+            if (opts%verbosity.ge.1) call am_print('number of columns',  dr%nspins*dr%norbitals ,' ... ')
             !
             ! HEADER (first three lines)
             !
             write(fid,'(a)')  'Character-projected energy dispersion'
             write(fid,'(100a13)',advance='no') ' ', ' ',' ',' ','ions'
-            do m = 1, bz%nions
-                do l = 1, bz%norbitals
-                do n = 1, bz%nspins
+            do m = 1, dr%nions
+                do l = 1, dr%norbitals
+                do n = 1, dr%nspins
                     write(fid,'(i13)' ,advance='no') m
                 enddo
                 enddo
@@ -137,9 +134,9 @@ contains
             write(fid,*)
             !
             write(fid,'(100a13)',advance='no') ' ', ' ',' ',' ','spin'
-            do m = 1, bz%nions
-                do l = 1, bz%norbitals
-                do n = 1, bz%nspins
+            do m = 1, dr%nions
+                do l = 1, dr%norbitals
+                do n = 1, dr%nspins
                     write(fid,'(i13)' ,advance='no') n
                 enddo
                 enddo
@@ -147,10 +144,10 @@ contains
             write(fid,*)
             !
             write(fid,'(100a13)',advance='no') 'kpath','k_x','k_y','k_z','E [eV]'
-            do m = 1, bz%nions
-                do l = 1, bz%norbitals
-                do n = 1, bz%nspins
-                    write(fid,'(a13)',advance='no') trim(bz%orbitals(l))
+            do m = 1, dr%nions
+                do l = 1, dr%norbitals
+                do n = 1, dr%nspins
+                    write(fid,'(a13)',advance='no') trim(dr%orbitals(l))
                 enddo
                 enddo
             enddo 
@@ -158,26 +155,24 @@ contains
             !
             ! DATA
             !
-            do j = 1, bz%nbands
+            do j = 1, dr%nbands
                 do i = 1, bz%nkpts
                     if (i .eq. 1) then
                         kdiff = 0
                     else
                         k1=bz%kpt(:,i-1)
                         k2=bz%kpt(:,i)
-                        ! k1 = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i-1),grid_points=grid_points,bas=pc%bas,R=pg%R)
-                        ! k2 = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i),grid_points=grid_points,bas=pc%bas,R=pg%R)
                         kdiff = kdiff + norm2( abs(k1-k2) )
                     endif
                     !
-                    write(fid,'(100f13.5)',advance='no') kdiff, bz%kpt(1:3,i), bz%E(j,i)
-                    do m = 1, bz%nions
-                        do l = 1, bz%norbitals
-                        do n = 1, bz%nspins
-                            !> lmproj(nspins,norbitals,nions,nbands,nkpts)
-                            write(fid,'(f13.5)',advance='no') bz%lmproj(n,l,m,j,i)
-                        enddo
-                        enddo
+                    write(fid,'(100f13.5)',advance='no') kdiff, bz%kpt(1:3,i), dr%E(j,i)
+                    do m = 1, dr%nions
+                    do l = 1, dr%norbitals
+                    do n = 1, dr%nspins
+                        !> lmproj(nbands,nkpts,nspins,norbitals,nions)
+                        write(fid,'(f13.5)',advance='no') dr%w(j,i,n,l,m)
+                    enddo
+                    enddo
                     enddo
                     write(fid,*)
                     !

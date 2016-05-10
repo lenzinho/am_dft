@@ -13,6 +13,8 @@ module am_tetrahedra
 
 	private
 
+	public :: tetrahedron_weights
+
     type, public :: am_class_tetrahedra
         integer :: ntets !> ntet number f tetrahedra
         real(dp), allocatable :: volume(:) !> volume(ntet) tetrahedra volume
