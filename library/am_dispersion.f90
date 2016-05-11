@@ -1,7 +1,7 @@
 module am_dispersion
 
     use am_brillouin_zone
-    use am_prim_cell
+    use am_unit_cell
     use am_constants
     use am_stdout
     use am_vasp_io
@@ -12,15 +12,15 @@ module am_dispersion
 
     type, public :: am_class_dr
         !
-        integer :: nbands
-        integer :: nkpts
-        !
         real(dp), allocatable :: E(:,:)            ! E(nbands,nkpts) energies
         real(dp), allocatable :: lmproj(:,:,:,:,:) ! lmproj(nspins,norbitals,nions,nbands,nkpts) band character weights
+        !
         ! projection information:
         integer :: nspins
         integer :: norbitals
         integer :: nions
+        integer :: nbands
+        integer :: nkpts
         character(:), allocatable :: orbitals(:) ! orbitals(norbitals) names of orbitals
     contains
         procedure :: load_procar
@@ -31,14 +31,13 @@ module am_dispersion
 
 contains
 
-    subroutine     load_procar(dr,bz,opts)
+    subroutine     load_procar(dr,opts)
         ! 
         ! Reads the PROCAR file.
         !
         implicit none
         !
         class(am_class_dr), intent(out) :: dr
-        class(am_class_bz)  , intent(out) :: bz
         type(am_class_options), intent(in) :: opts
         !
         call read_procar(nkpts    = dr%nkpts,&
@@ -49,21 +48,18 @@ contains
                          orbitals = dr%orbitals,&
                          lmproj   = dr%lmproj,&
                          E        = dr%E,&
-                         kpt      = bz%kpt,&
-                         w        = bz%w,&
                          iopt_filename =opts%procar,&
                          iopt_verbosity=opts%verbosity)
         !
     end subroutine load_procar
 
-    subroutine     load_eigenval(dr,bz,opts)
+    subroutine     load_eigenval(dr,opts)
         ! 
         ! Reads the eigenval file.
         !
         implicit none
         !
         class(am_class_dr), intent(out) :: dr
-        class(am_class_bz)  , intent(out) :: bz
         type(am_class_options), intent(in) :: opts
         !
         call read_eigenval(nkpts  = dr%nkpts,&
@@ -71,8 +67,6 @@ contains
                            nspins = dr%nspins,&
                            E      = dr%E,&
                            lmproj = dr%lmproj,&
-                           kpt    = bz%kpt,&
-                           w      = bz%w,&
                            iopt_filename=opts%eigenval,&
                            iopt_verbosity=opts%verbosity)
         !
@@ -83,9 +77,9 @@ contains
         !
     end subroutine load_eigenval
 
-    subroutine     write_bandcharacter(dr,bz,pc,opts)
+    subroutine     write_bandcharacter(dr,bz,uc,opts)
         ! 
-        ! Creates write.bandcharacter, which contains the energy and character of the bands read either from EIGENVAL using bz%load_eigenval() or PROCAR using bz%load_procar()
+        ! Creates outfile.bandcharacter, which contains the energy and character of the bands read either from EIGENVAL using bz%load_eigenval() or PROCAR using bz%load_procar()
         !
         use am_options
         !
@@ -93,7 +87,7 @@ contains
         !
         class(am_class_dr), intent(in) :: dr ! dispersion relations
         class(am_class_bz), intent(in) :: bz ! brillouin zone class
-        type(am_class_prim_cell), intent(in) :: pc
+        class(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
         real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
         real(dp) :: k1(3) ! point for kdiff
@@ -106,19 +100,19 @@ contains
         !
         !
         ! generate voronoi points (cartesian), used to reduce points to wigner-seitz brillouin zone
-        grid_points = matmul( inv(pc%bas) , meshgrid([-1:1],[-1:1],[-1:1]) )
+        grid_points = matmul( inv(uc%bas) , meshgrid([-1:1],[-1:1],[-1:1]) )
         !
         fid = 1
-        open(unit=fid,file="write.bandcharacter",status="replace",action='write')
+        open(unit=fid,file="outfile.bandcharacter",status="replace",action='write')
             !
             ! STDOUT
             !
-            if (opts%verbosity.ge.1) call am_print('number of kpoints',  bz%nkpts,' ... ')
-            if (opts%verbosity.ge.1) call am_print('number of bands',    dr%nbands ,' ... ')
-            if (opts%verbosity.ge.1) call am_print('number of ions',     dr%nions ,' ... ')
-            if (opts%verbosity.ge.1) call am_print('number of orbitals', dr%norbitals ,' ... ')
-            if (opts%verbosity.ge.1) call am_print('number of spins',    dr%nspins ,' ... ')
-            if (opts%verbosity.ge.1) call am_print('number of columns',  dr%nspins*dr%norbitals ,' ... ')
+            if (opts%verbosity.ge.1) call am_print('kpoints',  bz%nkpts,' ... ')
+            if (opts%verbosity.ge.1) call am_print('bands',    dr%nbands ,' ... ')
+            if (opts%verbosity.ge.1) call am_print('ions',     dr%nions ,' ... ')
+            if (opts%verbosity.ge.1) call am_print('orbitals', dr%norbitals ,' ... ')
+            if (opts%verbosity.ge.1) call am_print('spins',    dr%nspins ,' ... ')
+            if (opts%verbosity.ge.1) call am_print('columns',  dr%nspins*dr%norbitals ,' ... ')
             !
             ! HEADER (first three lines)
             !

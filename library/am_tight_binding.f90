@@ -25,13 +25,13 @@ module am_tight_binding
         ! i irreducible cell atom, jth neighbor shell around i, li orbital on i, lj orbital on j, m overlap
 		!
 	contains
-        procedure :: print_Vsk ! to stdout gets segmentationa fault for some reason...
-        procedure :: get_Vsk
-        procedure :: set_Vsk
 		procedure :: template_Vsk
-        procedure :: build_Vsk
-!         procedure :: write_matrix_elements ! to file
-! 		procedure :: read_matrix_elements  ! from file
+        procedure :: get_Vsk   ! gets irreducible matrix element given overlap indicies 
+        procedure :: set_Vsk   ! sets irreducible matrix element given overlap indicies
+        procedure :: build_Vsk ! 
+        procedure :: print_Vsk ! to stdout
+        procedure :: write_Vsk ! to file
+   		procedure :: read_Vsk  ! from file
 	end type am_class_tb
 
 contains

@@ -22,12 +22,14 @@ module am_symmetry
     public :: map_permutation ! for: get_irreducible
     
     type, public :: am_class_symmetry 
+        !
         integer :: nsyms
         real(dp), allocatable :: R(:,:,:)         !> symmetry elements (operate on fractional atomic basis)
         real(dp), allocatable :: T(:,:)           !> symmetry elements (operate on fractional atomic basis)
         integer , allocatable :: cc_id(:) !> integer assiging each element to a conjugacy class
         integer , allocatable :: ps_id(:) !> integer which identifies point symmetries (see decode_pointsymmetry)
         integer               :: pg_id    !> integer which identifies the point group
+        !
     contains
         !
         procedure :: copy
@@ -37,6 +39,7 @@ module am_symmetry
         procedure :: get_rotational_group
         procedure :: get_stabilizer_group
         procedure :: get_reversal_group
+        procedure :: frac2cart
         !
         procedure :: name_symmetries
         procedure :: stdout
@@ -414,10 +417,11 @@ contains
         implicit none
         !
         class(am_class_symmetry), intent(inout) :: sg
-        type(am_class_unit_cell), intent(in) :: uc ! space groups are tabulated in the litearture for conventional cells, but primitive or arbitrary cell works just as wlel.
+        type(am_class_unit_cell), intent(in) :: uc ! space groups are tabulated in the litearture for conventional cells, but primitive or arbitrary cell works just as well.
         type(am_class_options)  , intent(in) :: opts
         type(am_class_options) :: notalk
         real(dp), allocatable  :: seitz(:,:,:)
+        type(am_class_symmetry) :: sg_cart
         !
         notalk=opts
         notalk%verbosity = 0
@@ -448,6 +452,10 @@ contains
         !
         ! write action table
         call sg%symmetry_action(uc=uc,flags='',iopt_fname='outfile.action_space_group',opts=opts)
+        !
+        ! write action table in coordinates
+        call sg_cart%frac2cart(sg_frac=sg,uc=uc)
+        call sg_cart%symmetry_action(uc=uc,flags='relax_pbc',iopt_fname='outfile.action_space_group_cart',opts=notalk)
         !
         ! get character table
         call sg%determine_character_table(opts=opts)
@@ -625,6 +633,26 @@ contains
         revg%pg_id = point_group_schoenflies(revg%ps_id)
         !
     end subroutine get_reversal_group
+
+    subroutine     frac2cart(sg_cart,sg_frac,uc)
+        !
+        implicit none
+        !
+        class(am_class_symmetry), intent(out) :: sg_cart
+        type(am_class_symmetry) ,  intent(in) :: sg_frac
+        class(am_class_unit_cell), intent(in) :: uc
+        integer :: i
+        !
+        call sg_cart%copy(sg_frac)
+        !
+        do i = 1,sg_frac%nsyms
+            !
+            sg_cart%R(:,:,i) = ps_frac2cart(R_frac=sg_frac%R(:,:,i),bas=uc%bas)
+            !
+            if (allocated(sg_cart%T)) sg_cart%T(:,i) = matmul(uc%bas, sg_frac%T(:,i))
+        enddo
+        !
+    end subroutine frac2cart
 
     !
     ! medium level routines which operate on sg
@@ -910,6 +938,7 @@ contains
         character(10) :: buffer
         integer :: i,j,k,m ! loop variables
         character(:), allocatable :: xyz(:) ! basis functions output
+        character(1) :: s ! sign 
         real(dp) :: voigt(6) ! voigt notation
         real(dp) :: R(3,3)  ! used for basis functions output
         real(dp) :: RR(9,9) ! used for basis functions output
@@ -918,6 +947,7 @@ contains
         character(10) :: fmt3
         character(10) :: fmt4
         character(10) :: fmt5
+        character(10) :: fmt6
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining symmetry action')
         !
@@ -926,8 +956,9 @@ contains
         fmt3 = '(a10)'
         fmt4 = '(f10.2)'
         fmt5 = '(i10)'
+        fmt6 = '(l10)'
         !
-        PM = map_permutation( rep_permutation(sg=sg,pnt=uc%tau,flags=flags,opts=opts) )
+        PM = map_permutation( rep_permutation(sg=sg,tau=uc%tau,flags=flags,opts=opts) )
         !
         allocate(aa(4,sg%nsyms))
         do i = 1,sg%nsyms
@@ -938,9 +969,6 @@ contains
             !
             fid = 1
             open(unit=fid,file=trim(iopt_fname),status="replace",action='write')
-                ! HEADER INFO
-                write(fid,'(a)') 'p orb, d orb : Coefficients are round to integers. Exact in fractional coordinates, where rotational matrices contain only 0, +1, -1, but not for cartesian coordinats which are unitary.'
-                write(fid,'(a)') '               Ellipses are linear combinations of linear x, y, z or quadratic x^2, y^2, z^2, xy, yz, zx functions, which are not printed for clarity.'
                 !
                 ! SYMMETRY NUMBER
                 write(fid,'(5x)',advance='no')
@@ -1010,6 +1038,13 @@ contains
                     write(fid,fmt4,advance='no') aa(4,i)*180.0_dp/pi
                 enddo
                 write(fid,*)
+                ! POINT-SYMMETRY ROTOINVERSION VS INVERSION
+                write(fid,'(5x)',advance='no')
+                write(fid,fmt1,advance='no') 'inv'
+                do i = 1, sg%nsyms
+                    write(fid,fmt6,advance='no') (abs(det(sg%R(:,:,i))+1).lt.tiny)
+                enddo
+                write(fid,*)
                 ! HEADER / SEPERATOR
                 write(fid,'(5x)',advance='no')
                 write(fid,fmt1,advance='no') 'trans'
@@ -1047,14 +1082,18 @@ contains
                         ! inverse here because f(Rr) = R^-1 * f(r)
                         ! for fractional R; its elements will always be an integer...
                         R=inv(sg%R(:,:,i))
-                        !
-                        if (count(abs(R(j,:)).gt.tiny).ge.2) then
+                        ! if statement are for the cases in which output needs to be trimmed
+                        if (count(abs(R(j,:)).gt.tiny).gt.3) then
                             buffer=' ... ' 
                         else
                             buffer=''
                             do k = 1,3
                             if (abs(R(j,k)).gt.tiny) then
-                                buffer = trim(buffer)//trim(int2char(nint(R(j,k)),'SP'))//trim(xyz(k))
+                                ! s is only the sign
+                                s = trim(int2char(nint(R(j,k)),'SP'))
+                                !
+                                buffer = trim(buffer)//trim(s)//trim(xyz(k))
+                                !
                             endif
                             enddo
                         endif
@@ -1082,8 +1121,9 @@ contains
                 i = i + 1; xyz(i)='yz' ! 
                 i = i + 1; xyz(i)='zz' ! 3,9
                 voigt=[1,5,9,2,3,6]
-                do m = 1,6
-                    j = voigt(m)
+                do m = 1,9
+                    ! alternatively, can loop over m = 1,6 and set j = voigt(m)
+                    j = m
                     write(fid,'(5x)',advance='no')
                     write(fid,fmt1,advance='no') trim(xyz(j))
                     do i = 1, sg%nsyms
@@ -1091,14 +1131,18 @@ contains
                         ! for fractional R; its elements will always be an integer...
                         R=inv(sg%R(:,:,i))
                         RR=kron(R,R)
-                        !
-                        if (count(abs(RR(j,:)).gt.tiny).ge.2) then
+                        ! if statement are for the cases in which output needs to be trimmed
+                        if (count(abs(RR(j,:)).gt.tiny).gt.3) then
                             buffer=' ... ' 
                         else
                             buffer=''
                             do k = 1,9
                                 if (abs(RR(j,k)).gt.tiny) then
-                                    buffer = trim(buffer)//trim(int2char(nint(RR(j,k)),'SP'))//trim(xyz(k))
+                                    ! s is only the sign
+                                    s = trim(int2char(nint(RR(j,k)),'SP'))
+                                    !
+                                    buffer = trim(buffer)//trim(s)//trim(xyz(k))
+                                    !
                                 endif
                             enddo
                         endif
@@ -1124,6 +1168,8 @@ contains
                     write(fid,*)
                 enddo
                 !
+                write(fid,*)
+                write(fid,'(a)') 'p orb, d orb : Coefficients are ommited for clarity. Also omitted are orbitals which decompose into more than three terms.'
             close(fid)
         endif
     end subroutine symmetry_action
@@ -1201,14 +1247,15 @@ contains
         !
         implicit none
         !
-        class(am_class_symmetry), intent(inout) :: cp
+        class(am_class_symmetry), intent(out) :: cp
         type(am_class_symmetry) , intent(in) :: sg
         !
-        cp%nsyms         = sg%nsyms
+        cp%nsyms = sg%nsyms
         cp%pg_id = sg%pg_id
+        !
+        if (allocated(sg%R)    ) allocate(cp%R      , source=sg%R    )
+        if (allocated(sg%T)    ) allocate(cp%T      , source=sg%T    )
         if (allocated(sg%cc_id)) allocate(cp%cc_id  , source=sg%cc_id)
-        if (allocated(sg%R))             allocate(cp%R              , source=sg%R)
-        if (allocated(sg%T))             allocate(cp%T              , source=sg%T)
         if (allocated(sg%ps_id)) allocate(cp%ps_id  , source=sg%ps_id)
         !
     end subroutine copy
@@ -1439,33 +1486,34 @@ contains
         !
     end function   rep_regular
 
-    function       rep_permutation(sg,pnt,flags,opts) result(rep)
+    function       rep_permutation(sg,tau,flags,opts) result(rep)
         !
         ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
+        ! also works to find which kpoint are connected by point group operations
         !
         implicit none
         !
-        type(am_class_symmetry), intent(in) :: sg
-        real(dp)               , intent(in) :: pnt(:,:)
-        character(*)           , intent(in) :: flags
-        type(am_class_options) , intent(in) :: opts
+        type(am_class_symmetry) , intent(in) :: sg
+        real(dp)                , intent(in) :: tau(:,:)
+        character(*)            , intent(in) :: flags
+        type(am_class_options)  , intent(in) :: opts
         integer, allocatable :: rep(:,:,:)
         real(dp) :: tau_rot(3)
         integer :: i,j,k
         logical :: found
-        integer :: npnts
+        integer :: ntaus ! number of tau points tau(1:3,ntaus)
         !
-        npnts = size(pnt,2)
+        ntaus = size(tau,2)
         !
-        allocate(rep(npnts,npnts,sg%nsyms))
+        allocate(rep(ntaus,ntaus,sg%nsyms))
         rep = 0
         !
         do i = 1, sg%nsyms
             ! determine the permutations of atomic indicies which results from each space symmetry operation
-            do j = 1,npnts
+            do j = 1,ntaus
                 found = .false.
                 ! apply rotational component
-                tau_rot = matmul(sg%R(:,:,i),pnt(:,j))
+                tau_rot = matmul(sg%R(:,:,i),tau(:,j))
                 ! apply translational component
                 if (allocated(sg%T)) tau_rot = tau_rot + sg%T(:,i)
                 ! reduce rotated+translated point to unit cell
@@ -1473,20 +1521,20 @@ contains
                     tau_rot = modulo(tau_rot+opts%sym_prec,1.0_dp)-opts%sym_prec
                 endif
                 ! find matching atom
-                do k = 1, npnts
-                    if (all(abs(tau_rot-pnt(:,k)).lt.opts%sym_prec)) then
+                search : do k = 1, ntaus
+                    if (all(abs(tau_rot-tau(:,k)).lt.opts%sym_prec)) then
                     rep(j,k,i) = 1
                     found = .true.
-                    exit ! break loop
+                    exit search ! break loop
                     endif
-                enddo
+                enddo search
                 ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
                 ! to ensure atoms must permute onto each other
                 if (index(flags,'relax_pbc').eq.0) then
                 if (found.eq..false.) then
                     call am_print('ERROR','Unable to find matching atom.',flags='E')
-                    call am_print('tau (all atoms)',transpose(pnt))
-                    call am_print('tau',pnt(:,j))
+                    call am_print('tau (all atoms)',transpose(tau))
+                    call am_print('tau',tau(:,j))
                     call am_print('R',sg%R(:,:,i))
                     if (allocated(sg%T)) call am_print('T',sg%T(:,i))
                     call am_print('tau_rot',tau_rot)
@@ -1502,7 +1550,7 @@ contains
         ! to ensure atoms must permute onto each other
         if (index(flags,'relax_pbc').eq.0) then
         do i = 1,sg%nsyms
-        do j = 1,npnts
+        do j = 1,ntaus
             !
             if (sum(rep(:,j,i)).ne.1) then
                call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
@@ -1525,7 +1573,7 @@ contains
         endif
        !
     end function   rep_permutation
-
+    
     function       map_permutation(P) result(PM)
         !
         ! PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation

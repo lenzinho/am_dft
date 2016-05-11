@@ -22,6 +22,8 @@ module am_brillouin_zone
         integer , allocatable :: ibz_id(:)
     contains
         procedure :: load_ibzkpt
+        procedure :: load_procar
+        procedure :: load_eigenval
         procedure :: write_kpoints
     end type am_class_bz
 
@@ -42,7 +44,7 @@ module am_brillouin_zone
 
 contains
 
-    ! functions which operate on bz or similar derived types
+    ! load from vasp
 
     subroutine     load_ibzkpt(bz,opts)
         ! 
@@ -63,6 +65,42 @@ contains
         !
     end subroutine load_ibzkpt
 
+    subroutine     load_procar(bz,opts)
+        ! 
+        ! Reads the PROCAR file.
+        !
+        implicit none
+        !
+        class(am_class_bz)  , intent(out) :: bz
+        type(am_class_options), intent(in) :: opts
+        !
+        call read_procar(nkpts    = bz%nkpts,&
+                         kpt      = bz%kpt,&
+                         w        = bz%w,&
+                         iopt_filename = opts%procar,&
+                         iopt_verbosity= 0 )
+        !
+    end subroutine load_procar
+
+    subroutine     load_eigenval(bz,opts)
+        ! 
+        ! Reads the eigenval file.
+        !
+        implicit none
+        !
+        class(am_class_bz)  , intent(out) :: bz
+        type(am_class_options), intent(in) :: opts
+        !
+        call read_eigenval(nkpts  = bz%nkpts,&
+                           kpt    = bz%kpt,&
+                           w      = bz%w,&
+                           iopt_filename = opts%eigenval,&
+                           iopt_verbosity = 0 )
+        !
+    end subroutine load_eigenval
+   
+    ! functions which operate on bz or similar derived types
+    
     subroutine     get_mp(fbz,pc,n,s,opts)
         !
         use am_rank_and_sort
@@ -362,7 +400,7 @@ contains
 
     ! functions which operate on kpoint
 
-    function      locate_kpoint_in_fbz(kpoint,grid_points,bas) result(position_in_fbz)
+    function       locate_kpoint_in_fbz(kpoint,grid_points,bas) result(position_in_fbz)
         !> Given a kpoint in fractional coordinates, determine if ...
         !> k is inside  ( 1) of FBZ, i.e. 2KG < G^2 for ALL Bragg planes
         !> k is on edge ( 0) of FBZ, i.e. 2KG = G^2 for ONE Bragg plane
@@ -408,7 +446,7 @@ contains
         enddo
     end function  locate_kpoint_in_fbz
 
-    function      reduce_kpoint_to_fbz(kpoint,grid_points,bas) result(kpoint_fbz)
+    function       reduce_kpoint_to_fbz(kpoint,grid_points,bas) result(kpoint_fbz)
         !> reduces kpoint (in fractional) to the first Brillouin zone (Wigner-Seitz cell, defined in cartesian coordinates)
         !> cartesian kpoint is returned! 
         implicit none
@@ -448,7 +486,7 @@ contains
         !
     end function  reduce_kpoint_to_fbz
 
-    function      reduce_kpoint_to_ibz(kpoint,grid_points,bas,R,sym_prec) result(kpoint_in_ibz)
+    function       reduce_kpoint_to_ibz(kpoint,grid_points,bas,R,sym_prec) result(kpoint_in_ibz)
         !
         use am_rank_and_sort
         !
@@ -488,7 +526,7 @@ contains
         !
     end function  reduce_kpoint_to_ibz
 
-    pure function kpoint_orbit(R,kpoint) result(korbit)
+    pure function  kpoint_orbit(R,kpoint) result(korbit)
         !> Given a kpoint in fractional coordinates, return its orbit (star)
         !> Note: this routine does not check to see whether the orbits are unique. If two point
         !> symmetries produce the same orbital point, this routine returns the same point twice.
@@ -509,7 +547,7 @@ contains
         !
     end function  kpoint_orbit
 
-    function      kpoint_weight(R,kpoint,sym_prec) result(w)
+    function       kpoint_weight(R,kpoint,sym_prec) result(w)
         !
         implicit none
         !

@@ -69,7 +69,7 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if (verbosity .ge. 1) call am_print('actual file read is',trim(fname),' ... ')
+            if (verbosity.ge.1) call am_print('actual file read is',trim(fname),' ... ')
             !
             ! (LINE 1) Automatically generated mesh
             read(fid,'(a)') buffer
@@ -79,7 +79,7 @@ module am_vasp_io
             !> nkpts number of kpoints
             read(word(1),*) nkpts_internal
             if (present(nkpts)) nkpts = nkpts_internal
-            if (verbosity .ge. 1) call am_print('number of kpoints',nkpts_internal,' ... ')
+            if (verbosity.ge.1) call am_print('number of kpoints',nkpts_internal,' ... ')
             !
             if (present(kpt)) allocate(kpt(3,nkpts_internal))
             allocate(w_int(nkpts_internal))
@@ -115,7 +115,7 @@ module am_vasp_io
                     !> ntets number of tetrahedra
                     read(word(1),*) ntets_internal
                     if (present(ntets)) ntets = ntets_internal
-                    if (verbosity .ge. 1) call am_print('number of tetrahedra',ntets_internal,' ... ')
+                    if (verbosity.ge.1) call am_print('number of tetrahedra',ntets_internal,' ... ')
                     !> vtet(ntets) tetrahedron volume
                     read(word(2),*) vtet_tmp
                     if (present(vtet)) then
@@ -123,7 +123,7 @@ module am_vasp_io
                         vtet = vtet_tmp
                     endif
                     !
-                    if (verbosity .ge. 1) call am_print('tetrahedron volume (equal for all tetrahedra)',vtet_tmp,' ... ')
+                    if (verbosity.ge.1) call am_print('tetrahedron volume (equal for all tetrahedra)',vtet_tmp,' ... ')
                     !
                     if (present(tet))  allocate(tet(4,ntets_internal))
                     if (present(wtet)) allocate(wtet(ntets_internal))
@@ -178,18 +178,23 @@ module am_vasp_io
         character(max_argument_length) :: fname
         integer, optional :: iopt_verbosity
         integer :: verbosity
-        integer , intent(out) :: nkpts     !> nkpts number of kpoints
-        integer , intent(out) :: nbands    !> nbands number of bands
-        integer , intent(out) :: nions     !> nions number of ions
-        integer , intent(out) :: norbitals !> norbitals number of orbitals
-        integer , intent(out) :: nspins    !> nspins number of spins
+        integer              , intent(out), optional :: nkpts     !> nkpts number of kpoints
+        integer              , intent(out), optional :: nbands    !> nbands number of bands
+        integer              , intent(out), optional :: nions     !> nions number of ions
+        integer              , intent(out), optional :: norbitals !> norbitals number of orbitals
+        integer              , intent(out), optional :: nspins    !> nspins number of spins
         real(dp), allocatable, intent(out), optional :: E(:,:)    !> E(nbands,nkpts) energies
         real(dp), allocatable, intent(out), optional :: occ(:,:)  !> occ(nbands,nkpts) occupancies
         real(dp), allocatable, intent(out), optional :: kpt(:,:)  !> kpt(3,nkpts) kpoint
         real(dp), allocatable, intent(out), optional :: w(:)      !> w(nkpts) weights (normalized)
         character(:), allocatable, intent(out), optional :: orbitals(:)     !> orbitals(norbitals) names of orbitals
         real(dp), allocatable, intent(out), optional :: lmproj(:,:,:,:,:)   !> lmproj(nspins,norbitals,nions,nbands,nkpts)
-        !
+        ! <INTERNAL>
+        integer :: internal_nkpts     !> nkpts number of kpoints
+        integer :: internal_nbands    !> nbands number of bands
+        integer :: internal_nions     !> nions number of ions
+        integer :: internal_norbitals !> norbitals number of orbitals
+        integer :: internal_nspins    !> nspins number of spins
         integer :: fid ! file id
         character(maximum_buffer_size) :: buffer ! read buffer
         character(len=:), allocatable :: word(:) ! read buffer
@@ -200,7 +205,8 @@ module am_vasp_io
         verbosity = 1
         if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
         !
-        nspins = 1 ! not yet implemented!
+        internal_nspins = 1 ! not yet implemented!
+        if (present(nspins)) nspins = internal_nspins
         !
         !
         !
@@ -209,33 +215,36 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if (verbosity .ge. 1) call am_print('actual file read is',trim(fname),' ... ')
+            if (verbosity.ge.1) call am_print('actual file read is',trim(fname),' ... ')
             ! (LINE 1) PROCAR lm decomposed
             read(fid,'(a)')
             ! (LINE 2) # of kpt-points:  160         # of bands:   8         # of ions:   2
             read(unit=fid,fmt='(a)') buffer
             word = strsplit(buffer,delimiter=' ')
             !> nkpts number of kpoints
-            read(word(4),*)  nkpts
+            read(word(4),*)  internal_nkpts
+            if (present(nkpts)) nkpts = internal_nkpts
             !> nbands number of bands
-            read(word(8),*)  nbands
+            read(word(8),*)  internal_nbands
+            if (present(nbands)) nbands = internal_nbands
             !> nions number of ions
-            read(word(12),*) nions
+            read(word(12),*) internal_nions
+            if (present(nions)) nions = internal_nions
             !
-            if (verbosity .ge. 1) call am_print('number of kpoints',nkpts,' ... ')
-            if (verbosity .ge. 1) call am_print('number of bands',nbands,' ... ')
-            if (verbosity .ge. 1) call am_print('number of ions',nions,' ... ')
+            if (verbosity.ge.1) call am_print('number of kpoints',internal_nkpts,' ... ')
+            if (verbosity.ge.1) call am_print('number of bands',internal_nbands,' ... ')
+            if (verbosity.ge.1) call am_print('number of ions',internal_nions,' ... ')
             !
             !> E(nbands,nkpts) energies
             !> occ(nbands,nkpts) occupancies
             !> kpt(3,nkpts) kpoint
             !> w(nkpts) normalized weights
-            if (present(E))   allocate(E(nbands,nkpts))
-            if (present(occ)) allocate(occ(nbands,nkpts))
-            if (present(kpt)) allocate(kpt(3,nkpts))
-            if (present(w))   allocate(w(nkpts))
+            if (present(E))   allocate(E(internal_nbands,internal_nkpts))
+            if (present(occ)) allocate(occ(internal_nbands,internal_nkpts))
+            if (present(kpt)) allocate(kpt(3,internal_nkpts))
+            if (present(w))   allocate(w(internal_nkpts))
             !
-            do i = 1,nkpts
+            do i = 1,internal_nkpts
                 ! (LINE 3,62) skip line
                 read(unit=fid,fmt=*)
                 ! (LINE 4,63) kpt-point    1 :    0.50000000 0.50000000 0.50000000     weight = 0.00625000
@@ -252,7 +261,7 @@ module am_vasp_io
                     read(word(9),*) w(i)
                 endif
                 !
-                do j = 1, nbands
+                do j = 1, internal_nbands
                     ! (LINE 5,64) skip line
                     read(unit=fid,fmt=*)
                     ! (LINE 6,65) band   1 # energy   -3.91737559 # occ.  2.00000000
@@ -270,23 +279,24 @@ module am_vasp_io
                         word = strsplit(buffer,delimiter=' ')
                         !> norbitals number of orbitals
                         norbitals = size(word)-2 ! minus 2 to account for the ion, which is not an orbital, and the total!
-                        if (verbosity .ge. 1) call am_print('number of orbitals',norbitals,' ... ')
+                        if (present(norbitals)) norbitals = internal_norbitals
+                        if (verbosity.ge.1) call am_print('number of orbitals',internal_norbitals,' ... ')
                         !> orbitals(norbitals) names of orbitals
                         if (present(orbitals)) then
-                            allocate(character(len=15) :: orbitals(norbitals))
-                            do l = 1, norbitals
+                            allocate(character(len=15) :: orbitals(internal_norbitals))
+                            do l = 1, internal_norbitals
                                 orbitals(l) = word(l+1)
                             enddo
-                            if (verbosity .ge. 1) write(*,'(a5,a,100(x,a))' ) ' ... ', 'orbitals =', ( trim(orbitals(l)), l = 1, norbitals)
+                            if (verbosity.ge.1) write(*,'(a5,a,100(x,a))' ) ' ... ', 'orbitals =', ( trim(orbitals(l)), l = 1, norbitals)
                         endif
                         !> lmproj(nspins,norbitals,nions,nbands,nkpts)
-                        if (present(lmproj)) allocate(lmproj(nspins,norbitals,nions,nbands,nkpts))
+                        if (present(lmproj)) allocate(lmproj(internal_nspins,internal_norbitals,internal_nions,internal_nbands,internal_nkpts))
                         !
                     endif
                     ! (LINE 9,10) 
                     ! 1  0.224  0.003  0.001  0.009  0.000  0.000  0.000  0.000  0.000  0.237
                     ! 2  0.224  0.003  0.001  0.009  0.000  0.000  0.000  0.000  0.000  0.237
-                    do l = 1, nions
+                    do l = 1, internal_nions
                         read(unit=fid,fmt='(a)') buffer
                         word = strsplit(buffer,delimiter=' ')
                         if (present(lmproj)) then
@@ -500,16 +510,21 @@ module am_vasp_io
         !
         integer :: nbands_without_spin
         integer :: ispin !> vasp ispin flag
-        integer              , intent(out)           :: nkpts      !> nkpts number of kpoints
-        integer              , intent(out)           :: nbands     !> nbands number of bands
-        integer              , intent(out)           :: nspins     !> nspins number of spins
+        integer              , intent(out), optional :: nkpts      !> nkpts number of kpoints
+        integer              , intent(out), optional :: nbands     !> nbands number of bands
+        integer              , intent(out), optional :: nspins     !> nspins number of spins
         integer              , intent(out), optional :: nelecs     !> nelects number of electrons
         real(dp), allocatable, intent(out), optional :: kpt(:,:)   !> kpt(3,nkpts) kpoint
         real(dp), allocatable, intent(out), optional :: w(:)       !> w(nkpts) weights (normalized)
         real(dp), allocatable, intent(out), optional :: E(:,:)     !> E(nbands,nkpts) energies
         real(dp), allocatable, intent(out), optional :: lmproj(:,:,:,:,:) !> lmproj(nspins,norbitals,nions,nbands,nkpts) projections for spins
-        integer :: norbitals !> norbitals number of ions - NO INFORMATION ABOUT THIS IN EIGEVAL, SET TO 1
-        integer :: nions     !> nions number of ions - NO INFORMATION ABOUT THIS IN EIGEVAL, SET TO 1
+        ! <INTERNAL PARAMETERS>
+        integer :: internal_nkpts     !> nkpts number of kpoints
+        integer :: internal_nbands    !> nbands number of bands
+        integer :: internal_nspins    !> nspins number of spins
+        integer :: internal_nelecs    !> nelects number of electrons
+        integer :: internal_norbitals !> norbitals number of ions - NO INFORMATION ABOUT THIS IN EIGEVAL, SET TO 1
+        integer :: internal_nions     !> nions number of ions - NO INFORMATION ABOUT THIS IN EIGEVAL, SET TO 1
         ! i/o
         integer :: fid
         character(maximum_buffer_size) :: buffer
@@ -532,7 +547,7 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if (verbosity .ge. 1) call am_print('actual file read',trim(fname),' ... ')
+            if (verbosity.ge.1) call am_print('actual file read',trim(fname),' ... ')
             ! (LINE 1)     2    2    1    1
             read(unit=fid,fmt='(a)') buffer
             word = strsplit(buffer,delimiter=' ')
@@ -552,16 +567,19 @@ module am_vasp_io
             !> nelects number of electrons
             if (present(nelecs)) then
                 read(word(1),*) nelecs
-                if (verbosity .ge. 1) call am_print('number of electrons',nelecs,' ... ')
+                if (verbosity.ge.1) call am_print('number of electrons',nelecs,' ... ')
             endif
             !> nkpts number of kpoints
-            read(word(2),*) nkpts
-            if (verbosity .ge. 1) call am_print('number of kpoints',nkpts,' ... ')
+            read(word(2),*) internal_nkpts
+            if (present(nkpts)) then
+                nkpts = internal_nkpts
+                if (verbosity.ge.1) call am_print('number of kpoints',internal_nkpts,' ... ')
+            endif
             !> nbands number of bands
             read(word(3),*) nbands_without_spin
             !
-            if (present(kpt)) allocate(kpt(3,nkpts))
-            if (present(w))   allocate(w(nkpts))
+            if (present(kpt)) allocate(kpt(3,internal_nkpts))
+            if (present(w))   allocate(w(internal_nkpts))
             !
             do i = 1, nkpts
                 ! (LINE 7) skip
@@ -587,32 +605,38 @@ module am_vasp_io
                     word = strsplit(buffer,delimiter=' ')
                     if ( (i .eq. 1) .and. (j .eq. 1) ) then
                         !> nspins number of spins
-                        nspins = size(word)-2
-                        nbands = nbands_without_spin*nspins
-                        if (verbosity .ge. 1) call am_print('number of bands',nbands,' ... ')
-                        if (verbosity .ge. 1) call am_print('number of spins',nspins,' ... ')
-                        if (present(E)) allocate(E(nbands,nkpts))
+                        internal_nspins = size(word)-2
+                        if (present(nspins)) then
+                            nspins = internal_nspins
+                            if (verbosity.ge.1) call am_print('number of spins',nspins,' ... ')
+                        endif
+                        internal_nbands = nbands_without_spin*internal_nspins
+                        if (present(nbands)) then 
+                            nbands = internal_nbands
+                            if (verbosity.ge.1) call am_print('number of bands',nbands,' ... ')
+                        endif
+                        if (present(E)) allocate(E(internal_nbands,internal_nkpts))
                         !> lmproj(nspins,norbitals,nions,nbands,nkpts) projections for spins
                         !> this array contains the projection character onto everything from oribtals, to ions, to spins
                         !> for systems with 2 spins, the spin component of lmproj is binary with 0 or 1
                         !> for dirac spinors with 4 spin components (spin orbit coupling), the spin component of lmproj takes on non-integer values
-                        nions = 1
-                        norbitals = 1
+                        internal_nions = 1
+                        internal_norbitals = 1
                         if (present(lmproj)) then
-                            allocate(lmproj(nspins,norbitals,nions,nbands,nkpts))
+                            allocate(lmproj(internal_nspins,internal_norbitals,internal_nions,internal_nbands,internal_nkpts))
                             lmproj = 0.0_dp
                         endif
                         !
                     endif
-                    do m = 1, nspins
+                    do m = 1, internal_nspins
                         j_and_m = j_and_m + 1
                         !> E(nbands,nkpts) energies
                         !> this array has one entry per band per spin
                         if (present(E)) then
                             read(word(m+1),*) E(j_and_m,i)
                         endif
-                        !> lmproj(nbands,nkpts,nspins,norbitals,nions) projections for spins
-                        lmproj(m,1,1,j_and_m,i) = 1.0_dp
+                        !> lmproj(nspins,norbitals,nions,nbands,nkpts) projections for spins
+                        if (present(lmproj)) lmproj(m,1,1,j_and_m,i) = 1.0_dp
                     enddo
                     !
                 enddo
@@ -674,7 +698,7 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if (verbosity .ge. 1) call am_print('actual file read',trim(fname),' ... ')
+            if (verbosity.ge.1) call am_print('actual file read',trim(fname),' ... ')
             ! (LINE 1) header
              read(unit=fid,fmt='(a)')
             ! (LINE 2) lattice parameter scaling
@@ -988,7 +1012,7 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if (verbosity .ge. 1) call am_print('actual file read is',trim(fname),' ... ')
+            if (verbosity.ge.1) call am_print('actual file read is',trim(fname),' ... ')
             !
             nkpts  = 0
             nbands = 0
@@ -1066,7 +1090,7 @@ module am_vasp_io
 !         fid = 1
 !         open(unit=fid,file=trim(fname),status="old",action='read')
 !             !
-!             if (verbosity .ge. 1) call am_print('actual file read is',fname,' ... ')
+!             if (verbosity.ge.1) call am_print('actual file read is',fname,' ... ')
 !             !
 !             ! (LINE 1) :File generated by VASP: unknown system
 !             read(fid,*)

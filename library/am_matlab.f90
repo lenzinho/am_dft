@@ -439,16 +439,16 @@ module am_matlab
         end function   unit_number
     end function  fopen
 
-    function      exists(fname)
+    function      fexists(fname)
         !
         implicit none
         !
         character(max_argument_length) :: fname
-        logical :: exists
+        logical :: fexists
         !
-        inquire(file=trim(fname),exist=exists)
+        inquire(file=trim(fname),exist=fexists)
         !
-    end function  exists
+    end function  fexists
 
     pure function strsplit(str,delimiter) result(word)
         !
@@ -910,6 +910,31 @@ module am_matlab
         enddo
         !
     end function  kron_pow
+
+    pure function direct_sum(A,B) result(C)
+        ! direct sum of matrices A and B
+        ! C = [ A , 0 ]
+        !     [ 0 , B ]
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:)
+        real(dp), intent(in) :: B(:,:)
+        real(dp), allocatable :: C(:,:)
+        integer :: Am, An, Bm, Bn, i, j
+        !
+        Am = size(A,1)
+        An = size(A,2)
+        Bm = size(B,1)
+        Bn = size(B,2)
+        !
+        allocate(C(Am+Bm,An+Bn))
+        !
+        C = 0.0_dp
+        !
+        C( 0+1:An, 0+1:Am) = A
+        C(An+1:Bn,Am+1:Bm) = B
+        !
+    end function  direct_sum
 
     pure function eye(n)
         !> nxn identity matrix

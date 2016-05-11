@@ -195,7 +195,6 @@ contains
         !
     end function   tetrahedron_weights
 
-
 !     subroutine get_tetrahedra(tet,bz,pc,pg,tet,iopts)
 !         !
 !         use am_unit_cell

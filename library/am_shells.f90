@@ -314,7 +314,7 @@ contains
             integer :: i, jj, j, k
             !
             ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-            P  = rep_permutation(sg=pg,pnt=sphere%tau,flags='',opts=opts)
+            P  = rep_permutation(sg=pg,tau=sphere%tau,flags='relax_pbc',opts=opts)
             PM = map_permutation( P )
             !
             ! get distance of atoms

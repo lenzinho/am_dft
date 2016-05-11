@@ -1,11 +1,10 @@
 module am_stdout
-    !
+
     use am_constants
     use am_matlab
-    !
+
     implicit none
-    !
-    !
+
     interface am_print
         ! function overloading must start with the same name as the interface, i.e. "am_print" in this case
         module procedure &
@@ -21,17 +20,16 @@ module am_stdout
             am_print_bool,      &
             am_print_bool_mat
     end interface ! am_print
-    !
+    
     interface am_print_sparse
         module procedure am_print_sparse_double, am_print_sparse_integer
     end interface ! am_print_sparse
-    !
+
     interface issubset
         module procedure issubset_vec, issubset_mat
     end interface ! issubset
-    !
-    !
-    contains
+
+contains
 
     !
     ! convert data types  
