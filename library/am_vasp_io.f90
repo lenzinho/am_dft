@@ -522,7 +522,6 @@ module am_vasp_io
         integer :: internal_nkpts     !> nkpts number of kpoints
         integer :: internal_nbands    !> nbands number of bands
         integer :: internal_nspins    !> nspins number of spins
-        integer :: internal_nelecs    !> nelects number of electrons
         integer :: internal_norbitals !> norbitals number of ions - NO INFORMATION ABOUT THIS IN EIGEVAL, SET TO 1
         integer :: internal_nions     !> nions number of ions - NO INFORMATION ABOUT THIS IN EIGEVAL, SET TO 1
         ! i/o

@@ -8,6 +8,9 @@ TIME_STAMP=`date +%b_%d_%H:%M`
 all: $(PROGS)
 
 tb: $(AMLIB) 
+	(cd prog_test; $(MAKE) )
+
+tb: $(AMLIB) 
 	(cd prog_tb; $(MAKE) )
 
 2fc: $(AMLIB) 
@@ -17,7 +20,7 @@ uc: $(AMLIB)
 	(cd prog_uc; $(MAKE) )
 
 wannier: $(AMLIB) 
-	(cd prog_wannier; $(MAKE) )
+	(cd prog_wan; $(MAKE) )
 
 sym: $(AMLIB) 
 	(cd prog_sym; $(MAKE) )
@@ -29,7 +32,7 @@ ibz: $(AMLIB)
 	(cd prog_ibz; $(MAKE) )
 
 bandcharacter: $(AMLIB) 
-	(cd prog_bandcharacter; $(MAKE) )
+	(cd prog_bc; $(MAKE) )
 
 $(AMLIB): 
 	(cd $(DIRLIB); $(MAKE) )

@@ -10,6 +10,9 @@ module am_symmetry
 
     private
 
+    public :: test_SO3_1
+    public :: test_SO3_2
+
     public :: determine_symmetry
     public :: get_kpoint_compatible_symmetries
     public :: ps_frac2cart
@@ -51,9 +54,7 @@ module am_symmetry
 
 contains
 
-    !
     ! functions which operate on R(3,3) in fractional coordinates
-    !
 
     function       ps_frac2cart(R_frac,bas) result(R)
         !
@@ -156,9 +157,7 @@ contains
         !
     end function   ps_schoenflies
 
-    !
     ! schoenflies decode
-    !
 
     function       decode_pointsymmetry(ps_id) result(schoenflies)
         !
@@ -389,9 +388,7 @@ contains
             stop
     end function   point_group_schoenflies
 
-    !
     ! very high level routines which operate on sg
-    !
 
     subroutine     determine_symmetry(uc,sg,pg,opts)
         !
@@ -654,9 +651,7 @@ contains
         !
     end subroutine frac2cart
 
-    !
     ! medium level routines which operate on sg
-    !
 
     subroutine     determine_character_table(sg,opts)
         !
@@ -1428,6 +1423,342 @@ contains
         endif
         !
     end subroutine convert
+
+    ! SO3 irreducible representation of 3D rotation group
+
+    function       SO3(l,alpha,beta,gamma) result(R)
+        !
+        ! setup rotation matrices
+        ! alpha (           around X)
+        ! beta  (polar,     around Y)
+        ! gamma (azimuthal, around Z)
+        !
+        ! R = X(alpha) * Y(beta) * Z(gamma)
+        !
+        ! Determines 3D irrep rotation by calculating the eigenvalues D and eigevectors V of Ly/Lx
+        ! operator in the Lz basis using raising/lowering operators.
+        !
+        !   - R. M. Martin, Electronic Structure: Basic Theory and Practical Methods, 1 edition
+        !        (Cambridge University Press, Cambridge, UK ; New York, 2008), p 573.
+        !   - Romero Nichols "Density Functional Study of Fullerene-Based Solids: Crystal Structure,
+        !        Doping, and Electron- Phonon Interaction", Ph.D. Thesis UIUC, p 96.
+        !   - C. Cohen-Tannoudji, B. Diu, and F. Laloe, Quantum Mechanics, 1 edition (Wiley-VCH, New
+        !        York; Paris, 1992), p 666.
+        !   - J. J. Sakurai, Modern Quantum Mechanics, Revised edition (Addison Wesley, Reading, Mass,
+        !        1993). p 207
+        !
+        ! Note: because Ly operator is Hermitian, eigenvalues are real.
+        !
+        implicit none
+        !
+        integer , intent(in) :: l
+        real(dp), intent(in) :: alpha ! around X
+        real(dp), intent(in) :: beta  ! around Y
+        real(dp), intent(in) :: gamma ! around Z
+        integer :: n
+        real(dp)   , allocatable :: R(:,:) ! tesseral harmonics rotation matrix, (2*l+1) x (2*l+1) irrep of rotation in 3 dimensional space
+        complex(dp), allocatable :: V(:,:) ! eigenvector of Lz/Lx in Ly basis
+        real(dp)   , allocatable :: D(:)   ! eigenvalues of Lz/Lx in Ly basis = -l, -l+1, ... -1, 0, 1, ... l-1, l  -- Note: Lz/Lx are Hermitian.
+        complex(dp), allocatable :: A(:,:) ! matrix corresponding to exp(-i*alpha*Ly)
+        complex(dp), allocatable :: B(:,:) ! matrix corresponding to exp(-i*beta*Ly)
+        complex(dp), allocatable :: G(:,:) ! matrix corresponding to exp(-i*gamma*Ly)
+        complex(dp), allocatable :: C(:,:) ! similarity transform which maps complex spherical harmonics onto real tesseral harmonics
+        real(dp)   , allocatable :: X(:,:) ! counter-clockwise rotation (right-hand rule) around X axis
+        real(dp)   , allocatable :: Y(:,:) ! counter-clockwise rotation (right-hand rule) around Y axis
+        real(dp)   , allocatable :: Z(:,:) ! counter-clockwise rotation (right-hand rule) around Z axis
+        complex(dp), allocatable :: H(:,:) ! helper matrix
+        !
+        ! get dimensions of matrices
+        n = 2*l + 1
+        !
+        ! determine similarity transform to convert spherical into tesseral harmonics (complex to real)
+        C = tesseral(l=l)
+        !
+        ! determine rotation around X = real( (B*V)*A*(B*V)' )
+        call am_zheev(A=Lx(l),V=V,D=D)
+        H = matmul(C,V)
+        A = diag(exp(-cmplx_i*alpha*D))
+        X = matmul(H,matmul(A,adjoint(H)))
+        !
+        ! determine rotation around Y = real( B*P*B' )
+        allocate(Y(n,n))
+        B = diag(exp( cmplx_i*beta*D))
+        Y = matmul(C,matmul(B,adjoint(C)))
+        !
+        ! determine rotation around Z = real( (B*V)*T*(B*V)' )
+        call am_zheev(A=Lz(l),V=V,D=D)
+        H = matmul(C,V)
+        G = diag(exp( cmplx_i*gamma*D))
+        Z = matmul(H,matmul(G,adjoint(H)))
+        !
+        ! generate rotation
+        allocate(R(n,n))
+        R = matmul(X,matmul(Y,Z))
+        !
+        contains
+        pure function  Lz(l)
+            !
+            ! Construct  Ly matrix in the Lz basis from raising and lower operators
+            ! Laloe, p 666; Martin, p 573, Eq N4; Sakurai, p 207. hbar is set to 1.
+            !
+            ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
+            ! 1980 edition (Springer, 2013), p 327, Eq 12.5.21b
+            !
+            implicit none
+            !
+            integer, intent(in) :: l
+            complex(dp), allocatable :: Lz(:,:)
+            integer :: m, mp
+            !
+            allocate(Lz(-l:l,-l:l))
+            !
+            Lz = (Lm(l)-Lp(l))*0.5_dp*cmplx_i
+            !
+        end function   Lz
+        pure function  Lx(l)
+            !
+            ! Construct  Ly matrix in the Lz basis from raising and lower operators
+            ! Laloe, p 666; Martin, p 573, Eq N4; Sakurai, p 207. hbar is set to 1.
+            !
+            ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
+            ! 1980 edition (Springer, 2013), p 327, Eq 12.5.21a
+            !
+            implicit none
+            !
+            integer, intent(in) :: l
+            complex(dp), allocatable :: Lx(:,:)
+            integer :: m, mp
+            !
+            allocate(Lx(-l:l,-l:l))
+            !
+            Lx = (Lp(l)+Lm(l))*0.5_dp
+            !
+        end function   Lx
+        pure function  Lp(l)
+            !
+            ! Raising angular momentum operator.
+            !
+            ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
+            ! 1980 edition (Springer, 2013), p 327, Eq 12.5.20
+            !
+            implicit none
+            !
+            integer, intent(in) :: l
+            complex(dp), allocatable :: Lp(:,:)
+            integer :: m, mp
+            !
+            allocate(Lp(-l:l,-l:l))
+            Lp = 0.0_dp
+            !
+            do m = -l, l
+            do mp= -l, l
+                if (mp==m+1) Lp(mp,m) = sqrt(real( (l-m)*(l+m+1) ,dp))
+            enddo
+            enddo
+            !
+        end function   Lp
+        pure function  Lm(l)
+            !
+            ! Lowering angular momentum operator.
+            !
+            ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
+            ! 1980 edition (Springer, 2013), p 327, Eq 12.5.20
+            !
+            implicit none
+            !
+            integer, intent(in) :: l
+            complex(dp), allocatable :: Lm(:,:)
+            integer :: m, mp
+            !
+            allocate(Lm(-l:l,-l:l))
+            Lm = 0.0_dp
+            !
+            do m = -l, l
+            do mp= -l, l
+                if (mp==m-1) Lm(mp,m) = sqrt(real( (l+m)*(l-m+1) ,dp))
+            enddo
+            enddo
+            !
+        end function   Lm
+        pure function  tesseral(l) result(B)
+            !
+            ! latex equations
+            !
+            ! $$
+            ! Y_{lm} = 
+            ! \begin{cases}
+            ! Y_l^m                                               & \text{if } m = 0 \\
+            ! \frac{i}{\sqrt{2}} ( (-1)^{m} Y_l^{-m} - Y_l^{ m} ) & \text{if } m > 0 \\
+            ! \frac{1}{\sqrt{2}} ( (-1)^{m} Y_l^{ m} + Y_l^{-m} ) & \text{if } m < 0
+            ! \end{cases}
+            ! $$
+            !
+            ! R. R. Sharma, Phys. Rev. B. 19, 2813 (1979).
+            ! Also, see Wikipedia.
+            implicit none
+            !
+            integer, intent(in) :: l
+            complex(dp), allocatable :: B(:,:)
+            integer :: m,mp
+            !
+            allocate(B(-l:l,-l:l))
+            B = 0.0_dp
+            !
+            do m = -l, l
+            do mp= -l, l
+                if (m.eq.0) then
+                   if (m.eq. mp) B(m,mp) = 1.0_dp
+                elseif (m.gt.0) then
+                   if (m.eq. mp) B(m,mp) = -cmplx_i/sqrt(2.0_dp)
+                   if (m.eq.-mp) B(m,mp) = +cmplx_i/sqrt(2.0_dp) * (-1.0_dp)**m
+                elseif (m.lt.0) then
+                   if (m.eq. mp) B(m,mp) =   1.0_dp/sqrt(2.0_dp) * (-1.0_dp)**m
+                   if (m.eq.-mp) B(m,mp) =   1.0_dp/sqrt(2.0_dp)
+                endif
+            enddo
+            enddo
+            !
+        end function   tesseral
+    end function   SO3
+
+    pure function  SO3_character(l,th) result(chi)
+        !
+        ! Character of rotation irrep, th [radians] about any arbitrary angle, l azimuthal quantum
+        ! number.
+        !       
+        ! T. Wolfram and Ş. Ellialtıoğlu, Applications of Group Theory to Atoms, Molecules, and
+        ! Solids, 1 edition (Cambridge University Press, Cambridge, 2014), p 74, Eq. 3.20.
+        !
+        implicit none
+        !
+        integer , intent(in) :: l
+        real(dp), intent(in) :: th
+        real(dp) :: chi
+        !
+        chi = sin( (l+0.5_dp)*th ) / sin( th*0.5_dp )
+        !
+    end function   SO3_character
+
+    function       SO3_rotations(azimuthal,th,phi,is_spin_polarized) result(R)
+        !
+        implicit none
+        !
+        integer , intent(in) :: azimuthal(:)
+        real(dp), intent(in) :: th,phi
+        logical , intent(in) :: is_spin_polarized
+        real(dp), allocatable :: R(:,:)
+        integer , allocatable :: l_start(:)
+        integer , allocatable :: l_end(:)
+        integer :: i, n, m
+        !
+        m = size(azimuthal)
+        !
+        allocate(l_start(m))
+        allocate(l_end(m))
+        !
+        n = 0
+        do i = 1,m
+            l_start(i) = n + 1
+            n = n + 2*azimuthal(i)+1
+            l_end(i) = n
+        enddo
+        !
+        allocate(R(n,n))
+        R = 0.0_dp
+        !
+        ! construct a direct sum of rotations
+        do i = 1, m
+            R(l_start(i):l_end(i),l_start(i):l_end(i)) = SO3(l=azimuthal(i),alpha=0.0_dp,beta=th,gamma=phi)
+        enddo
+        !
+        if (is_spin_polarized) then
+            ! need to add something to account for the different spins. perhaps a kroner product of the R matrix obtained above and the corresponding rotations using the pauling spin matrices?
+            call am_print('ERROR','spin polarized is not yet supported.')
+            stop
+        endif
+        !
+    end function   SO3_rotations
+
+    subroutine     test_SO3_1(passed)
+        !
+        implicit none
+        !
+        logical :: passed
+        integer :: l
+        real(dp) :: euler(3)
+        real(dp), allocatable :: R(:,:)
+        real(dp) :: X(3,3), Z(3,3), Y(3,3)
+        !
+        !
+        euler = real([30, 50, 25],dp)*pi/180.0_dp
+        !
+        call am_print('alpha,beta,gamma',euler*180.0_dp/pi)
+        !
+        l = 1
+        !
+        R = SO3(l=l,alpha=euler(1),beta=euler(2),gamma=euler(3))
+        !
+        ! R is equivalent to first rotating around Y (away from Z) and then around Z
+        X = axis_angle2rot([1.0_dp, 0.0_dp, 0.0_dp, euler(1)]) ! rot around X
+        Y = axis_angle2rot([0.0_dp, 1.0_dp, 0.0_dp, euler(2)]) ! rot around Y
+        Z = axis_angle2rot([0.0_dp, 0.0_dp, 1.0_dp, euler(3)]) ! rot around Z
+        call am_print('X',X)
+        call am_print('Y',Y)
+        call am_print('Z',Z)
+        call am_print('X*Y*Z-R',R-matmul(X,matmul(Y,Z)))
+        !
+        if (all(abs(R-matmul(X,matmul(Y,Z))).lt.tiny)) then 
+            passed = .true.
+        else
+            passed = .false.
+        endif
+        !
+    end subroutine test_SO3_1
+
+    subroutine     test_SO3_2(passed)
+        !
+        implicit none
+        !
+        logical :: passed
+        integer :: l
+        real(dp) :: euler(3), dcosines(3), vec(3)
+        real(dp), allocatable :: R(:,:)
+        real(dp) :: X(3,3), Z(3,3), Y(3,3)
+        !
+        !         vec = real([3.0,2.0,1.0],dp)
+        !         !
+        !         dcosines = vec2dcosines(vec)
+        !         !
+        !         theta_phi = dcosines2thetaphi(dcosines)
+        !         !
+        !         call am_print('vec',vec)
+        !         call am_print('dcosines',dcosines)
+        !
+        euler = real([30, 50, 25],dp)*pi/180.0_dp
+        !
+        call am_print('alpha,beta,gamma',euler*180.0_dp/pi)
+        !
+        l = 1
+        !
+        R = SO3(l=l,alpha=euler(1),beta=euler(2),gamma=euler(3))
+!         call am_print('R',R)
+        !
+        ! R is equivalent to first rotating around Y (away from Z) and then around Z
+        X = axis_angle2rot([1.0_dp, 0.0_dp, 0.0_dp, euler(1)]) ! rot around X
+        Y = axis_angle2rot([0.0_dp, 1.0_dp, 0.0_dp, euler(2)]) ! rot around Y
+        Z = axis_angle2rot([0.0_dp, 0.0_dp, 1.0_dp, euler(3)]) ! rot around Z
+        call am_print('X',X)
+        call am_print('Y',Y)
+        call am_print('Z',Z)
+        call am_print('X*Y*Z-R',R-matmul(X,matmul(Y,Z)))
+        !
+        if (all(abs(R-matmul(X,matmul(Y,Z))).lt.tiny)) then 
+            passed = .true.
+        else
+            passed = .false.
+        endif
+        !
+    end subroutine test_SO3_2
 
     ! procedures which create representations
 

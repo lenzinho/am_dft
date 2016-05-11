@@ -920,7 +920,7 @@ module am_matlab
         real(dp), intent(in) :: A(:,:)
         real(dp), intent(in) :: B(:,:)
         real(dp), allocatable :: C(:,:)
-        integer :: Am, An, Bm, Bn, i, j
+        integer :: Am, An, Bm, Bn
         !
         Am = size(A,1)
         An = size(A,2)
