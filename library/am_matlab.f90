@@ -31,10 +31,6 @@ module am_matlab
     end interface ! meshgrid
     
     contains
-
-    !
-    ! matlab-inspired functions
-    !
     
     ! rotation functions
 
@@ -52,18 +48,27 @@ module am_matlab
         endif
     end function  vec2dcosines
 
-    pure function dcosines2thetaphi(dcosines) result(theta_phi)
-        ! th is polar angle (measured from z axis)
-        ! phi is azimulthal angle (around z axis)
+    pure function dcosines2euler(dcosines) result(euler)
+        !
+        ! returns the euler angles which correspond to the rotation which alignes the dcosines vector with z 
+        !
+        ! R = X(alpha) * Y(beta) * Z(gamma)
+        ! euler = [alpha, beta, gamma]
+        !
         implicit none
         !
         real(dp), intent(in) :: dcosines(3)
-        real(dp) :: theta_phi(2)
+        real(dp) :: euler(3)
+        ! 
         !
-        theta_phi(1) = acos(dcosines(3))
-        theta_phi(2) = atan(dcosines(2)/(dcosines(1)+1.0D-14))
+        ! angle is not used in spherical coordinates
+        euler(1) = 0.0_dp
+        ! phi  (azimuthal angle) in spherical coordinates
+        euler(2) = atan(dcosines(2)/dcosines(1)+1.0D-14)
+        ! theta (polar angle) in spherical coordinates
+        euler(3) = acos(dcosines(3))
         !
-    end function  dcosines2thetaphi
+    end function  dcosines2euler
 
     pure function rot2axis_angle(R) result(aa)
         !
@@ -95,6 +100,7 @@ module am_matlab
             aa(1:3) = axis
             aa(4)   = phi
         endif
+        !
     end function  rot2axis_angle
 
     pure function axis_angle2rot(aa) result(R)
@@ -125,38 +131,38 @@ module am_matlab
         !
     end function  axis_angle2rot
 
-    pure function rotmat(a,b) result(R)
+    pure function rotmat(A,B) result(R)
         !
-        ! Rotation matrix R which aligns unit vector (Ra) to unit vector b (that is, B = R*A)
+        ! Rotation matrix R which aligns unit vector A to unit vector B: B = rotmat(A,B) * A
         !
         ! based on Rodrigues' Rotation Formula
         ! "A Mathematical Introduction to Robotic Manipulation", Richard M. Murray, Zexiang Li, S. Shankar Sastry, pp. 26-28
         !
         ! % quick matlab implementation:
-        ! a = rand(3,1); a=a./norm(a);
-        ! b = rand(3,1); b=b./norm(a);
-        ! v = cross(a,b);
+        ! A = rand(3,1); A=A./norm(A);
+        ! B = rand(3,1); B=B./norm(A);
+        ! v = cross(A,B);
         ! s = norm(v);
-        ! c = dot(a,b);
+        ! c = dot(A,B);
         ! vx(1:3,1) = [0.0,v(3),-v(2)];
         ! vx(1:3,2) = [-v(3),0.0,v(1)];
         ! vx(1:3,3) = [v(2),-v(1),0.0];
         ! R = eye(3) + vx + (vx*vx)*(1.0-c)/(s.^2)
-        ! R*a-b
+        ! R*A-B
         !
         implicit none
         !
-        real(dp), intent(in) :: a(3)
-        real(dp), intent(in) :: b(3)
+        real(dp), intent(in) :: A(3)
+        real(dp), intent(in) :: B(3)
         real(dp) :: R(3,3)
         real(dp) :: s ! sine of angle
         real(dp) :: c ! cosine of angle
-        real(dp) :: v(3) ! cross product of a and b
+        real(dp) :: v(3) ! cross product of A and B
         real(dp) :: vx(3,3) ! skew symmetric cross product of v
         ! 
-        v = cross_product(a,b)
+        v = cross_product(A,B)
         s = norm2(v)
-        c = dot_product(a,b)
+        c = dot_product(A,B)
         vx(1:3,1) = [0.0_dp,v(3),-v(2)]
         vx(1:3,2) = [-v(3),0.0_dp,v(1)]
         vx(1:3,3) = [v(2),-v(1),0.0_dp]
@@ -164,6 +170,48 @@ module am_matlab
         R = eye(3) + vx + matmul(vx,vx)*(1.0_dp - c)/(s**2)
         !
     end function  rotmat
+
+    pure function euler2rot(euler) result(R)
+        !
+        ! Tait–Bryan "pitch-roll-yaw" convetion
+        ! R = X(alpha) * Y(beta) * Z(gamma)
+        ! euler = [alpha, beta, gamma]
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: euler(3)
+        real(dp) :: X(3,3), Z(3,3), Y(3,3)
+        real(dp) :: R(3,3)
+        !
+        X = axis_angle2rot([1.0_dp, 0.0_dp, 0.0_dp, euler(1)]) ! rot around X
+        Y = axis_angle2rot([0.0_dp, 1.0_dp, 0.0_dp, euler(2)]) ! rot around Y
+        Z = axis_angle2rot([0.0_dp, 0.0_dp, 1.0_dp, euler(3)]) ! rot around Z
+        !
+        R = matmul(X,matmul(Y,Z))
+        !
+    end function  euler2rot
+
+    pure function rot2euler(R) result(euler)
+        !
+        ! Tait–Bryan "pitch-roll-yaw" convetion
+        ! R = X(alpha) * Y(beta) * Z(gamma)
+        ! euler = [alpha, beta, gamma]
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: R(3,3)
+        real(dp) :: euler(3)
+        integer :: i,j,k
+        !
+        i = 1
+        j = 2
+        k = 3
+        !
+        euler(k) = atan2( R(i,j), R(i,i))
+        euler(j) = atan2(-R(i,k), sqrt(R(i,j)**j+R(i,i)**j))
+        euler(i) = atan2( R(j,k), R(k,k))
+        !
+    end function  rot2euler
 
     ! special functions
 
@@ -636,7 +684,7 @@ module am_matlab
         !
     end function  linspace_integer
 
-    ! matrix functions
+    ! matrix properties
 
     pure function adjoint(A)
         !
@@ -664,6 +712,53 @@ module am_matlab
         enddo
         !
     end function  trace
+
+    pure subroutine rref(matrix)
+        !
+        ! note: algorithm on roseta code is broken.
+        ! this has been fixed by:
+        ! 1) changed: "(n.lt.pivot)" and "(pivot.gt.n)"
+        ! 2) changed: "(i.gt.m)"
+        !
+        implicit none
+        !
+        real(dp), intent(inout) :: matrix(:,:)
+        real(dp), allocatable :: temp(:)
+        integer :: pivot, m, n
+        integer :: r, i
+        !
+        pivot = 1
+        m=size(matrix,1)
+        n=size(matrix,2)
+        !
+        allocate(temp(n))
+        !
+        do r = 1, m
+        if (n.lt.pivot) exit
+        i = r
+        do while (abs(matrix(i,pivot)).lt.tiny)
+            i=i+1
+            if (i.gt.m) then
+                i=r
+                pivot=pivot+1
+                if (pivot.gt.n) return
+            end if
+        end do
+        ! swap rows i and r
+        temp = matrix(i,:)
+        matrix(i,:) = matrix(r,:)
+        matrix(r,:) = temp
+        !
+        matrix(r,:) = matrix(r,:)/matrix(r,pivot)
+        do i = 1, m
+            if (i.ne.r) matrix(i,:)=matrix(i,:)-matrix(r,:)*matrix(i,pivot)
+        end do
+        pivot = pivot + 1
+        end do
+        deallocate(temp)
+    end subroutine  rref    
+
+    ! matrix generation
 
     pure function ddiag1(M,j) result(d)
         !
@@ -865,6 +960,62 @@ module am_matlab
         !
     end function  zdiag2
 
+    pure function eye(n)
+        !> nxn identity matrix
+        implicit none
+        !
+        integer, intent(in) :: n
+        real(dp), dimension(:,:), allocatable :: eye
+        integer :: i
+        !
+        allocate(eye(n,n))
+        eye=0.0_dp
+        do i = 1, n
+            eye(i,i) = 1.0_dp
+        enddo
+    end function  eye
+
+    pure function eye_nxm(n) result(id)
+        !> nxm identity matrix
+        implicit none
+        !
+        integer, intent(in) :: n(2)
+        real(dp), dimension(:,:), allocatable :: id
+        integer :: i
+        !
+        allocate(id(n(1),n(2)))
+        id=0.0_dp
+        do i = 1, minval(n)
+            id(i,i) = 1.0_dp
+        enddo
+    end function  eye_nxm
+
+    pure function ones(n)
+        !> nxn identity matrix
+        implicit none
+        !
+        integer, intent(in) :: n
+        real(dp), dimension(:,:), allocatable :: ones
+        !
+        allocate(ones(n,n))
+        ones=1.0_dp
+        !
+    end function  ones
+
+    pure function ones_nxm(n) result(M)
+        !> nxn identity matrix
+        implicit none
+        !
+        integer, intent(in) :: n(2)
+        real(dp), dimension(:,:), allocatable :: M
+        !
+        allocate(M(n(1),n(2)))
+        M=1.0_dp
+        !
+    end function  ones_nxm
+
+    ! matrix-matrix operations
+
     pure function kron(A,B) result(C)
         ! kronecker product
         implicit none
@@ -935,105 +1086,6 @@ module am_matlab
         C(An+1:Bn,Am+1:Bm) = B
         !
     end function  direct_sum
-
-    pure function eye(n)
-        !> nxn identity matrix
-        implicit none
-        !
-        integer, intent(in) :: n
-        real(dp), dimension(:,:), allocatable :: eye
-        integer :: i
-        !
-        allocate(eye(n,n))
-        eye=0.0_dp
-        do i = 1, n
-            eye(i,i) = 1.0_dp
-        enddo
-    end function  eye
-
-    pure function eye_nxm(n) result(id)
-        !> nxm identity matrix
-        implicit none
-        !
-        integer, intent(in) :: n(2)
-        real(dp), dimension(:,:), allocatable :: id
-        integer :: i
-        !
-        allocate(id(n(1),n(2)))
-        id=0.0_dp
-        do i = 1, minval(n)
-            id(i,i) = 1.0_dp
-        enddo
-    end function  eye_nxm
-
-    pure function ones(n)
-        !> nxn identity matrix
-        implicit none
-        !
-        integer, intent(in) :: n
-        real(dp), dimension(:,:), allocatable :: ones
-        !
-        allocate(ones(n,n))
-        ones=1.0_dp
-        !
-    end function  ones
-
-    pure function ones_nxm(n) result(M)
-        !> nxn identity matrix
-        implicit none
-        !
-        integer, intent(in) :: n(2)
-        real(dp), dimension(:,:), allocatable :: M
-        !
-        allocate(M(n(1),n(2)))
-        M=1.0_dp
-        !
-    end function  ones_nxm
-
-    pure subroutine rref(matrix)
-        !
-        ! note: algorithm on roseta code is broken.
-        ! this has been fixed by:
-        ! 1) changed: "(n.lt.pivot)" and "(pivot.gt.n)"
-        ! 2) changed: "(i.gt.m)"
-        !
-        implicit none
-        !
-        real(dp), intent(inout) :: matrix(:,:)
-        real(dp), allocatable :: temp(:)
-        integer :: pivot, m, n
-        integer :: r, i
-        !
-        pivot = 1
-        m=size(matrix,1)
-        n=size(matrix,2)
-        !
-        allocate(temp(n))
-        !
-        do r = 1, m
-        if (n.lt.pivot) exit
-        i = r
-        do while (abs(matrix(i,pivot)).lt.tiny)
-            i=i+1
-            if (i.gt.m) then
-                i=r
-                pivot=pivot+1
-                if (pivot.gt.n) return
-            end if
-        end do
-        ! swap rows i and r
-        temp = matrix(i,:)
-        matrix(i,:) = matrix(r,:)
-        matrix(r,:) = temp
-        !
-        matrix(r,:) = matrix(r,:)/matrix(r,pivot)
-        do i = 1, m
-            if (i.ne.r) matrix(i,:)=matrix(i,:)-matrix(r,:)*matrix(i,pivot)
-        end do
-        pivot = pivot + 1
-        end do
-        deallocate(temp)
-    end subroutine  rref    
 
     ! unique
 

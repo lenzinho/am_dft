@@ -14,8 +14,6 @@ module am_tight_binding
 
 	private
     
-    public :: test_SO3
-
 	type, public :: am_class_tb
 		!
 		! matrix elements

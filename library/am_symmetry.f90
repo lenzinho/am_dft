@@ -9,10 +9,7 @@ module am_symmetry
     implicit none
 
     private
-
-    public :: test_SO3_1
-    public :: test_SO3_2
-
+    
     public :: determine_symmetry
     public :: get_kpoint_compatible_symmetries
     public :: ps_frac2cart
@@ -20,6 +17,9 @@ module am_symmetry
     public :: member
     public :: nelements
     public :: decode_pointgroup
+    
+    public :: euler2SO3
+    public :: rot2SO3
 
     public :: rep_permutation ! for: get_irreducible
     public :: map_permutation ! for: get_irreducible
@@ -51,7 +51,7 @@ module am_symmetry
         procedure :: determine_character_table
         procedure :: symmetry_action
     end type am_class_symmetry
-
+    
 contains
 
     ! functions which operate on R(3,3) in fractional coordinates
@@ -931,12 +931,11 @@ contains
         real(dp), allocatable :: aa(:,:)
         integer  :: fid
         character(10) :: buffer
-        integer :: i,j,k,m ! loop variables
+        integer :: i,j,k ! loop variables
         character(:), allocatable :: xyz(:) ! basis functions output
         character(1) :: s ! sign 
         real(dp) :: voigt(6) ! voigt notation
-        real(dp) :: R(3,3)  ! used for basis functions output
-        real(dp) :: RR(9,9) ! used for basis functions output
+        real(dp), allocatable :: R(:,:) ! used for basis functions output
         character(10) :: fmt1
         character(10) :: fmt2
         character(10) :: fmt3
@@ -1014,9 +1013,9 @@ contains
                 ! POINT-SYMMETRY ROTATION AXIS
                 allocate(character(1)::xyz(3))
                 i=0
-                i = i + 1; xyz(i)='x'
-                i = i + 1; xyz(i)='y'
-                i = i + 1; xyz(i)='z'
+                i=i+1; xyz(i)='x'
+                i=i+1; xyz(i)='y'
+                i=i+1; xyz(i)='z'
                 do j = 1,3
                 write(fid,'(5x)',advance='no')
                 write(fid,fmt1,advance='no') 'ax_'//trim(xyz(j))
@@ -1058,18 +1057,18 @@ contains
                     write(fid,*)
                 enddo
                 endif
-                ! ACTION TABLE (BASIS FUNCTIONS FOR P ORBITALS)
+                ! ACTION TABLE (AXES)
                 write(fid,'(5x)',advance='no')
-                write(fid,fmt1,advance='no') 'p orbs.'
+                write(fid,fmt1,advance='no') 'axes'
                 do i = 1, sg%nsyms
                     write(fid,fmt3,advance='no') ' '//repeat('-',9)
                 enddo
                 write(fid,*)
                 allocate(character(1)::xyz(3))
                 i=0
-                i = i + 1; xyz(i)='x'
-                i = i + 1; xyz(i)='y'
-                i = i + 1; xyz(i)='z'
+                i=i+1; xyz(i)='x'
+                i=i+1; xyz(i)='y'
+                i=i+1; xyz(i)='z'
                 do j = 1,3
                     write(fid,'(5x)',advance='no')
                     write(fid,fmt1,advance='no') trim(xyz(j))
@@ -1097,6 +1096,51 @@ contains
                     write(fid,*)
                 enddo
                 deallocate(xyz)
+                ! ACTION TABLE (BASIS FUNCTIONS FOR P ORBITALS)
+                write(fid,'(5x)',advance='no')
+                write(fid,fmt1,advance='no') 'p orbs.'
+                do i = 1, sg%nsyms
+                    write(fid,fmt3,advance='no') ' '//repeat('-',9)
+                enddo
+                write(fid,*)
+                allocate(character(1)::xyz(3))
+                i=0
+                i=i+1; xyz(i)='x'
+                i=i+1; xyz(i)='y'
+                i=i+1; xyz(i)='z'
+                do j = 1, size(xyz)
+                    write(fid,'(5x)',advance='no')
+                    write(fid,fmt1,advance='no') trim(xyz(j))
+                    do i = 1, sg%nsyms
+                        ! inverse here because f(Rr) = R^-1 * f(r)
+                        ! for fractional R; its elements will always be an integer...
+                        R = rot2SO3(l=1,R=sg%R(:,:,i))
+                        if (any(abs(R-sg%R(:,:,i)).gt.tiny)) then
+                            call am_print('sg%R(:,:,i)',sg%R(:,:,i))
+                            call am_print('R',R)
+                            call am_print('R',R-sg%R(:,:,i))
+                            stop
+                        endif
+                        ! if statement are for the cases in which output needs to be trimmed
+                        if (count(abs(R(j,:)).gt.tiny).gt.3) then
+                            buffer=' ... ' 
+                        else
+                            buffer=''
+                            do k = 1, size(xyz)
+                                if (abs(R(j,k)).gt.tiny) then
+                                    ! s is only the sign
+                                    s = trim(int2char(nint(R(j,k)),'SP'))
+                                    !
+                                    buffer = trim(buffer)//trim(s)//trim(xyz(k))
+                                    !
+                                endif
+                            enddo
+                        endif
+                        write(fid,fmt3,advance='no') trim(buffer)
+                    enddo
+                    write(fid,*)
+                enddo
+                deallocate(xyz)
                 ! ACTION TABLE (BASIS FUNCTIONS FOR D ORBITALS)
                 write(fid,'(5x)',advance='no')
                 write(fid,fmt1,advance='no') 'd orbs.'
@@ -1104,37 +1148,29 @@ contains
                     write(fid,fmt3,advance='no') ' '//repeat('-',9)
                 enddo
                 write(fid,*)
-                allocate(character(2)::xyz(9))
+                allocate(character(2)::xyz(5))
                 i=0
-                i = i + 1; xyz(i)='xx' ! 1,1 - unique functions
-                i = i + 1; xyz(i)='xy' ! 4,2
-                i = i + 1; xyz(i)='xz' ! 5,3
-                i = i + 1; xyz(i)='yx' ! 
-                i = i + 1; xyz(i)='yy' ! 2,5
-                i = i + 1; xyz(i)='yz' ! 6,6
-                i = i + 1; xyz(i)='xz' ! 
-                i = i + 1; xyz(i)='yz' ! 
-                i = i + 1; xyz(i)='zz' ! 3,9
-                voigt=[1,5,9,2,3,6]
-                do m = 1,9
-                    ! alternatively, can loop over m = 1,6 and set j = voigt(m)
-                    j = m
+                i=i+1; xyz(i)='xx'
+                i=i+1; xyz(i)='xy'
+                i=i+1; xyz(i)='yy'
+                i=i+1; xyz(i)='yz'
+                i=i+1; xyz(i)='zz'
+                do j = 1,5
                     write(fid,'(5x)',advance='no')
                     write(fid,fmt1,advance='no') trim(xyz(j))
                     do i = 1, sg%nsyms
                         ! inverse here because f(Rr) = R^-1 * f(r)
                         ! for fractional R; its elements will always be an integer...
-                        R=inv(sg%R(:,:,i))
-                        RR=kron(R,R)
+                        R = rot2SO3(l=1,R=sg%R(:,:,i))
                         ! if statement are for the cases in which output needs to be trimmed
-                        if (count(abs(RR(j,:)).gt.tiny).gt.3) then
+                        if (count(abs(R(j,:)).gt.tiny).gt.3) then
                             buffer=' ... ' 
                         else
                             buffer=''
-                            do k = 1,9
-                                if (abs(RR(j,k)).gt.tiny) then
+                            do k = 1,5
+                                if (abs(R(j,k)).gt.tiny) then
                                     ! s is only the sign
-                                    s = trim(int2char(nint(RR(j,k)),'SP'))
+                                    s = trim(int2char(nint(R(j,k)),'SP'))
                                     !
                                     buffer = trim(buffer)//trim(s)//trim(xyz(k))
                                     !
@@ -1426,9 +1462,9 @@ contains
 
     ! SO3 irreducible representation of 3D rotation group
 
-    function       SO3(l,alpha,beta,gamma) result(R)
+    function       euler2SO3(l,euler) result(SO3)
         !
-        ! setup rotation matrices
+        ! setup rotation matrices, "pitch-roll-yaw" convetion
         ! alpha (           around X)
         ! beta  (polar,     around Y)
         ! gamma (azimuthal, around Z)
@@ -1452,11 +1488,9 @@ contains
         implicit none
         !
         integer , intent(in) :: l
-        real(dp), intent(in) :: alpha ! around X
-        real(dp), intent(in) :: beta  ! around Y
-        real(dp), intent(in) :: gamma ! around Z
+        real(dp), intent(in) :: euler(3) ! around X, Y, Z
         integer :: n
-        real(dp)   , allocatable :: R(:,:) ! tesseral harmonics rotation matrix, (2*l+1) x (2*l+1) irrep of rotation in 3 dimensional space
+        real(dp)   , allocatable :: SO3(:,:) ! tesseral harmonics rotation matrix, (2*l+1) x (2*l+1) irrep of rotation in 3 dimensional space
         complex(dp), allocatable :: V(:,:) ! eigenvector of Lz/Lx in Ly basis
         real(dp)   , allocatable :: D(:)   ! eigenvalues of Lz/Lx in Ly basis = -l, -l+1, ... -1, 0, 1, ... l-1, l  -- Note: Lz/Lx are Hermitian.
         complex(dp), allocatable :: A(:,:) ! matrix corresponding to exp(-i*alpha*Ly)
@@ -1477,23 +1511,23 @@ contains
         ! determine rotation around X = real( (B*V)*A*(B*V)' )
         call am_zheev(A=Lx(l),V=V,D=D)
         H = matmul(C,V)
-        A = diag(exp(-cmplx_i*alpha*D))
+        A = diag(exp(-cmplx_i*euler(1)*D))
         X = matmul(H,matmul(A,adjoint(H)))
         !
         ! determine rotation around Y = real( B*P*B' )
         allocate(Y(n,n))
-        B = diag(exp( cmplx_i*beta*D))
+        B = diag(exp( cmplx_i*euler(2)*D))
         Y = matmul(C,matmul(B,adjoint(C)))
         !
         ! determine rotation around Z = real( (B*V)*T*(B*V)' )
         call am_zheev(A=Lz(l),V=V,D=D)
         H = matmul(C,V)
-        G = diag(exp( cmplx_i*gamma*D))
+        G = diag(exp( cmplx_i*euler(3)*D))
         Z = matmul(H,matmul(G,adjoint(H)))
         !
         ! generate rotation
-        allocate(R(n,n))
-        R = matmul(X,matmul(Y,Z))
+        allocate(SO3(n,n))
+        SO3 = matmul(X,matmul(Y,Z))
         !
         contains
         pure function  Lz(l)
@@ -1619,7 +1653,22 @@ contains
             enddo
             !
         end function   tesseral
-    end function   SO3
+    end function   euler2SO3
+
+    function       rot2SO3(l,R) result(SO3)
+        !
+        implicit none
+        !
+        integer, intent(in) :: l
+        real(dp), intent(in) :: R(3,3)
+        real(dp), allocatable :: SO3(:,:)
+        real(dp) :: d !det
+        !
+        d = det(R)
+        ! convert rotoinversion to pure rotation then back to rotoinversion
+        SO3 = euler2SO3(l=l,euler=rot2euler(R*d)) * d
+        !
+    end function   rot2SO3
 
     pure function  SO3_character(l,th) result(chi)
         !
@@ -1668,7 +1717,7 @@ contains
         !
         ! construct a direct sum of rotations
         do i = 1, m
-            R(l_start(i):l_end(i),l_start(i):l_end(i)) = SO3(l=azimuthal(i),alpha=0.0_dp,beta=th,gamma=phi)
+            R(l_start(i):l_end(i),l_start(i):l_end(i)) = euler2SO3(l=azimuthal(i),euler=[0.0_dp,th,phi])
         enddo
         !
         if (is_spin_polarized) then
@@ -1678,88 +1727,7 @@ contains
         endif
         !
     end function   SO3_rotations
-
-    subroutine     test_SO3_1(passed)
-        !
-        implicit none
-        !
-        logical :: passed
-        integer :: l
-        real(dp) :: euler(3)
-        real(dp), allocatable :: R(:,:)
-        real(dp) :: X(3,3), Z(3,3), Y(3,3)
-        !
-        !
-        euler = real([30, 50, 25],dp)*pi/180.0_dp
-        !
-        call am_print('alpha,beta,gamma',euler*180.0_dp/pi)
-        !
-        l = 1
-        !
-        R = SO3(l=l,alpha=euler(1),beta=euler(2),gamma=euler(3))
-        !
-        ! R is equivalent to first rotating around Y (away from Z) and then around Z
-        X = axis_angle2rot([1.0_dp, 0.0_dp, 0.0_dp, euler(1)]) ! rot around X
-        Y = axis_angle2rot([0.0_dp, 1.0_dp, 0.0_dp, euler(2)]) ! rot around Y
-        Z = axis_angle2rot([0.0_dp, 0.0_dp, 1.0_dp, euler(3)]) ! rot around Z
-        call am_print('X',X)
-        call am_print('Y',Y)
-        call am_print('Z',Z)
-        call am_print('X*Y*Z-R',R-matmul(X,matmul(Y,Z)))
-        !
-        if (all(abs(R-matmul(X,matmul(Y,Z))).lt.tiny)) then 
-            passed = .true.
-        else
-            passed = .false.
-        endif
-        !
-    end subroutine test_SO3_1
-
-    subroutine     test_SO3_2(passed)
-        !
-        implicit none
-        !
-        logical :: passed
-        integer :: l
-        real(dp) :: euler(3), dcosines(3), vec(3)
-        real(dp), allocatable :: R(:,:)
-        real(dp) :: X(3,3), Z(3,3), Y(3,3)
-        !
-        !         vec = real([3.0,2.0,1.0],dp)
-        !         !
-        !         dcosines = vec2dcosines(vec)
-        !         !
-        !         theta_phi = dcosines2thetaphi(dcosines)
-        !         !
-        !         call am_print('vec',vec)
-        !         call am_print('dcosines',dcosines)
-        !
-        euler = real([30, 50, 25],dp)*pi/180.0_dp
-        !
-        call am_print('alpha,beta,gamma',euler*180.0_dp/pi)
-        !
-        l = 1
-        !
-        R = SO3(l=l,alpha=euler(1),beta=euler(2),gamma=euler(3))
-!         call am_print('R',R)
-        !
-        ! R is equivalent to first rotating around Y (away from Z) and then around Z
-        X = axis_angle2rot([1.0_dp, 0.0_dp, 0.0_dp, euler(1)]) ! rot around X
-        Y = axis_angle2rot([0.0_dp, 1.0_dp, 0.0_dp, euler(2)]) ! rot around Y
-        Z = axis_angle2rot([0.0_dp, 0.0_dp, 1.0_dp, euler(3)]) ! rot around Z
-        call am_print('X',X)
-        call am_print('Y',Y)
-        call am_print('Z',Z)
-        call am_print('X*Y*Z-R',R-matmul(X,matmul(Y,Z)))
-        !
-        if (all(abs(R-matmul(X,matmul(Y,Z))).lt.tiny)) then 
-            passed = .true.
-        else
-            passed = .false.
-        endif
-        !
-    end subroutine test_SO3_2
-
+    
     ! procedures which create representations
 
     function       rep_seitz(R,T) result(seitz)
