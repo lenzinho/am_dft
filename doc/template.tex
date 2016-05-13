@@ -1,0 +1,133 @@
+\documentclass[preprint,showpacs,preprintnumbers,superscriptaddress,prb,floatfix,aps]{revtex4-1}
+% \documentclass[twocolumn,showpacs,preprintnumbers,superscriptaddress,prb,floatfix,aps,10pt]{revtex4-1}
+
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx,textcomp}
+\usepackage{physics} % bra-ket
+\usepackage{epstopdf}
+\usepackage{subfigure}
+\usepackage{xfrac} % nice frac
+
+\usepackage[version=3]{mhchem}
+\usepackage{siunitx}
+\sisetup{
+  separate-uncertainty,
+  output-open-uncertainty=[
+}
+
+\usepackage{xcolor}
+\definecolor{abm}{RGB}{190,220,170}
+\usepackage{todonotes}
+%
+\newcommand{\abm}[1]{\textcolor{orange}{ \bf [Antonio: #1] }}
+\renewcommand{\vec}[1]{\ensuremath{\mathbf{#1}}}
+
+
+\begin{document}
+
+\title{Anomalous temperature-dependent thermal conductivity in VN}
+
+\author{A. B. Mei}
+\affiliation{Department of Materials Science and the Materials Research Laboratory
+University of Illinois, 104 South Goodwin, Urbana, IL 61801}
+
+\author{A. Rockett}
+\affiliation{Department of Materials Science and the Materials Research Laboratory
+University of Illinois, 104 South Goodwin, Urbana, IL 61801}
+
+\author{L. Hultman}
+\affiliation{Department of Physics, Chemistry and Biology (IFM), Link\"oping University, SE-581 83, Link\"oping, Sweden.}
+
+\author{I. Petrov}
+\affiliation{Department of Materials Science and the Materials Research Laboratory
+University of Illinois, 104 South Goodwin, Urbana, IL 61801}
+\affiliation{Department of Physics, Chemistry and Biology (IFM), Link\"oping University, SE-581 83, Link\"oping, Sweden.}
+
+\author{J. E. Greene}
+\affiliation{Department of Materials Science and the Materials Research Laboratory
+University of Illinois, 104 South Goodwin, Urbana, IL 61801}
+\affiliation{Department of Physics, Chemistry and Biology (IFM), Link\"oping University, SE-581 83, Link\"oping, Sweden.}
+
+
+%\email{olhel@ifm.liu.se}
+
+\begin{abstract}
+...
+\end{abstract}
+
+\maketitle
+
+
+
+
+
+
+
+
+\section{Acknowledgements}
+
+\bibliography{library}
+
+\clearpage
+
+\appendix
+
+%\section{Film growth and characterization}
+
+\section{Theoretical procedures}
+
+$(2l+1)$ by $(2l+1)$ irreducible representation of the special orthogonal group in three-dimensions SO(3) are obtained from Tait Bryan angles $\theta$, $\phi$, and $\gamma$, corresponding to rotations around $\hat{z}$, $\hat{y}$, and $\hat{x}$ axes, via:\cite{martin_electronic_2004}
+\begin{equation}
+\label{eq:imselfenergy}
+% Shankar p 333, Exercise 12.5.7
+% In the book, Euler angles are used. Here, I use Tait Bryan angles
+D^{(l)}(\alpha,\beta,\gamma) = \bra{j',m'} e^{-i\theta\hat{J}_x/\hbar} e^{-i\phi\hat{J}_y/\hbar} e^{-i\gamma\hat{J}_z/\hbar} \ket{j,m}
+\end{equation}
+$\hat{L}_i$ are angular momenta operator corresponding to rotations around axis $i$. With respect to the $\hat{L}_y$ basis, the matrix elements are:\cite{shankar_fundamentals_2014}
+\begin{align}
+\label{eq:angular_momenta}
+% x y z <- z x y
+% Shankar p 327-328, Eq. 12.5.21a-b
+\hat{J}_x & = \hbar \bra{j',m'} \frac{J_{+}-J_{-}}{2i} \ket{j,m} \\
+\hat{J}_y & = m \hbar \braket{j',m'}{j,m} \\
+\hat{J}_z & = \hbar \bra{j',m'} \frac{J_{+}+J_{-}}{2} \ket{j,m}
+\end{align}
+with raising ($+$) and lowering ($-$) operators:
+\begin{equation}
+\label{eq:raising_lowering_operator}
+% Shankar p 327, Eq. 12.5.20
+J_{\pm}\ket{j,m} = \sqrt{(j\mp m)(j\pm m+1)}\ket{j,m\pm1}.
+\end{equation}
+The inclusion of improper rotations, i.e. rotations followed by inversion,\cite{el-batanouny_symmetry_2008}
+\begin{equation}
+\label{eq:improper_rotation}
+% Wooten p 604 bottom, under Eq. 14.164
+(-1)^{l} D^{(l)}(\alpha,\beta,\gamma)
+\end{equation}
+yields the complete three-dimensional orthogonal group O(3).
+
+
+\section{Calculation of Tait Bryan angles from rotational matrices}
+
+Tait Bryan angles $\theta$, $\phi$, and $\gamma$, corresponding to rotations around $\hat{z}$, $\hat{y}$, and $\hat{x}$ axes, are obtained from the rotational matrix:
+\begin{equation}
+\label{eq:rotation}
+R = R_x(\theta)R_y(\phi)R_z(\gamma)
+\end{equation}
+via the relationships:
+\begin{align}
+\label{eq:tait_bryan_angles}
+%i = 1; j = 2; k = 3
+%euler(i) = atan2(R(j,k),R(k,k))
+%euler(j) = atan2(-R(i,k),sqrt(R(i,i)**2+R(i,j)**2))
+%s=sin(euler(1)); c=cos(euler(1))
+%euler(k) = atan2(s*R(k,i)-c*R(j,i),c*R(j,j)-s*R(k,j))
+\theta & = \atan2\left(R_{23},R_{33}\right) \\
+\phi   & = \atan2\left(-R_{13},\sqrt{R_{11}^2+R_{12}^2}\right) \\
+\gamma & = \atan2\left(R_{31}\sin{\theta}-R_{21}\cos{\theta},R_{22}\cos{\theta}-R_{32}\sin{\theta}\right)
+\end{align}
+in which $\tan2$ is the four-quadrant arctangent function and $R_{ij}$ are the elements corresponding to row i and column j of R.
+
+
+\end{document}
+
