@@ -418,7 +418,6 @@ contains
         type(am_class_options)  , intent(in) :: opts
         type(am_class_options) :: notalk
         real(dp), allocatable  :: seitz(:,:,:)
-        type(am_class_symmetry) :: sg_cart
         !
         notalk=opts
         notalk%verbosity = 0
@@ -447,12 +446,8 @@ contains
         ! name the (im-)proper part of space symmetry
         call sg%name_symmetries(opts=notalk)
         !
-        ! write action table
-        call sg%symmetry_action(uc=uc,flags='',iopt_fname='outfile.action_space_group',opts=opts)
-        !
-        ! write action table in coordinates
-        call sg_cart%frac2cart(sg_frac=sg,uc=uc)
-        call sg_cart%symmetry_action(uc=uc,flags='relax_pbc',iopt_fname='outfile.action_space_group_cart',opts=notalk)
+        ! write action table (converts everything into cartesian coordinates internally)
+        call sg%symmetry_action(uc=uc,flags='',iopt_fname='outfile.action_space_group',opts=notalk)
         !
         ! get character table
         call sg%determine_character_table(opts=opts)
@@ -916,10 +911,6 @@ contains
 
     subroutine     symmetry_action(sg,uc,flags,iopt_fname,opts)
         !
-        ! PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
-        ! 
-        ! flags = 'relax_pbc'
-        !
         implicit none
         !
         class(am_class_symmetry), intent(in) :: sg
@@ -927,6 +918,8 @@ contains
         type(am_class_options)  , intent(in) :: opts
         character(*)            , intent(in) :: flags ! if flags='relax_pbc', do not return atoms to primitive cell. if no matching atom is found, return index 0 for that orbit. 
         character(*), optional  , intent(in) :: iopt_fname
+        real(dp), allocatable :: R_cart(:,:,:)
+        real(dp), allocatable :: T_cart(:,:)
         integer,  allocatable :: PM(:,:)
         real(dp), allocatable :: aa(:,:)
         integer  :: fid
@@ -934,7 +927,6 @@ contains
         integer :: i,j,k ! loop variables
         character(:), allocatable :: xyz(:) ! basis functions output
         character(1) :: s ! sign 
-        real(dp) :: voigt(6) ! voigt notation
         real(dp), allocatable :: R(:,:) ! used for basis functions output
         character(10) :: fmt1
         character(10) :: fmt2
@@ -954,9 +946,16 @@ contains
         !
         PM = map_permutation( rep_permutation(sg=sg,tau=uc%tau,flags=flags,opts=opts) )
         !
+        allocate(R_cart(3,3,sg%nsyms))
+        allocate(T_cart(3,sg%nsyms))
+        do i = 1, sg%nsyms
+            R_cart(:,:,i) = ps_frac2cart(R_frac=sg%R(:,:,i),bas=uc%bas)
+            T_cart(:,i) = matmul(uc%bas,sg%T(:,i))
+        enddo
+        !
         allocate(aa(4,sg%nsyms))
         do i = 1,sg%nsyms
-            aa(1:4,i)=rot2axis_angle(R=sg%R(1:3,1:3,i))
+            aa(1:4,i)=rot2axis_angle(R=R_cart(:,:,i))
         enddo
         !
         if (present(iopt_fname)) then 
@@ -998,7 +997,7 @@ contains
                     write(fid,'(5x)',advance='no')
                     write(fid,fmt1,advance='no') adjustr('R'//trim(int2char(i))//trim(int2char(j)))
                     do k = 1, sg%nsyms
-                        write(fid,fmt4,advance='no') sg%R(i,j,k)
+                        write(fid,fmt4,advance='no') R_cart(i,j,k)
                     enddo
                     write(fid,*)
                 enddo
@@ -1036,7 +1035,7 @@ contains
                 write(fid,'(5x)',advance='no')
                 write(fid,fmt1,advance='no') 'inv'
                 do i = 1, sg%nsyms
-                    write(fid,fmt6,advance='no') (abs(det(sg%R(:,:,i))+1).lt.tiny)
+                    write(fid,fmt6,advance='no') (abs(det(R_cart(:,:,i))+1).lt.tiny)
                 enddo
                 write(fid,*)
                 ! HEADER / SEPERATOR
@@ -1047,12 +1046,12 @@ contains
                 enddo
                 write(fid,*)
                 ! TRANSLATIONAL COMPONENTS (FRAC)
-                if (allocated(sg%T)) then
+                if (allocated(T_cart)) then
                 do j = 1,3
                     write(fid,'(5x)',advance='no')
                     write(fid,fmt1,advance='no') adjustr('T'//trim(int2char(j)))
                     do i = 1, sg%nsyms
-                        write(fid,fmt4,advance='no') sg%T(j,i)
+                        write(fid,fmt4,advance='no') T_cart(j,i)
                     enddo
                     write(fid,*)
                 enddo
@@ -1075,7 +1074,7 @@ contains
                     do i = 1, sg%nsyms
                         ! inverse here because f(Rr) = R^-1 * f(r)
                         ! for fractional R; its elements will always be an integer...
-                        R=inv(sg%R(:,:,i))
+                        R=inv(R_cart(:,:,i))
                         ! if statement are for the cases in which output needs to be trimmed
                         if (count(abs(R(j,:)).gt.tiny).gt.3) then
                             buffer=' ... ' 
@@ -1112,14 +1111,13 @@ contains
                     write(fid,'(5x)',advance='no')
                     write(fid,fmt1,advance='no') trim(xyz(j))
                     do i = 1, sg%nsyms
-                        ! inverse here because f(Rr) = R^-1 * f(r)
-                        ! for fractional R; its elements will always be an integer...
-                        R = rot2O3(l=1,R=sg%R(:,:,i))
-                        if (any(abs(R-sg%R(:,:,i)).gt.tiny)) then
-                            call am_print('sg%R(:,:,i)',sg%R(:,:,i))
+                        !
+                        R = rot2O3(l=1,R=R_cart(:,:,i))
+                        !
+                        if (any(abs(R-R_cart(:,:,i)).gt.tiny)) then
+                            call am_print('R_cart(:,:,i)',R_cart(:,:,i))
                             call am_print('R',R)
-                            call am_print('R',R-sg%R(:,:,i))
-                            stop
+                            call am_print('R',R-R_cart(:,:,i))
                         endif
                         ! if statement are for the cases in which output needs to be trimmed
                         if (count(abs(R(j,:)).gt.tiny).gt.3) then
@@ -1159,15 +1157,56 @@ contains
                     write(fid,'(5x)',advance='no')
                     write(fid,fmt1,advance='no') trim(xyz(j))
                     do i = 1, sg%nsyms
-                        ! inverse here because f(Rr) = R^-1 * f(r)
-                        ! for fractional R; its elements will always be an integer...
-                        R = rot2O3(l=1,R=sg%R(:,:,i))
-                        ! if statement are for the cases in which output needs to be trimmed
+                        !
+                        R = rot2O3(l=2,R=R_cart(:,:,i))
+                        !
                         if (count(abs(R(j,:)).gt.tiny).gt.3) then
                             buffer=' ... ' 
                         else
                             buffer=''
                             do k = 1,5
+                                if (abs(R(j,k)).gt.tiny) then
+                                    ! s is only the sign
+                                    s = trim(int2char(nint(R(j,k)),'SP'))
+                                    !
+                                    buffer = trim(buffer)//trim(s)//trim(xyz(k))
+                                    !
+                                endif
+                            enddo
+                        endif
+                        write(fid,fmt3,advance='no') trim(buffer)
+                    enddo
+                    write(fid,*)
+                enddo
+                deallocate(xyz)
+                ! ACTION TABLE (BASIS FUNCTIONS FOR D ORBITALS)
+                write(fid,'(5x)',advance='no')
+                write(fid,fmt1,advance='no') 'f orbs.'
+                do i = 1, sg%nsyms
+                    write(fid,fmt3,advance='no') ' '//repeat('-',9)
+                enddo
+                write(fid,*)
+                allocate(character(1)::xyz(7))
+                i=0
+                i=i+1; xyz(i)='1'
+                i=i+1; xyz(i)='2'
+                i=i+1; xyz(i)='3'
+                i=i+1; xyz(i)='4'
+                i=i+1; xyz(i)='5'
+                i=i+1; xyz(i)='6'
+                i=i+1; xyz(i)='7'
+                do j = 1,7
+                    write(fid,'(5x)',advance='no')
+                    write(fid,fmt1,advance='no') trim(xyz(j))
+                    do i = 1, sg%nsyms
+                        !
+                        R = rot2O3(l=3,R=R_cart(:,:,i))
+                        !
+                        if (count(abs(R(j,:)).gt.tiny).gt.3) then
+                            buffer=' ... ' 
+                        else
+                            buffer=''
+                            do k = 1,7
                                 if (abs(R(j,k)).gt.tiny) then
                                     ! s is only the sign
                                     s = trim(int2char(nint(R(j,k)),'SP'))
@@ -1200,7 +1239,8 @@ contains
                 enddo
                 !
                 write(fid,*)
-                write(fid,'(a)') 'p orb, d orb : Coefficients are ommited for clarity. Also omitted are orbitals which decompose into more than three terms.'
+                write(fid,'(a)') 'p,d,f orbital expansion coefficients are omited for clarity. Also omitted are orbitals which decompose into more than three terms.'
+                write(fid,'(a)') 'Cartesian coordinates are used throughout this output.'
             close(fid)
         endif
     end subroutine symmetry_action
