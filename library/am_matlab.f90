@@ -196,20 +196,23 @@ module am_matlab
         ! Tait–Bryan "pitch-roll-yaw" convetion
         ! R = X(alpha) * Y(beta) * Z(gamma)
         ! euler = [alpha, beta, gamma]
-        !
+        ! From : Extracting Euler Angles from a Rotation Matrix
+        !        Mike Day, Insomniac Games
         implicit none
         !
         real(dp), intent(in) :: R(3,3)
-        real(dp) :: euler(3)
+        real(dp) :: euler(3), s, c
         integer :: i,j,k
         !
         i = 1
         j = 2
         k = 3
         !
-        euler(k) = atan2( R(i,j), R(i,i))
-        euler(j) = atan2(-R(i,k), sqrt(R(i,j)**j+R(i,i)**j))
-        euler(i) = atan2( R(j,k), R(k,k))
+        euler(i) = atan2(R(j,k),R(k,k))
+        euler(j) = atan2(-R(i,k),sqrt(R(i,i)**2+R(i,j)**2))
+        s=sin(euler(1))
+        c=cos(euler(1))
+        euler(k) = atan2(s*R(k,i)-c*R(j,i),c*R(j,j)-s*R(k,j))
         !
     end function  rot2euler
 

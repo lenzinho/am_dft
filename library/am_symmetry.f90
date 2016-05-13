@@ -18,8 +18,8 @@ module am_symmetry
     public :: nelements
     public :: decode_pointgroup
     
-    public :: euler2SO3
-    public :: rot2SO3
+    public :: euler2O3
+    public :: rot2O3
 
     public :: rep_permutation ! for: get_irreducible
     public :: map_permutation ! for: get_irreducible
@@ -1114,7 +1114,7 @@ contains
                     do i = 1, sg%nsyms
                         ! inverse here because f(Rr) = R^-1 * f(r)
                         ! for fractional R; its elements will always be an integer...
-                        R = rot2SO3(l=1,R=sg%R(:,:,i))
+                        R = rot2O3(l=1,R=sg%R(:,:,i))
                         if (any(abs(R-sg%R(:,:,i)).gt.tiny)) then
                             call am_print('sg%R(:,:,i)',sg%R(:,:,i))
                             call am_print('R',R)
@@ -1161,7 +1161,7 @@ contains
                     do i = 1, sg%nsyms
                         ! inverse here because f(Rr) = R^-1 * f(r)
                         ! for fractional R; its elements will always be an integer...
-                        R = rot2SO3(l=1,R=sg%R(:,:,i))
+                        R = rot2O3(l=1,R=sg%R(:,:,i))
                         ! if statement are for the cases in which output needs to be trimmed
                         if (count(abs(R(j,:)).gt.tiny).gt.3) then
                             buffer=' ... ' 
@@ -1460,9 +1460,9 @@ contains
         !
     end subroutine convert
 
-    ! SO3 irreducible representation of 3D rotation group
+    ! O3 irreducible representation of 3D rotation group
 
-    function       euler2SO3(l,euler) result(SO3)
+    function       euler2O3(l,euler) result(O3)
         !
         ! setup rotation matrices, "pitch-roll-yaw" convetion
         ! alpha (           around X)
@@ -1490,7 +1490,7 @@ contains
         integer , intent(in) :: l
         real(dp), intent(in) :: euler(3) ! around X, Y, Z
         integer :: n
-        real(dp)   , allocatable :: SO3(:,:) ! tesseral harmonics rotation matrix, (2*l+1) x (2*l+1) irrep of rotation in 3 dimensional space
+        real(dp)   , allocatable :: O3(:,:) ! tesseral harmonics rotation matrix, (2*l+1) x (2*l+1) irrep of rotation in 3 dimensional space
         complex(dp), allocatable :: V(:,:) ! eigenvector of Lz/Lx in Ly basis
         real(dp)   , allocatable :: D(:)   ! eigenvalues of Lz/Lx in Ly basis = -l, -l+1, ... -1, 0, 1, ... l-1, l  -- Note: Lz/Lx are Hermitian.
         complex(dp), allocatable :: A(:,:) ! matrix corresponding to exp(-i*alpha*Ly)
@@ -1503,7 +1503,7 @@ contains
         complex(dp), allocatable :: H(:,:) ! helper matrix
         !
         ! get dimensions of matrices
-        n = 2*l + 1
+        n = 2*l+1
         !
         ! determine similarity transform to convert spherical into tesseral harmonics (complex to real)
         C = tesseral(l=l)
@@ -1526,8 +1526,8 @@ contains
         Z = matmul(H,matmul(G,adjoint(H)))
         !
         ! generate rotation
-        allocate(SO3(n,n))
-        SO3 = matmul(X,matmul(Y,Z))
+        allocate(O3(n,n))
+        O3 = matmul(X,matmul(Y,Z))
         !
         contains
         pure function  Lz(l)
@@ -1653,24 +1653,24 @@ contains
             enddo
             !
         end function   tesseral
-    end function   euler2SO3
+    end function   euler2O3
 
-    function       rot2SO3(l,R) result(SO3)
+    function       rot2O3(l,R) result(O3)
         !
         implicit none
         !
         integer, intent(in) :: l
         real(dp), intent(in) :: R(3,3)
-        real(dp), allocatable :: SO3(:,:)
+        real(dp), allocatable :: O3(:,:)
         real(dp) :: d !det
         !
         d = det(R)
         ! convert rotoinversion to pure rotation then back to rotoinversion
-        SO3 = euler2SO3(l=l,euler=rot2euler(R*d)) * d
+        O3 = euler2O3(l=l,euler=rot2euler(R*d)) * d
         !
-    end function   rot2SO3
+    end function   rot2O3
 
-    pure function  SO3_character(l,th) result(chi)
+    pure function  O3_character(l,th) result(chi)
         !
         ! Character of rotation irrep, th [radians] about any arbitrary angle, l azimuthal quantum
         ! number.
@@ -1686,9 +1686,9 @@ contains
         !
         chi = sin( (l+0.5_dp)*th ) / sin( th*0.5_dp )
         !
-    end function   SO3_character
+    end function   O3_character
 
-    function       SO3_rotations(azimuthal,th,phi,is_spin_polarized) result(R)
+    function       O3_rotations(azimuthal,th,phi,is_spin_polarized) result(R)
         !
         implicit none
         !
@@ -1717,7 +1717,7 @@ contains
         !
         ! construct a direct sum of rotations
         do i = 1, m
-            R(l_start(i):l_end(i),l_start(i):l_end(i)) = euler2SO3(l=azimuthal(i),euler=[0.0_dp,th,phi])
+            R(l_start(i):l_end(i),l_start(i):l_end(i)) = euler2O3(l=azimuthal(i),euler=[0.0_dp,th,phi])
         enddo
         !
         if (is_spin_polarized) then
@@ -1726,7 +1726,7 @@ contains
             stop
         endif
         !
-    end function   SO3_rotations
+    end function   O3_rotations
     
     ! procedures which create representations
 

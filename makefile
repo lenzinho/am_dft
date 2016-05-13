@@ -1,4 +1,4 @@
-PROGS   = tb 2fc uc wannier sym ibz dos bandcharacter
+PROGS   = tb 2fc uc wan sym ibz dos bc test
 
 include makefile.inc
 
@@ -6,9 +6,6 @@ TIME_STAMP=`date +%b_%d_%H:%M`
 
 
 all: $(PROGS)
-
-tb: $(AMLIB) 
-	(cd prog_test; $(MAKE) )
 
 tb: $(AMLIB) 
 	(cd prog_tb; $(MAKE) )
@@ -19,7 +16,7 @@ tb: $(AMLIB)
 uc: $(AMLIB) 
 	(cd prog_uc; $(MAKE) )
 
-wannier: $(AMLIB) 
+wan: $(AMLIB) 
 	(cd prog_wan; $(MAKE) )
 
 sym: $(AMLIB) 
@@ -31,23 +28,26 @@ dos: $(AMLIB)
 ibz: $(AMLIB) 
 	(cd prog_ibz; $(MAKE) )
 
-bandcharacter: $(AMLIB) 
+bc: $(AMLIB) 
 	(cd prog_bc; $(MAKE) )
 
+test: $(AMLIB) 
+	(cd prog_test; $(MAKE) )
+
 $(AMLIB): 
-	(cd $(DIRLIB); $(MAKE) )
+	(cd prog_test; $(MAKE) )
 
 clean:
-	(cd prog_bandcharacter; $(MAKE) clean)
-	(cd prog_wannier;       $(MAKE) clean)
-	(cd prog_dos;  			$(MAKE) clean)
-	(cd prog_ibz;  			$(MAKE) clean)
-	(cd prog_sym;  			$(MAKE) clean)
-	(cd prog_tb;   			$(MAKE) clean)
-	(cd prog_uc;   			$(MAKE) clean)
-	(cd prog_2fc;  			$(MAKE) clean)
-	(cd prog_toy;  			$(MAKE) clean)
-	(cd $(DIRLIB); 			$(MAKE) clean)
+	(cd prog_bc; 	$(MAKE) clean)
+	(cd prog_wan;   $(MAKE) clean)
+	(cd prog_dos;  	$(MAKE) clean)
+	(cd prog_ibz;  	$(MAKE) clean)
+	(cd prog_sym;  	$(MAKE) clean)
+	(cd prog_tb;   	$(MAKE) clean)
+	(cd prog_uc;   	$(MAKE) clean)
+	(cd prog_2fc;  	$(MAKE) clean)
+	(cd prog_toy;  	$(MAKE) clean)
+	(cd $(DIRLIB); 	$(MAKE) clean)
 
 # save:
 # 	(cd $(COMDIR); $(MAKE) "SUF=$(SUF)" "TAR=$(TAR)" save)

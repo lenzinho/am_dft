@@ -12,7 +12,7 @@ module am_atom
 		!
         integer :: norbitals
         integer, allocatable :: orbital(:,:) ! quantum numbers [n,l,m,s]
-        integer, allocatable :: azimuthal(:) ! list of l oribtal angular momenta, used for the construction of SO3 irrep rotation
+        integer, allocatable :: azimuthal(:) ! list of l oribtal angular momenta, used for the construction of O3 irrep rotation
         !
     contains
     	procedure :: gen_orbitals

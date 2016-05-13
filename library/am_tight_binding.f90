@@ -410,7 +410,7 @@ contains
 
 
                 ! WORKING ON STUFF HERE.... 
-                ! T = SO3_rotations(azimuthal=[ic%atom(m)%azimuthal,ic%atom(n)%azimuthal],th=th,phi=phi,is_spin_polarized=is_spin_polarized)
+                ! T = O3_rotations(azimuthal=[ic%atom(m)%azimuthal,ic%atom(n)%azimuthal],th=th,phi=phi,is_spin_polarized=is_spin_polarized)
 
 
 
