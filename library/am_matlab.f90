@@ -29,6 +29,10 @@ module am_matlab
     interface meshgrid
         module procedure dmeshgrid, imeshgrid
     end interface ! meshgrid
+
+    interface are_equal
+        module procedure :: are_equal_d, are_equal_z, are_equal_array
+    end interface ! are_equal
     
     contains
     
@@ -1220,5 +1224,132 @@ module am_matlab
         allocate(B,source=wrkspace(1:k))
         !
     end function  unique_integer
+
+    ! logicals
+
+    pure function isint(x) result(bool)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: x
+        logical :: bool
+        !
+        if (abs(nint(x)-x).lt.tiny) then
+            bool = .true.
+        else
+            bool = .false.
+        endif
+        !        
+    end function  isint
+
+    pure function iszero(x) result(bool)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: x
+        logical :: bool
+        !
+        if (abs(x).lt.tiny) then
+            bool = .true.
+        else
+            bool = .false.
+        endif
+        !        
+    end function  iszero
+
+    pure function are_equal_d(x,y) result(bool)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: x, y
+        logical :: bool
+        !
+        if (abs(x-y).lt.tiny) then
+            bool = .true.
+        else
+            bool = .false.
+        endif
+        !        
+    end function  are_equal_d
+
+    pure function are_equal_z(x,y) result(bool)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: x, y
+        logical :: bool
+        !
+        bool = are_equal_d(real(x),real(y)) * are_equal_d(aimag(x),aimag(y))
+        !        
+    end function  are_equal_z
+
+    pure function are_equal_array(a) result(bool)
+        !
+        ! are all elements of a equal to each other
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: a(:)
+        logical :: bool
+        !
+        if ( all(abs(a(1)-a).lt.tiny) ) then
+            bool = .true.
+        else
+            bool = .false.
+        endif
+        !
+    end function  are_equal_array
+ 
+    pure function are_different_array(a) result(bool)
+        !
+        ! are all elements of a different from each other?
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: a(:)
+        logical :: bool
+        integer :: i, j, n
+        !
+        n = size(a)
+        !
+        if (n.eq.1) then
+            bool = .false.
+            return
+        endif    
+        !
+        bool = .true.
+        do i = 1, n
+        do j = 1, i
+            if (i.ne.j) then
+            if (abs(a(i)-a(j)).lt.tiny) then
+                bool = .false.
+                return
+            endif
+            endif
+        enddo
+        enddo        
+    end function  are_different_array
+
+    ! min/max functions
+
+    pure function smallest_nonzero(a) result(y)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: a(:)
+        real(dp) :: y
+        integer :: i
+        !
+        y = maxval(abs(a))
+        !
+        do i = 1, size(a)
+            if (.not.iszero(a(i))) then
+                if ( abs(a(i)).lt.y ) then
+                    y = a(i)
+                endif
+            endif
+        enddo
+        !
+    end function smallest_nonzero
 
 end module am_matlab

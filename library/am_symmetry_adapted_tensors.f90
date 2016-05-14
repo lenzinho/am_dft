@@ -151,11 +151,11 @@ contains
             ! perform LU factorization (saving only U) to incorporate effect
             call lu(A)
             ! debug flags
-            if (opts%verbosity.ge.2) then
-                call am_print('ps',ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),filename='debug_ps'//trim(int2char(i))//'.txt',permission='w')
-                call am_print('R',R,filename='debug_R'//trim(int2char(i))//'.txt',permission='w')
-                call am_print('A',A,filename='debug_A'//trim(int2char(i))//'.txt',permission='w')
-            endif
+            ! if (opts%verbosity.ge.2) then
+            !     call am_print('ps',ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),filename='debug_ps'//trim(int2char(i))//'.txt',permission='w')
+            !     call am_print('R',R,filename='debug_R'//trim(int2char(i))//'.txt',permission='w')
+            !     call am_print('A',A,filename='debug_A'//trim(int2char(i))//'.txt',permission='w')
+            ! endif
         enddo
         !
         ! intrinsic symmetries

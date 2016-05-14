@@ -22,7 +22,30 @@ module am_mkl
         module procedure zdet, ddet
     end interface ! det
 
+    interface inv
+        module procedure am_zinv, am_dinv
+    end interface ! det
+
 contains
+
+    ! random number
+
+    function       rand(seed) result(a)
+        !
+        use ifport, only : rand_interal => rand
+        !
+        implicit none
+        !
+        integer, intent(in), optional :: seed
+        real(dp) :: a
+        !
+        if (present(seed)) then
+            a = rand_interal(seed)
+        else
+            a = rand_interal()
+        endif
+        !
+    end function   rand
 
     ! eucledian norm of vector
 
@@ -249,9 +272,9 @@ contains
         enddo
     end subroutine lu
 
-    ! inverse of square matrix
+    ! inverse of real square matrix
     
-    function       inv(A) result(Ainv)
+    function       am_dinv(A) result(Ainv)
         !
         use am_stdout
         !
@@ -299,7 +322,59 @@ contains
             stop
         endif
         !
-    end function   inv
+    end function   am_dinv
+
+    ! inverse of complex square matrix
+
+    function       am_zinv(A) result(Ainv)
+        !
+        use am_stdout
+        !
+        implicit none
+        !
+        complex(dp), intent(in)  :: A(:,:)
+        integer,  allocatable :: ipiv(:)
+        complex(dp), allocatable :: Ainv(:,:)
+        complex(dp), allocatable :: WORK(:)
+        integer  :: m, n, info, lwork
+        integer :: i
+        !
+        m = size(A,1)
+        n = size(A,2)
+        if (m.ne.n) then
+            call am_print('ERROR','n /= m',flags='E')
+            stop
+        endif
+        !
+        allocate(ipiv(n))
+        allocate(WORK(lwmax))
+        !
+        ! copy A and remove numerical singularites by regularization
+        allocate(Ainv,source=A)
+        do i = 1, min(n,m)
+            Ainv(i,i) = Ainv(i,i) + eps
+        enddo
+        !
+        ! factorize 
+        call zgetrf( m, n, Ainv, m, ipiv, info )
+        if (info.ne.0) then
+            call am_print('ERROR',info)
+            stop
+        endif
+        !
+        ! query workspace
+        lwork=-1
+        call zgetri( n, Ainv, m, ipiv, WORK, lwork, info )
+        lwork = min( lwmax, int( WORK( 1 ) ) )
+        !
+        ! get inverse
+        call zgetri( n, Ainv, m, ipiv, WORK, lwork, info )
+        if (info.ne.0) then
+            call am_print('ERROR',info)
+            stop
+        endif
+        !
+    end function   am_zinv
 
     function       pinv(A) result(Ainv)
         !
@@ -403,13 +478,24 @@ contains
         end if
     end subroutine am_dsyev
     
-    ! diagonalize real general square matrix
+    ! diagonalize real nonsymmetric square matrix
 
     subroutine     am_dgeev(A,VL,D,VR)
         !
-        ! transpose(VL)*A*VR = D
-        ! this may be so, but VL bares no obvious relationship to VR. For example, VL is not the inverse of VR! 
-        ! 
+        ! DGEEV computes for an N-by-N real nonsymmetric matrix A, the
+        !  eigenvalues and, optionally, the left and/or right eigenvectors.
+        !
+        !  The right eigenvector v(j) of A satisfies
+        !                   A * v(j) = lambda(j) * v(j)
+        !  where lambda(j) is its eigenvalue.
+        !
+        !  The left eigenvector u(j) of A satisfies
+        !                u(j)**H * A = lambda(j) * u(j)**H
+        !  where u(j)**H denotes the conjugate-transpose of u(j).
+        !
+        !  The computed eigenvectors are normalized to have Euclidean norm
+        !  equal to 1 and largest component real.
+        !
         implicit none
         !
         real(dp)   , intent(in) :: A(:,:)
@@ -477,6 +563,93 @@ contains
             allocate(VL,source=VL_internal)
         endif
     end subroutine am_dgeev
+
+    ! diagonalize complex nonsymmetric square matrix
+
+    subroutine     am_zgeev(A,VL,D,VR)
+        !
+        ! ZGEEV computes for an N-by-N complex nonsymmetric matrix A, the
+        !  eigenvalues and, optionally, the left and/or right eigenvectors.
+        !
+        !  The right eigenvector v(j) of A satisfies
+        !                   A * v(j) = lambda(j) * v(j)
+        !  where lambda(j) is its eigenvalue.
+        !
+        !  The left eigenvector u(j) of A satisfies
+        !                u(j)**H * A = lambda(j) * u(j)**H
+        !  where u(j)**H denotes the conjugate transpose of u(j).
+        !
+        !  The computed eigenvectors are normalized to have Euclidean norm
+        !  equal to 1 and largest component real.
+        ! 
+        implicit none
+        !
+        complex(dp), intent(in) :: A(:,:)
+        complex(dp), intent(out), allocatable, optional :: VR(:,:) ! right and left eigenvectors
+        complex(dp), intent(out), allocatable, optional :: VL(:,:) ! right and left eigenvectors
+        complex(dp), intent(out), allocatable, optional :: D(:)
+        complex(dp), allocatable :: CA(:,:)
+        complex(dp), allocatable :: W(:)
+        complex(dp), allocatable :: WORK(:)
+        real(dp)   , allocatable :: RWORK(:)
+        complex(dp), allocatable :: VL_internal(:,:)
+        complex(dp), allocatable :: VR_internal(:,:)
+        integer :: i
+        integer :: n
+        integer :: lda, ldvl, ldvr
+        integer :: info
+        integer :: lwork
+        !
+        lda = size(A,1)
+        n   = size(A,2)
+        ldvl = n
+        ldvr = n
+        !
+        allocate(VL_internal(ldvl,n))
+        allocate(VR_internal(ldvr,n))
+        allocate(W(n))
+        allocate(WORK(lwmax))
+        allocate(RWORK(max(lwmax,n)))
+        !
+        ! copy variables
+        !
+        allocate(CA, source=A)
+        !
+        ! query the optimal workspace
+        !
+        lwork = -1
+        call zgeev( 'N', 'V', n, CA, lda, W, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, RWORK, info )
+        lwork = min( lwmax, int( WORK( 1 ) ) )
+        !
+        ! solve eigenproblem
+        !
+        if (present(VL).and.present(VR)) then
+            call zgeev( 'V', 'V', n, CA, lda, W, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, RWORK, info )
+        elseif (present(VR)) then
+            call zgeev( 'N', 'V', n, CA, lda, W, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, RWORK, info )
+        elseif (present(VL)) then
+            call zgeev( 'V', 'N', n, CA, lda, W, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, RWORK, info )
+        endif
+        !
+        ! check for convergence
+        !
+        if( info.gt.0 ) then
+            write(*,*)'the algorithm failed to compute eigenvalues.'
+            stop
+        end if
+        !
+        if (present(D)) then
+            allocate(D(n),source=W)
+        endif
+        !
+        if (present(VR)) then
+            allocate(VR,source=VR_internal)
+        endif
+        !
+        if (present(VL)) then
+            allocate(VL,source=VL_internal)
+        endif
+    end subroutine am_zgeev
     
     ! diagonalize complex hermitian matrix
 

@@ -667,7 +667,7 @@ contains
         integer, allocatable :: class_nelements(:) ! number of elements in each class
         integer, allocatable :: class_member(:,:) ! members(nclass,maxval(class_nelements))
         integer, allocatable :: H(:,:,:) ! class multiplication 
-        integer, allocatable :: CCT(:,:) ! class constant table which becomes character table (can be complex!)
+        complex(dp), allocatable :: CCT(:,:) ! class constant table which becomes character table (can be complex!)
         integer, allocatable :: irrep_dim(:) ! rep dimensions
         integer, allocatable :: indices(:)
         integer  :: index_of_class_containing_inversion
@@ -719,7 +719,7 @@ contains
         !
         ! determine eigenvector which simultaneously diagonalizes i Hjk(:,:) matrices
         ! CCT(nirreps,nclasses)
-        CCT = class_constant_table(real(H,dp))
+        CCT = class_constant_table(cmplx(H,0,dp))
         !
         ! get dimensions of representations using Eq. 4.53, p 91 of Wooten
         ! Note: The absolute square is the result of the conjugate multiplication
@@ -733,13 +733,13 @@ contains
                 wrk = wrk + abs(CCT(i,j))**2/real(class_nelements(j),dp)
             enddo
             ! compute irrep dimension
-            irrep_dim(i) = nint((nsyms/wrk)**0.5)
+            irrep_dim(i) = nint((nsyms/wrk)**0.5_dp)
         enddo
         !
         ! convert class constant table into character table
         do i = 1, nirreps
         do j = 1, nclasses
-            CCT(i,j) = nint(irrep_dim(i)/real(class_nelements(j),dp)*CCT(i,j))
+            CCT(i,j) = irrep_dim(i)/real(class_nelements(j),dp)*CCT(i,j)
         enddo
         enddo
         !
@@ -751,57 +751,30 @@ contains
         do j = 1,nclasses
             CCT(:,j) = CCT(indices,j)
         enddo
-        ! sort irreps based on inversion (requires inversion class to be second)
-        index_of_class_containing_inversion = 2
-        call rank(-sign(1,CCT(:,index_of_class_containing_inversion)),indices)
-        irrep_dim = irrep_dim(indices)
-        do j = 1,nclasses
-            CCT(:,j) = CCT(indices,j)
-        enddo
+        !
+        ! search for point symmetry which is an inversion
+        search : do i = 1, nclasses
+            ! class rep
+            j = class_member(i,1)
+            if (all(abs(sg%R(:,:,j)+eye(3)).lt.tiny)) then
+                !
+                ! sort irreps based on inversion
+                index_of_class_containing_inversion = i
+                call rank(-sign(1,nint(real(CCT(:,index_of_class_containing_inversion)))),indices)
+                irrep_dim = irrep_dim(indices)
+                do k = 1,nclasses
+                    CCT(:,k) = CCT(indices,k)
+                enddo
+                !
+                exit search
+            endif
+        enddo search
+        !
         !
         ! write class properties to stdout
         !
-        if (opts%verbosity.ge.1) then
-            !
-            write(*,'(5x,a10)',advance='no') 'class'
-            do i = 1, nclasses
-                write(*,'(i5)',advance='no') i
-            enddo
-            write(*,*)
-            !
-            write(*,'(5x,a10)',advance='no') 'elements'
-            do i = 1, nclasses
-                write(*,'(i5)',advance='no') class_nelements(i)
-            enddo
-            write(*,*)
-            !
-            write(*,'(5x,a10)',advance='no') 'class rep'
-            do i = 1, nclasses
-                write(*,'(i5)',advance='no') class_member(i,1)
-            enddo
-            write(*,*)
-            !
-            write(*,'(5x,a10)',advance='no') ' '
-            do i = 1, nclasses
-                write(*,'(a5)',advance='no') trim(decode_pointsymmetry(sg%ps_id(class_member(i,1))))
-            enddo
-            write(*,*)
-            !
-            write(*,'(5x,a10)',advance='no') repeat('-',10)
-            do i = 1, nclasses
-                write(*,'(a5)',advance='no') repeat('-',5)
-            enddo
-            write(*,*)
-            !
-            do i = 1, nirreps
-                write(*,'(5x,a6,i4)',advance='no') 'irrep', i
-                do j = 1, nclasses
-                    write(*,'(i5)',advance='no') CCT(i,j)
-                enddo
-                write(*,*)
-            enddo
-            !
-        endif
+        if (opts%verbosity.ge.1) call print_character_table(CT=CCT,irrep_dim=irrep_dim,class_nelements=class_nelements,class_member=class_member)
+        !
         ! check that the number of elements ri in class Ci is a divisor of theorder of the group
         ! Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. Cambridge, UK?; New York: Cambridge University Press, 2008. p 35.
         do i = 1, nclasses
@@ -823,28 +796,23 @@ contains
             !
             implicit none
             !
-            real(dp), intent(in)  :: A(:,:,:)
-            real(dp), allocatable :: V(:,:) ! these two should match in this particular situation (character table determination from class multiplication )
-            integer , allocatable :: D(:,:) ! these two should match in this particular situation (character table determination from class multiplication )
-            real(dp), allocatable :: M(:,:)
-            integer , allocatable :: p(:)
+            complex(dp), intent(in)  :: A(:,:,:)
+            complex(dp), allocatable :: V(:,:) ! these two should match in this particular situation (character table determination from class multiplication )
+            complex(dp), allocatable :: D(:,:) ! these two should match in this particular situation (character table determination from class multiplication )
+            complex(dp), allocatable :: M(:,:)
             integer :: n, i
             !
-            call am_print('WARNING','The procedure used to determine the character table does not allow for complex character',flags='W')
-            !
             n = size(A,3)
-            p = primes(n)
             !
-            ! matrix pencil based on sqrt(primes)
-            ! all this does is lift the degeneracy of eigenvalues if necessary
+            ! matrix pencil approach to lift the degeneracy of eigenvalues
             allocate(M(n,n))
             M = 0
             do i = 1,n
-                M = M + p(i)**0.5*A(:,:,i)
+                M = M + rand() * A(:,:,i)
             enddo
             !
             ! get left and right eigenvectors: transpose(VL)*A*VR = D
-            call am_dgeev(A=M,VR=V)
+            call am_zgeev(A=M,VR=V)
             !
             ! check that matrices have been diagonalized properly and save eigenvalues
             allocate(d(n,n))
@@ -863,20 +831,184 @@ contains
                 endif
                 !
                 ! save diagonal elements as row vectors
-                D(:,i) = nint(diag( M ))
+                D(:,i) = diag( M )
                 !
             enddo
             !
-            ! normalize each eigencolumn to the element of the column (that is, the first element, i.e. row, corresponds to the class containing the identity element)
-            do i = 1, n
-                V(:,i)=V(:,i)/V(1,i)
-            enddo
-            V = nint(transpose(V))
+            ! ! normalize each eigencolumn to the element of the column (that is, the first element, i.e. row, corresponds to the class containing the identity element)
+            ! do i = 1, n
+            !     V(:,i)=V(:,i)
+            ! enddo
+            ! V = transpose(V)
             !
             ! at this point V and D should be identical. The elements are to within +/- sign.
-            ! Return D which is more robust than V. 
+            ! D is more robust 
             !
         end function   class_constant_table
+        subroutine     print_character_table(CT,irrep_dim,class_nelements,class_member)
+            !
+            implicit none
+            !
+            complex(dp), intent(in) :: CT(:,:) ! class constant table which becomes character table (can be complex!)
+            integer    , intent(in) :: class_nelements(:) ! number of elements in each class
+            integer    , intent(in) :: class_member(:,:) ! members(nclass,maxval(class_nelements))
+            integer    , intent(in) :: irrep_dim(:)
+            integer :: nirreps
+            integer :: kk, k_exp
+            complex(dp), allocatable :: s(:)
+            complex(dp) :: s_exp
+            complex(dp) :: Z
+            real(dp) :: Zr,Zi
+            character(:), allocatable :: str
+            integer :: char_start
+            logical :: strmatch
+            character(50) :: fmt1
+            character(50) :: fmt2
+            character(50) :: fmt3
+            character(50) :: fmt4
+            character(50) :: fmt5
+            !
+            nirreps = size(class_nelements) ! nirreps = nclasses
+            ! left-side headers
+            fmt2 = '(5x,a10)'
+            fmt4 = '(5x,a6,i4)'
+            ! table
+            fmt1 = '(i6)'
+            fmt3 = '(a6)'
+            fmt5 = '(f6.2)'
+            !
+            !
+            write(*,fmt2,advance='no') 'class'
+            do i = 1, nclasses
+                write(*,fmt1,advance='no') i
+            enddo
+            write(*,*)
+            !
+            write(*,fmt2,advance='no') 'elements'
+            do i = 1, nclasses
+                write(*,fmt1,advance='no') class_nelements(i)
+            enddo
+            write(*,*)
+            !
+            write(*,fmt2,advance='no') 'class rep'
+            do i = 1, nclasses
+                write(*,fmt1,advance='no') class_member(i,1)
+            enddo
+            write(*,*)
+            !
+            write(*,fmt2,advance='no') ' '
+            do i = 1, nclasses
+                write(*,fmt3,advance='no') trim(decode_pointsymmetry(sg%ps_id(class_member(i,1))))
+            enddo
+            write(*,*)
+            !
+            write(*,fmt2,advance='no') repeat('-',10)
+            do i = 1, nclasses
+                write(*,fmt3,advance='no') repeat('-',6)
+            enddo
+            write(*,*)
+            !
+            allocate(s(30)) ! value of symbolic output, 30 possible options
+            allocate(character(4)::str)
+            char_start = 96 ! 97 = a
+            k=0
+            !
+            do i = 1, nirreps
+                !
+                write(*,fmt4,advance='no') 'irrep', i
+                !
+                do j = 1, nclasses
+                    !
+                    strmatch = .false.
+                    !
+                    Z = CT(i,j)
+                    Zr= real(Z)
+                    Zi= aimag(Z)
+                    !
+                    !
+                    if ( isint(Zr) .and. iszero(Zi) ) then
+                        ! no imaginary, integer real
+                        strmatch = .true.
+                        str = trim(int2char(nint(Zr)))
+                        !
+                    elseif ( iszero(Zr) .and. isint(Zi) ) then
+                        ! no real, imaginary integer
+                        strmatch = .true.
+                        str = trim(int2char(nint(Zi)))//'i'
+                        !
+                    elseif ( (.not. isint(Zr)) .and. (.not. isint(Zi)) ) then
+                        ! complex number
+                        !
+                        if (k.ge.1) then
+                        search : do kk = 1, k
+                            !
+                            s_exp = cmplx(0.0_dp,0.0_dp)
+                            k_exp = 0 
+                            do while ( .not. are_equal(s_exp,cmplx(1,0,dp)) )
+                                ! do a full loop. complex numbers form a cyclic abelian group.
+                                ! exponentiate it until it loops back to one, the identity
+                                k_exp = k_exp+1
+                                s_exp = s(k)**k_exp
+                                ! check positive
+                                if ( are_equal(Z,s_exp) ) then
+                                    !
+                                    strmatch = .true.
+                                    if (k_exp.eq.1) then
+                                        str = char(char_start+k)
+                                    else
+                                        str = char(char_start+k)//trim(int2char(k_exp))
+                                    endif
+                                    exit search
+                                    !
+                                endif
+                                ! check negative
+                                if ( are_equal(Z,-s_exp) ) then
+                                    !
+                                    strmatch = .true.
+                                    if (k_exp.eq.1) then
+                                        str = '-'//char(char_start+k)
+                                    else
+                                        str = '-'//char(char_start+k)//trim(int2char(k_exp))
+                                    endif
+                                    exit search
+                                    !
+                                endif
+                            enddo
+                        enddo search
+                        endif
+                        !
+                        ! if match is not found assign a new character to variable
+                        if (.not.strmatch) then
+                            !
+                            strmatch = .true.
+                            k = k + 1
+                            s(k) = Z
+                            str = char(char_start+k)
+                            !
+                        endif
+                    endif 
+                    !
+                    if (strmatch) then
+                        write(*,fmt3,advance='no') str
+                    else
+                        write(*,fmt5,advance='no') real(CT(i,j))
+                    endif
+                    !
+                enddo
+                write(*,*)
+            enddo
+            !
+            if (k.ne.0) then
+                !
+                write(*,*)
+                !
+                do i = 1, k
+                    write(*,'(5x,a,a)') char(char_start+k)//' = ', trim(dbl2char(real(s(i)),8))//trim(dbl2charSP(aimag(s(i)),9))//'i'
+                enddo
+                !
+            endif
+            !
+        end subroutine print_character_table
     end subroutine determine_character_table
 
     subroutine     name_symmetries(sg,opts)
@@ -1706,7 +1838,8 @@ contains
         !
         d = det(R)
         ! convert rotoinversion to pure rotation then back to rotoinversion
-        O3 = euler2O3(l=l,euler=rot2euler(R*d)) * d
+        ! Eq. 
+        O3 = euler2O3(l=l,euler=rot2euler(R*d)) * (d ** l)
         !
     end function   rot2O3
 

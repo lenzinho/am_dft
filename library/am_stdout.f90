@@ -303,53 +303,6 @@ contains
         !
     end function  regspace
 
-    pure function are_equal(a)
-        !
-        ! are all elements of a equal to each other
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: a(:)
-        logical :: are_equal
-        !
-        if ( all(abs(a(1)-a).lt.tiny) ) then
-            are_equal = .true.
-        else
-            are_equal = .false.
-        endif
-        !
-    end function  are_equal
- 
-    pure function are_different(a)
-        !
-        ! are all elements of a different from each other?
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: a(:)
-        logical :: are_different
-        integer :: i, j, n
-        !
-        n = size(a)
-        !
-        if (n.eq.1) then
-            are_different = .false.
-            return
-        endif    
-        !
-        are_different = .true.
-        do i = 1, n
-        do j = 1, i
-            if (i.ne.j) then
-            if (abs(a(i)-a(j)).lt.tiny) then
-                are_different = .false.
-                return
-            endif
-            endif
-        enddo
-        enddo        
-    end function  are_different
-
     pure function lowercase(strIn) result(strOut)
         ! Converts string to lower case
         ! used in subroutine atom_z
