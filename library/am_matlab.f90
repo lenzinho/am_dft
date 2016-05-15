@@ -250,7 +250,6 @@ module am_matlab
         !
     end function   Jm
 
-
     ! rotation functions
 
     pure function vec2dcosines(vec) result(dcosines)
@@ -435,7 +434,7 @@ module am_matlab
         !
     end function  rot2euler
 
-    function      euler2SO3(l,euler) result(O3)
+    function      euler2SO3(l,euler) result(SO3)
         !
         ! setup rotation matrices, "pitch-roll-yaw" convetion
         ! alpha (           around X)
@@ -463,7 +462,7 @@ module am_matlab
         integer , intent(in) :: l
         real(dp), intent(in) :: euler(3) ! around X, Y, Z
         integer :: n
-        real(dp)   , allocatable :: O3(:,:) ! tesseral harmonics rotation matrix, (2*l+1) x (2*l+1) irrep of rotation in 3 dimensional space
+        real(dp)   , allocatable :: SO3(:,:) ! tesseral harmonics rotation matrix, (2*l+1) x (2*l+1) irrep of rotation in 3 dimensional space
         complex(dp), allocatable :: V(:,:) ! eigenvector of Lz/Lx in Ly basis
         real(dp)   , allocatable :: D(:)   ! eigenvalues of Lz/Lx in Ly basis = -l, -l+1, ... -1, 0, 1, ... l-1, l  -- Note: Lz/Lx are Hermitian.
         complex(dp), allocatable :: A(:,:) ! matrix corresponding to exp(-i*alpha*Ly)
@@ -499,8 +498,8 @@ module am_matlab
         Z = matmul(H,matmul(G,adjoint(H)))
         !
         ! generate rotation
-        allocate(O3(n,n))
-        O3 = matmul(X,matmul(Y,Z))
+        allocate(SO3(n,n))
+        SO3 = matmul(X,matmul(Y,Z))
         !
         contains
         pure function  tesseral(l) result(B)
@@ -544,6 +543,46 @@ module am_matlab
         end function   tesseral
     end function  euler2SO3
 
+    function      euler2SU2(j,euler) result(SU2)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: j
+        real(dp), intent(in) :: euler(3) ! around X, Y, Z
+        integer :: n
+        complex(dp), allocatable :: SU2(:,:) ! tesseral harmonics rotation matrix, (2*j+1) x (2*j+1) irrep of rotation in 3 dimensional space
+        complex(dp), allocatable :: V(:,:)   ! eigenvector of Jz/Jx in Jy basis
+        real(dp)   , allocatable :: D(:)     ! eigenvalues of Jz/Jx in Jy basis = -j, -j+1, ... -1, 0, 1, ... j-1, j  -- Note: Jz/Jx are Hermitian.
+        complex(dp), allocatable :: A(:,:)   ! matrix corresponding to exp(-i*alpha*Jy)
+        complex(dp), allocatable :: B(:,:)   ! matrix corresponding to exp(-i*beta*Jy)
+        complex(dp), allocatable :: G(:,:)   ! matrix corresponding to exp(-i*gamma*Jy)
+        complex(dp), allocatable :: X(:,:)   ! counter-clockwise rotation (right-hand rule) around X axis
+        complex(dp), allocatable :: Y(:,:)   ! counter-clockwise rotation (right-hand rule) around Y axis
+        complex(dp), allocatable :: Z(:,:)   ! counter-clockwise rotation (right-hand rule) around Z axis
+        !
+        ! get dimensions of matrices
+        n = nint(2.0_dp*j+1.0_dp)
+        !
+        ! determine rotation around X = real( (B*V)*A*(B*V)' )
+        call am_zheev(A=Jx(j),V=V,D=D)
+        A = diag(exp(-cmplx_i*euler(1)*D))
+        X = matmul(V,matmul(A,adjoint(V)))
+        !
+        ! determine rotation around Y = real( B*P*B' )
+        allocate(Y(n,n))
+        B = diag(exp( cmplx_i*euler(2)*D))
+        Y = B
+        !
+        ! determine rotation around Z = real( (B*V)*T*(B*V)' )
+        call am_zheev(A=Jz(j),V=V,D=D)
+        G = diag(exp( cmplx_i*euler(3)*D))
+        Z = matmul(V,matmul(G,adjoint(V)))
+        !
+        ! generate rotation
+        allocate(SU2(n,n))
+        SU2 = matmul(X,matmul(Y,Z))
+        !
+    end function  euler2SU2
 
     function      rot2O3(l,R) result(O3)
         !
@@ -560,6 +599,36 @@ module am_matlab
         O3 = euler2SO3(l=l,euler=rot2euler(R*d)) * (d ** l)
         !
     end function  rot2O3
+
+    function      rot2irrep(n,R) result(irrep)
+        !
+        ! generates n-dimensional irreducible representation matrix corresponding to rotation R 
+        !
+        implicit none
+        !
+        integer , intent(in) :: n
+        real(dp), intent(in) :: R(3,3)
+        complex(dp), allocatable :: irrep(:,:)
+        real(dp) :: d ! det
+        integer  :: l
+        real(dp) :: j
+        !
+        ! convert rotoinversion to pure rotation then back to rotoinversion
+        d = R(1,1)*R(2,2)*R(3,3)-R(1,1)*R(2,3)*R(3,2)-R(1,2)*R(2,1)*R(3,3)+R(1,2)*R(2,3)*R(3,1)+R(1,3)*R(2,1)*R(3,2)-R(1,3)*R(2,2)*R(3,1)
+        !
+        !
+        if (modulo(n,2).eq.0) then
+            ! even = SU2 case
+            j = (n-1.0_dp)/2.0_dp
+            irrep = euler2SU2(j=j, euler=rot2euler(R))
+            write(*,*) 'Do not know how to handle inversion for SU2 irrep. Come back to this!'
+        else
+            ! odd = SO3 case
+            l = nint( (n-1.0_dp)/2.0_dp )
+            irrep = euler2SO3(l=l, euler=rot2euler(R*d)) * (d ** l)
+        endif
+        !
+    end function  rot2irrep
 
     pure function O3_character(l,th) result(chi)
         !
