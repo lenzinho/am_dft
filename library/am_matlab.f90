@@ -37,6 +37,220 @@ module am_matlab
     
     contains
     
+    ! angular momenta operators
+
+    pure function  Lz(l)
+        !
+        ! Construct  Ly matrix in the Lz basis from raising and lower operators
+        ! Laloe, p 666; Martin, p 573, Eq N4; Sakurai, p 207. hbar is set to 1.
+        !
+        ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
+        ! 1980 edition (Springer, 2013), p 327, Eq 12.5.21b
+        !
+        implicit none
+        !
+        integer, intent(in) :: l
+        complex(dp), allocatable :: Lz(:,:)
+        !
+        allocate(Lz(-l:l,-l:l))
+        !
+        Lz = (Lm(l)-Lp(l))*0.5_dp*cmplx_i
+        !
+    end function   Lz
+
+    pure function  Lx(l)
+        !
+        ! Construct  Ly matrix in the Lz basis from raising and lower operators
+        ! Laloe, p 666; Martin, p 573, Eq N4; Sakurai, p 207. hbar is set to 1.
+        !
+        ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
+        ! 1980 edition (Springer, 2013), p 327, Eq 12.5.21a
+        !
+        implicit none
+        !
+        integer, intent(in) :: l
+        complex(dp), allocatable :: Lx(:,:)
+        !
+        allocate(Lx(-l:l,-l:l))
+        !
+        Lx = (Lp(l)+Lm(l))*0.5_dp
+        !
+    end function   Lx
+
+    pure function  Lp(l)
+        !
+        ! Raising angular momentum operator.
+        !
+        ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
+        ! 1980 edition (Springer, 2013), p 327, Eq 12.5.20
+        !
+        implicit none
+        !
+        integer, intent(in) :: l
+        complex(dp), allocatable :: Lp(:,:)
+        integer :: m, mp
+        !
+        allocate(Lp(-l:l,-l:l))
+        Lp = 0.0_dp
+        !
+        do m = -l, l
+        do mp= -l, l
+            if (mp==m+1) Lp(mp,m) = sqrt(real( (l-m)*(l+m+1) ,dp))
+        enddo
+        enddo
+        !
+    end function   Lp
+
+    pure function  Lm(l)
+        !
+        ! Lowering angular momentum operator.
+        !
+        ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
+        ! 1980 edition (Springer, 2013), p 327, Eq 12.5.20
+        !
+        implicit none
+        !
+        integer, intent(in) :: l
+        complex(dp), allocatable :: Lm(:,:)
+        integer :: m, mp
+        !
+        allocate(Lm(-l:l,-l:l))
+        Lm = 0.0_dp
+        !
+        do m = -l, l
+        do mp= -l, l
+            if (mp==m-1) Lm(mp,m) = sqrt(real( (l+m)*(l-m+1) ,dp))
+        enddo
+        enddo
+        !
+    end function   Lm
+
+    function       Jz(j)
+        !
+        ! Construct  Jy matrix in the Jz basis from raising and lower operators
+        ! Jaloe, p 666; Martin, p 573, Eq N4; Sakurai, p 207. hbar is set to 1.
+        !
+        ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
+        ! 1980 edition (Springer, 2013), p 327, Eq 12.5.21b
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: j
+        complex(dp), allocatable :: Jz(:,:)
+        integer :: n
+        !
+        if (abs(modulo(j+tiny,0.5_dp)-tiny).gt.tiny) stop 'Quantum number j invalid.'
+        !
+        ! dimension of irreducible matrix representation
+        n = nint(2.0_dp*j+1.0_dp)
+        !
+        allocate(Jz(1:n,1:n))
+        Jz = 0.0_dp
+        !
+        Jz = (Jm(j)-Jp(j))*0.5_dp*cmplx_i
+        !
+    end function   Jz
+    
+    function       Jx(j)
+        !
+        ! Construct  Jy matrix in the Jz basis from raising and lower operators
+        ! Jaloe, p 666; Martin, p 573, Eq N4; Sakurai, p 207. hbar is set to 1.
+        !
+        ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
+        ! 1980 edition (Springer, 2013), p 327, Eq 12.5.21a
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: j
+        complex(dp), allocatable :: Jx(:,:)
+        integer :: n
+        !
+        if (abs(modulo(j+tiny,0.5_dp)-tiny).gt.tiny) stop 'Quantum number j invalid.'
+        !
+        ! dimension of irreducible matrix representation
+        n = nint(2.0_dp*j+1.0_dp)
+        !
+        allocate(Jx(1:n,1:n))
+        Jx = 0.0_dp
+        !
+        Jx = (Jp(j)+Jm(j))*0.5_dp
+        !
+    end function   Jx
+
+    function       Jp(j)
+        !
+        ! Raising angular momentum operator.
+        !
+        ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
+        ! 1980 edition (Springer, 2013), p 327, Eq 12.5.20
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: j
+        complex(dp), allocatable :: Jp(:,:)
+        real(dp), allocatable :: mlist(:)
+        integer :: m, mp, n, i
+        !
+        if (abs(modulo(j+tiny,0.5_dp)-tiny).gt.tiny) stop 'Quantum number j invalid.'
+        !
+        ! dimension of irreducible matrix representation
+        n = nint(2.0_dp*j+1.0_dp)
+        !
+        ! create mlist
+        allocate(mlist(n))
+        do i = 1, n
+            mlist(i) =  -j + real(i-1,dp)
+        enddo
+        !
+        allocate(Jp(1:n,1:n))
+        Jp = 0.0_dp
+        !
+        do m = 1, n
+        do mp= 1, n
+            if (mp==m+1) Jp(mp,m) = sqrt(real( (j-mlist(m))*(j+mlist(m)+1) ,dp))
+        enddo
+        enddo
+        !
+    end function   Jp
+
+    function       Jm(j)
+        !
+        ! Lowering angular momentum operator.
+        !
+        ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
+        ! 1980 edition (Springer, 2013), p 327, Eq 12.5.20
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: j
+        complex(dp), allocatable :: Jm(:,:)
+        real(dp), allocatable :: mlist(:)
+        integer :: m, mp, n, i
+        !
+        !
+        if (abs(modulo(j+tiny,0.5_dp)-tiny).gt.tiny) stop 'Quantum number j invalid.'
+        !
+        ! dimension of irreducible matrix representation
+        n = nint(2.0_dp*j+1.0_dp)
+        !
+        ! create mlist
+        allocate(mlist(n))
+        do i = 1, n
+            mlist(i) =  -j + real(i-1,dp)
+        enddo
+        !
+        allocate(Jm(1:n,1:n))
+        Jm = 0.0_dp
+        !
+        do m = 1, n
+        do mp= 1, n
+            if (mp==m-1) Jm(mp,m) = sqrt(real( (j+mlist(m))*(j-mlist(m)+1) ,dp))
+        enddo
+        enddo
+        !
+    end function   Jm
+
+
     ! rotation functions
 
     pure function vec2dcosines(vec) result(dcosines)
@@ -221,7 +435,7 @@ module am_matlab
         !
     end function  rot2euler
 
-    function      euler2O3(l,euler) result(O3)
+    function      euler2SO3(l,euler) result(O3)
         !
         ! setup rotation matrices, "pitch-roll-yaw" convetion
         ! alpha (           around X)
@@ -289,90 +503,6 @@ module am_matlab
         O3 = matmul(X,matmul(Y,Z))
         !
         contains
-        pure function  Lz(l)
-            !
-            ! Construct  Ly matrix in the Lz basis from raising and lower operators
-            ! Laloe, p 666; Martin, p 573, Eq N4; Sakurai, p 207. hbar is set to 1.
-            !
-            ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
-            ! 1980 edition (Springer, 2013), p 327, Eq 12.5.21b
-            !
-            implicit none
-            !
-            integer, intent(in) :: l
-            complex(dp), allocatable :: Lz(:,:)
-            integer :: m, mp
-            !
-            allocate(Lz(-l:l,-l:l))
-            !
-            Lz = (Lm(l)-Lp(l))*0.5_dp*cmplx_i
-            !
-        end function   Lz
-        pure function  Lx(l)
-            !
-            ! Construct  Ly matrix in the Lz basis from raising and lower operators
-            ! Laloe, p 666; Martin, p 573, Eq N4; Sakurai, p 207. hbar is set to 1.
-            !
-            ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
-            ! 1980 edition (Springer, 2013), p 327, Eq 12.5.21a
-            !
-            implicit none
-            !
-            integer, intent(in) :: l
-            complex(dp), allocatable :: Lx(:,:)
-            integer :: m, mp
-            !
-            allocate(Lx(-l:l,-l:l))
-            !
-            Lx = (Lp(l)+Lm(l))*0.5_dp
-            !
-        end function   Lx
-        pure function  Lp(l)
-            !
-            ! Raising angular momentum operator.
-            !
-            ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
-            ! 1980 edition (Springer, 2013), p 327, Eq 12.5.20
-            !
-            implicit none
-            !
-            integer, intent(in) :: l
-            complex(dp), allocatable :: Lp(:,:)
-            integer :: m, mp
-            !
-            allocate(Lp(-l:l,-l:l))
-            Lp = 0.0_dp
-            !
-            do m = -l, l
-            do mp= -l, l
-                if (mp==m+1) Lp(mp,m) = sqrt(real( (l-m)*(l+m+1) ,dp))
-            enddo
-            enddo
-            !
-        end function   Lp
-        pure function  Lm(l)
-            !
-            ! Lowering angular momentum operator.
-            !
-            ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
-            ! 1980 edition (Springer, 2013), p 327, Eq 12.5.20
-            !
-            implicit none
-            !
-            integer, intent(in) :: l
-            complex(dp), allocatable :: Lm(:,:)
-            integer :: m, mp
-            !
-            allocate(Lm(-l:l,-l:l))
-            Lm = 0.0_dp
-            !
-            do m = -l, l
-            do mp= -l, l
-                if (mp==m-1) Lm(mp,m) = sqrt(real( (l+m)*(l-m+1) ,dp))
-            enddo
-            enddo
-            !
-        end function   Lm
         pure function  tesseral(l) result(B)
             !
             ! latex equations
@@ -412,7 +542,8 @@ module am_matlab
             enddo
             !
         end function   tesseral
-    end function  euler2O3
+    end function  euler2SO3
+
 
     function      rot2O3(l,R) result(O3)
         !
@@ -426,7 +557,7 @@ module am_matlab
         d = R(1,1)*R(2,2)*R(3,3)-R(1,1)*R(2,3)*R(3,2)-R(1,2)*R(2,1)*R(3,3)+R(1,2)*R(2,3)*R(3,1)+R(1,3)*R(2,1)*R(3,2)-R(1,3)*R(2,2)*R(3,1)
         ! convert rotoinversion to pure rotation then back to rotoinversion
         ! Eq. 
-        O3 = euler2O3(l=l,euler=rot2euler(R*d)) * (d ** l)
+        O3 = euler2SO3(l=l,euler=rot2euler(R*d)) * (d ** l)
         !
     end function  rot2O3
 
