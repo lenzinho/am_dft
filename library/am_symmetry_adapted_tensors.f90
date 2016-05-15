@@ -5,6 +5,7 @@ module am_symmetry_adapted_tensors
     use am_unit_cell
     use am_options
     use am_mkl
+    use am_group_rep
     use am_symmetry
 
 	implicit none

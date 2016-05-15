@@ -31,16 +31,16 @@ module am_matlab
         module procedure dmeshgrid, imeshgrid
     end interface ! meshgrid
 
-    interface are_equal
-        module procedure :: are_equal_d, are_equal_z, are_equal_array
-    end interface ! are_equal
+    interface equals
+        module procedure :: dequals, zequals, dvequals
+    end interface ! equals
 
     interface trace
         module procedure :: dtrace, ztrace
     end interface ! trace
     
     contains
-    
+
     ! angular momenta operators
 
     pure function  Lz(l)
@@ -1773,7 +1773,7 @@ module am_matlab
         !        
     end function  iszero
 
-    pure function are_equal_d(x,y) result(bool)
+    pure function dequals(x,y) result(bool)
         !
         implicit none
         !
@@ -1786,20 +1786,20 @@ module am_matlab
             bool = .false.
         endif
         !        
-    end function  are_equal_d
+    end function  dequals
 
-    pure function are_equal_z(x,y) result(bool)
+    pure function zequals(x,y) result(bool)
         !
         implicit none
         !
         complex(dp), intent(in) :: x, y
         logical :: bool
         !
-        bool = are_equal_d(real(x),real(y)) * are_equal_d(aimag(x),aimag(y))
+        bool = dequals(real(x),real(y)) * dequals(aimag(x),aimag(y))
         !        
-    end function  are_equal_z
+    end function  zequals
 
-    pure function are_equal_array(a) result(bool)
+    pure function dvequals(a) result(bool)
         !
         ! are all elements of a equal to each other
         !
@@ -1814,9 +1814,9 @@ module am_matlab
             bool = .false.
         endif
         !
-    end function  are_equal_array
+    end function  dvequals
  
-    pure function are_different_array(a) result(bool)
+    pure function distinct(a) result(bool)
         !
         ! are all elements of a different from each other?
         !
@@ -1844,7 +1844,7 @@ module am_matlab
             endif
         enddo
         enddo        
-    end function  are_different_array
+    end function  distinct
 
     ! min/max functions
 

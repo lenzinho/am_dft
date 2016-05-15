@@ -455,7 +455,7 @@ contains
         !
         ! construct a direct sum of rotations
         do i = 1, m
-            R(l_start(i):l_end(i),l_start(i):l_end(i)) = euler2O3(l=azimuthal(i),euler=[0.0_dp,th,phi])
+            R(l_start(i):l_end(i),l_start(i):l_end(i)) = euler2SO3(l=azimuthal(i),euler=[0.0_dp,th,phi])
         enddo
         !
         if (is_spin_polarized) then

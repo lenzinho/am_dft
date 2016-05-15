@@ -1,6 +1,7 @@
 module am_symmetry
 
     use am_constants
+    use am_group_rep
     use am_stdout
     use am_unit_cell
     use am_options
@@ -13,12 +14,7 @@ module am_symmetry
     public :: get_kpoint_compatible_symmetries
     public :: ps_frac2cart
 
-    public :: member
-    public :: nelements
     public :: decode_pointgroup
-
-    public :: rep_permutation ! for: get_irreducible
-    public :: map_permutation ! for: get_irreducible
     
     type, public :: am_class_symmetry 
         !
@@ -40,16 +36,12 @@ module am_symmetry
         procedure :: get_reversal_group
         !
         procedure :: get_character_table
-        procedure :: get_symmetry_action
+        procedure :: write_symmetry_action
         !
         procedure :: name_symmetries
         procedure :: stdout
         procedure :: sort => symsort
     end type        am_class_symmetry
-
-    interface get_order
-        procedure :: get_order_sym, get_order_rep
-    end interface ! get_order
 
 contains
 
@@ -396,8 +388,8 @@ contains
         implicit none
         !
         class(am_class_symmetry), intent(inout) :: sg
-        type(am_class_unit_cell), intent(in) :: uc ! space groups are tabulated in the litearture for conventional cells, but primitive or arbitrary cell works just as well.
-        type(am_class_options)  , intent(in) :: opts
+        class(am_class_unit_cell), intent(in) :: uc ! space groups are tabulated in the litearture for conventional cells, but primitive or arbitrary cell works just as well.
+        type(am_class_options), intent(in) :: opts
         type(am_class_options) :: notalk
         real(dp), allocatable  :: seitz(:,:,:)
         !
@@ -411,13 +403,13 @@ contains
         if (opts%verbosity.ge.1) call am_print('number of space group symmetries found',size(seitz,3),' ... ') 
         !
         ! put identity first
-        call put_identity_first(rep=seitz)
+        call put_identity_first(sym=seitz)
         !
         ! create space group instance (puts identity first)
         call sg%create(R=seitz(1:3,1:3,:),T=seitz(1:3,4,:))
         !
         ! determine conjugacy classes (needs identity first)
-        sg%cc_id = get_conjugacy_classes(rep=seitz,flags='seitz')
+        sg%cc_id = get_conjugacy_classes(sym=seitz,flags='seitz')
         !
         ! sort space group symmetries based on parameters
         call sg%sort(sort_parameter=sg%T(1,:),iopt_direction='ascend')
@@ -428,35 +420,28 @@ contains
         ! name the (im-)proper part of space symmetry
         call sg%name_symmetries(opts=notalk)
         !
-        ! write action table (converts everything into cartesian coordinates internally)
-        call sg%get_symmetry_action(uc=uc,flags='',iopt_fname='outfile.action_space_group',opts=notalk)
-        !
-        ! get character table
-        call sg%get_character_table(opts=opts)
-        !
         ! write to stdout and to file
-        ! if (opts%verbosity.ge.1) call sg%stdout(iopt_uc=uc)
         call sg%stdout(iopt_uc=uc,iopt_filename=trim('outfile.spacegroup'))
         !
         contains
-        subroutine     put_identity_first(rep)
-            !
-            implicit none
-            !
-            real(dp), intent(inout) :: rep(:,:,:)
-            real(dp), allocatable :: id(:,:)
-            integer :: i, nsyms
-            !
-            nsyms = size(rep,3)
-            id = eye(size(rep,1))
-            do i = 1, nsyms
-                if (all((abs(rep(:,:,i)-id)).lt.tiny)) then
-                    rep(:,:,i) = rep(:,:,1)
-                    rep(:,:,1) = id
-                endif
-            enddo
-            ! 
-        end subroutine put_identity_first
+            subroutine     put_identity_first(sym)
+                !
+                implicit none
+                !
+                real(dp), intent(inout) :: sym(:,:,:)
+                real(dp), allocatable :: id(:,:)
+                integer :: i, nsyms
+                !
+                nsyms = size(sym,3)
+                id = eye(size(sym,1))
+                do i = 1, nsyms
+                    if (all((abs(sym(:,:,i)-id)).lt.tiny)) then
+                        sym(:,:,i) = sym(:,:,1)
+                        sym(:,:,1) = id
+                    endif
+                enddo
+                ! 
+            end subroutine put_identity_first
     end subroutine get_space_group
 
     subroutine     get_point_group(pg,uc,sg,opts)
@@ -467,9 +452,9 @@ contains
         !
         implicit none
         !
-        class(am_class_symmetry), intent(inout) :: pg
-        type(am_class_symmetry) , intent(in) :: sg
-        type(am_class_unit_cell), intent(in) :: uc
+        class(am_class_symmetry) , intent(inout) :: pg
+        type(am_class_symmetry)  , intent(in) :: sg
+        class(am_class_unit_cell), intent(in) :: uc ! accepts unit cell, primitive cell, conventional cell.
         type(am_class_options), intent(in) :: opts
         real(dp), allocatable :: sort_parameter(:)
         type(am_class_options) :: notalk
@@ -485,7 +470,7 @@ contains
         if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,' ... ')
         !
         ! determine conjugacy classes (needs identity first, inversion second)
-        pg%cc_id = get_conjugacy_classes(rep=pg%R)
+        pg%cc_id = get_conjugacy_classes(sym=pg%R)
         !
         ! sort point group symmetries based on parameters
         allocate(sort_parameter(pg%nsyms))
@@ -502,17 +487,8 @@ contains
         pg%pg_id = point_group_schoenflies(pg%ps_id)
         if (opts%verbosity.ge.1) call am_print('point group',decode_pointgroup(pg%pg_id),' ... ')
         !
-        ! determine character table
-        call pg%get_character_table(opts=opts)
-        !
-        ! write action table 
-        ! currently not working for nonsymorphic space groups. (i.e. those which necessairly have a translational component)
-        ! actually it may just not be possible to do this for such a group because permutations linking atoms simply do not exist if only the rotational part is considered. the translational part is essential. an example is TiSe2.
-        ! call pg%action_table(uc=uc,iopt_fname='outfile.action_point_group',opts=opts)
-        !
-        ! write to stdout and to file
-        ! if (opts%verbosity.ge.1) call pg%stdout(iopt_uc=uc)
-        if (opts%verbosity.ge.1) call pg%stdout(iopt_uc=uc,iopt_filename=trim('outfile.pointgroup'))
+        ! write to stdout
+        call pg%stdout(iopt_uc=uc,iopt_filename=trim('outfile.pointgroup'))
         !
     end subroutine get_point_group
 
@@ -544,7 +520,7 @@ contains
         call rg%create(R=unique(wrkspace(1:3,1:3,1:m)))
         !
         ! determine conjugacy classes (needs identity first)
-        rg%cc_id = get_conjugacy_classes(rep=rg%R)
+        rg%cc_id = get_conjugacy_classes(sym=rg%R)
         !
         ! name the (im-)proper part of space symmetry
         call rg%name_symmetries(opts=notalk)
@@ -582,7 +558,7 @@ contains
         ! create group
         call vg%create(R=pg%R(:,:,pack(indicies,mask)))
         ! determine conjugacy classes (needs identity first, inversion second)
-        vg%cc_id = get_conjugacy_classes(rep=vg%R)
+        vg%cc_id = get_conjugacy_classes(sym=vg%R)
         ! name point symmetries
         call vg%name_symmetries(opts=opts)
         ! name point group
@@ -618,8 +594,8 @@ contains
         ! create group
         call revg%create(R=sg%R(:,:,pack(indicies,mask)),T=sg%T(:,pack(indicies,mask)))
         ! determine conjugacy classes (needs identity first, inversion second)
-        seitz = rep_seitz(R=revg%R,T=revg%T) 
-        revg%cc_id = get_conjugacy_classes(rep=seitz)
+        seitz = get_seitz(R=revg%R,T=revg%T) 
+        revg%cc_id = get_conjugacy_classes(sym=seitz)
         ! name point symmetries
         call revg%name_symmetries(opts=opts)
         ! name point group
@@ -635,7 +611,7 @@ contains
         !
         class(am_class_symmetry), intent(inout) :: sg
         type(am_class_options)  , intent(in) :: opts
-        real(dp), allocatable :: rep(:,:,:)
+        real(dp), allocatable :: sym(:,:,:)
         integer , allocatable :: cayley_table(:,:)
         character(100) :: flags
         integer :: i, j, k
@@ -647,30 +623,30 @@ contains
         integer, allocatable :: class_member(:,:) ! members(nclass,maxval(class_nelements))
         integer, allocatable :: H(:,:,:) ! class multiplication 
         complex(dp), allocatable :: CCT(:,:) ! class constant table which becomes character table (can be complex!)
-        integer, allocatable :: irrep_dim(:) ! rep dimensions
+        integer, allocatable :: irrep_dim(:) ! sym dimensions
         integer, allocatable :: indices(:)
         integer  :: index_of_class_containing_inversion
         real(dp) :: wrk
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining character table')
         !
-        ! seitz rep
+        ! seitz sym
         if (allocated(sg%T)) then
-            rep = rep_seitz(sg%R,sg%T)
+            sym = get_seitz(sg%R,sg%T)
             flags='seitz'
         else
-            rep = sg%R
+            sym = sg%R
             flags=''
         endif
         !
-        nsyms = size(rep,3)
+        nsyms = size(sym,3)
         !
         ! construct cayley table for quick access to symmetry multiplication
-        cayley_table = get_cayley_table(rep=rep,flags=flags)
+        cayley_table = get_cayley_table(sym=sym,flags=flags)
         !
         ! identify which class symmetry belongs to
         ! id(nsyms)
-        sg%cc_id = get_conjugacy_classes(rep=rep,flags=flags)
+        sg%cc_id = get_conjugacy_classes(sym=sym,flags=flags)
         !
         ! get number of classes
         nclasses = maxval(sg%cc_id)
@@ -733,7 +709,7 @@ contains
         !
         ! search for point symmetry which is an inversion
         search : do i = 1, nclasses
-            ! class rep
+            ! class sym
             j = class_member(i,1)
             if (all(abs(sg%R(:,:,j)+eye(3)).lt.tiny)) then
                 !
@@ -923,13 +899,13 @@ contains
                             !
                             s_exp = cmplx(0.0_dp,0.0_dp)
                             k_exp = 0 
-                            do while ( .not. are_equal(s_exp,cmplx(1,0,dp)) )
+                            do while ( .not. equals(s_exp,cmplx(1,0,dp)) )
                                 ! do a full loop. complex numbers form a cyclic abelian group.
                                 ! exponentiate it until it loops back to one, the identity
                                 k_exp = k_exp+1
                                 s_exp = s(k)**k_exp
                                 ! check positive
-                                if ( are_equal(Z,s_exp) ) then
+                                if ( equals(Z,s_exp) ) then
                                     !
                                     strmatch = .true.
                                     if (k_exp.eq.1) then
@@ -941,7 +917,7 @@ contains
                                     !
                                 endif
                                 ! check negative
-                                if ( are_equal(Z,-s_exp) ) then
+                                if ( equals(Z,-s_exp) ) then
                                     !
                                     strmatch = .true.
                                     if (k_exp.eq.1) then
@@ -990,25 +966,23 @@ contains
         end subroutine print_character_table
     end subroutine get_character_table
 
-    subroutine     get_symmetry_action(sg,uc,flags,iopt_fname,opts)
+    subroutine     write_symmetry_action(sg,pr,uc,fname)
         !
         implicit none
         !
         class(am_class_symmetry), intent(in) :: sg
-        type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_options)  , intent(in) :: opts
-        character(*)            , intent(in) :: flags ! if flags='relax_pbc', do not return atoms to primitive cell. if no matching atom is found, return index 0 for that orbit. 
-        character(*), optional  , intent(in) :: iopt_fname
+        class(am_class_unit_cell),intent(in) :: uc
+        class(am_class_rep_perm), intent(in), optional :: pr
+        character(*), optional  , intent(in) :: fname
         real(dp), allocatable :: R_cart(:,:,:)
         real(dp), allocatable :: T_cart(:,:)
-        integer,  allocatable :: PM(:,:)
         real(dp), allocatable :: aa(:,:)
-        integer  :: fid
-        character(10) :: buffer
-        integer :: i,j,k ! loop variables
+        real(dp), allocatable :: R(:,:)   ! used for basis functions output
         character(:), allocatable :: xyz(:) ! basis functions output
-        character(1) :: s ! sign 
-        real(dp), allocatable :: R(:,:) ! used for basis functions output
+        integer :: fid
+        integer :: i,j,k ! loop variables
+        character(10) :: buffer
+        character(1)  :: s ! sign 
         character(10) :: fmt1
         character(10) :: fmt2
         character(10) :: fmt3
@@ -1016,16 +990,12 @@ contains
         character(10) :: fmt5
         character(10) :: fmt6
         !
-        if (opts%verbosity.ge.1) call am_print_title('Determining symmetry action')
-        !
         fmt1 = '(a5)'
         fmt2 = '(i5)'
         fmt3 = '(a10)'
         fmt4 = '(f10.2)'
         fmt5 = '(i10)'
         fmt6 = '(l10)'
-        !
-        PM = map_permutation( rep_permutation(sg=sg,tau=uc%tau,flags=flags,opts=opts) )
         !
         allocate(R_cart(3,3,sg%nsyms))
         allocate(T_cart(3,sg%nsyms))
@@ -1039,129 +1009,171 @@ contains
             aa(1:4,i)=rot2axis_angle(R=R_cart(:,:,i))
         enddo
         !
-        if (present(iopt_fname)) then 
+        fid = 1
+        open(unit=fid,file=trim(fname),status="replace",action='write')
             !
-            fid = 1
-            open(unit=fid,file=trim(iopt_fname),status="replace",action='write')
-                !
-                ! SYMMETRY NUMBER
+            ! SYMMETRY NUMBER
+            write(fid,'(5x)',advance='no')
+            write(fid,fmt1,advance='no') '#'
+            do i = 1, sg%nsyms
+                write(fid,fmt5,advance='no') i
+            enddo
+            write(fid,*)
+            ! CLASS IDENTIFIED
+            write(fid,'(5x)',advance='no')
+            write(fid,fmt1,advance='no') 'class'
+            do i = 1, sg%nsyms
+                write(fid,fmt5,advance='no') sg%cc_id(i)
+            enddo
+            write(fid,*)
+            ! HEADER / SEPERATOR
+            write(fid,'(5x)',advance='no')
+            write(fid,'(5x)',advance='no')
+            do i = 1, sg%nsyms
+                write(fid,fmt3,advance='no') ' '//repeat('-',9)
+            enddo
+            write(fid,*)
+            ! POINT-SYMMETRY IDENTIFIED
+            write(fid,'(5x)',advance='no')
+            write(fid,fmt1,advance='no') 'schf.'
+            do i = 1, sg%nsyms
+                write(fid,fmt3,advance='no') trim(decode_pointsymmetry(sg%ps_id(i)))
+            enddo
+            write(fid,*)
+            ! POINT SYMMETRY COMPONENTS
+            do i = 1,3
+            do j = 1,3
                 write(fid,'(5x)',advance='no')
-                write(fid,fmt1,advance='no') '#'
-                do i = 1, sg%nsyms
-                    write(fid,fmt5,advance='no') i
+                write(fid,fmt1,advance='no') adjustr('R'//trim(int2char(i))//trim(int2char(j)))
+                do k = 1, sg%nsyms
+                    write(fid,fmt4,advance='no') R_cart(i,j,k)
                 enddo
                 write(fid,*)
-                ! CLASS IDENTIFIED
+            enddo
+            enddo
+            ! HEADER / SEPERATOR
+            write(fid,'(5x)',advance='no')
+            write(fid,fmt1,advance='no') 'ax/th'
+            do i = 1, sg%nsyms
+                write(fid,fmt3,advance='no') ' '//repeat('-',9)
+            enddo
+            write(fid,*)
+            ! POINT-SYMMETRY ROTATION AXIS
+            allocate(character(1)::xyz(3))
+            i=0
+            i=i+1; xyz(i)='x'
+            i=i+1; xyz(i)='y'
+            i=i+1; xyz(i)='z'
+            do j = 1,3
+            write(fid,'(5x)',advance='no')
+            write(fid,fmt1,advance='no') 'ax_'//trim(xyz(j))
+            do i = 1, sg%nsyms
+                write(fid,fmt4,advance='no') aa(j,i)
+            enddo
+            write(fid,*)
+            enddo
+            deallocate(xyz)
+            ! POINT-SYMMETRY ROTATION ANGLE
+            write(fid,'(5x)',advance='no')
+            write(fid,fmt1,advance='no') 'R_th'
+            do i = 1, sg%nsyms
+                write(fid,fmt4,advance='no') aa(4,i)*180.0_dp/pi
+            enddo
+            write(fid,*)
+            ! POINT-SYMMETRY ROTOINVERSION VS INVERSION
+            write(fid,'(5x)',advance='no')
+            write(fid,fmt1,advance='no') 'inv'
+            do i = 1, sg%nsyms
+                write(fid,fmt6,advance='no') (abs(det(R_cart(:,:,i))+1).lt.tiny)
+            enddo
+            write(fid,*)
+            ! HEADER / SEPERATOR
+            write(fid,'(5x)',advance='no')
+            write(fid,fmt1,advance='no') 'trans'
+            do i = 1, sg%nsyms
+                write(fid,fmt3,advance='no') ' '//repeat('-',9)
+            enddo
+            write(fid,*)
+            ! TRANSLATIONAL COMPONENTS (FRAC)
+            if (allocated(T_cart)) then
+            do j = 1,3
                 write(fid,'(5x)',advance='no')
-                write(fid,fmt1,advance='no') 'class'
+                write(fid,fmt1,advance='no') adjustr('T'//trim(int2char(j)))
                 do i = 1, sg%nsyms
-                    write(fid,fmt5,advance='no') sg%cc_id(i)
+                    write(fid,fmt4,advance='no') T_cart(j,i)
                 enddo
                 write(fid,*)
-                ! HEADER / SEPERATOR
+            enddo
+            endif
+            ! ACTION TABLE (AXES)
+            write(fid,'(5x)',advance='no')
+            write(fid,fmt1,advance='no') 'axes'
+            do i = 1, sg%nsyms
+                write(fid,fmt3,advance='no') ' '//repeat('-',9)
+            enddo
+            write(fid,*)
+            allocate(character(1)::xyz(3))
+            i=0
+            i=i+1; xyz(i)='x'
+            i=i+1; xyz(i)='y'
+            i=i+1; xyz(i)='z'
+            do j = 1,3
                 write(fid,'(5x)',advance='no')
-                write(fid,'(5x)',advance='no')
+                write(fid,fmt1,advance='no') trim(xyz(j))
                 do i = 1, sg%nsyms
-                    write(fid,fmt3,advance='no') ' '//repeat('-',9)
+                    ! inverse here because f(Rr) = R^-1 * f(r)
+                    ! for fractional R; its elements will always be an integer...
+                    R=inv(R_cart(:,:,i))
+                    ! if statement are for the cases in which output needs to be trimmed
+                    if (count(abs(R(j,:)).gt.tiny).gt.3) then
+                        buffer=' ... ' 
+                    else
+                        buffer=''
+                        do k = 1,3
+                        if (abs(R(j,k)).gt.tiny) then
+                            ! s is only the sign
+                            s = trim(int2char(nint(R(j,k)),'SP'))
+                            !
+                            buffer = trim(buffer)//trim(s)//trim(xyz(k))
+                            !
+                        endif
+                        enddo
+                    endif
+                    write(fid,fmt3,advance='no') trim(buffer)
                 enddo
                 write(fid,*)
-                ! POINT-SYMMETRY IDENTIFIED
+            enddo
+            deallocate(xyz)
+            ! ACTION TABLE (BASIS FUNCTIONS FOR P ORBITALS)
+            write(fid,'(5x)',advance='no')
+            write(fid,fmt1,advance='no') 'p orbs.'
+            do i = 1, sg%nsyms
+                write(fid,fmt3,advance='no') ' '//repeat('-',9)
+            enddo
+            write(fid,*)
+            allocate(character(1)::xyz(3))
+            i=0
+            i=i+1; xyz(i)='x'
+            i=i+1; xyz(i)='y'
+            i=i+1; xyz(i)='z'
+            do j = 1, size(xyz)
                 write(fid,'(5x)',advance='no')
-                write(fid,fmt1,advance='no') 'schf.'
+                write(fid,fmt1,advance='no') trim(xyz(j))
                 do i = 1, sg%nsyms
-                    write(fid,fmt3,advance='no') trim(decode_pointsymmetry(sg%ps_id(i)))
-                enddo
-                write(fid,*)
-                ! POINT SYMMETRY COMPONENTS
-                do i = 1,3
-                do j = 1,3
-                    write(fid,'(5x)',advance='no')
-                    write(fid,fmt1,advance='no') adjustr('R'//trim(int2char(i))//trim(int2char(j)))
-                    do k = 1, sg%nsyms
-                        write(fid,fmt4,advance='no') R_cart(i,j,k)
-                    enddo
-                    write(fid,*)
-                enddo
-                enddo
-                ! HEADER / SEPERATOR
-                write(fid,'(5x)',advance='no')
-                write(fid,fmt1,advance='no') 'ax/th'
-                do i = 1, sg%nsyms
-                    write(fid,fmt3,advance='no') ' '//repeat('-',9)
-                enddo
-                write(fid,*)
-                ! POINT-SYMMETRY ROTATION AXIS
-                allocate(character(1)::xyz(3))
-                i=0
-                i=i+1; xyz(i)='x'
-                i=i+1; xyz(i)='y'
-                i=i+1; xyz(i)='z'
-                do j = 1,3
-                write(fid,'(5x)',advance='no')
-                write(fid,fmt1,advance='no') 'ax_'//trim(xyz(j))
-                do i = 1, sg%nsyms
-                    write(fid,fmt4,advance='no') aa(j,i)
-                enddo
-                write(fid,*)
-                enddo
-                deallocate(xyz)
-                ! POINT-SYMMETRY ROTATION ANGLE
-                write(fid,'(5x)',advance='no')
-                write(fid,fmt1,advance='no') 'R_th'
-                do i = 1, sg%nsyms
-                    write(fid,fmt4,advance='no') aa(4,i)*180.0_dp/pi
-                enddo
-                write(fid,*)
-                ! POINT-SYMMETRY ROTOINVERSION VS INVERSION
-                write(fid,'(5x)',advance='no')
-                write(fid,fmt1,advance='no') 'inv'
-                do i = 1, sg%nsyms
-                    write(fid,fmt6,advance='no') (abs(det(R_cart(:,:,i))+1).lt.tiny)
-                enddo
-                write(fid,*)
-                ! HEADER / SEPERATOR
-                write(fid,'(5x)',advance='no')
-                write(fid,fmt1,advance='no') 'trans'
-                do i = 1, sg%nsyms
-                    write(fid,fmt3,advance='no') ' '//repeat('-',9)
-                enddo
-                write(fid,*)
-                ! TRANSLATIONAL COMPONENTS (FRAC)
-                if (allocated(T_cart)) then
-                do j = 1,3
-                    write(fid,'(5x)',advance='no')
-                    write(fid,fmt1,advance='no') adjustr('T'//trim(int2char(j)))
-                    do i = 1, sg%nsyms
-                        write(fid,fmt4,advance='no') T_cart(j,i)
-                    enddo
-                    write(fid,*)
-                enddo
-                endif
-                ! ACTION TABLE (AXES)
-                write(fid,'(5x)',advance='no')
-                write(fid,fmt1,advance='no') 'axes'
-                do i = 1, sg%nsyms
-                    write(fid,fmt3,advance='no') ' '//repeat('-',9)
-                enddo
-                write(fid,*)
-                allocate(character(1)::xyz(3))
-                i=0
-                i=i+1; xyz(i)='x'
-                i=i+1; xyz(i)='y'
-                i=i+1; xyz(i)='z'
-                do j = 1,3
-                    write(fid,'(5x)',advance='no')
-                    write(fid,fmt1,advance='no') trim(xyz(j))
-                    do i = 1, sg%nsyms
-                        ! inverse here because f(Rr) = R^-1 * f(r)
-                        ! for fractional R; its elements will always be an integer...
-                        R=inv(R_cart(:,:,i))
-                        ! if statement are for the cases in which output needs to be trimmed
-                        if (count(abs(R(j,:)).gt.tiny).gt.3) then
-                            buffer=' ... ' 
-                        else
-                            buffer=''
-                            do k = 1,3
+                    !
+                    R = rot2O3(l=1,R=R_cart(:,:,i))
+                    !
+                    if (any(abs(R-R_cart(:,:,i)).gt.tiny)) then
+                        call am_print('R_cart(:,:,i)',R_cart(:,:,i))
+                        call am_print('R',R)
+                        call am_print('R',R-R_cart(:,:,i))
+                    endif
+                    ! if statement are for the cases in which output needs to be trimmed
+                    if (count(abs(R(j,:)).gt.tiny).gt.3) then
+                        buffer=' ... ' 
+                    else
+                        buffer=''
+                        do k = 1, size(xyz)
                             if (abs(R(j,k)).gt.tiny) then
                                 ! s is only the sign
                                 s = trim(int2char(nint(R(j,k)),'SP'))
@@ -1169,162 +1181,120 @@ contains
                                 buffer = trim(buffer)//trim(s)//trim(xyz(k))
                                 !
                             endif
-                            enddo
-                        endif
-                        write(fid,fmt3,advance='no') trim(buffer)
-                    enddo
-                    write(fid,*)
-                enddo
-                deallocate(xyz)
-                ! ACTION TABLE (BASIS FUNCTIONS FOR P ORBITALS)
-                write(fid,'(5x)',advance='no')
-                write(fid,fmt1,advance='no') 'p orbs.'
-                do i = 1, sg%nsyms
-                    write(fid,fmt3,advance='no') ' '//repeat('-',9)
+                        enddo
+                    endif
+                    write(fid,fmt3,advance='no') trim(buffer)
                 enddo
                 write(fid,*)
-                allocate(character(1)::xyz(3))
-                i=0
-                i=i+1; xyz(i)='x'
-                i=i+1; xyz(i)='y'
-                i=i+1; xyz(i)='z'
-                do j = 1, size(xyz)
-                    write(fid,'(5x)',advance='no')
-                    write(fid,fmt1,advance='no') trim(xyz(j))
-                    do i = 1, sg%nsyms
-                        !
-                        R = rot2O3(l=1,R=R_cart(:,:,i))
-                        !
-                        if (any(abs(R-R_cart(:,:,i)).gt.tiny)) then
-                            call am_print('R_cart(:,:,i)',R_cart(:,:,i))
-                            call am_print('R',R)
-                            call am_print('R',R-R_cart(:,:,i))
-                        endif
-                        ! if statement are for the cases in which output needs to be trimmed
-                        if (count(abs(R(j,:)).gt.tiny).gt.3) then
-                            buffer=' ... ' 
-                        else
-                            buffer=''
-                            do k = 1, size(xyz)
-                                if (abs(R(j,k)).gt.tiny) then
-                                    ! s is only the sign
-                                    s = trim(int2char(nint(R(j,k)),'SP'))
-                                    !
-                                    buffer = trim(buffer)//trim(s)//trim(xyz(k))
-                                    !
-                                endif
-                            enddo
-                        endif
-                        write(fid,fmt3,advance='no') trim(buffer)
-                    enddo
-                    write(fid,*)
-                enddo
-                deallocate(xyz)
-                ! ACTION TABLE (BASIS FUNCTIONS FOR D ORBITALS)
+            enddo
+            deallocate(xyz)
+            ! ACTION TABLE (BASIS FUNCTIONS FOR D ORBITALS)
+            write(fid,'(5x)',advance='no')
+            write(fid,fmt1,advance='no') 'd orbs.'
+            do i = 1, sg%nsyms
+                write(fid,fmt3,advance='no') ' '//repeat('-',9)
+            enddo
+            write(fid,*)
+            allocate(character(2)::xyz(5))
+            i=0
+            i=i+1; xyz(i)='xx'
+            i=i+1; xyz(i)='xy'
+            i=i+1; xyz(i)='yy'
+            i=i+1; xyz(i)='yz'
+            i=i+1; xyz(i)='zz'
+            do j = 1,5
                 write(fid,'(5x)',advance='no')
-                write(fid,fmt1,advance='no') 'd orbs.'
+                write(fid,fmt1,advance='no') trim(xyz(j))
                 do i = 1, sg%nsyms
-                    write(fid,fmt3,advance='no') ' '//repeat('-',9)
+                    !
+                    R = rot2O3(l=2,R=R_cart(:,:,i))
+                    !
+                    if (count(abs(R(j,:)).gt.tiny).gt.3) then
+                        buffer=' ... ' 
+                    else
+                        buffer=''
+                        do k = 1,5
+                            if (abs(R(j,k)).gt.tiny) then
+                                ! s is only the sign
+                                s = trim(int2char(nint(R(j,k)),'SP'))
+                                !
+                                buffer = trim(buffer)//trim(s)//trim(xyz(k))
+                                !
+                            endif
+                        enddo
+                    endif
+                    write(fid,fmt3,advance='no') trim(buffer)
                 enddo
                 write(fid,*)
-                allocate(character(2)::xyz(5))
-                i=0
-                i=i+1; xyz(i)='xx'
-                i=i+1; xyz(i)='xy'
-                i=i+1; xyz(i)='yy'
-                i=i+1; xyz(i)='yz'
-                i=i+1; xyz(i)='zz'
-                do j = 1,5
-                    write(fid,'(5x)',advance='no')
-                    write(fid,fmt1,advance='no') trim(xyz(j))
-                    do i = 1, sg%nsyms
-                        !
-                        R = rot2O3(l=2,R=R_cart(:,:,i))
-                        !
-                        if (count(abs(R(j,:)).gt.tiny).gt.3) then
-                            buffer=' ... ' 
-                        else
-                            buffer=''
-                            do k = 1,5
-                                if (abs(R(j,k)).gt.tiny) then
-                                    ! s is only the sign
-                                    s = trim(int2char(nint(R(j,k)),'SP'))
-                                    !
-                                    buffer = trim(buffer)//trim(s)//trim(xyz(k))
-                                    !
-                                endif
-                            enddo
-                        endif
-                        write(fid,fmt3,advance='no') trim(buffer)
-                    enddo
-                    write(fid,*)
-                enddo
-                deallocate(xyz)
-                ! ACTION TABLE (BASIS FUNCTIONS FOR D ORBITALS)
+            enddo
+            deallocate(xyz)
+            ! ACTION TABLE (BASIS FUNCTIONS FOR D ORBITALS)
+            write(fid,'(5x)',advance='no')
+            write(fid,fmt1,advance='no') 'f orbs.'
+            do i = 1, sg%nsyms
+                write(fid,fmt3,advance='no') ' '//repeat('-',9)
+            enddo
+            write(fid,*)
+            allocate(character(1)::xyz(7))
+            i=0
+            i=i+1; xyz(i)='1'
+            i=i+1; xyz(i)='2'
+            i=i+1; xyz(i)='3'
+            i=i+1; xyz(i)='4'
+            i=i+1; xyz(i)='5'
+            i=i+1; xyz(i)='6'
+            i=i+1; xyz(i)='7'
+            do j = 1,7
                 write(fid,'(5x)',advance='no')
-                write(fid,fmt1,advance='no') 'f orbs.'
+                write(fid,fmt1,advance='no') trim(xyz(j))
                 do i = 1, sg%nsyms
-                    write(fid,fmt3,advance='no') ' '//repeat('-',9)
+                    !
+                    R = rot2O3(l=3,R=R_cart(:,:,i))
+                    !
+                    if (count(abs(R(j,:)).gt.tiny).gt.3) then
+                        buffer=' ... ' 
+                    else
+                        buffer=''
+                        do k = 1,7
+                            if (abs(R(j,k)).gt.tiny) then
+                                ! s is only the sign
+                                s = trim(int2char(nint(R(j,k)),'SP'))
+                                !
+                                buffer = trim(buffer)//trim(s)//trim(xyz(k))
+                                !
+                            endif
+                        enddo
+                    endif
+                    write(fid,fmt3,advance='no') trim(buffer)
                 enddo
                 write(fid,*)
-                allocate(character(1)::xyz(7))
-                i=0
-                i=i+1; xyz(i)='1'
-                i=i+1; xyz(i)='2'
-                i=i+1; xyz(i)='3'
-                i=i+1; xyz(i)='4'
-                i=i+1; xyz(i)='5'
-                i=i+1; xyz(i)='6'
-                i=i+1; xyz(i)='7'
-                do j = 1,7
-                    write(fid,'(5x)',advance='no')
-                    write(fid,fmt1,advance='no') trim(xyz(j))
-                    do i = 1, sg%nsyms
-                        !
-                        R = rot2O3(l=3,R=R_cart(:,:,i))
-                        !
-                        if (count(abs(R(j,:)).gt.tiny).gt.3) then
-                            buffer=' ... ' 
-                        else
-                            buffer=''
-                            do k = 1,7
-                                if (abs(R(j,k)).gt.tiny) then
-                                    ! s is only the sign
-                                    s = trim(int2char(nint(R(j,k)),'SP'))
-                                    !
-                                    buffer = trim(buffer)//trim(s)//trim(xyz(k))
-                                    !
-                                endif
-                            enddo
-                        endif
-                        write(fid,fmt3,advance='no') trim(buffer)
-                    enddo
-                    write(fid,*)
-                enddo
-                deallocate(xyz)
-                ! ACTION TABLE (ATOM PERMUTATION)
+            enddo
+            deallocate(xyz)
+            ! ACTION TABLE (ATOM PERMUTATION)
+            if (present(pr)) then
                 write(fid,'(5x)',advance='no')
                 write(fid,fmt1,advance='no') 'atoms'
-                do i = 1, sg%nsyms
+                do i = 1, pr%nsyms
                     write(fid,fmt3,advance='no') ' '//repeat('-',9)
                 enddo
                 write(fid,*)
                 !
-                do j = 1, uc%natoms
+                do j = 1, pr%ndims
                     write(fid,'(5x)',advance='no')
                     write(fid,fmt2,advance='no') j
-                    do i = 1, sg%nsyms
-                        write(fid,fmt5,advance='no') PM(j,i)
+                    do i = 1, pr%nsyms
+                        write(fid,fmt5,advance='no') pr%PM(j,i)
                     enddo
                     write(fid,*)
                 enddo
-                !
-                write(fid,*)
-                write(fid,'(a)') 'p,d,f orbital expansion coefficients are omited for clarity. Also omitted are orbitals which decompose into more than three terms.'
-                write(fid,'(a)') 'Cartesian coordinates are used throughout this output.'
-            close(fid)
-        endif
-    end subroutine get_symmetry_action
+            endif
+            !
+            write(fid,*)
+            write(fid,'(a)') 'p,d,f orbital expansion coefficients are omited for clarity. Also omitted are orbitals which decompose into more than three terms.'
+            write(fid,'(a)') 'Cartesian coordinates are used throughout this output.'
+            !
+        close(fid)
+    end subroutine write_symmetry_action
 
     subroutine     name_symmetries(sg,opts)
         !
@@ -1567,547 +1537,6 @@ contains
         if ( present(iopt_filename) ) close(fid)
         !
     end subroutine stdout
-
-    ! procedures which create representations
-
-    function       rep_seitz(R,T) result(seitz)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: R(:,:,:)
-        real(dp), intent(in) :: T(:,:)
-        real(dp), allocatable :: seitz(:,:,:)
-        integer :: i, n
-        !
-        n = size(R,3)
-        !
-        allocate(seitz(4,4,n))
-        seitz = 0
-        seitz(4,4,:)=1
-        do i = 1, n
-            seitz(1:3,1:3,i)=R(:,:,i)
-            seitz(1:3,4,i)  =T(:,i)
-        enddo
-        !
-    end function   rep_seitz
-
-    function       rep_regular(rep,flags) result(reg_rep)
-        !>
-        !> Generates regular representation for each operator
-        !>
-        !> For details, see page 73-74, especially Eqs. 4.18 Symmetry and Condensed Matter Physics: A Computational
-        !> Approach. 1 edition. Cambridge, UK; New York: Cambridge  University Press, 2008.
-        !>
-        !> Requires identity to be the first element of group. regular representation is built from multiplication table
-        !> by making sure that the identity appears along the diagonal. this sometimes causes the row to be permuted with
-        !> respect to the columns. so, first find the permutation necessary to bring the identities to the center and
-        !> then build regular representations from this new multiplication table.
-        !>
-        implicit none
-        !
-        real(dp), intent(in) :: rep(:,:,:)
-        character(*), intent(in) :: flags ! can be nothing flags='' at call
-        integer, allocatable :: reg_rep(:,:,:)
-        integer, allocatable :: cayley_table(:,:)
-        integer :: n
-        integer :: i
-        !
-        ! obtain cayley table
-        cayley_table = get_cayley_table(rep=rep,flags=flags//'reg')
-        !
-        ! construct regular representation from cayley table
-        n = size(rep,3)
-        allocate(reg_rep(n,n,n))
-        reg_rep = 0
-        do i = 1, n
-            where (cayley_table.eq.i) reg_rep(:,:,i) = 1
-        enddo
-        !
-    end function   rep_regular
-
-    function       rep_permutation(sg,tau,flags,opts) result(rep)
-        !
-        ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
-        ! also works to find which kpoint are connected by point group operations
-        !
-        implicit none
-        !
-        type(am_class_symmetry) , intent(in) :: sg
-        real(dp)                , intent(in) :: tau(:,:)
-        character(*)            , intent(in) :: flags
-        type(am_class_options)  , intent(in) :: opts
-        integer, allocatable :: rep(:,:,:)
-        real(dp) :: tau_rot(3)
-        integer :: i,j,k
-        logical :: found
-        integer :: ntaus ! number of tau points tau(1:3,ntaus)
-        !
-        ntaus = size(tau,2)
-        !
-        allocate(rep(ntaus,ntaus,sg%nsyms))
-        rep = 0
-        !
-        do i = 1, sg%nsyms
-            ! determine the permutations of atomic indicies which results from each space symmetry operation
-            do j = 1,ntaus
-                found = .false.
-                ! apply rotational component
-                tau_rot = matmul(sg%R(:,:,i),tau(:,j))
-                ! apply translational component
-                if (allocated(sg%T)) tau_rot = tau_rot + sg%T(:,i)
-                ! reduce rotated+translated point to unit cell
-                if (index(flags,'relax_pbc').eq.0) then
-                    tau_rot = modulo(tau_rot+opts%sym_prec,1.0_dp)-opts%sym_prec
-                endif
-                ! find matching atom
-                search : do k = 1, ntaus
-                    if (all(abs(tau_rot-tau(:,k)).lt.opts%sym_prec)) then
-                    rep(j,k,i) = 1
-                    found = .true.
-                    exit search ! break loop
-                    endif
-                enddo search
-                ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
-                ! to ensure atoms must permute onto each other
-                if (index(flags,'relax_pbc').eq.0) then
-                if (found.eq..false.) then
-                    call am_print('ERROR','Unable to find matching atom.',flags='E')
-                    call am_print('tau (all atoms)',transpose(tau))
-                    call am_print('tau',tau(:,j))
-                    call am_print('R',sg%R(:,:,i))
-                    if (allocated(sg%T)) call am_print('T',sg%T(:,i))
-                    call am_print('tau_rot',tau_rot)
-                    stop
-                endif
-                endif
-            enddo
-        enddo
-        !
-        ! check that each column and row of the rep sums to 1; i.e. rep(:,:,i) is orthonormal for all i.
-        !
-        ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
-        ! to ensure atoms must permute onto each other
-        if (index(flags,'relax_pbc').eq.0) then
-        do i = 1,sg%nsyms
-        do j = 1,ntaus
-            !
-            if (sum(rep(:,j,i)).ne.1) then
-               call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
-               call am_print('i',i)
-               call am_print_sparse('spy(P_i)',rep(:,:,i))
-               call am_print('rep',rep(:,:,i))
-               stop
-            endif
-            !
-            if (sum(rep(j,:,i)).ne.1) then
-               call am_print('ERROR','Permutation matrix has a row which does not sum to 1.')
-               call am_print('i',i)
-               call am_print_sparse('spy(P_i)',rep(:,:,i))
-               call am_print('rep',rep(:,:,i))
-               stop
-            endif
-            !
-        enddo
-        enddo
-        endif
-       !
-    end function   rep_permutation
-    
-    function       map_permutation(P) result(PM)
-        !
-        ! PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
-        !
-        implicit none
-        !
-        integer, allocatable, intent(in) :: P(:,:,:)
-        integer, allocatable :: PM(:,:)
-        integer, allocatable :: ind(:)
-        integer :: natoms,nsyms
-        integer :: i
-        !
-        natoms = size(P,1)
-        nsyms  = size(P,3)
-        !
-        ind = [1:natoms]
-        !
-        allocate(PM(natoms,nsyms))
-        PM=0
-        !
-        do i = 1, nsyms
-            PM(:,i) = matmul(P(:,:,i),ind)
-        enddo
-        !
-    end function   map_permutation
-
-    ! procedures which operate on matrix representations
-
-    function       get_order_sym(sym) result(i)
-        !
-        implicit none
-        !
-        real(dp), intent(in)  :: sym(:,:)
-        real(dp), allocatable :: identity(:,:)
-        real(dp), allocatable :: sym_pow(:,:)
-        integer :: i
-        !
-        allocate(identity,mold=sym)
-        identity = eye(size(sym,1))
-        !
-        allocate(sym_pow,source=sym)
-        !
-        i = 0
-        do while ( all(abs(identity-sym_pow).lt.tiny) .or. (i.eq.50) )
-            i=i+1
-            sym_pow = matmul(sym,sym_pow)
-        enddo
-        !
-        if (i.eq.50) stop 'Error: unable to determine symmetry order.'
-        !
-    end function   get_order_sym
-
-    function       get_order_rep(rep) result(order)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: rep(:,:,:)
-        integer, allocatable :: order(:)
-        integer :: nsyms
-        integer :: i
-        !
-        nsyms = size(rep,3)
-        !
-        allocate(order(nsyms))
-        !
-        do i = 1, nsyms
-            order(i) = get_order_sym(rep(:,:,i))
-        enddo
-        !
-    end function   get_order_rep
-
-    function       get_cayley_table(rep,flags) result(cayley_table)
-        !
-        ! flag options:
-        !  reg    -  sorts rows to put identity along diagonals (useful for constructing regular representation)
-        !  seitz  -  reduces translational part to primitive cell
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: rep(:,:,:) ! list of 2D reps...
-        character(*), intent(in), optional :: flags
-        integer, allocatable :: cayley_table(:,:)
-        integer, allocatable :: sortmat(:,:)
-        integer, allocatable :: indices(:)
-        real(dp) :: W(size(rep,1),size(rep,2)) ! workspace
-        integer  :: n
-        integer  :: i, j
-        !
-        ! before doing anything, confirm that first element is the identity
-        if (any(abs(rep(:,:,1)-eye(size(rep,1))).gt.tiny)) then
-            call am_print('ERROR','First element of rep is not the identity.')
-            call am_print('first element of rep',rep(:,:,1))
-            stop
-        endif
-        !
-        n=size(rep,3)
-        !
-        allocate(cayley_table(n,n))
-        !
-        do i = 1, n
-        do j = 1, n
-            !
-            W = matmul(rep(:,:,i),rep(:,:,j))
-            !
-            ! if 'seitz' flagged, reduce translational part to primitive cell 
-            if (present(flags)) then
-            if (index(flags,'seitz').ne.0) then
-                W(1:3,4) = modulo(W(1:3,4)+tiny,1.0_dp)-tiny
-            endif
-            endif
-            !
-            cayley_table(i,j) = get_matching_element_index_in_list(list=rep,elem=W)
-        enddo
-        enddo
-        !
-        ! if 'reg' flagged, re-order rows so that identities are along diagonal
-        if (present(flags)) then
-        if (index(flags,'reg').ne.0) then
-            !
-            allocate(sortmat(n,n))
-            allocate(indices(n))
-            indices = [1:n]
-            sortmat = 0
-            where (cayley_table.eq.1) sortmat(:,:) = 1
-            indices = matmul(sortmat(:,:),indices)
-            cayley_table = cayley_table(indices,:)
-        endif
-        endif
-        !
-        ! quick consitency check. not comprehensive
-        do i = 1, n
-            if (sum(cayley_table(:,i)).ne.sum(cayley_table(:,1))) then
-                call am_print('ERROR','Cayley table sums along rows/columns are not consistent.')
-                stop
-            endif
-        enddo
-        !
-        contains
-        function       get_matching_element_index_in_list(list,elem) result(i)
-            !
-            implicit none
-            real(dp), intent(in) :: list(:,:,:)
-            real(dp), intent(in) :: elem(:,:)
-            integer :: i
-            !
-            do i = 1,size(list,3)
-                if (all(abs(list(:,:,i)-elem).lt.tiny)) return
-            enddo
-        end function   get_matching_element_index_in_list
-    end function   get_cayley_table
-
-    ! procedures which operate on cayley table 
-    ! (the idea should be to get the rep, transform it to the cayley table and perform as many operations on the cayley table as necessary)
-
-    pure function  get_inverse_indices(cayley_table) result(ind)
-        ! returns the ind of the inverse elements given the cayley table.
-        ! requires identity as first element
-        implicit none
-        !
-        integer, intent(in) :: cayley_table(:,:)
-        integer, allocatable :: ind(:)
-        integer, allocatable :: P(:,:)
-        !
-        ind = [1:size(cayley_table,1)]
-        !
-        allocate(P,source=cayley_table)
-        where (P.ne.1) P = 0
-        !
-        ind = matmul(P,ind)
-        !
-    end function   get_inverse_indices
-
-    function       get_conjugacy_classes(rep,flags) result(cc_id)
-        !
-        ! for AX = XB, if elements A and B are conjugate pairs for some other element X in the group, then they are in the same class
-        !
-        use am_rank_and_sort
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: rep(:,:,:)
-        character(*), intent(in), optional :: flags
-        integer, allocatable :: cayley_table(:,:) ! cayley table
-        integer, allocatable :: sinv(:) ! sinv(nsyms) index of the inverse of symmetry element i
-        integer, allocatable :: cc_id(:)
-        integer, allocatable :: celem(:)
-        ! integer, allocatable :: class_member(:,:) ! used to sort based on determinant
-        ! integer, allocatable :: indices(:)        ! used to sort based on determinant
-        ! integer, allocatable :: relabel_indices(:)! used to sort based on determinant
-        ! real(dp),allocatable :: ccdet(:)          ! used to sort based on determinant
-        integer :: i, j, k
-        integer :: nsyms
-        integer :: nclasses
-        !
-        nsyms = size(rep,3)
-        !
-        ! get cayley table
-        if (present(flags)) then
-            cayley_table = get_cayley_table(rep=rep,flags=flags)
-        else
-            cayley_table = get_cayley_table(rep=rep)
-        endif
-        !
-        ! allocate space for conjugacy class
-        allocate(cc_id(nsyms))
-        cc_id = 0
-        !
-        ! get element inverse
-        sinv = get_inverse_indices(cayley_table)
-        !
-        ! allocate space for conjugate elements
-        allocate(celem(nsyms))
-        !
-        ! determine conjugacy classes
-        k = 0
-        do i = 1, nsyms
-        if (cc_id(i).eq.0) then
-            k=k+1
-            ! conjugate each element with all other group elements
-            ! A = X(j) * B * X(j)^-1
-            do j = 1, nsyms
-                celem(j) = cayley_table(j,cayley_table(i,sinv(j)))
-            enddo
-            ! for each subgroup element created by conjugation find the corresponding index of the element in the group
-            ! in order to save the class cc_id number
-            do j = 1, nsyms
-                cc_id( celem(j) ) = k
-            enddo
-            !
-        endif
-        enddo
-        nclasses = k
-        !
-        ! relabel classes based on number of elements in each class
-        call relabel_based_on_occurances(cc_id)
-        !
-        ! relabel classes based on det of class representative
-        ! class_member = member(cc_id)
-        ! allocate(ccdet(nclasses)) 
-        ! do i = 1,nclasses
-        !     ccdet(i) = det( rep(:,:,class_member(i,1)) )
-        ! enddo
-        ! !
-        ! allocate(indices(nclasses))
-        ! call rank(ccdet,indices)
-        ! !
-        ! allocate(relabel_indices(nclasses))
-        ! do i = 1, nclasses
-        !     relabel_indices(indices(i)) = i
-        ! enddo
-        ! do i = 1, nsyms
-        !     cc_id(i) = relabel_indices( cc_id(i) )
-        ! enddo
-        !
-        ! make sure the identity is in the first class
-        ! cc_id(i=1) is the class of the first element (the identity); swap it's location with whaterver elements are in the first class
-        where (cc_id.eq.1) cc_id = cc_id(1)
-        cc_id(1)=1
-        !
-        ! check that classes are disjoint and complete
-        if (any(cc_id.eq.0)) then
-            call am_print('ERROR','Not every element in the group has been asigned a conjugacy class.',flags='E')
-            stop
-        endif
-        !
-        contains
-        subroutine     relabel_based_on_occurances(list)
-            !
-            use am_rank_and_sort
-            !
-            implicit none
-            !
-            integer , intent(inout) :: list(:)
-            integer , allocatable :: A_sorted(:)
-            integer , allocatable :: occurances(:) 
-            integer , allocatable :: reverse_sort(:)
-            integer , allocatable :: sorted_indices(:)
-            integer , allocatable :: list_relabled(:)
-            integer :: nsyms, i, j
-            !
-            nsyms = size(list,1)
-            !
-            allocate(occurances(nsyms))
-            do i = 1, nsyms
-                occurances(i) = count(list(i).eq.list)
-            enddo
-            !
-            ! this quick and dirty procedure lifts degeneracies
-            !
-            allocate(sorted_indices(nsyms))
-            allocate(A_sorted(nsyms))
-            call rank((1+maxval(list))*occurances+list,sorted_indices)
-            A_sorted = list(sorted_indices)
-            !
-            allocate(list_relabled(nsyms))
-            list_relabled = 0
-            !
-            j=1
-            list_relabled(1) = 1
-            do i = 2, nsyms
-                if (A_sorted(i).ne.A_sorted(i-1)) then
-                    j=j+1
-                endif
-                list_relabled(i) = j
-            enddo
-            !
-            ! return everything to the original order at call
-            !
-            allocate(reverse_sort(nsyms))
-            reverse_sort(sorted_indices)=[1:nsyms]
-            list=list_relabled(reverse_sort)
-        end subroutine relabel_based_on_occurances
-    end function   get_conjugacy_classes
-
-    function       get_coset(g_id,H_id,cayley_table,flags) result(ind)
-        !
-        ! In mathematics, if G is a group, and H is a subgroup of G, and g is an element of G, then:
-        ! gH = { gh : h an element of H } is the left coset of H in G with respect to g, and
-        ! Hg = { hg : h an element of H } is the right coset of H in G with respect to g.
-        ! Wikipedia.
-        !
-        implicit none
-        !
-        integer, intent(in) :: g_id
-        integer, intent(in) :: H_id(:)
-        integer, intent(in) :: cayley_table(:,:)
-        character(*), intent(in) :: flags ! left/right
-        integer, allocatable :: ind(:)
-        integer :: i, m
-        !
-        m = size(H_id)
-        !
-        allocate(ind(m))
-        !
-        do i = 1, m
-            ! left/right coset, coonjucate 
-            if     (index(flags,'right')) then; ind(i) = cayley_table(H_id(i),g_id)
-            elseif (index(flags,'left' )) then; ind(i) = cayley_table(g_id,H_id(i))
-            else
-                call am_print('ERROR','Flag '//trim(flags)//' not valid.',flags='E')
-                stop
-            endif
-        enddo
-        !
-    end function   get_coset
-
-    ! functions which operate on conjugate classes ids
-
-    function       member(id) result(class_member)
-        !
-        implicit none
-        !
-        integer, allocatable, intent(in) :: id(:)
-        integer, allocatable :: class_nelements(:) ! number of elements in each class
-        integer, allocatable :: class_member(:,:) ! members(nclass,maxval(class_nelements))
-        integer :: i, j, k
-        integer :: nsyms
-        integer :: nclasses
-        !
-        nsyms = size(id,1)
-        !
-        nclasses = maxval(id)
-        !
-        class_nelements = nelements(id)
-        !
-        allocate(class_member(nclasses,maxval(class_nelements)))
-        class_member = 0
-        do i = 1, nclasses
-            k=0
-            do j = 1, nsyms
-                if (id(j).eq.i) then
-                    k=k+1
-                    class_member(i,k) = j
-                endif
-            enddo
-        enddo
-    end function   member
-
-    function       nelements(id) result(class_nelements)
-        !
-        implicit none
-        !
-        integer, intent(in)  :: id(:)
-        integer, allocatable :: class_nelements(:)
-        integer :: nclasses
-        integer :: i
-        !
-        nclasses = maxval(id)
-        !
-        allocate(class_nelements(nclasses))
-        !
-        do i = 1, nclasses
-            class_nelements(i) = count(i.eq.id)
-        enddo
-    end function   nelements
 
     ! functions which operate on kpoints
 

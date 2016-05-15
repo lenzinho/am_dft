@@ -8,6 +8,7 @@ module am_shells
     use am_options
     use am_mkl
     use am_atom
+    use am_group_rep
     use am_symmetry
 
     implicit none
@@ -306,16 +307,14 @@ contains
             !
             type(am_class_unit_cell), intent(in) :: sphere
             type(am_class_symmetry) , intent(in) :: pg ! rotational group (space symmetries which have translational part set to zero and are still compatbile with the atomic basis)
-            integer , allocatable :: P(:,:,:)
-            integer , allocatable :: PM(:,:) ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
+            type(am_class_rep_perm) :: pr
             real(dp), allocatable :: d(:)    ! d(npairs) array containing distances between atoms
             integer , allocatable :: indices(:)
             integer , allocatable :: ind_u(:)
             integer :: i, jj, j, k
             !
-            ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-            P  = rep_permutation(sg=pg,tau=sphere%tau,flags='relax_pbc',opts=opts)
-            PM = map_permutation( P )
+            ! pr%PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
+            call pr%create(R=sg%R,tau=uc%tau,sym_prec=opts%sym_prec)
             !
             ! get distance of atoms
             allocate(d(sphere%natoms))
@@ -336,8 +335,8 @@ contains
                 if (ind_u(i).eq.0) then
                     k=k+1
                     do j = 1, pg%nsyms
-                    if ((PM(i,j)).ne.0) then
-                        ind_u(PM(i,j)) = k
+                    if ((pr%PM(i,j)).ne.0) then
+                        ind_u(pr%PM(i,j)) = k
                     endif
                     enddo
                 endif
