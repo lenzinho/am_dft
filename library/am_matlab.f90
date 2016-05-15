@@ -34,6 +34,10 @@ module am_matlab
     interface are_equal
         module procedure :: are_equal_d, are_equal_z, are_equal_array
     end interface ! are_equal
+
+    interface trace
+        module procedure :: dtrace, ztrace
+    end interface ! trace
     
     contains
     
@@ -436,6 +440,14 @@ module am_matlab
 
     function      euler2SO3(l,euler) result(SO3)
         !
+        ! The group SO(3) is the set of all three dimensional, real orthogonal matrices with unit
+        ! determinant. [Requiring that the determinant equal 1 and not −1, excludes inversions.]
+        !
+        ! The group SO(3) represents the set of all possible rotations of a three dimensional real
+        ! vector; it is essentially the collection of all proper rotations. The orthogonal group O(3) 
+        ! includes improper rotations and it is given by the direct product of SO(3) and the inversion
+        ! group i.
+        !
         ! setup rotation matrices, "pitch-roll-yaw" convetion
         ! alpha (           around X)
         ! beta  (polar,     around Y)
@@ -454,8 +466,6 @@ module am_matlab
         !        York; Paris, 1992), p 666.
         !   - J. J. Sakurai, Modern Quantum Mechanics, Revised edition (Addison Wesley, Reading, Mass,
         !        1993). p 207
-        !
-        ! Note: because Ly operator is Hermitian, eigenvalues are real.
         !
         implicit none
         !
@@ -593,60 +603,123 @@ module am_matlab
         real(dp), allocatable :: O3(:,:)
         real(dp) :: d ! det
         !
+        ! computed determinant
         d = R(1,1)*R(2,2)*R(3,3)-R(1,1)*R(2,3)*R(3,2)-R(1,2)*R(2,1)*R(3,3)+R(1,2)*R(2,3)*R(3,1)+R(1,3)*R(2,1)*R(3,2)-R(1,3)*R(2,2)*R(3,1)
+        !
+        ! check that the rotation is unitary, with determinant equalt to plus or minus one
+        if (abs(abs(d)-1.0_dp).gt.tiny) stop 'Rotation is not unitary. det /= +1 or -1'
+        !
+        ! remove rouding errors
+        d = sign(1.0_dp,d)
+        !
         ! convert rotoinversion to pure rotation then back to rotoinversion
-        ! Eq. 
-        O3 = euler2SO3(l=l,euler=rot2euler(R*d)) * (d ** l)
+        O3 = euler2SO3(l=l,euler=rot2euler(R*d)) * ( d ** l )
         !
     end function  rot2O3
 
     function      rot2irrep(n,R) result(irrep)
         !
-        ! generates n-dimensional irreducible representation matrix corresponding to rotation R 
+        ! generates n-dimensional irreducible representation matrix corresponding to (im)proper rotation R 
         !
         implicit none
         !
         integer , intent(in) :: n
         real(dp), intent(in) :: R(3,3)
         complex(dp), allocatable :: irrep(:,:)
+        complex(dp) :: improper_fac
+        real(dp)    :: Re, Im
         real(dp) :: d ! det
-        integer  :: l
         real(dp) :: j
         !
         ! convert rotoinversion to pure rotation then back to rotoinversion
         d = R(1,1)*R(2,2)*R(3,3)-R(1,1)*R(2,3)*R(3,2)-R(1,2)*R(2,1)*R(3,3)+R(1,2)*R(2,3)*R(3,1)+R(1,3)*R(2,1)*R(3,2)-R(1,3)*R(2,2)*R(3,1)
         !
+        ! check that the rotation is unitary, with determinant equalt to plus or minus one
+        if (abs(abs(d)-1.0_dp).gt.tiny) stop 'Rotation is not unitary. det /= +1 or -1'
         !
+        ! remove rouding errors
+        d = sign(1.0_dp,d)
+        !
+        ! determine j
+        j = (n-1.0_dp)/2.0_dp
+        !
+        ! rotoinversions factor : (-1)**j, euler's identity is used here for numerical precision
+        improper_fac = exp(cmplx_i*pi*j)
+        !
+        ! correct basic rounding error
+        Re = real(improper_fac)
+        Im = aimag(improper_fac)
+        if ((nint(Re)-Re).lt.tiny) Re = nint(Re)
+        if ((nint(Im)-Im).lt.tiny) Im = nint(Im)
+        improper_fac = cmplx(Re,Im,dp)
+        !
+        ! determine irrep
         if (modulo(n,2).eq.0) then
             ! even = SU2 case
-            j = (n-1.0_dp)/2.0_dp
-            irrep = euler2SU2(j=j, euler=rot2euler(R))
-            write(*,*) 'Do not know how to handle inversion for SU2 irrep. Come back to this!'
+            irrep = euler2SU2(j=j, euler=rot2euler(R)) * improper_fac
+            write(*,*) 'Do not know how to handle inversion for SU2 irrep. Come back to this! Just taking a guess here...'
         else
             ! odd = SO3 case
-            l = nint( (n-1.0_dp)/2.0_dp )
-            irrep = euler2SO3(l=l, euler=rot2euler(R*d)) * (d ** l)
+            irrep = euler2SO3(l=nint(j), euler=rot2euler(R*d)) * improper_fac
         endif
         !
     end function  rot2irrep
 
-    pure function O3_character(l,th) result(chi)
+    function      proper_th2chi(n,th) result(chi)
         !
-        ! Character of rotation irrep, th [radians] about any arbitrary angle, l azimuthal quantum
-        ! number.
+        ! Character of proper rotation irrep with dimension n and angle th
+        !
+        ! T. Wolfram and Ş. Ellialtıoğlu, Applications of Group Theory to Atoms, Molecules, and
+        ! Solids, 1 edition (Cambridge University Press, Cambridge, 2014), p 74, Eq. 3.20.
+        !
+        ! M. Tinkham, Group Theory and Quantum Mechanics (McGraw-Hill, 1964), p 100 bottom.
+        !
+        implicit none
+        !
+        integer,  intent(in) :: n  ! dimension of irrep
+        real(dp), intent(in) :: th ! rotation angle
+        real(dp)    :: j           ! azimuthal + spin quantum number
+        complex(dp) :: chi
+        !
+        j = (n-1.0_dp)/2.0_dp
+        !
+        ! check that j is an integer or half integer number
+        if (abs(modulo(j+tiny,0.5_dp)-tiny).gt.tiny) stop 'Quantum number j invalid.'
+        !
+        ! evaluate the character of the irrep
+        if (abs(th).lt.tiny) then
+            ! limiting case is obtained by expanding sin( (j+1/2)*x ) / sin( x/2 ) at zero
+            chi = (2*j+1)
+        else
+            ! general case
+            chi = sin( (j+0.5_dp)*th ) / sin( th*0.5_dp )
+        endif
+        !
+    end function  proper_th2chi
+
+    function      proper_rot2chi(n,R) result(chi)
+        !
+        ! Character of rotation irrep with dimension n parameterized by rotation matrix R
         !       
         ! T. Wolfram and Ş. Ellialtıoğlu, Applications of Group Theory to Atoms, Molecules, and
         ! Solids, 1 edition (Cambridge University Press, Cambridge, 2014), p 74, Eq. 3.20.
         !
         implicit none
         !
-        integer , intent(in) :: l
-        real(dp), intent(in) :: th
-        real(dp) :: chi
+        integer,  intent(in) :: n ! dimension of irrep
+        real(dp), intent(in) :: R(3,3) ! rotation angle
+        real(dp) :: aa(4)
+        real(dp) :: d
+        complex(dp) :: chi
         !
-        chi = sin( (l+0.5_dp)*th ) / sin( th*0.5_dp )
+        ! if R is a rotoinversion, get the angle and axis of the rotational part only (without the inversion)
+        d = R(1,1)*R(2,2)*R(3,3)-R(1,1)*R(2,3)*R(3,2)-R(1,2)*R(2,1)*R(3,3)+R(1,2)*R(2,3)*R(3,1)+R(1,3)*R(2,1)*R(3,2)-R(1,3)*R(2,2)*R(3,1)
         !
-    end function  O3_character
+        aa = rot2axis_angle(R)
+        !
+        chi = proper_th2chi(n=n,th=aa(4))
+        !
+    end function  proper_rot2chi
 
     ! special functions
 
@@ -1133,7 +1206,7 @@ module am_matlab
         !
     end function  adjoint
 
-    pure function trace(R) result(tr)
+    pure function dtrace(R) result(tr)
         !
         implicit none
         !
@@ -1146,7 +1219,22 @@ module am_matlab
             tr = tr + R(i,i)
         enddo
         !
-    end function  trace
+    end function  dtrace
+
+    pure function ztrace(R) result(tr)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: R(:,:)
+        complex(dp) :: tr
+        integer :: i
+        !
+        tr = 0
+        do i = 1,size(R,2)
+            tr = tr + R(i,i)
+        enddo
+        !
+    end function  ztrace
 
     pure subroutine rref(matrix)
         !
@@ -1778,6 +1866,6 @@ module am_matlab
             endif
         enddo
         !
-    end function smallest_nonzero
+    end function  smallest_nonzero
 
 end module am_matlab
