@@ -47,6 +47,10 @@ module am_symmetry
         procedure :: sort => symsort
     end type        am_class_symmetry
 
+    interface get_order
+        procedure :: get_order_sym, get_order_rep
+    end interface ! get_order
+
 contains
 
     ! functions which operate on R(3,3) in fractional coordinates
@@ -622,8 +626,6 @@ contains
         revg%pg_id = point_group_schoenflies(revg%ps_id)
         !
     end subroutine get_reversal_group
-
-    ! medium level routines which operate on sg
 
     subroutine     get_character_table(sg,opts)
         !
@@ -1739,6 +1741,49 @@ contains
 
     ! procedures which operate on matrix representations
 
+    function       get_order_sym(sym) result(i)
+        !
+        implicit none
+        !
+        real(dp), intent(in)  :: sym(:,:)
+        real(dp), allocatable :: identity(:,:)
+        real(dp), allocatable :: sym_pow(:,:)
+        integer :: i
+        !
+        allocate(identity,mold=sym)
+        identity = eye(size(sym,1))
+        !
+        allocate(sym_pow,source=sym)
+        !
+        i = 0
+        do while ( all(abs(identity-sym_pow).lt.tiny) .or. (i.eq.50) )
+            i=i+1
+            sym_pow = matmul(sym,sym_pow)
+        enddo
+        !
+        if (i.eq.50) stop 'Error: unable to determine symmetry order.'
+        !
+    end function   get_order_sym
+
+    function       get_order_rep(rep) result(order)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: rep(:,:,:)
+        integer, allocatable :: order(:)
+        integer :: nsyms
+        integer :: i
+        !
+        nsyms = size(rep,3)
+        !
+        allocate(order(nsyms))
+        !
+        do i = 1, nsyms
+            order(i) = get_order_sym(rep(:,:,i))
+        enddo
+        !
+    end function   get_order_rep
+
     function       get_cayley_table(rep,flags) result(cayley_table)
         !
         ! flag options:
@@ -1818,6 +1863,27 @@ contains
             enddo
         end function   get_matching_element_index_in_list
     end function   get_cayley_table
+
+    ! procedures which operate on cayley table 
+    ! (the idea should be to get the rep, transform it to the cayley table and perform as many operations on the cayley table as necessary)
+
+    pure function  get_inverse_indices(cayley_table) result(ind)
+        ! returns the ind of the inverse elements given the cayley table.
+        ! requires identity as first element
+        implicit none
+        !
+        integer, intent(in) :: cayley_table(:,:)
+        integer, allocatable :: ind(:)
+        integer, allocatable :: P(:,:)
+        !
+        ind = [1:size(cayley_table,1)]
+        !
+        allocate(P,source=cayley_table)
+        where (P.ne.1) P = 0
+        !
+        ind = matmul(P,ind)
+        !
+    end function   get_inverse_indices
 
     function       get_conjugacy_classes(rep,flags) result(cc_id)
         !
@@ -1960,27 +2026,6 @@ contains
             list=list_relabled(reverse_sort)
         end subroutine relabel_based_on_occurances
     end function   get_conjugacy_classes
-
-    ! procedures which operate on cayley table 
-    ! (the idea should be to get the rep, transform it to the cayley table and perform as many operations on the cayley table as necessary)
-
-    pure function  get_inverse_indices(cayley_table) result(ind)
-        ! returns the ind of the inverse elements given the cayley table.
-        ! requires identity as first element
-        implicit none
-        !
-        integer, intent(in) :: cayley_table(:,:)
-        integer, allocatable :: ind(:)
-        integer, allocatable :: P(:,:)
-        !
-        ind = [1:size(cayley_table,1)]
-        !
-        allocate(P,source=cayley_table)
-        where (P.ne.1) P = 0
-        !
-        ind = matmul(P,ind)
-        !
-    end function   get_inverse_indices
 
     function       get_coset(g_id,H_id,cayley_table,flags) result(ind)
         !
