@@ -1,6 +1,7 @@
 module am_matlab
 
     use am_constants
+    use am_mkl, only : am_zheev
 
     implicit none
     
@@ -219,6 +220,233 @@ module am_matlab
         euler(k) = atan2(s*R(k,i)-c*R(j,i),c*R(j,j)-s*R(k,j))
         !
     end function  rot2euler
+
+    function      euler2O3(l,euler) result(O3)
+        !
+        ! setup rotation matrices, "pitch-roll-yaw" convetion
+        ! alpha (           around X)
+        ! beta  (polar,     around Y)
+        ! gamma (azimuthal, around Z)
+        !
+        ! R = X(alpha) * Y(beta) * Z(gamma)
+        !
+        ! Determines 3D irrep rotation by calculating the eigenvalues D and eigevectors V of Ly/Lx
+        ! operator in the Lz basis using raising/lowering operators.
+        !
+        !   - R. M. Martin, Electronic Structure: Basic Theory and Practical Methods, 1 edition
+        !        (Cambridge University Press, Cambridge, UK ; New York, 2008), p 573.
+        !   - Romero Nichols "Density Functional Study of Fullerene-Based Solids: Crystal Structure,
+        !        Doping, and Electron- Phonon Interaction", Ph.D. Thesis UIUC, p 96.
+        !   - C. Cohen-Tannoudji, B. Diu, and F. Laloe, Quantum Mechanics, 1 edition (Wiley-VCH, New
+        !        York; Paris, 1992), p 666.
+        !   - J. J. Sakurai, Modern Quantum Mechanics, Revised edition (Addison Wesley, Reading, Mass,
+        !        1993). p 207
+        !
+        ! Note: because Ly operator is Hermitian, eigenvalues are real.
+        !
+        implicit none
+        !
+        integer , intent(in) :: l
+        real(dp), intent(in) :: euler(3) ! around X, Y, Z
+        integer :: n
+        real(dp)   , allocatable :: O3(:,:) ! tesseral harmonics rotation matrix, (2*l+1) x (2*l+1) irrep of rotation in 3 dimensional space
+        complex(dp), allocatable :: V(:,:) ! eigenvector of Lz/Lx in Ly basis
+        real(dp)   , allocatable :: D(:)   ! eigenvalues of Lz/Lx in Ly basis = -l, -l+1, ... -1, 0, 1, ... l-1, l  -- Note: Lz/Lx are Hermitian.
+        complex(dp), allocatable :: A(:,:) ! matrix corresponding to exp(-i*alpha*Ly)
+        complex(dp), allocatable :: B(:,:) ! matrix corresponding to exp(-i*beta*Ly)
+        complex(dp), allocatable :: G(:,:) ! matrix corresponding to exp(-i*gamma*Ly)
+        complex(dp), allocatable :: C(:,:) ! similarity transform which maps complex spherical harmonics onto real tesseral harmonics
+        real(dp)   , allocatable :: X(:,:) ! counter-clockwise rotation (right-hand rule) around X axis
+        real(dp)   , allocatable :: Y(:,:) ! counter-clockwise rotation (right-hand rule) around Y axis
+        real(dp)   , allocatable :: Z(:,:) ! counter-clockwise rotation (right-hand rule) around Z axis
+        complex(dp), allocatable :: H(:,:) ! helper matrix
+        !
+        ! get dimensions of matrices
+        n = 2*l+1
+        !
+        ! determine similarity transform to convert spherical into tesseral harmonics (complex to real)
+        C = tesseral(l=l)
+        !
+        ! determine rotation around X = real( (B*V)*A*(B*V)' )
+        call am_zheev(A=Lx(l),V=V,D=D)
+        H = matmul(C,V)
+        A = diag(exp(-cmplx_i*euler(1)*D))
+        X = matmul(H,matmul(A,adjoint(H)))
+        !
+        ! determine rotation around Y = real( B*P*B' )
+        allocate(Y(n,n))
+        B = diag(exp( cmplx_i*euler(2)*D))
+        Y = matmul(C,matmul(B,adjoint(C)))
+        !
+        ! determine rotation around Z = real( (B*V)*T*(B*V)' )
+        call am_zheev(A=Lz(l),V=V,D=D)
+        H = matmul(C,V)
+        G = diag(exp( cmplx_i*euler(3)*D))
+        Z = matmul(H,matmul(G,adjoint(H)))
+        !
+        ! generate rotation
+        allocate(O3(n,n))
+        O3 = matmul(X,matmul(Y,Z))
+        !
+        contains
+        pure function  Lz(l)
+            !
+            ! Construct  Ly matrix in the Lz basis from raising and lower operators
+            ! Laloe, p 666; Martin, p 573, Eq N4; Sakurai, p 207. hbar is set to 1.
+            !
+            ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
+            ! 1980 edition (Springer, 2013), p 327, Eq 12.5.21b
+            !
+            implicit none
+            !
+            integer, intent(in) :: l
+            complex(dp), allocatable :: Lz(:,:)
+            integer :: m, mp
+            !
+            allocate(Lz(-l:l,-l:l))
+            !
+            Lz = (Lm(l)-Lp(l))*0.5_dp*cmplx_i
+            !
+        end function   Lz
+        pure function  Lx(l)
+            !
+            ! Construct  Ly matrix in the Lz basis from raising and lower operators
+            ! Laloe, p 666; Martin, p 573, Eq N4; Sakurai, p 207. hbar is set to 1.
+            !
+            ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
+            ! 1980 edition (Springer, 2013), p 327, Eq 12.5.21a
+            !
+            implicit none
+            !
+            integer, intent(in) :: l
+            complex(dp), allocatable :: Lx(:,:)
+            integer :: m, mp
+            !
+            allocate(Lx(-l:l,-l:l))
+            !
+            Lx = (Lp(l)+Lm(l))*0.5_dp
+            !
+        end function   Lx
+        pure function  Lp(l)
+            !
+            ! Raising angular momentum operator.
+            !
+            ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
+            ! 1980 edition (Springer, 2013), p 327, Eq 12.5.20
+            !
+            implicit none
+            !
+            integer, intent(in) :: l
+            complex(dp), allocatable :: Lp(:,:)
+            integer :: m, mp
+            !
+            allocate(Lp(-l:l,-l:l))
+            Lp = 0.0_dp
+            !
+            do m = -l, l
+            do mp= -l, l
+                if (mp==m+1) Lp(mp,m) = sqrt(real( (l-m)*(l+m+1) ,dp))
+            enddo
+            enddo
+            !
+        end function   Lp
+        pure function  Lm(l)
+            !
+            ! Lowering angular momentum operator.
+            !
+            ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
+            ! 1980 edition (Springer, 2013), p 327, Eq 12.5.20
+            !
+            implicit none
+            !
+            integer, intent(in) :: l
+            complex(dp), allocatable :: Lm(:,:)
+            integer :: m, mp
+            !
+            allocate(Lm(-l:l,-l:l))
+            Lm = 0.0_dp
+            !
+            do m = -l, l
+            do mp= -l, l
+                if (mp==m-1) Lm(mp,m) = sqrt(real( (l+m)*(l-m+1) ,dp))
+            enddo
+            enddo
+            !
+        end function   Lm
+        pure function  tesseral(l) result(B)
+            !
+            ! latex equations
+            !
+            ! $$
+            ! Y_{lm} = 
+            ! \begin{cases}
+            ! Y_l^m                                               & \text{if } m = 0 \\
+            ! \frac{i}{\sqrt{2}} ( (-1)^{m} Y_l^{-m} - Y_l^{ m} ) & \text{if } m > 0 \\
+            ! \frac{1}{\sqrt{2}} ( (-1)^{m} Y_l^{ m} + Y_l^{-m} ) & \text{if } m < 0
+            ! \end{cases}
+            ! $$
+            !
+            ! R. R. Sharma, Phys. Rev. B. 19, 2813 (1979).
+            ! Also, see Wikipedia.
+            implicit none
+            !
+            integer, intent(in) :: l
+            complex(dp), allocatable :: B(:,:)
+            integer :: m,mp
+            !
+            allocate(B(-l:l,-l:l))
+            B = 0.0_dp
+            !
+            do m = -l, l
+            do mp= -l, l
+                if (m.eq.0) then
+                   if (m.eq. mp) B(m,mp) = 1.0_dp
+                elseif (m.gt.0) then
+                   if (m.eq. mp) B(m,mp) = -cmplx_i/sqrt(2.0_dp)
+                   if (m.eq.-mp) B(m,mp) = +cmplx_i/sqrt(2.0_dp) * (-1.0_dp)**m
+                elseif (m.lt.0) then
+                   if (m.eq. mp) B(m,mp) =   1.0_dp/sqrt(2.0_dp) * (-1.0_dp)**m
+                   if (m.eq.-mp) B(m,mp) =   1.0_dp/sqrt(2.0_dp)
+                endif
+            enddo
+            enddo
+            !
+        end function   tesseral
+    end function  euler2O3
+
+    function      rot2O3(l,R) result(O3)
+        !
+        implicit none
+        !
+        integer, intent(in) :: l
+        real(dp), intent(in) :: R(3,3)
+        real(dp), allocatable :: O3(:,:)
+        real(dp) :: d ! det
+        !
+        d = R(1,1)*R(2,2)*R(3,3)-R(1,1)*R(2,3)*R(3,2)-R(1,2)*R(2,1)*R(3,3)+R(1,2)*R(2,3)*R(3,1)+R(1,3)*R(2,1)*R(3,2)-R(1,3)*R(2,2)*R(3,1)
+        ! convert rotoinversion to pure rotation then back to rotoinversion
+        ! Eq. 
+        O3 = euler2O3(l=l,euler=rot2euler(R*d)) * (d ** l)
+        !
+    end function  rot2O3
+
+    pure function O3_character(l,th) result(chi)
+        !
+        ! Character of rotation irrep, th [radians] about any arbitrary angle, l azimuthal quantum
+        ! number.
+        !       
+        ! T. Wolfram and Ş. Ellialtıoğlu, Applications of Group Theory to Atoms, Molecules, and
+        ! Solids, 1 edition (Cambridge University Press, Cambridge, 2014), p 74, Eq. 3.20.
+        !
+        implicit none
+        !
+        integer , intent(in) :: l
+        real(dp), intent(in) :: th
+        real(dp) :: chi
+        !
+        chi = sin( (l+0.5_dp)*th ) / sin( th*0.5_dp )
+        !
+    end function  O3_character
 
     ! special functions
 

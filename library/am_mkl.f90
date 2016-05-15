@@ -131,8 +131,6 @@ contains
 
     function       zdet(A) result(d)
         ! 
-        use am_stdout
-        !
         implicit none
         !
         complex(dp), intent(in)  :: A(:,:)
@@ -146,10 +144,9 @@ contains
         !
         m = size(A,1)
         n = size(A,2)
-        if (m.ne.n) then
-          call am_print('ERROR','Determinant is only defined for square matrices',flags='E')
-          stop
-        endif
+        !
+        if (m/=n) stop 'Determinant are only defined for square matrices'
+
         allocate(ipiv(m))
         !
         ! remove numerical singularites by regularization
@@ -160,10 +157,8 @@ contains
         !
         ! perform LU factorization
         call zgetrf( m, m, C, m, ipiv, info )
-        if (info.ne.0) then
-            call am_print('ERROR',info,flags='E')
-            stop
-        endif
+        !
+        if (info/=0) stop 'Error in zgetrf'
         !
         ! get determinant
         d=1.0_dp
@@ -184,8 +179,6 @@ contains
 
     function       ddet(A) result(d)
         ! 
-        use am_stdout
-        !
         implicit none
         !
         real(dp), intent(in)  :: A(:,:)
@@ -199,10 +192,9 @@ contains
         !
         m = size(A,1)
         n = size(A,2)
-        if (m.ne.n) then
-          call am_print('ERROR','Determinant is only defined for square matrices',flags='E')
-          stop
-        endif
+        !
+        if (m/=n) stop 'Determinant are only defined for square matrices'
+        !
         allocate(ipiv(m))
         !
         ! remove numerical singularites by regularization
@@ -213,10 +205,8 @@ contains
         !
         ! perform LU factorization
         call dgetrf( m, m, C, m, ipiv, info )
-        if (info.ne.0) then
-            call am_print('ERROR',info,flags='E')
-            stop
-        endif
+        !
+        if (info/=0) stop 'Error in zgetrf'
         !
         ! get determinant
         d=1.0_dp
@@ -239,8 +229,6 @@ contains
 
     subroutine     lu(A)
         ! returns the upper triangular matrix U
-        use am_stdout
-        !
         implicit none
         !
         real(dp), intent(inout)  :: A(:,:)
@@ -250,6 +238,7 @@ contains
         !
         m = size(A,1)
         n = size(A,2)
+        !
         allocate(ipiv(max(1,min(m,n))))
         !
         ! remove numerical singularites by regularization
@@ -259,10 +248,8 @@ contains
         !
         ! perform LU factorization
         call dgetrf( m, n, A, m, ipiv, info )
-        if (info.ne.0) then
-            call am_print('ERROR',info,flags='E')
-            stop
-        endif
+        !
+        if (info/=0) stop 'Error in dgetrf'
         !
         ! return upper triangular matrix U
         do i = 1, m
@@ -276,8 +263,6 @@ contains
     
     function       am_dinv(A) result(Ainv)
         !
-        use am_stdout
-        !
         implicit none
         !
         real(dp), intent(in)  :: A(:,:)
@@ -289,10 +274,8 @@ contains
         !
         m = size(A,1)
         n = size(A,2)
-        if (m.ne.n) then
-            call am_print('ERROR','n /= m',flags='E')
-            stop
-        endif
+        !
+        if (m/=n) stop 'Determinant are only defined for square matrices'
         !
         allocate(ipiv(n))
         allocate(WORK(lwmax))
@@ -305,10 +288,8 @@ contains
         !
         ! factorize 
         call dgetrf( m, n, Ainv, m, ipiv, info )
-        if (info.ne.0) then
-            call am_print('ERROR',info)
-            stop
-        endif
+        !
+        if (info/=0) stop 'Error in dgetrf'
         !
         ! query workspace
         lwork=-1
@@ -317,18 +298,14 @@ contains
         !
         ! get inverse
         call dgetri( n, Ainv, m, ipiv, WORK, lwork, info )
-        if (info.ne.0) then
-            call am_print('ERROR',info)
-            stop
-        endif
+        !
+        if (info.ne.0) stop 'Error in dgetri'
         !
     end function   am_dinv
 
     ! inverse of complex square matrix
 
     function       am_zinv(A) result(Ainv)
-        !
-        use am_stdout
         !
         implicit none
         !
@@ -341,10 +318,8 @@ contains
         !
         m = size(A,1)
         n = size(A,2)
-        if (m.ne.n) then
-            call am_print('ERROR','n /= m',flags='E')
-            stop
-        endif
+        !
+        if (m/=n) stop 'Determinant are only defined for square matrices'
         !
         allocate(ipiv(n))
         allocate(WORK(lwmax))
@@ -357,10 +332,8 @@ contains
         !
         ! factorize 
         call zgetrf( m, n, Ainv, m, ipiv, info )
-        if (info.ne.0) then
-            call am_print('ERROR',info)
-            stop
-        endif
+        !
+        if (info/=0) stop 'Error in dgetrf'
         !
         ! query workspace
         lwork=-1
@@ -369,10 +342,8 @@ contains
         !
         ! get inverse
         call zgetri( n, Ainv, m, ipiv, WORK, lwork, info )
-        if (info.ne.0) then
-            call am_print('ERROR',info)
-            stop
-        endif
+        !
+        if (info.ne.0) stop 'Error in dgetri'
         !
     end function   am_zinv
 
@@ -594,7 +565,6 @@ contains
         real(dp)   , allocatable :: RWORK(:)
         complex(dp), allocatable :: VL_internal(:,:)
         complex(dp), allocatable :: VR_internal(:,:)
-        integer :: i
         integer :: n
         integer :: lda, ldvl, ldvr
         integer :: info
@@ -925,8 +895,6 @@ contains
 
     subroutine     am_dgetrf(A,L,U)
         ! NOT YET TESTED.
-        use am_stdout
-        !
         implicit none
         !
         real(dp), intent(in)  :: A(:,:)
@@ -948,10 +916,8 @@ contains
         !
         ! perform LU factorization
         call dgetrf( m, n, U, m, ipiv, info )
-        if (info.ne.0) then
-            call am_print('ERROR',info,flags='E')
-            stop
-        endif
+        !
+        if (info/=0) stop 'Error in dgetrf'
         !
         ! return lower triangular matrix L
         allocate(L,source=U)

@@ -426,6 +426,45 @@ contains
         enddo
     end function   get_Hamiltonian
 
+    function       O3_rotations(azimuthal,th,phi,is_spin_polarized) result(R)
+        !
+        implicit none
+        !
+        integer , intent(in) :: azimuthal(:)
+        real(dp), intent(in) :: th,phi
+        logical , intent(in) :: is_spin_polarized
+        real(dp), allocatable :: R(:,:)
+        integer , allocatable :: l_start(:)
+        integer , allocatable :: l_end(:)
+        integer :: i, n, m
+        !
+        m = size(azimuthal)
+        !
+        allocate(l_start(m))
+        allocate(l_end(m))
+        !
+        n = 0
+        do i = 1,m
+            l_start(i) = n + 1
+            n = n + 2*azimuthal(i)+1
+            l_end(i) = n
+        enddo
+        !
+        allocate(R(n,n))
+        R = 0.0_dp
+        !
+        ! construct a direct sum of rotations
+        do i = 1, m
+            R(l_start(i):l_end(i),l_start(i):l_end(i)) = euler2O3(l=azimuthal(i),euler=[0.0_dp,th,phi])
+        enddo
+        !
+        if (is_spin_polarized) then
+            ! need to add something to account for the different spins. perhaps a kroner product of the R matrix obtained above and the corresponding rotations using the pauling spin matrices?
+            call am_print('ERROR','spin polarized is not yet supported.')
+            stop
+        endif
+        !
+    end function   O3_rotations
 
 
 

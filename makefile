@@ -4,7 +4,6 @@ include makefile.inc
 
 TIME_STAMP=`date +%b_%d_%H:%M`
 
-
 all: $(PROGS)
 
 tb: $(AMLIB) 
@@ -15,9 +14,6 @@ tb: $(AMLIB)
 
 uc: $(AMLIB) 
 	(cd prog_uc; $(MAKE) )
-
-wan: $(AMLIB) 
-	(cd prog_wan; $(MAKE) )
 
 sym: $(AMLIB) 
 	(cd prog_sym; $(MAKE) )
@@ -31,11 +27,14 @@ ibz: $(AMLIB)
 bc: $(AMLIB) 
 	(cd prog_bc; $(MAKE) )
 
+wan: $(AMLIB) 
+	(cd prog_wan; $(MAKE) )
+
 test: $(AMLIB) 
 	(cd prog_test; $(MAKE) )
 
 $(AMLIB): 
-	(cd prog_test; $(MAKE) )
+	(cd $(DIRLIB); $(MAKE) )
 
 clean:
 	(cd prog_bc; 	$(MAKE) clean)

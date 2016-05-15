@@ -9,17 +9,13 @@ module am_symmetry
     implicit none
 
     private
-    
-    public :: determine_symmetry
+
     public :: get_kpoint_compatible_symmetries
     public :: ps_frac2cart
 
     public :: member
     public :: nelements
     public :: decode_pointgroup
-    
-    public :: euler2O3
-    public :: rot2O3
 
     public :: rep_permutation ! for: get_irreducible
     public :: map_permutation ! for: get_irreducible
@@ -27,13 +23,13 @@ module am_symmetry
     type, public :: am_class_symmetry 
         !
         integer :: nsyms
-        real(dp), allocatable :: R(:,:,:)         !> symmetry elements (operate on fractional atomic basis)
-        real(dp), allocatable :: T(:,:)           !> symmetry elements (operate on fractional atomic basis)
+        real(dp), allocatable :: R(:,:,:) !> symmetry elements (operate on fractional atomic basis)
+        real(dp), allocatable :: T(:,:)   !> symmetry elements (operate on fractional atomic basis)
         integer , allocatable :: cc_id(:) !> integer assiging each element to a conjugacy class
         integer , allocatable :: ps_id(:) !> integer which identifies point symmetries (see decode_pointsymmetry)
         integer               :: pg_id    !> integer which identifies the point group
         !
-    contains
+        contains
         !
         procedure :: copy
         procedure :: create
@@ -42,16 +38,15 @@ module am_symmetry
         procedure :: get_rotational_group
         procedure :: get_stabilizer_group
         procedure :: get_reversal_group
-        procedure :: frac2cart
+        !
+        procedure :: get_character_table
+        procedure :: get_symmetry_action
         !
         procedure :: name_symmetries
         procedure :: stdout
         procedure :: sort => symsort
-        !
-        procedure :: determine_character_table
-        procedure :: symmetry_action
-    end type am_class_symmetry
-    
+    end type        am_class_symmetry
+
 contains
 
     ! functions which operate on R(3,3) in fractional coordinates
@@ -390,23 +385,6 @@ contains
 
     ! very high level routines which operate on sg
 
-    subroutine     determine_symmetry(uc,sg,pg,opts)
-        !
-        implicit none
-        !
-        class(am_class_unit_cell), intent(in) :: uc
-        type(am_class_symmetry), intent(out) :: sg
-        type(am_class_symmetry), intent(out) :: pg
-        type(am_class_options)  , intent(in) :: opts
-        !
-        if (opts%verbosity.ge.1) call am_print_title('Analyzing symmetry')
-        !
-        call sg%get_space_group(uc=uc,opts=opts)
-        !
-        call pg%get_point_group(sg=sg,uc=uc,opts=opts)
-        !
-    end subroutine determine_symmetry
-
     subroutine     get_space_group(sg,uc,opts)
         !
         use am_rank_and_sort
@@ -447,15 +425,34 @@ contains
         call sg%name_symmetries(opts=notalk)
         !
         ! write action table (converts everything into cartesian coordinates internally)
-        call sg%symmetry_action(uc=uc,flags='',iopt_fname='outfile.action_space_group',opts=notalk)
+        call sg%get_symmetry_action(uc=uc,flags='',iopt_fname='outfile.action_space_group',opts=notalk)
         !
         ! get character table
-        call sg%determine_character_table(opts=opts)
+        call sg%get_character_table(opts=opts)
         !
         ! write to stdout and to file
         ! if (opts%verbosity.ge.1) call sg%stdout(iopt_uc=uc)
         call sg%stdout(iopt_uc=uc,iopt_filename=trim('outfile.spacegroup'))
         !
+        contains
+        subroutine     put_identity_first(rep)
+            !
+            implicit none
+            !
+            real(dp), intent(inout) :: rep(:,:,:)
+            real(dp), allocatable :: id(:,:)
+            integer :: i, nsyms
+            !
+            nsyms = size(rep,3)
+            id = eye(size(rep,1))
+            do i = 1, nsyms
+                if (all((abs(rep(:,:,i)-id)).lt.tiny)) then
+                    rep(:,:,i) = rep(:,:,1)
+                    rep(:,:,1) = id
+                endif
+            enddo
+            ! 
+        end subroutine put_identity_first
     end subroutine get_space_group
 
     subroutine     get_point_group(pg,uc,sg,opts)
@@ -502,7 +499,7 @@ contains
         if (opts%verbosity.ge.1) call am_print('point group',decode_pointgroup(pg%pg_id),' ... ')
         !
         ! determine character table
-        call pg%determine_character_table(opts=opts)
+        call pg%get_character_table(opts=opts)
         !
         ! write action table 
         ! currently not working for nonsymorphic space groups. (i.e. those which necessairly have a translational component)
@@ -626,29 +623,9 @@ contains
         !
     end subroutine get_reversal_group
 
-    subroutine     frac2cart(sg_cart,sg_frac,uc)
-        !
-        implicit none
-        !
-        class(am_class_symmetry), intent(out) :: sg_cart
-        type(am_class_symmetry) ,  intent(in) :: sg_frac
-        class(am_class_unit_cell), intent(in) :: uc
-        integer :: i
-        !
-        call sg_cart%copy(sg_frac)
-        !
-        do i = 1,sg_frac%nsyms
-            !
-            sg_cart%R(:,:,i) = ps_frac2cart(R_frac=sg_frac%R(:,:,i),bas=uc%bas)
-            !
-            if (allocated(sg_cart%T)) sg_cart%T(:,i) = matmul(uc%bas, sg_frac%T(:,i))
-        enddo
-        !
-    end subroutine frac2cart
-
     ! medium level routines which operate on sg
 
-    subroutine     determine_character_table(sg,opts)
+    subroutine     get_character_table(sg,opts)
         !
         use am_rank_and_sort
         !
@@ -1009,39 +986,9 @@ contains
             endif
             !
         end subroutine print_character_table
-    end subroutine determine_character_table
+    end subroutine get_character_table
 
-    subroutine     name_symmetries(sg,opts)
-        !
-        implicit none
-        !
-        class(am_class_symmetry) , intent(inout) :: sg
-        type(am_class_options), intent(in) :: opts
-        integer :: i
-        !
-        if (allocated(sg%ps_id)) deallocate(sg%ps_id)
-        allocate(sg%ps_id(sg%nsyms))
-        !
-        do i = 1, sg%nsyms
-            sg%ps_id(i) = ps_schoenflies(sg%R(:,:,i))
-        enddo
-        !
-        if (opts%verbosity.ge.1) then
-            call am_print('number of e   point symmetries',count(sg%ps_id.eq.1),' ... ')
-            call am_print('number of c_2 point symmetries',count(sg%ps_id.eq.2),' ... ')
-            call am_print('number of c_3 point symmetries',count(sg%ps_id.eq.3),' ... ')
-            call am_print('number of c_4 point symmetries',count(sg%ps_id.eq.4),' ... ')
-            call am_print('number of c_6 point symmetries',count(sg%ps_id.eq.5),' ... ')
-            call am_print('number of i   point symmetries',count(sg%ps_id.eq.6),' ... ')
-            call am_print('number of s_2 point symmetries',count(sg%ps_id.eq.7),' ... ')
-            call am_print('number of s_6 point symmetries',count(sg%ps_id.eq.8),' ... ')
-            call am_print('number of s_4 point symmetries',count(sg%ps_id.eq.9),' ... ')
-            call am_print('number of s_3 point symmetries',count(sg%ps_id.eq.10),' ... ')
-        endif
-        !
-    end subroutine name_symmetries
-
-    subroutine     symmetry_action(sg,uc,flags,iopt_fname,opts)
+    subroutine     get_symmetry_action(sg,uc,flags,iopt_fname,opts)
         !
         implicit none
         !
@@ -1375,7 +1322,37 @@ contains
                 write(fid,'(a)') 'Cartesian coordinates are used throughout this output.'
             close(fid)
         endif
-    end subroutine symmetry_action
+    end subroutine get_symmetry_action
+
+    subroutine     name_symmetries(sg,opts)
+        !
+        implicit none
+        !
+        class(am_class_symmetry) , intent(inout) :: sg
+        type(am_class_options), intent(in) :: opts
+        integer :: i
+        !
+        if (allocated(sg%ps_id)) deallocate(sg%ps_id)
+        allocate(sg%ps_id(sg%nsyms))
+        !
+        do i = 1, sg%nsyms
+            sg%ps_id(i) = ps_schoenflies(sg%R(:,:,i))
+        enddo
+        !
+        if (opts%verbosity.ge.1) then
+            call am_print('number of e   point symmetries',count(sg%ps_id.eq.1),' ... ')
+            call am_print('number of c_2 point symmetries',count(sg%ps_id.eq.2),' ... ')
+            call am_print('number of c_3 point symmetries',count(sg%ps_id.eq.3),' ... ')
+            call am_print('number of c_4 point symmetries',count(sg%ps_id.eq.4),' ... ')
+            call am_print('number of c_6 point symmetries',count(sg%ps_id.eq.5),' ... ')
+            call am_print('number of i   point symmetries',count(sg%ps_id.eq.6),' ... ')
+            call am_print('number of s_2 point symmetries',count(sg%ps_id.eq.7),' ... ')
+            call am_print('number of s_6 point symmetries',count(sg%ps_id.eq.8),' ... ')
+            call am_print('number of s_4 point symmetries',count(sg%ps_id.eq.9),' ... ')
+            call am_print('number of s_3 point symmetries',count(sg%ps_id.eq.10),' ... ')
+        endif
+        !
+    end subroutine name_symmetries
 
     subroutine     create(sg,R,T)
         !
@@ -1589,318 +1566,6 @@ contains
         !
     end subroutine stdout
 
-    subroutine     convert(sg,uc,flags)
-        !
-        ! one way to remember which to multiply on the left and right is to make form the identity; to convert V and R
-        ! in fractional coordinates to cartesian: V -> BV; R -> B*R*inv(B); because: V_rot_cart = B*R*inv(B) * B*V =
-        ! B*R*I*V = B*R_frac*V_frac
-        !
-        implicit none
-        !
-        type(am_class_symmetry) , intent(inout) :: sg
-        type(am_class_unit_cell), intent(inout) :: uc
-        character(*), intent(in) :: flags
-        real(dp) :: recbas(3,3), bas(3,3)
-        integer :: i
-        !
-        if     (index(flags,'frac2cart').ne.0) then
-            bas    = uc%bas
-            recbas = inv(uc%bas)
-        elseif (index(flags,'cart2frac').ne.0) then
-            bas    = inv(uc%bas)
-            recbas = uc%bas
-        endif
-        !
-        ! atomic basis
-        do i = 1,uc%natoms
-            uc%tau(:,i) = matmul(bas,uc%tau(:,i))
-        enddo
-        !
-        ! rotational component
-        if (allocated(sg%R)) then
-        do i = 1,sg%nsyms
-            sg%R(:,:,i) = matmul(bas,matmul(sg%R(:,:,i),recbas))
-        enddo
-        endif
-        !
-        ! translational component
-        if (allocated(sg%T)) then
-        do i = 1,sg%nsyms
-            sg%T(:,i)   = matmul(bas,sg%T(:,i))
-        enddo
-        endif
-        !
-    end subroutine convert
-
-    ! O3 irreducible representation of 3D rotation group
-
-    function       euler2O3(l,euler) result(O3)
-        !
-        ! setup rotation matrices, "pitch-roll-yaw" convetion
-        ! alpha (           around X)
-        ! beta  (polar,     around Y)
-        ! gamma (azimuthal, around Z)
-        !
-        ! R = X(alpha) * Y(beta) * Z(gamma)
-        !
-        ! Determines 3D irrep rotation by calculating the eigenvalues D and eigevectors V of Ly/Lx
-        ! operator in the Lz basis using raising/lowering operators.
-        !
-        !   - R. M. Martin, Electronic Structure: Basic Theory and Practical Methods, 1 edition
-        !        (Cambridge University Press, Cambridge, UK ; New York, 2008), p 573.
-        !   - Romero Nichols "Density Functional Study of Fullerene-Based Solids: Crystal Structure,
-        !        Doping, and Electron- Phonon Interaction", Ph.D. Thesis UIUC, p 96.
-        !   - C. Cohen-Tannoudji, B. Diu, and F. Laloe, Quantum Mechanics, 1 edition (Wiley-VCH, New
-        !        York; Paris, 1992), p 666.
-        !   - J. J. Sakurai, Modern Quantum Mechanics, Revised edition (Addison Wesley, Reading, Mass,
-        !        1993). p 207
-        !
-        ! Note: because Ly operator is Hermitian, eigenvalues are real.
-        !
-        implicit none
-        !
-        integer , intent(in) :: l
-        real(dp), intent(in) :: euler(3) ! around X, Y, Z
-        integer :: n
-        real(dp)   , allocatable :: O3(:,:) ! tesseral harmonics rotation matrix, (2*l+1) x (2*l+1) irrep of rotation in 3 dimensional space
-        complex(dp), allocatable :: V(:,:) ! eigenvector of Lz/Lx in Ly basis
-        real(dp)   , allocatable :: D(:)   ! eigenvalues of Lz/Lx in Ly basis = -l, -l+1, ... -1, 0, 1, ... l-1, l  -- Note: Lz/Lx are Hermitian.
-        complex(dp), allocatable :: A(:,:) ! matrix corresponding to exp(-i*alpha*Ly)
-        complex(dp), allocatable :: B(:,:) ! matrix corresponding to exp(-i*beta*Ly)
-        complex(dp), allocatable :: G(:,:) ! matrix corresponding to exp(-i*gamma*Ly)
-        complex(dp), allocatable :: C(:,:) ! similarity transform which maps complex spherical harmonics onto real tesseral harmonics
-        real(dp)   , allocatable :: X(:,:) ! counter-clockwise rotation (right-hand rule) around X axis
-        real(dp)   , allocatable :: Y(:,:) ! counter-clockwise rotation (right-hand rule) around Y axis
-        real(dp)   , allocatable :: Z(:,:) ! counter-clockwise rotation (right-hand rule) around Z axis
-        complex(dp), allocatable :: H(:,:) ! helper matrix
-        !
-        ! get dimensions of matrices
-        n = 2*l+1
-        !
-        ! determine similarity transform to convert spherical into tesseral harmonics (complex to real)
-        C = tesseral(l=l)
-        !
-        ! determine rotation around X = real( (B*V)*A*(B*V)' )
-        call am_zheev(A=Lx(l),V=V,D=D)
-        H = matmul(C,V)
-        A = diag(exp(-cmplx_i*euler(1)*D))
-        X = matmul(H,matmul(A,adjoint(H)))
-        !
-        ! determine rotation around Y = real( B*P*B' )
-        allocate(Y(n,n))
-        B = diag(exp( cmplx_i*euler(2)*D))
-        Y = matmul(C,matmul(B,adjoint(C)))
-        !
-        ! determine rotation around Z = real( (B*V)*T*(B*V)' )
-        call am_zheev(A=Lz(l),V=V,D=D)
-        H = matmul(C,V)
-        G = diag(exp( cmplx_i*euler(3)*D))
-        Z = matmul(H,matmul(G,adjoint(H)))
-        !
-        ! generate rotation
-        allocate(O3(n,n))
-        O3 = matmul(X,matmul(Y,Z))
-        !
-        contains
-        pure function  Lz(l)
-            !
-            ! Construct  Ly matrix in the Lz basis from raising and lower operators
-            ! Laloe, p 666; Martin, p 573, Eq N4; Sakurai, p 207. hbar is set to 1.
-            !
-            ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
-            ! 1980 edition (Springer, 2013), p 327, Eq 12.5.21b
-            !
-            implicit none
-            !
-            integer, intent(in) :: l
-            complex(dp), allocatable :: Lz(:,:)
-            integer :: m, mp
-            !
-            allocate(Lz(-l:l,-l:l))
-            !
-            Lz = (Lm(l)-Lp(l))*0.5_dp*cmplx_i
-            !
-        end function   Lz
-        pure function  Lx(l)
-            !
-            ! Construct  Ly matrix in the Lz basis from raising and lower operators
-            ! Laloe, p 666; Martin, p 573, Eq N4; Sakurai, p 207. hbar is set to 1.
-            !
-            ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
-            ! 1980 edition (Springer, 2013), p 327, Eq 12.5.21a
-            !
-            implicit none
-            !
-            integer, intent(in) :: l
-            complex(dp), allocatable :: Lx(:,:)
-            integer :: m, mp
-            !
-            allocate(Lx(-l:l,-l:l))
-            !
-            Lx = (Lp(l)+Lm(l))*0.5_dp
-            !
-        end function   Lx
-        pure function  Lp(l)
-            !
-            ! Raising angular momentum operator.
-            !
-            ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
-            ! 1980 edition (Springer, 2013), p 327, Eq 12.5.20
-            !
-            implicit none
-            !
-            integer, intent(in) :: l
-            complex(dp), allocatable :: Lp(:,:)
-            integer :: m, mp
-            !
-            allocate(Lp(-l:l,-l:l))
-            Lp = 0.0_dp
-            !
-            do m = -l, l
-            do mp= -l, l
-                if (mp==m+1) Lp(mp,m) = sqrt(real( (l-m)*(l+m+1) ,dp))
-            enddo
-            enddo
-            !
-        end function   Lp
-        pure function  Lm(l)
-            !
-            ! Lowering angular momentum operator.
-            !
-            ! R. Shankar, Principles of Quantum Mechanics, Softcover reprint of the original 1st ed.
-            ! 1980 edition (Springer, 2013), p 327, Eq 12.5.20
-            !
-            implicit none
-            !
-            integer, intent(in) :: l
-            complex(dp), allocatable :: Lm(:,:)
-            integer :: m, mp
-            !
-            allocate(Lm(-l:l,-l:l))
-            Lm = 0.0_dp
-            !
-            do m = -l, l
-            do mp= -l, l
-                if (mp==m-1) Lm(mp,m) = sqrt(real( (l+m)*(l-m+1) ,dp))
-            enddo
-            enddo
-            !
-        end function   Lm
-        pure function  tesseral(l) result(B)
-            !
-            ! latex equations
-            !
-            ! $$
-            ! Y_{lm} = 
-            ! \begin{cases}
-            ! Y_l^m                                               & \text{if } m = 0 \\
-            ! \frac{i}{\sqrt{2}} ( (-1)^{m} Y_l^{-m} - Y_l^{ m} ) & \text{if } m > 0 \\
-            ! \frac{1}{\sqrt{2}} ( (-1)^{m} Y_l^{ m} + Y_l^{-m} ) & \text{if } m < 0
-            ! \end{cases}
-            ! $$
-            !
-            ! R. R. Sharma, Phys. Rev. B. 19, 2813 (1979).
-            ! Also, see Wikipedia.
-            implicit none
-            !
-            integer, intent(in) :: l
-            complex(dp), allocatable :: B(:,:)
-            integer :: m,mp
-            !
-            allocate(B(-l:l,-l:l))
-            B = 0.0_dp
-            !
-            do m = -l, l
-            do mp= -l, l
-                if (m.eq.0) then
-                   if (m.eq. mp) B(m,mp) = 1.0_dp
-                elseif (m.gt.0) then
-                   if (m.eq. mp) B(m,mp) = -cmplx_i/sqrt(2.0_dp)
-                   if (m.eq.-mp) B(m,mp) = +cmplx_i/sqrt(2.0_dp) * (-1.0_dp)**m
-                elseif (m.lt.0) then
-                   if (m.eq. mp) B(m,mp) =   1.0_dp/sqrt(2.0_dp) * (-1.0_dp)**m
-                   if (m.eq.-mp) B(m,mp) =   1.0_dp/sqrt(2.0_dp)
-                endif
-            enddo
-            enddo
-            !
-        end function   tesseral
-    end function   euler2O3
-
-    function       rot2O3(l,R) result(O3)
-        !
-        implicit none
-        !
-        integer, intent(in) :: l
-        real(dp), intent(in) :: R(3,3)
-        real(dp), allocatable :: O3(:,:)
-        real(dp) :: d !det
-        !
-        d = det(R)
-        ! convert rotoinversion to pure rotation then back to rotoinversion
-        ! Eq. 
-        O3 = euler2O3(l=l,euler=rot2euler(R*d)) * (d ** l)
-        !
-    end function   rot2O3
-
-    pure function  O3_character(l,th) result(chi)
-        !
-        ! Character of rotation irrep, th [radians] about any arbitrary angle, l azimuthal quantum
-        ! number.
-        !       
-        ! T. Wolfram and Ş. Ellialtıoğlu, Applications of Group Theory to Atoms, Molecules, and
-        ! Solids, 1 edition (Cambridge University Press, Cambridge, 2014), p 74, Eq. 3.20.
-        !
-        implicit none
-        !
-        integer , intent(in) :: l
-        real(dp), intent(in) :: th
-        real(dp) :: chi
-        !
-        chi = sin( (l+0.5_dp)*th ) / sin( th*0.5_dp )
-        !
-    end function   O3_character
-
-    function       O3_rotations(azimuthal,th,phi,is_spin_polarized) result(R)
-        !
-        implicit none
-        !
-        integer , intent(in) :: azimuthal(:)
-        real(dp), intent(in) :: th,phi
-        logical , intent(in) :: is_spin_polarized
-        real(dp), allocatable :: R(:,:)
-        integer , allocatable :: l_start(:)
-        integer , allocatable :: l_end(:)
-        integer :: i, n, m
-        !
-        m = size(azimuthal)
-        !
-        allocate(l_start(m))
-        allocate(l_end(m))
-        !
-        n = 0
-        do i = 1,m
-            l_start(i) = n + 1
-            n = n + 2*azimuthal(i)+1
-            l_end(i) = n
-        enddo
-        !
-        allocate(R(n,n))
-        R = 0.0_dp
-        !
-        ! construct a direct sum of rotations
-        do i = 1, m
-            R(l_start(i):l_end(i),l_start(i):l_end(i)) = euler2O3(l=azimuthal(i),euler=[0.0_dp,th,phi])
-        enddo
-        !
-        if (is_spin_polarized) then
-            ! need to add something to account for the different spins. perhaps a kroner product of the R matrix obtained above and the corresponding rotations using the pauling spin matrices?
-            call am_print('ERROR','spin polarized is not yet supported.')
-            stop
-        endif
-        !
-    end function   O3_rotations
-    
     ! procedures which create representations
 
     function       rep_seitz(R,T) result(seitz)
@@ -2153,25 +1818,6 @@ contains
             enddo
         end function   get_matching_element_index_in_list
     end function   get_cayley_table
-
-    subroutine     put_identity_first(rep)
-        !
-        implicit none
-        !
-        real(dp), intent(inout) :: rep(:,:,:)
-        real(dp), allocatable :: id(:,:)
-        integer :: i, nsyms
-        !
-        nsyms = size(rep,3)
-        id = eye(size(rep,1))
-        do i = 1, nsyms
-            if (all((abs(rep(:,:,i)-id)).lt.tiny)) then
-                rep(:,:,i) = rep(:,:,1)
-                rep(:,:,1) = id
-            endif
-        enddo
-        ! 
-    end subroutine put_identity_first
 
     function       get_conjugacy_classes(rep,flags) result(cc_id)
         !

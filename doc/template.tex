@@ -102,7 +102,7 @@ with arbitrary factors $r_i$ added to lift eigendegeneracies.
 Characters corresponding to irreducible representation $\alpha$ and conjugacy class i are thus obtained as:
 \begin{equation}
 \label{eq:irrep_characters}
-\chi_{i\alpha} = \frac{d_\alpha}{n_i} \lambda_{i\alpha}
+\chi\left(\Gamma_i^\alpha\right) = \frac{d_\alpha}{n_i} \lambda_{i\alpha}
 \end{equation}
 in which number of elements in the class $i$ is $n_i$ and the dimensions of irreducible representation $\alpha$:
 \begin{equation}
@@ -112,21 +112,15 @@ d_\alpha = \sqrt{ \frac{g}{\sum_i \lambda_{i\alpha} \lambda_{i\alpha}^\dag / n_i
 g is the order of the group.
  
 
-
-
-
-
-
-
-\section{Calculation of irreducible rotations}
-$(2l+1)$ by $(2l+1)$ irreducible representation of three-dimensional special orthogonal group SO(3) are obtained from Tait Bryan angles $\theta$, $\phi$, and $\gamma$, corresponding to rotations around $\hat{z}$, $\hat{y}$, and $\hat{x}$ axes, via:\cite{martin_electronic_2004}
+\section{Calculation of irreducible representations}
+Wigner functions corresponding to $(2j+1)\times(2j+1)$ irreducible matrix representations of the three-dimensional special orthogonal group SO(3) are obtained from:\cite{martin_electronic_2004}
 \begin{equation}
 \label{eq:imselfenergy}
 % Shankar p 333, Exercise 12.5.7
 % In the book, Euler angles are used. Here, I use Tait Bryan angles
-D^{(l)}(\alpha,\beta,\gamma) = \bra{j',m'} e^{-i\theta\hat{J}_x/\hbar} e^{-i\phi\hat{J}_y/\hbar} e^{-i\gamma\hat{J}_z/\hbar} \ket{j,m}
+\Gamma^{(j)} = \bra{j',m'} e^{-i\theta\hat{J}_x/\hbar} e^{-i\phi\hat{J}_y/\hbar} e^{-i\gamma\hat{J}_z/\hbar} \ket{j,m}
 \end{equation}
-$\hat{L}_i$ are angular momenta operator corresponding to rotations around axis $i$. With respect to the $\hat{L}_y$ basis, the matrix elements are:\cite{shankar_fundamentals_2014}
+with rotations about axes $\hat{x}$, $\hat{y}$, and $\hat{z}$ parameterized by Tait Bryan angles $\theta$, $\phi$, and $\gamma$. In the $\hat{J}_y$ basis, the angular momenta matrix elements are:\cite{shankar_fundamentals_2014}
 \begin{align}
 \label{eq:angular_momenta}
 % x y z <- z x y
@@ -141,13 +135,35 @@ with raising ($+$) and lowering ($-$) operators:
 % Shankar p 327, Eq. 12.5.20
 J_{\pm}\ket{j,m} = \sqrt{(j\mp m)(j\pm m+1)}\ket{j,m\pm1}.
 \end{equation}
-The inclusion of improper rotations, i.e. rotations followed by inversion,\cite{el-batanouny_symmetry_2008}
+The inclusion of improper symmetries (rotoinversions),
 \begin{equation}
 \label{eq:improper_rotation}
 % Wooten p 604 bottom, under Eq. 14.164
-(-1)^{l} D^{(l)}(\alpha,\beta,\gamma)
+(-1)^{j} \Gamma^{(j)}(R\left(\alpha,\beta,\gamma\right))
 \end{equation}
-yields the complete three-dimensional orthogonal group O(3).
+produces the three-dimensional orthogonal group O(3).\cite{el-batanouny_symmetry_2008}
+
+
+%
+%
+%
+\section{Calculation of irreducible characters}
+Reducible representations are decomposed into direct sums of $\alpha$ irreducible representations:
+\begin{equation}
+\label{eq:irrep_decomposition}
+\Gamma = \bigoplus_\alpha n_\alpha \Gamma_{i\alpha}
+\end{equation}
+
+in which the expansion coefficients are:
+\begin{equation}
+\label{eq:irrep_decomposition_coefficients}
+% Wolfram p 20
+n_\alpha = \frac{1}{g} \sum_i h_i \chi\left(\Gamma_{i\alpha}\right)^\dag \chi\left(\Gamma_i\right)
+\end{equation}
+The sum is over classes $i$, with number of elements $h_i$, and characters corresponding to the $\alpha$ irreducible representation $\chi(\Gamma_i^\alpha)$. $g$ is the group order.
+
+
+
 
 
 \section{Calculation of Tait Bryan angles from rotational matrices}
