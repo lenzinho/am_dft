@@ -268,11 +268,11 @@ contains
                 ! turn sphere into a block with select atom at the origin
                 sphere%tau(:,i) = sphere%tau(:,i) - D
                 ! translate atoms to be as close to the origin as possible
-                ! sphere%tau(:,i) = reduce_to_wigner_seitz(pnt=sphere%tau(:,i),grid_points=grid_points,bas=uc%bas,sym_prec=opts%sym_prec)
-                sphere%tau(:,i) = modulo(sphere%tau(:,i) + 0.5_dp + opts%sym_prec, 1.0_dp) - 0.5_dp - opts%sym_prec
+                ! sphere%tau(:,i) = reduce_to_wigner_seitz(pnt=sphere%tau(:,i),grid_points=grid_points,bas=uc%bas,prec=opts%prec)
+                sphere%tau(:,i) = modulo(sphere%tau(:,i) + 0.5_dp + opts%prec, 1.0_dp) - 0.5_dp - opts%prec
                 ! take note of points within the predetermied pair cutoff radius
                 ! right now, pair cutoff is in fractional. should use cartesian coordinats.
-                if (norm2(matmul(sphere%bas,sphere%tau(:,i))).le.pair_cutoff + opts%sym_prec) then
+                if (norm2(matmul(sphere%bas,sphere%tau(:,i))).le.pair_cutoff + opts%prec) then
                     j=j+1
                     atoms_inside(j) = i
                 endif
@@ -314,7 +314,7 @@ contains
             integer :: i, jj, j, k
             !
             ! pr%PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-            call pr%create(R=sg%R,tau=uc%tau,sym_prec=opts%sym_prec)
+            call pr%create(R=sg%R,tau=uc%tau,prec=opts%prec)
             !
             ! get distance of atoms
             allocate(d(sphere%natoms))
@@ -562,7 +562,7 @@ contains
                 if (ip_id(i).eq.0) then
                     do j = 1, pp%nshells
                         ! check that bond length is the same
-                        if ( abs(d(i)-d(j)).lt.opts%sym_prec) then
+                        if ( abs(d(i)-d(j)).lt.opts%prec) then
                         ! check that atoms are the same type
                         if ( all(Z(1:2,i).eq.Z(1:2,j)) ) then
                         ! check that stabilizers are the same
@@ -618,46 +618,6 @@ contains
         enddo
         !
     end function   transform_2nd_order_force_constants
-
-
-    
-!    subroutine     get_irreducible_force_constants(pair,ic,pg,sg,opts)
-!        !
-!        implicit none
-!        class(am_class_pair_shell), intent(inout) :: pair
-!        class(am_class_unit_cell) , intent(in) :: ic
-!        type(am_class_symmetry)   , intent(in) :: pg
-!        type(am_class_symmetry)   , intent(in) :: sg
-!        type(am_class_options)    , intent(in) :: opts
-!        integer , allocatable :: ip_id(:) ! unique indicies i and j (see below)
-!        !
-!        !
-!        ip_id = pair%identify_irreducible(ic=ic,pg=pg,opts=opts)
-!        
-!!        do i = 1, pair%
-! !       call get_symmetry_adapted_tensor(pg=pg,uc=uc,opts=opts,property='reversal',relations)
-!        !
-!        
-!
-!        !
-!        !! output
-!        !allocate(irrep_pairs,source=ij(1:2,unique(ip_id)))
-!        !!
-!        !!
-!        !if (opts%verbosity.ge.1) then
-!        !    ind_u = unique(ip_id)
-!        !    npairs_u = size(ind_u)
-!        !    call am_print('irreducible pair ('//trim(int2char(npairs_u))//')',ij(:,ind_u))
-!        !    !
-!        !    write(*,'(5x)', advance='no')
-!        !    do k = 1,npairs_u
-!        !        i = ij(1,ind_u(k))
-!        !        j = ij(2,ind_u(k))
-!        !        write(*,'(a,"-",a)',advance='no') "("//trim(atm_symb(ic%Z(i))), trim(atm_symb(pair%shell(i,j)%Z(1)))//") "
-!        !    enddo
-!        !    write(*,*)
-!        !endif
-!    end subroutine get_irreducible_force_constants
     
 end module am_shells
 

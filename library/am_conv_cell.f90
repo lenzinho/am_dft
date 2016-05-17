@@ -5,8 +5,6 @@ module am_conv_cell
     use am_options
     use am_unit_cell
     use am_prim_cell
-    use am_symmetry
-    use am_mkl
 
     implicit none
 
@@ -110,7 +108,7 @@ contains
 ! !         P = perms(3)
 ! !         s : do i = 1, sine(P,2)
 ! !         do j = 1, sine(P,2)
-! !             lattice_code = lattice_type(bas=prim%bas(P(1:3,j),P(1:3,i)),sym_prec=opts%sym_prec)
+! !             lattice_code = lattice_type(bas=prim%bas(P(1:3,j),P(1:3,i)),prec=opts%prec)
 ! !             if (lattice_code.ne.0) exit s
 ! !         enddo
 ! !         enddo s
@@ -150,7 +148,7 @@ contains
 ! !         !
 !     end subroutine get_conventional
 
-!     function       lattice_type(bas,sym_prec) result(lattice_code)
+!     function       lattice_type(bas,prec) result(lattice_code)
 !         !>
 !         !> Returns 0 if unable to identify lattice type.
 !         !>
@@ -179,12 +177,12 @@ contains
 !         implicit none
 !         !
 !         real(dp), intent(in) :: bas(3,3) ! number of point group symmetries
-!         real(dp), intent(in) :: sym_prec
+!         real(dp), intent(in) :: prec
 !         integer  :: lattice_code
 !         integer  :: nsyms ! number of symmetries
 !         real(dp) :: M(3,3) ! metric tensor
 !         !
-!         nsyms = sine( lattice_symmetries(bas,sym_prec), 3)
+!         nsyms = sine( lattice_symmetries(bas,prec), 3)
 !         !
 !         M = matmul(transpose(bas),bas)
 !         !

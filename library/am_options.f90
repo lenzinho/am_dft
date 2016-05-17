@@ -4,7 +4,7 @@ module am_options
     !
     type am_class_options
         integer  :: verbosity
-        real(dp) :: sym_prec
+        real(dp) :: prec
         integer  :: n(3) ! monkhorst pack mesh grid dimensions
         real(dp) :: s(3) ! monkhorst pack mesh grid shift
         character(max_argument_length) :: tbf
@@ -40,7 +40,7 @@ module am_options
         class(am_class_options), intent(inout) :: opts
         !
         opts%verbosity = 1
-        opts%sym_prec = tiny ! seems to work.
+        opts%prec = tiny ! seems to work.
         opts%n        = [9,9,9] ! monkhorst pack mesh grid dimensions
         opts%s        = real([0,0,0],dp) ! monkhorst pack mesh grid shift
         opts%ibzkpt   = 'IBZKPT'
@@ -89,10 +89,10 @@ module am_options
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*) opts%verbosity
-                case('-sym_prec')
+                case('-prec')
                     i=i+1
                     call get_command_argument(i,argument)
-                    read(argument,*) opts%sym_prec
+                    read(argument,*) opts%prec
                 case('-conventional') ! convertes the unit cell from primitive to conventional
                     opts%conventional  = .true.
                 case('-primitive') ! convertes the unit cell from primitive to conventional
@@ -206,7 +206,7 @@ module am_options
         write(*,'(5x,a)') '-verbosity <int>'
         write(*,'(5x,a)') '     Controls output: (0) supress output, (1) normal, (2) verbose.'
         write(*,'(5x,a)') ''
-        write(*,'(5x,a)') '-sym_prec <dbl>'
+        write(*,'(5x,a)') '-prec <dbl>'
         write(*,'(5x,a)') '     Controls precision used for symmetry determination and calculation. Default = tiny.'
         write(*,'(5x,a)') ''
         write(*,'(5x,a)') '-conventional'

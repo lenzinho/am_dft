@@ -206,7 +206,7 @@ contains
         if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,' ... ')
         if (opts%verbosity.ge.1) then
             call am_print('number of point symmetries compatible with original k-point mesh',&
-                size(get_kpoint_compatible_symmetries(kpt=bz%kpt,R=pg%R,sym_prec=opts%sym_prec),3),' ... ')
+                size(get_kpoint_compatible_symmetries(kpt=bz%kpt,R=pg%seitz(1:3,1:3,:),prec=opts%prec),3),' ... ')
         endif
         if (opts%verbosity.ge.1) call am_print('number of kpoints in the original bz',bz%nkpts,' ... ')
         if (opts%verbosity.ge.1) then
@@ -225,9 +225,9 @@ contains
             ! get its orbit
             korbit = kpoint_orbit(pg%R,bz%kpt(:,i))
             ! reduce korbit to primitive reciprocal lattice
-            korbit = modulo(korbit+opts%sym_prec,1.0_dp)-opts%sym_prec
+            korbit = modulo(korbit+opts%prec,1.0_dp)-opts%prec
             ! get unique values
-            korbit = unique(korbit,opts%sym_prec)
+            korbit = unique(korbit,opts%prec)
             ! get its weight
             w = size(korbit,2)
             ! check that weight is a factor of the number of symmetry operations
@@ -248,7 +248,7 @@ contains
         !$OMP END DO
         !$OMP END PARALLEL
         ! make sure there are no repetitions in the fbz
-        fbz%kpt = unique(kpoints_fbz(:,1:m),opts%sym_prec)
+        fbz%kpt = unique(kpoints_fbz(:,1:m),opts%prec)
         ! get number of kpoints in the fbz
         fbz%nkpts = size(fbz%kpt,2)
         ! reduce kpoints to FBZ using voronoi points
@@ -307,12 +307,12 @@ contains
         !$OMP PARALLEL PRIVATE(i) SHARED(grid_points,bz,ibz,pc,pg)
         !$OMP DO
         do i = 1, bz%nkpts
-            ibz%kpt(:,i) = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i),grid_points=grid_points,bas=pc%bas,R=pg%R,sym_prec=opts%sym_prec)
+            ibz%kpt(:,i) = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i),grid_points=grid_points,bas=pc%bas,R=pg%R,prec=opts%prec)
         enddo
         !$OMP END DO
         !$OMP END PARALLEL
         ! get unique points
-        ibz%kpt = unique(ibz%kpt,opts%sym_prec)
+        ibz%kpt = unique(ibz%kpt,opts%prec)
         ! get number of unique points
         ibz%nkpts = size(ibz%kpt,2)
         if (opts%verbosity.ge.1) call am_print('number of irreducible kpoints',ibz%nkpts,' ... ')
@@ -321,7 +321,7 @@ contains
         !$OMP PARALLEL PRIVATE(i) SHARED(grid_points,bz,ibz,pc,pg)
         !$OMP DO
         do i = 1, ibz%nkpts
-            ibz%w(i) = kpoint_weight(R=pg%R,kpoint=ibz%kpt(:,i),sym_prec=opts%sym_prec)
+            ibz%w(i) = kpoint_weight(R=pg%R,kpoint=ibz%kpt(:,i),prec=opts%prec)
         enddo
         !$OMP END DO
         !$OMP END PARALLEL
@@ -486,7 +486,7 @@ contains
         !
     end function  reduce_kpoint_to_fbz
 
-    function       reduce_kpoint_to_ibz(kpoint,grid_points,bas,R,sym_prec) result(kpoint_in_ibz)
+    function       reduce_kpoint_to_ibz(kpoint,grid_points,bas,R,prec) result(kpoint_in_ibz)
         !
         use am_rank_and_sort
         !
@@ -496,7 +496,7 @@ contains
         real(dp), intent(in) :: bas(3,3)  !> real space basis (column vectors)
         real(dp), intent(in) :: grid_points(3,27) !> voronoi points (cartesian)
         real(dp), intent(in) :: R(:,:,:)  !> point symmetries in cartesian
-        real(dp), intent(in) :: sym_prec
+        real(dp), intent(in) :: prec
         real(dp) :: kpoint_in_fbz(3)
         real(dp) :: kpoint_in_ibz(3)
         real(dp), allocatable :: korbit(:,:) !> orbit
@@ -505,13 +505,13 @@ contains
         !
         nsyms = size(R,3)
         ! reduce kpoint to primitive reciprocal lattice
-        kpoint_in_fbz = modulo(kpoint+sym_prec,1.0_dp) - sym_prec
+        kpoint_in_fbz = modulo(kpoint+prec,1.0_dp) - prec
         ! get kpoint orbit
         korbit = kpoint_orbit(R,kpoint_in_fbz)
         ! reduce korbit to primitive reciprocal lattice
-        korbit = modulo(korbit+sym_prec,1.0_dp) - sym_prec
+        korbit = modulo(korbit+prec,1.0_dp) - prec
         ! get unique points in orbit
-        korbit = unique(korbit,sym_prec)
+        korbit = unique(korbit,prec)
         ! sort
         allocate(indices(size(korbit,2)))
         do i = 1,3
@@ -547,25 +547,25 @@ contains
         !
     end function  kpoint_orbit
 
-    function       kpoint_weight(R,kpoint,sym_prec) result(w)
+    function       kpoint_weight(R,kpoint,prec) result(w)
         !
         implicit none
         !
         real(dp), intent(in) :: R(:,:,:) !> point symmetries
         real(dp), intent(in) :: kpoint(3) !> cartesian
-        real(dp), intent(in) :: sym_prec
+        real(dp), intent(in) :: prec
         integer  :: w, nsyms
         !
         nsyms = size(R,3)
         !
-        w = size(unique(kpoint_orbit(R,kpoint),sym_prec),2)
+        w = size(unique(kpoint_orbit(R,kpoint),prec),2)
         !
         if ( modulo(nsyms,w).ne.0) then
             call am_print('ERROR','Weight is not a factor of the number of symmetry operation',flags='E')
             call am_print('kpoint (fractional)',kpoint)
             call am_print('weight (integer)',w)
             call am_print('number of symmetry operations',nsyms)
-            call am_print('kpoint orbit',transpose(unique(kpoint_orbit(R,kpoint),sym_prec)))
+            call am_print('kpoint orbit',transpose(unique(kpoint_orbit(R,kpoint),prec)))
             stop
         endif
         !

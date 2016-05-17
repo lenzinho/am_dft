@@ -4,9 +4,8 @@ module am_prim_cell
     use am_stdout
     use am_options
     use am_unit_cell
-    use am_symmetry
     use am_matlab
-    use am_mkl
+    use am_mkl , only : det, inv
 
     implicit none
 
@@ -38,7 +37,7 @@ contains
         if ( opts%verbosity .ge. 1) call am_print_title('Reducing to primitive cell')
         !
         ! get basis translations which could serve as primitive cell vectors
-        T = translations_from_basis(tau=uc%tau,Z=uc%Z,iopt_include=trim('prim'),iopt_sym_prec=opts%sym_prec)
+        T = translations_from_basis(tau=uc%tau, Z=uc%Z, prec=opts%prec, flags='prim')
         T = matmul(uc%bas,T)
         nTs = size(T,2)
         if (opts%verbosity.ge.1) call am_print("possible primitive lattice translations found",nTs," ... ")
@@ -100,10 +99,10 @@ contains
         enddo
         ! ... reducing all atoms to primitive cell
         do i = 1,uc%natoms
-            prim%tau(1:3,i) = modulo(prim%tau(1:3,i)+opts%sym_prec,1.0_dp)-opts%sym_prec
+            prim%tau(1:3,i) = modulo(prim%tau(1:3,i)+opts%prec,1.0_dp)-opts%prec
         enddo
         ! ... getting unique values
-        prim%tau = unique(prim%tau,opts%sym_prec)
+        prim%tau = unique(prim%tau,opts%prec)
         prim%natoms = size(prim%tau,2)
         if (opts%verbosity.ge.1) call am_print('number of atoms in primitive cell',prim%natoms,' ... ')
         if (opts%verbosity.ge.1) then
@@ -127,7 +126,7 @@ contains
             prim%Z(i) = 0
             isfirst = .true.
             search_for_atom : do j = 1, uc%natoms
-                if ( all(abs(prim%tau(1:3,i)-modulo( matmul(uc2prim,uc%tau(1:3,j))+opts%sym_prec,1.0_dp)+opts%sym_prec).lt.opts%sym_prec) ) then
+                if ( all(abs(prim%tau(1:3,i)-modulo( matmul(uc2prim,uc%tau(1:3,j))+opts%prec,1.0_dp)+opts%prec).lt.opts%prec) ) then
                     uc%pc_id(j) = i
                     prim%Z(i) = uc%Z(j)
                     !

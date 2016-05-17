@@ -40,7 +40,7 @@ contains
     ! symmetry related functions for creating space and point groups
     !
 
-    function       lattice_symmetries(bas,sym_prec) result(R)
+    function       lattice_symmetries(bas,prec) result(R)
         !>
         !> Given a metric tensor, this function returns the (arthimetic) a-holohodry:
         !> the group of point symmetries R (fractional) that are compatible with the
@@ -69,7 +69,7 @@ contains
         implicit none
         ! subroutine i/o
         real(dp), intent(in) :: bas(3,3)
-        real(dp), intent(in) :: sym_prec
+        real(dp), intent(in) :: prec
         real(dp), allocatable :: R(:,:,:) !> point symmetries (fractional)
         !
         real(dp) :: id(3,3)
@@ -106,7 +106,7 @@ contains
                     !
                     ! Check that metric is left unchanged by symmetry opreation in fractional coordinates.
                     ! i.e. that metric tensor commutes with point symmetry.
-                    if ( all( abs(matmul(transpose(o),matmul(metric,o))-metric) .lt. sym_prec ) ) then
+                    if ( all( abs(matmul(transpose(o),matmul(metric,o))-metric) .lt. prec ) ) then
                         k = k + 1
                         ! store point symmetry in cartesian coordinates
                         ! buffer(1:3,1:3,k) = matmul(bas,matmul(o,recbas))
@@ -128,43 +128,35 @@ contains
         !
     end function   lattice_symmetries
 
-    pure function  translations_from_basis(tau,Z,iopt_include,iopt_sym_prec) result(T)
+    pure function  translations_from_basis(tau,Z,prec,flags) result(T)
         !
-        implicit none
-        ! subroutine i/o
-        integer , intent(in) :: Z(:)     !> Z(natoms) list identifing type of atom
-        real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates
-        character(len=*), intent(in), optional :: iopt_include 
-        !> iopt_include string can contain 'prim', 'zero', 'relax' and any combination of each
+        !> flags string can contain 'prim', 'zero', 'relax' and any combination of each
         !> if it has 'zero'  : add [0,0,0] to the T vectors returned
         !> if it has 'prim'  : add primitive basis to the T vectors returned
         !> if it has 'relax' : relax symmetry check and return all translations connecting reference atom to every other atom
         !> the addition of 'relax' is useful for determining the space group
         !> the omition of 'relax', which is the default procedure, is useful for reducing an arbitrary cell to the primitive cell
+        !
+        implicit none
+        ! subroutine i/o
+        integer , intent(in) :: Z(:)     !> Z(natoms) list identifing type of atom
+        real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates
+        real(dp), intent(in) :: prec
+        character(len=*), intent(in), optional :: flags 
         real(dp), allocatable :: T(:,:)   !> T(3,nTs) translation which leaves basis invariant
-        ! internal
+        real(dp), allocatable :: wrk(:,:) ! wrk(1:3,nTs) list of possible lattice vectors that are symmetry-compatible volume
+        real(dp) :: seitz(4,4)
+        real(dp) :: wrkr(3)
         integer  :: natoms ! natoms number of atoms
         integer  :: nTs ! nTs number of primitive lattice vector candidates
-        real(dp), allocatable :: wrk(:,:) ! wrk(1:3,nTs) list of possible lattice vectors that are symmetry-compatible volume
-        real(dp) :: wrkr(3)
-        logical :: relax_symmetry
-        ! loop variables
-        integer :: i, j
-        ! optionals
-        real(dp), intent(in), optional :: iopt_sym_prec
-        real(dp) :: sym_prec
-        if ( present(iopt_sym_prec) ) then
-            sym_prec = iopt_sym_prec
-        else
-            sym_prec = tiny
-        endif
+        logical  :: relax_symmetry
+        integer  :: i, j
+        !
         !
         relax_symmetry = .false.
-        if (present(iopt_include)) then
-            if (index(iopt_include,'relax').ne.0) relax_symmetry = .true.
+        if (present(flags)) then
+            if (index(flags,'relax').ne.0) relax_symmetry = .true.
         endif 
-        !
-        !
         !
         natoms = size(tau,2)
         allocate(wrk(3,natoms-1+3)) 
@@ -178,13 +170,17 @@ contains
             if ( Z(i) .eq. Z(j) ) then
                 ! shift to put reference atom at zero.
                 wrkr(1:3) = tau(1:3,j) - tau(1:3,i)
-                ! wrkr = modulo(wrkr+sym_prec,1.0_dp)-sym_prec ! added this in for testing.
+                ! wrkr = modulo(wrkr+prec,1.0_dp)-prec ! added this in for testing.
                 !
                 if (relax_symmetry) then
                     nTs = nTs + 1
                     wrk(1:3,nTs) = wrkr
                 else
-                    if ( is_symmetry_valid(iopt_T=wrkr, iopt_Z=Z, tau=tau, iopt_sym_prec=sym_prec) ) then
+                    !
+                    seitz = eye(4)
+                    seitz(1:3,4) = wrkr
+                    !
+                    if ( is_symmetry_valid(seitz=seitz, Z=Z, tau=tau, prec=prec) ) then
                         nTs = nTs + 1
                         wrk(1:3,nTs) = wrkr
                     endif
@@ -192,14 +188,14 @@ contains
             endif
             endif
         enddo
-        if (present(iopt_include)) then
-            if (index(iopt_include,"prim").ne.0) then
+        if (present(flags)) then
+            if (index(flags,"prim").ne.0) then
                 ! add native basis to vectors
                 nTs = nTs+1; wrk(1:3,nTs) = real([1,0,0],dp)
                 nTs = nTs+1; wrk(1:3,nTs) = real([0,1,0],dp)
                 nTs = nTs+1; wrk(1:3,nTs) = real([0,0,1],dp)
             endif
-            if (index(iopt_include,"zero").ne.0) then
+            if (index(flags,"zero").ne.0) then
                 ! add origin as a possible translation
                 nTs = nTs+1; wrk(1:3,nTs) = real([0,0,0],dp)
             endif
@@ -210,27 +206,22 @@ contains
         !
     end function   translations_from_basis
 
-    pure function  is_symmetry_valid(tau,iopt_Z,iopt_R,iopt_T,iopt_sym_prec,flags)
+    pure function  is_symmetry_valid(tau,Z,seitz,prec,flags)
         !
         ! check whether symmetry operation is valid
         !
         implicit none
         ! function i/o
-        real(dp), intent(in)           :: tau(:,:)      !> tau(3,natoms) fractional atomic basis
-        integer , intent(in), optional :: iopt_Z(:) !> Z(natoms) list identify type of atom
-        real(dp), intent(in), optional :: iopt_R(3,3)
-        real(dp), intent(in), optional :: iopt_T(3)
-        real(dp), intent(in), optional :: iopt_sym_prec
+        real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic basis
+        integer , intent(in) :: Z(:)     !> Z(natoms) list identify type of atom
+        real(dp), intent(in) :: seitz(4,4)
+        real(dp), intent(in) :: prec
         character(*), intent(in), optional :: flags
         !
-        logical  :: isexact    ! if present, do not apply mod. ; useful for determining stabilizers
-        logical  :: iszero     ! if present, returns that the symmetry is valid if it reduces the tau to [0,0,0]. useful for determing which symmetries flip bonds
-        integer , allocatable :: Z(:)
         real(dp), allocatable :: tau_internal(:,:)
         real(dp), allocatable :: tau_ref(:,:) ! what to compare to
-        real(dp) :: R(3,3)
-        real(dp) :: T(3)
-        real(dp) :: sym_prec
+        logical  :: isexact    ! if present, do not apply mod. ; useful for determining stabilizers
+        logical  :: iszero     ! if present, returns that the symmetry is valid if it reduces the tau to [0,0,0]. useful for determing which symmetries flip bonds
         real(dp) :: tau_rot(3) ! rotated 
         logical  :: is_symmetry_valid
         integer  :: natoms
@@ -239,18 +230,6 @@ contains
         !
         natoms = size(tau,2)
         !
-        ! set defaults
-        if ( present(iopt_Z) ) then; allocate(Z,source=iopt_Z)
-        else; allocate(Z(natoms)); Z = 1; endif
-        !
-        if ( present(iopt_sym_prec) ) then; sym_prec = iopt_sym_prec
-        else; sym_prec = tiny; endif
-        !
-        if ( present(iopt_R) ) then; R = iopt_R
-        else; R = real(eye(3),dp); endif
-        !
-        if ( present(iopt_T) ) then; T = iopt_T
-        else; T = 0.0_dp; endif
         !
         ! load flag options
         isexact = .false.
@@ -264,7 +243,7 @@ contains
         allocate(tau_internal, source=tau)
         if (.not.isexact) then
         do i = 1, natoms
-            tau_internal(:,i) = modulo(tau_internal(:,i)+sym_prec,1.0_dp)-sym_prec
+            tau_internal(:,i) = modulo(tau_internal(:,i)+prec,1.0_dp)-prec
         enddo
         endif
         !
@@ -279,14 +258,14 @@ contains
         m = 0
         do i = 1, natoms
             ! apply symmetry operation
-            tau_rot(1:3) = matmul(R,tau_internal(1:3,i)) + T(1:3)
+            tau_rot(1:3) = matmul(seitz(1:3,1:3),tau_internal(1:3,i)) + seitz(1:3,4)
             ! reduce rotated+translated point to unit cell
-            if (.not.isexact) tau_rot(1:3) = modulo(tau_rot(1:3)+sym_prec,1.0_dp)-sym_prec
+            if (.not.isexact) tau_rot(1:3) = modulo(tau_rot(1:3)+prec,1.0_dp)-prec
             ! check that newly created point matches something already present
             overlap_found = .false.
             check_overlap : do j = 1,natoms
                 if (Z(i) .eq. Z(j)) then
-                    if (all(abs(tau_rot(1:3)-tau_internal(1:3,j)).lt.sym_prec)) then
+                    if (all(abs(tau_rot(1:3)-tau_internal(1:3,j)).lt.prec)) then
                         m = m + 1
                         overlap_found = .true.
                         exit check_overlap
@@ -331,20 +310,22 @@ contains
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
         real(dp), allocatable :: seitz(:,:,:)
-        integer               :: nTs
-        integer               :: nRs
+        real(dp), allocatable :: seitz_probe(:,:)
         real(dp), allocatable :: T(:,:)
         real(dp), allocatable :: R(:,:,:)
         real(dp), allocatable :: wrkspace(:,:,:)
-        real(dp) :: shift(3), T_shifted(3)
+        real(dp) :: shift(3)
+        real(dp) :: T_shifted(3)
+        integer :: nTs
+        integer :: nRs
         integer :: i, j, m
         !
-        R = lattice_symmetries(bas=uc%bas,sym_prec=opts%sym_prec)
+        R = lattice_symmetries(bas=uc%bas,prec=opts%prec)
         nRs = size(R,3)
         !
         if (opts%verbosity.ge.1) call am_print('possible (im-)proper rotations',nRs,' ... ')
         !
-        T = translations_from_basis(tau=uc%tau,Z=uc%Z,iopt_sym_prec=opts%sym_prec,iopt_include=trim('zero,relax'))
+        T = translations_from_basis(tau=uc%tau, Z=uc%Z, prec=opts%prec, flags='zero,relax')
         nTs = size(T,2)
         !
         if (opts%verbosity.ge.1) call am_print('possible translations',nTs,' ... ')
@@ -365,7 +346,7 @@ contains
             ! rotational part of the symmetry operation must leave at least one atom in it's
             ! original location. If the atom already has a displacement, then it will be rotated
             ! to another position.
-            if (.not.any(all(abs(uc%tau).lt.opts%sym_prec,2))) then
+            if (.not.any(all(abs(uc%tau).lt.opts%prec,2))) then
                 shift = uc%tau(:,1)
                 ! tau' = R*tau + T
                 ! tau' - s = R*(tau-s) + T
@@ -373,17 +354,18 @@ contains
                 ! thus, T_shifted = T - R*s + s
                 T_shifted = T(:,j) - matmul(R(:,:,i),shift) + shift
                 ! reduce to primitive
-                T_shifted = modulo(T_shifted+opts%sym_prec,1.0_dp)-opts%sym_prec
+                T_shifted = modulo(T_shifted+opts%prec,1.0_dp)-opts%prec
             else
                 T_shifted = T(:,j)
             endif
             !
-            if ( is_symmetry_valid(tau=uc%tau,iopt_Z=uc%Z,&
-                & iopt_R=R(1:3,1:3,i),iopt_T=T_shifted,iopt_sym_prec=opts%sym_prec)) then
+            seitz_probe = eye(4)
+            seitz_probe(1:3,1:3) = R(1:3,1:3,i)
+            seitz_probe(1:3,4) = T_shifted
+            !
+            if ( is_symmetry_valid(tau=uc%tau, Z=uc%Z, seitz=seitz_probe, prec=opts%prec)) then
                 m = m + 1
-                wrkspace(1:3,1:3,m)=R(1:3,1:3,i)
-                wrkspace(1:3,4,m)=T_shifted
-                wrkspace(4,4,m)=1.0_dp
+                wrkspace(:,:,m)=seitz_probe
             endif
         enddo
         enddo
@@ -518,14 +500,14 @@ contains
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
         !
-        if ((mod(det(bscfp)+opts%sym_prec,1.0_dp)-opts%sym_prec).gt.opts%sym_prec) then
+        if ((mod(det(bscfp)+opts%prec,1.0_dp)-opts%prec).gt.opts%prec) then
             call am_print('ERROR','The determinant of the supercell basis in primitive fractional coordinates must be an integer.',flags='E')
             call am_print('bscfp',bscfp)
             call am_print('det(bscfp)',det(bscfp))
             call am_print('check',modulo(det(bscfp),1.0_dp).lt.tiny)
-            write(*,*) opts%sym_prec
+            write(*,*) opts%prec
             write(*,*) mod(det(bscfp),1.0_dp)
-            write(*,*) mod(det(bscfp)+opts%sym_prec,1.0_dp)-opts%sym_prec
+            write(*,*) mod(det(bscfp)+opts%prec,1.0_dp)-opts%prec
             stop
         endif
         !
@@ -557,9 +539,9 @@ contains
                       ! convert to supercell fractional
                       tau_wrk = matmul(inv_bscfp,tau_wrk)
                       ! reduce to primitive supercell
-                      tau_wrk = modulo(tau_wrk+opts%sym_prec,1.0_dp) - opts%sym_prec
+                      tau_wrk = modulo(tau_wrk+opts%prec,1.0_dp) - opts%prec
                       !
-                      if (.not.issubset(sc%tau,tau_wrk,opts%sym_prec)) then
+                      if (.not.issubset(sc%tau,tau_wrk,opts%prec)) then
                           m = m+1 
                           sc%tau(1:3,m) = tau_wrk
                           sc%Z(m) = uc%Z(j)
@@ -573,7 +555,7 @@ contains
               enddo
         enddo map
         ! correct basic rounding error
-        where(abs(sc%tau).lt.opts%sym_prec) sc%tau=0.0_dp 
+        where(abs(sc%tau).lt.opts%prec) sc%tau=0.0_dp 
         !
         if (opts%verbosity.ge.1) then
             call am_print_two_matrices_side_by_side(name='supercell atomic basis',&

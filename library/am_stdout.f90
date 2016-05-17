@@ -230,27 +230,27 @@ contains
     ! generic math functions 
     !
 
-    pure function issubset_vec(group,element,iopt_sym_prec) result(issubset)
+    pure function issubset_vec(group,element,iopt_prec) result(issubset)
         !> returns true if true if element(:) is a subset of group(:,i) within numerical precision for any i
         implicit none
         !
         real(dp), intent(in) :: group(:,:)
         real(dp), intent(in) :: element(:)
-        real(dp), intent(in), optional :: iopt_sym_prec
-        real(dp) :: sym_prec
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp) :: prec
         logical :: issubset
         integer :: i
         !
-        if (present(iopt_sym_prec)) then
-            sym_prec = iopt_sym_prec
+        if (present(iopt_prec)) then
+            prec = iopt_prec
         else
-            sym_prec = tiny
+            prec = tiny
         endif
         !
         issubset = .false.
         !
         do i = 1,size(group,2)
-            if ( all(abs(group(:,i)-element).lt.sym_prec) ) then
+            if ( all(abs(group(:,i)-element).lt.prec) ) then
                 issubset = .true.
                 return
             endif
@@ -258,27 +258,27 @@ contains
         !
     end function  issubset_vec
 
-    pure function issubset_mat(group,element,iopt_sym_prec) result(issubset)
+    pure function issubset_mat(group,element,iopt_prec) result(issubset)
         !> returns true if true if element(:,:) is a subset of group(:,:,i) within numerical precision for any i
         implicit none
         !
         real(dp), intent(in) :: group(:,:,:)
         real(dp), intent(in) :: element(:,:)
-        real(dp), intent(in), optional :: iopt_sym_prec
-        real(dp) :: sym_prec
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp) :: prec
         integer :: i
         logical :: issubset
         !
-        if (present(iopt_sym_prec)) then
-            sym_prec = iopt_sym_prec
+        if (present(iopt_prec)) then
+            prec = iopt_prec
         else
-            sym_prec = tiny
+            prec = tiny
         endif
         !
         issubset = .false.
         !
         do i = 1,size(group,3)
-            if ( all(abs(group(:,:,i)-element(:,:)).lt.sym_prec) ) then
+            if ( all(abs(group(:,:,i)-element(:,:)).lt.prec) ) then
                 issubset = .true.
                 return
             endif

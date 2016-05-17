@@ -1868,4 +1868,53 @@ module am_matlab
         !
     end function  smallest_nonzero
 
+    ! sort based on occurance
+
+!     subroutine     relabel_based_on_occurances(list)
+!         !
+!         use am_rank_and_sort
+!         !
+!         implicit none
+!         !
+!         integer , intent(inout) :: list(:)
+!         integer , allocatable :: A_sorted(:)
+!         integer , allocatable :: occurances(:) 
+!         integer , allocatable :: reverse_sort(:)
+!         integer , allocatable :: sorted_indices(:)
+!         integer , allocatable :: list_relabled(:)
+!         integer :: nsyms, i, j
+!         !
+!         nsyms = size(list,1)
+!         !
+!         allocate(occurances(nsyms))
+!         do i = 1, nsyms
+!             occurances(i) = count(list(i).eq.list)
+!         enddo
+!         !
+!         ! this quick and dirty procedure lifts degeneracies
+!         !
+!         allocate(sorted_indices(nsyms))
+!         allocate(A_sorted(nsyms))
+!         call rank((1+maxval(list))*occurances+list,sorted_indices)
+!         A_sorted = list(sorted_indices)
+!         !
+!         allocate(list_relabled(nsyms))
+!         list_relabled = 0
+!         !
+!         j=1
+!         list_relabled(1) = 1
+!         do i = 2, nsyms
+!             if (A_sorted(i).ne.A_sorted(i-1)) then
+!                 j=j+1
+!             endif
+!             list_relabled(i) = j
+!         enddo
+!         !
+!         ! return everything to the original order at call
+!         !
+!         allocate(reverse_sort(nsyms))
+!         reverse_sort(sorted_indices)=[1:nsyms]
+!         list=list_relabled(reverse_sort)
+!     end subroutine relabel_based_on_occurances
+
 end module am_matlab
