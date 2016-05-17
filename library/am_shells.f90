@@ -59,17 +59,17 @@ contains
         implicit none
         !
         class(am_class_pair_shell), intent(inout) :: pp ! primitive pairs
-        class(am_class_unit_cell), intent(in) :: pc ! primitive cell
-        type(am_class_symmetry) , intent(in) :: sg ! space group
-        type(am_class_symmetry) , intent(in) :: pg ! point group
-        type(am_class_unit_cell), intent(in) :: uc ! unit cell
-        type(am_class_options)  , intent(in) :: opts
+        class(am_class_unit_cell) , intent(in) :: pc ! primitive cell
+        type(am_class_space_group), intent(in) :: sg ! space group
+        type(am_class_point_group), intent(in) :: pg ! point group
+        type(am_class_unit_cell)  , intent(in) :: uc ! unit cell
+        type(am_class_options)    , intent(in) :: opts
         real(dp), intent(inout) :: pair_cutoff
         !
         character(11) :: pctype
-        type(am_class_symmetry) :: rotg ! local point groupas seen by rotating the shell
-        type(am_class_symmetry) :: revg ! reversal group of a typical bond in the shell v
-        type(am_class_symmetry) :: stab ! stabilizer of a typical bond in the shell v
+        type(am_class_point_group) :: rotg ! local point groupas seen by rotating the shell
+        type(am_class_point_group) :: revg ! reversal group of a typical bond in the shell v
+        type(am_class_point_group) :: stab ! stabilizer of a typical bond in the shell v
         type(am_class_unit_cell) :: sphere ! sphere containing atoms up to a cutoff
         type(am_class_options) :: notalk ! supress verbosity
         integer , allocatable :: pair_nelements(:)
@@ -304,8 +304,8 @@ contains
             !
             implicit none
             !
-            type(am_class_unit_cell), intent(in) :: sphere
-            type(am_class_symmetry) , intent(in) :: pg ! rotational group (space symmetries which have translational part set to zero and are still compatbile with the atomic basis)
+            type(am_class_unit_cell)  , intent(in) :: sphere
+            type(am_class_point_group), intent(in) :: pg ! rotational group (space symmetries which have translational part set to zero and are still compatbile with the atomic basis)
             integer , allocatable :: P(:,:,:)
             integer , allocatable :: PM(:,:) ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
             real(dp), allocatable :: d(:)    ! d(npairs) array containing distances between atoms
@@ -350,18 +350,18 @@ contains
         !
         implicit none
         !
-        class(am_class_pair_shell) , intent(out) :: ip
-        class(am_class_pair_shell) , intent(inout) :: pp
-        type(am_class_symmetry)    , intent(in) :: pg
-        type(am_class_symmetry)    , intent(in) :: sg
-        class(am_class_unit_cell)  , intent(in) :: ic
-        type(am_class_options)     , intent(in) :: opts
+        class(am_class_pair_shell), intent(out) :: ip
+        class(am_class_pair_shell), intent(inout) :: pp
+        type(am_class_space_group), intent(in) :: sg ! space group
+        type(am_class_point_group), intent(in) :: pg ! point group
+        class(am_class_unit_cell) , intent(in) :: ic
+        type(am_class_options)    , intent(in) :: opts
+        type(am_class_point_group) :: stab
+        type(am_class_point_group) :: revg
+        type(am_class_point_group) :: rotg
+        type(am_class_options)     :: notalk
         integer , allocatable :: ip_id(:) ! can have negative, it means bond was flipped!
         integer , allocatable :: ip_id_unique(:) ! strictly positive
-        type(am_class_symmetry) :: stab
-        type(am_class_symmetry) :: revg
-        type(am_class_symmetry) :: rotg
-        type(am_class_options)  :: notalk
         integer , allocatable :: multiplicity(:)
         integer :: i,j,k
         !
@@ -511,11 +511,11 @@ contains
             implicit none
             !
             class(am_class_pair_shell), intent(in) :: pp ! primitive pairs
-            type(am_class_symmetry)   , intent(in) :: pg ! point group
+            type(am_class_point_group), intent(in) :: pg ! point group
             class(am_class_unit_cell) , intent(in) :: ic ! irreducible cell
             type(am_class_options)    , intent(in) :: opts
-            type(am_class_options)  :: notalk
-            type(am_class_symmetry) :: stab ! stabilizer of vector v
+            type(am_class_point_group) :: stab ! stabilizer of vector v
+            type(am_class_options) :: notalk
             integer , allocatable :: Z(:,:) ! Z of each atom in pair
             integer , allocatable :: s(:) ! stabilizer point group id
             real(dp), allocatable :: d(:) ! distances of atoms

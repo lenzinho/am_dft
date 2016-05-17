@@ -5,6 +5,7 @@ module am_symmetry
     use am_unit_cell
     use am_options
     use am_mkl
+    use am_rank_and_sort
 
     implicit none
 
@@ -34,18 +35,25 @@ module am_symmetry
         !
         procedure :: copy
         procedure :: create
-        procedure :: get_space_group
+        !
+        procedure :: write_action_table
+        !
+        procedure :: write_outfile
+        procedure :: sort => sort_symmetries
+    end type am_class_symmetry
+
+    type, public, extends(am_class_symmetry) :: am_class_point_group
+        contains
         procedure :: get_point_group
         procedure :: get_rotational_group
         procedure :: get_stabilizer_group
         procedure :: get_reversal_group
-        !
-        procedure :: write_action_table
-        !
-        procedure :: get_symmetry_names
-        procedure :: write_outfile
-        procedure :: sort => sort_symmetries
-    end type        am_class_symmetry
+    end type am_class_point_group
+
+    type, public, extends(am_class_symmetry) :: am_class_space_group
+        contains
+        procedure :: get_space_group
+    end type am_class_space_group
 
 contains
 
@@ -53,13 +61,11 @@ contains
 
     subroutine     get_space_group(sg,uc,opts)
         !
-        use am_rank_and_sort
-        !
         implicit none
         !
-        class(am_class_symmetry), intent(inout) :: sg
-        class(am_class_unit_cell), intent(in) :: uc ! space groups are tabulated in the litearture for conventional cells, but primitive or arbitrary cell works just as well.
-        type(am_class_options), intent(in) :: opts
+        class(am_class_space_group), intent(inout) :: sg
+        class(am_class_unit_cell)  , intent(in) :: uc ! space groups are tabulated in the litearture for conventional cells, but primitive or arbitrary cell works just as well.
+        type(am_class_options)     , intent(in) :: opts
         type(am_class_options) :: notalk
         real(dp), allocatable  :: seitz(:,:,:)
         !
@@ -77,24 +83,6 @@ contains
         !
         ! create space group instance (puts identity first)
         call sg%create(seitz=seitz)
-        !
-        ! determine multiplication chartab
-        sg%multab = get_multiplication_table(seitz=seitz)
-        !
-        ! determine conjugacy classes (needs identity first)
-        sg%class_id = get_conjugacy_classes(multab=sg%multab,ps_id=sg%ps_id)
-        !
-        ! sort space group symmetries based on parameters
-        call sg%sort(sort_parameter=sg%seitz(1,4,:),iopt_direction='ascend')
-        call sg%sort(sort_parameter=sg%seitz(2,4,:),iopt_direction='ascend')
-        call sg%sort(sort_parameter=sg%seitz(3,4,:),iopt_direction='ascend')
-        ! sort point group symmetries id (trace+det) and then on conjugacy class
-        call sg%sort(sort_parameter=real(sg%ps_id,dp)   ,iopt_direction='ascend')
-        call sg%sort(sort_parameter=real(sg%class_id,dp),iopt_direction='ascend')
-        !
-        !
-        ! name the (im-)proper part of space symmetry
-        call sg%get_symmetry_names()
         !
         ! write to write_outfile and to file
         call sg%write_outfile(iopt_uc=uc,iopt_filename=trim('outfile.spacegroup'))
@@ -122,17 +110,13 @@ contains
 
     subroutine     get_point_group(pg,uc,sg,opts)
         !
-        ! requires only sg%R
-        !
-        use am_rank_and_sort
-        !
         implicit none
         !
-        class(am_class_symmetry) , intent(inout) :: pg
-        type(am_class_symmetry)  , intent(in) :: sg
-        class(am_class_unit_cell), intent(in) :: uc ! accepts unit cell, primitive cell, conventional cell.
-        type(am_class_options), intent(in) :: opts
-        real(dp), allocatable :: seitz(:,:,:)
+        class(am_class_point_group), intent(inout) :: pg
+        type(am_class_space_group) , intent(in) :: sg
+        class(am_class_unit_cell)  , intent(in) :: uc ! accepts unit cell, primitive cell, conventional cell.
+        type(am_class_options)     , intent(in) :: opts
+        real(dp), allocatable  :: seitz(:,:,:)
         type(am_class_options) :: notalk
         !
         notalk=opts
@@ -146,11 +130,6 @@ contains
         seitz(1:3,4,:) = 0
         !
         call pg%create(seitz=unique(seitz))
-        !
-        ! sort point group symmetries id (trace+det) and then on conjugacy class
-        call pg%sort(sort_parameter=real(pg%ps_id,dp)   ,iopt_direction='ascend')
-        call pg%sort(sort_parameter=real(pg%class_id,dp),iopt_direction='ascend')
-        !
         !
         if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,' ... ')
         !
@@ -174,10 +153,10 @@ contains
         !
         implicit none
         ! subroutine i/o
-        class(am_class_symmetry),  intent(out) :: rg
-        class(am_class_unit_cell), intent(in) :: uc
-        type(am_class_symmetry),   intent(in) :: pg
-        type(am_class_options),    intent(in) :: opts
+        class(am_class_point_group),intent(out) :: rg
+        class(am_class_unit_cell),  intent(in) :: uc
+        type(am_class_point_group), intent(in) :: pg
+        type(am_class_options),     intent(in) :: opts
         type(am_class_options) :: notalk
         integer, allocatable   :: indicies(:)
         logical, allocatable   :: mask(:)
@@ -208,10 +187,10 @@ contains
         !
         implicit none
         !
-        class(am_class_symmetry), intent(inout) :: vg ! stabilizer group associated with vector v
-        type(am_class_symmetry) , intent(in) :: pg   ! space group
-        real(dp)                , intent(in) :: v(3) ! vector which is stabilized (should be same units as R, which is fractional)
-        type(am_class_options)  , intent(in) :: opts
+        class(am_class_point_group), intent(out) :: vg ! stabilizer group associated with vector v
+        type(am_class_point_group) , intent(in) :: pg
+        real(dp)                   , intent(in) :: v(3) ! vector which is stabilized (should be same units as R, which is fractional)
+        type(am_class_options)     , intent(in) :: opts
         integer, allocatable :: indicies(:)
         logical, allocatable :: mask(:)
         integer :: i
@@ -238,10 +217,10 @@ contains
         !
         implicit none
         !
-        class(am_class_symmetry), intent(inout) :: revg ! reversal group associated with vector v, i.e. the space symmetries with bring v to [0,0,0], essentially flipping the atoms at the corners of the vector
-        type(am_class_symmetry) , intent(in) :: sg ! space group
-        real(dp)                , intent(in) :: v(3)
-        type(am_class_options)  , intent(in) :: opts
+        class(am_class_point_group), intent(inout) :: revg ! reversal group associated with vector v, i.e. the space symmetries with bring v to [0,0,0], essentially flipping the atoms at the corners of the vector
+        type(am_class_space_group) , intent(in) :: sg ! space group
+        real(dp)                   , intent(in) :: v(3)
+        type(am_class_options)     , intent(in) :: opts
         integer, allocatable :: indicies(:)
         logical, allocatable :: mask(:)
         integer :: i
@@ -263,28 +242,9 @@ contains
         !
     end subroutine get_reversal_group
 
-    subroutine     get_symmetry_names(sg)
-        !
-        implicit none
-        !
-        class(am_class_symmetry) , intent(inout) :: sg
-        integer :: i
-        !
-        if (allocated(sg%ps_id)) deallocate(sg%ps_id)
-        allocate(sg%ps_id(sg%nsyms))
-        !
-        do i = 1, sg%nsyms
-            sg%ps_id(i) = ps_schoenflies(sg%seitz(1:3,1:3,i))
-        enddo
-        !
-    end subroutine get_symmetry_names
-
     subroutine     sort_symmetries(sg,sort_parameter,iopt_direction)
         !
         ! iopt_direction = 'ascend'/'descend', only first character is important
-        !
-        use am_rank_and_sort
-        !
         implicit none
         !
         class(am_class_symmetry) , intent(inout) :: sg
@@ -436,17 +396,28 @@ contains
             endif
         enddo search
         !
+        ! name point symmetries
+        allocate(sg%ps_id(sg%nsyms))
+        do i = 1, sg%nsyms
+            sg%ps_id(i) = ps_schoenflies(R=sg%seitz(1:3,1:3,i))
+        enddo
+        !
+        ! name point group
+        sg%pg_id = point_group_schoenflies(sg%ps_id)
+        !
+        ! sort symmetries based on parameters
+        call sg%sort(sort_parameter=sg%seitz(1,4,:),iopt_direction='ascend')
+        call sg%sort(sort_parameter=sg%seitz(2,4,:),iopt_direction='ascend')
+        call sg%sort(sort_parameter=sg%seitz(3,4,:),iopt_direction='ascend')
+        ! sort symmetries based on ps_id (trace+det) and then on conjugacy class
+        call sg%sort(sort_parameter=real(sg%ps_id,dp)   ,iopt_direction='ascend')
+        call sg%sort(sort_parameter=real(sg%class_id,dp),iopt_direction='ascend')
+        !
         ! get multiplication chartab
         sg%multab = get_multiplication_table(seitz=sg%seitz)
         !
         ! determine conjugacy classes (needs identity first, inversion second)
         sg%class_id = get_conjugacy_classes(multab=sg%multab,ps_id=sg%ps_id)
-        !
-        ! name point symmetries
-        call sg%get_symmetry_names()
-        !
-        ! name point group
-        sg%pg_id = point_group_schoenflies(sg%ps_id)
         !
     end subroutine create
 
@@ -1436,8 +1407,6 @@ contains
         !
         ! for AX = XB, if elements A and B are conjugate pairs for some other element X in the group, then they are in the same class
         !
-        use am_rank_and_sort
-        !
         implicit none
         !
         integer, intent(in)  :: multab(:,:) ! multiplication chartab
@@ -1482,7 +1451,7 @@ contains
         nclasses = k
         !
         ! relabel classes based on point symmetry id of representative class element
-        call relabel_based_on_occurances(class_id,ps_id)
+        call relabel_based_on_ps_id(class_id,ps_id)
         !
         ! make sure the identity is in the first class
         ! class_id(i=1) is the class of the first element (the identity); swap it's location with whaterver elements are in the first class
@@ -1497,8 +1466,6 @@ contains
         !
         contains
         subroutine     relabel_based_on_ps_id(class_id,ps_id)
-            !
-            use am_rank_and_sort
             !
             implicit none
             !

@@ -31,7 +31,7 @@ contains
         class(am_class_irre_cell), intent(out)   :: ic ! irreducible cell
         class(am_class_unit_cell), intent(inout) :: pc
         class(am_class_unit_cell), intent(inout), optional :: uc ! if present, mapping from ic <-> uc is obtained
-        type(am_class_symmetry), intent(in) :: sg
+        type(am_class_space_group),intent(in) :: sg
         type(am_class_options), intent(in) :: opts
         type(am_class_options) :: notalk
         integer, allocatable :: PM(:,:)
