@@ -12,6 +12,12 @@ module am_symmetry
 
     public :: get_multiplication_table
     
+    public :: permutation_rep ! am_irrec_cell
+    public :: permutation_map ! am_irrec_cell
+    public :: member          ! am_symmetry_adapted_tensors
+    public :: decode_pointgroup ! am_shell
+    public :: nelements       ! am_shell
+
     public :: ps_frac2cart
     
     type, public :: am_class_symmetry 
@@ -156,10 +162,12 @@ contains
 
     subroutine     get_rotational_group(rg,uc,pg,opts)
         !
-        ! get point symmetries which are compatible with the atomic basis (essentially keeps
+        ! Get point symmetries which are compatible with the atomic basis (essentially keeps
         ! rotational part of space symmetries which are able to map all atoms onto each other)
         !
-        ! name "point group" - NOTE: not really a point group because translational components of
+        ! This is also useful for determining the point symmetries compatible with kpoint mesh.
+        !
+        ! Name "point group" - NOTE: not really a point group because translational components of
         ! space symmetries were ignored in the genereation process this would be the name of the
         ! group, if the group were symmorphic (in which case it will match the real point group
         ! name)...
@@ -784,34 +792,6 @@ contains
             !
         close(fid)
     end subroutine write_action_table
-
-    ! functions which operate on kpoints
-
-!     function       get_kpoint_compatible_symmetries(kpt,R,prec) result(R_syms)
-!         !
-!         implicit none
-!         !
-!         real(dp), intent(in) :: R(:,:,:)
-!         real(dp), intent(in) :: kpt(:,:)
-!         real(dp), intent(in) :: prec
-!         real(dp), allocatable :: R_syms(:,:,:)
-!         real(dp) :: wrkspace(3,3,size(R,3))
-!         integer  :: i, j, nsyms
-!         !
-!         nsyms = size(R,3)
-!         !
-!         j=0
-!         do i = 1, nsyms
-!             seitz = 
-!             if (is_symmetry_valid(tau=kpt,seitz=R(1:3,1:3),prec=prec)) then
-!                 j=j+1
-!                 wrkspace(:,:,j) = R(:,:,i)
-!             endif
-!         enddo
-!         allocate(R_syms(3,3,j))
-!         R_syms = wrkspace(:,:,1:j)
-!         !
-!     end function   get_kpoint_compatible_symmetries
 
     ! functions which operate on R(3,3) in fractional coordinates
 

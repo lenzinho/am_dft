@@ -5,7 +5,6 @@ module am_symmetry_adapted_tensors
     use am_unit_cell
     use am_options
     use am_mkl
-    use am_group_rep
     use am_symmetry
 
 	implicit none
@@ -99,7 +98,7 @@ contains
         !
         ! get conjugacy class members
         ! members(nclass,maxval(class_nelements))
-        class_member = member(pg%cc_id)
+        class_member = member(pg%class_id)
         !
         ! initialize A. 
         ! using LU factorization instead of applying rref in order to incorporate effect of symmetry on tensor at each step.
@@ -122,14 +121,14 @@ contains
             i=class_member(j,1)
             ! construct symmetry operator in the flattend basis
             ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
-            R = kron_pow(ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),tensor_rank)
+            R = kron_pow(ps_frac2cart(R_frac=pg%seitz(1:3,1:3,i),bas=uc%bas),tensor_rank)
             ! apply flip operator. S_{alpha,beta,n,m} = S_{beta,alpha,m,n}
             ! reversal group have operations S which flip n->m and m->n. To return n and m to their correct indicies, apply "flip" operator which flips n<->m AND transposes alpha and beta cartesian indices.
             if (index(property,'pair reversal').ne.0) then
                 R = matmul(T(ndim),R)
             endif
             ! if the quantity corresponds to an axial tensor
-            if (index(flags,'axial').ne.0) R = det(pg%R(:,:,i)) * R
+            if (index(flags,'axial').ne.0) R = det(pg%seitz(1:3,1:3,i)) * R
             ! Save the action of the symmetry operations
             A(2*nterms+indices,0*nterms+indices) = R
             A(2*nterms+indices,1*nterms+indices) = eye(nterms)
@@ -153,7 +152,7 @@ contains
             call lu(A)
             ! debug flags
             ! if (opts%verbosity.ge.2) then
-            !     call am_print('ps',ps_frac2cart(R_frac=pg%R(:,:,i),bas=uc%bas),filename='debug_ps'//trim(int2char(i))//'.txt',permission='w')
+            !     call am_print('ps',ps_frac2cart(R_frac=pg%seitz(1:3,1:3,i),bas=uc%bas),filename='debug_ps'//trim(int2char(i))//'.txt',permission='w')
             !     call am_print('R',R,filename='debug_R'//trim(int2char(i))//'.txt',permission='w')
             !     call am_print('A',A,filename='debug_A'//trim(int2char(i))//'.txt',permission='w')
             ! endif

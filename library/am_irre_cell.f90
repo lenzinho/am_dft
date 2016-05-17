@@ -1,14 +1,13 @@
 module am_irre_cell
 
     use am_constants
-    use am_mkl
-    use am_atom
     use am_stdout
     use am_options
+    use am_symmetry
     use am_unit_cell
     use am_prim_cell
-    use am_group_rep
-    use am_symmetry
+    use am_mkl
+    use am_atom
 
     implicit none
 
@@ -25,16 +24,18 @@ module am_irre_cell
 
 contains
     
-    subroutine     get_irreducible(ic,pc,uc,pr,opts)
+    subroutine     get_irreducible(ic,pc,uc,sg,opts)
         !
         implicit none
         !
         class(am_class_irre_cell), intent(out)   :: ic ! irreducible cell
         class(am_class_unit_cell), intent(inout) :: pc
         class(am_class_unit_cell), intent(inout), optional :: uc ! if present, mapping from ic <-> uc is obtained
-        type(am_class_rep_perm)  , intent(in) :: pr ! space group permutation rep
-        type(am_class_options)   , intent(in) :: opts
+        type(am_class_symmetry), intent(in) :: sg
+        type(am_class_options), intent(in) :: opts
         type(am_class_options) :: notalk
+        integer, allocatable :: PM(:,:)
+        integer, allocatable :: P(:,:,:)
         logical, allocatable :: mask(:)
         integer, allocatable :: ind(:)
         integer :: i,j,k
@@ -45,6 +46,10 @@ contains
         notalk%verbosity=0
         !
         if (opts%verbosity.ge.1) call am_print('primitive cell atoms',pc%natoms,' ... ')
+        !
+        ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
+        P  = permutation_rep(seitz=sg%seitz, tau=pc%tau, prec=opts%prec,flags='')
+        PM = permutation_map( P )
         !
         allocate(mask(pc%natoms))
         allocate(ind(pc%natoms))
@@ -57,8 +62,8 @@ contains
         if (mask(i)) then
             k=k+1
             ind(k)=i
-            do j = 1,pr%nsyms
-                mask(pr%PM(i,j))=.false.
+            do j = 1,sg%nsyms
+                mask(PM(i,j))=.false.
             enddo
         endif
         enddo
@@ -88,11 +93,11 @@ contains
             ! maps primitive cell atom onto -> irreducible cell
             allocate(pc%ic_id(pc%natoms))
             do i = 1, ic%natoms
-                ! pr%PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-                ! pr%PM(1,:) shows all atoms onto which atom 1 is mapped by all space symmetry operations
+                ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
+                ! PM(1,:) shows all atoms onto which atom 1 is mapped by all space symmetry operations
                 do j = 1, pc%natoms
-                    do k = 1, pr%nsyms
-                        if (pr%PM(j,k).eq.i) pc%ic_id(j) = i
+                    do k = 1, sg%nsyms
+                        if (PM(j,k).eq.i) pc%ic_id(j) = i
                     enddo
                 enddo
             enddo

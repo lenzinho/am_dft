@@ -8,7 +8,6 @@ module am_shells
     use am_options
     use am_mkl
     use am_atom
-    use am_group_rep
     use am_symmetry
 
     implicit none
@@ -307,14 +306,16 @@ contains
             !
             type(am_class_unit_cell), intent(in) :: sphere
             type(am_class_symmetry) , intent(in) :: pg ! rotational group (space symmetries which have translational part set to zero and are still compatbile with the atomic basis)
-            type(am_class_rep_perm) :: pr
+            integer , allocatable :: P(:,:,:)
+            integer , allocatable :: PM(:,:) ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
             real(dp), allocatable :: d(:)    ! d(npairs) array containing distances between atoms
             integer , allocatable :: indices(:)
             integer , allocatable :: ind_u(:)
             integer :: i, jj, j, k
             !
-            ! pr%PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-            call pr%create(R=sg%R,tau=uc%tau,prec=opts%prec)
+            ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
+            P  = permutation_rep(seitz=pg%seitz, tau=sphere%tau, flags='relax_pbc', prec=opts%prec)
+            PM = permutation_map( P )
             !
             ! get distance of atoms
             allocate(d(sphere%natoms))
@@ -335,8 +336,8 @@ contains
                 if (ind_u(i).eq.0) then
                     k=k+1
                     do j = 1, pg%nsyms
-                    if ((pr%PM(i,j)).ne.0) then
-                        ind_u(pr%PM(i,j)) = k
+                    if ((PM(i,j)).ne.0) then
+                        ind_u(PM(i,j)) = k
                     endif
                     enddo
                 endif
@@ -618,6 +619,46 @@ contains
         enddo
         !
     end function   transform_2nd_order_force_constants
+
+
+    
+!    subroutine     get_irreducible_force_constants(pair,ic,pg,sg,opts)
+!        !
+!        implicit none
+!        class(am_class_pair_shell), intent(inout) :: pair
+!        class(am_class_unit_cell) , intent(in) :: ic
+!        type(am_class_symmetry)   , intent(in) :: pg
+!        type(am_class_symmetry)   , intent(in) :: sg
+!        type(am_class_options)    , intent(in) :: opts
+!        integer , allocatable :: ip_id(:) ! unique indicies i and j (see below)
+!        !
+!        !
+!        ip_id = pair%identify_irreducible(ic=ic,pg=pg,opts=opts)
+!        
+!!        do i = 1, pair%
+! !       call get_symmetry_adapted_tensor(pg=pg,uc=uc,opts=opts,property='reversal',relations)
+!        !
+!        
+!
+!        !
+!        !! output
+!        !allocate(irrep_pairs,source=ij(1:2,unique(ip_id)))
+!        !!
+!        !!
+!        !if (opts%verbosity.ge.1) then
+!        !    ind_u = unique(ip_id)
+!        !    npairs_u = size(ind_u)
+!        !    call am_print('irreducible pair ('//trim(int2char(npairs_u))//')',ij(:,ind_u))
+!        !    !
+!        !    write(*,'(5x)', advance='no')
+!        !    do k = 1,npairs_u
+!        !        i = ij(1,ind_u(k))
+!        !        j = ij(2,ind_u(k))
+!        !        write(*,'(a,"-",a)',advance='no') "("//trim(atm_symb(ic%Z(i))), trim(atm_symb(pair%shell(i,j)%Z(1)))//") "
+!        !    enddo
+!        !    write(*,*)
+!        !endif
+!    end subroutine get_irreducible_force_constants
     
 end module am_shells
 

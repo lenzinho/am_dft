@@ -204,10 +204,6 @@ contains
         !
         if (opts%verbosity.ge.1) call am_print_title('Expand kpoints to FBZ')
         if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,' ... ')
-        if (opts%verbosity.ge.1) then
-            call am_print('number of point symmetries compatible with original k-point mesh',&
-                size(get_kpoint_compatible_symmetries(kpt=bz%kpt,R=pg%seitz(1:3,1:3,:),prec=opts%prec),3),' ... ')
-        endif
         if (opts%verbosity.ge.1) call am_print('number of kpoints in the original bz',bz%nkpts,' ... ')
         if (opts%verbosity.ge.1) then
             call am_print_two_matrices_side_by_side(name='original kpoints',&
@@ -223,7 +219,7 @@ contains
         !$OMP DO
         do i = 1, bz%nkpts
             ! get its orbit
-            korbit = kpoint_orbit(pg%R,bz%kpt(:,i))
+            korbit = kpoint_orbit(pg%seitz(1:3,1:3,:),bz%kpt(:,i))
             ! reduce korbit to primitive reciprocal lattice
             korbit = modulo(korbit+opts%prec,1.0_dp)-opts%prec
             ! get unique values
@@ -307,7 +303,7 @@ contains
         !$OMP PARALLEL PRIVATE(i) SHARED(grid_points,bz,ibz,pc,pg)
         !$OMP DO
         do i = 1, bz%nkpts
-            ibz%kpt(:,i) = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i),grid_points=grid_points,bas=pc%bas,R=pg%R,prec=opts%prec)
+            ibz%kpt(:,i) = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i),grid_points=grid_points,bas=pc%bas,R=pg%seitz(1:3,1:3,:),prec=opts%prec)
         enddo
         !$OMP END DO
         !$OMP END PARALLEL
@@ -321,7 +317,7 @@ contains
         !$OMP PARALLEL PRIVATE(i) SHARED(grid_points,bz,ibz,pc,pg)
         !$OMP DO
         do i = 1, ibz%nkpts
-            ibz%w(i) = kpoint_weight(R=pg%R,kpoint=ibz%kpt(:,i),prec=opts%prec)
+            ibz%w(i) = kpoint_weight(R=pg%seitz(1:3,1:3,:),kpoint=ibz%kpt(:,i),prec=opts%prec)
         enddo
         !$OMP END DO
         !$OMP END PARALLEL
