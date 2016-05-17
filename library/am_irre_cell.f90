@@ -29,7 +29,7 @@ contains
         implicit none
         !
         class(am_class_irre_cell), intent(out)   :: ic ! irreducible cell
-        class(am_class_unit_cell), intent(inout) :: pc
+        class(am_class_prim_cell), intent(inout) :: pc
         class(am_class_unit_cell), intent(inout), optional :: uc ! if present, mapping from ic <-> uc is obtained
         type(am_class_space_group),intent(in) :: sg
         type(am_class_options), intent(in) :: opts
@@ -48,7 +48,8 @@ contains
         if (opts%verbosity.ge.1) call am_print('primitive cell atoms',pc%natoms,' ... ')
         !
         ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-        P  = permutation_rep(seitz=sg%seitz, tau=pc%tau, prec=opts%prec,flags='')
+        P  = permutation_rep(seitz=sg%seitz, tau=pc%tau, prec=opts%prec, flags='')
+        call permutation_check( P )
         PM = permutation_map( P )
         !
         allocate(mask(pc%natoms))
