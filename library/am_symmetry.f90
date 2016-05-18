@@ -13,13 +13,12 @@ module am_symmetry
 
     public :: get_multiplication_table
     
-    public :: permutation_rep ! am_irrec_cell
-    public :: permutation_map ! am_irrec_cell
-    public :: permutation_check ! am_irre_cell
+    public :: permutation_rep   ! am_irre_cell
+    public :: permutation_map   ! am_irre_cell
 
-    public :: member          ! am_symmetry_adapted_tensors
+    public :: member            ! am_symmetry_adapted_tensors
     public :: decode_pointgroup ! am_shell
-    public :: nelements       ! am_shell
+    public :: nelements         ! am_shell
 
     public :: ps_frac2cart
     
@@ -91,13 +90,16 @@ contains
             !
             call am_print('classes',maxval(sg%class_id))
             !
-            call print_character_table(chartab=sg%chartab, nclasses=maxval(sg%class_id), &
-                & class_nelements=nelements(sg%class_id), class_member=member(sg%class_id), ps_id=sg%ps_id)
+            write(*,*) maxval(sg%class_id)
+            !
+            call print_character_table(chartab=sg%chartab, class_nelements=nelements(sg%class_id), class_member=member(sg%class_id), ps_id=sg%ps_id)
             !
         endif
         !
         ! write to write_outfile and to file
         call sg%write_outfile(iopt_uc=uc,iopt_filename=trim('outfile.spacegroup'))
+        !
+        call sg%write_action_table(uc=uc,fname='outfile.space_group_action',opts=opts)
         !
         contains
             subroutine     put_identity_first(seitz)
@@ -149,12 +151,13 @@ contains
             !
             call am_print('point symmetries',pg%nsyms,' ... ')
             !
-            call print_character_table(chartab=pg%chartab, nclasses=maxval(pg%class_id), &
-                & class_nelements=nelements(pg%class_id), class_member=member(pg%class_id), ps_id=pg%ps_id)
+            call print_character_table(chartab=pg%chartab, class_nelements=nelements(pg%class_id), class_member=member(pg%class_id), ps_id=pg%ps_id)
             !
         endif
         !
-        call pg%write_outfile(iopt_uc=uc,iopt_filename=trim('outfile.pointgroup'))
+        call pg%write_outfile(iopt_uc=uc,iopt_filename='outfile.pointgroup')
+        !
+        call pg%write_action_table(uc=uc,fname='outfile.point_group_action',opts=opts)
         !
     end subroutine get_point_group
 
@@ -394,7 +397,7 @@ contains
             sg%pg_id = point_group_schoenflies(sg%ps_id)
         end select
         !
-        ! get multiplication chartab
+        ! get multiplication table
         sg%multab = get_multiplication_table(seitz=sg%seitz)
         ! determine conjugacy classes (needs identity first, inversion second)
         sg%class_id = get_conjugacy_classes(multab=sg%multab,ps_id=sg%ps_id)
@@ -407,11 +410,7 @@ contains
         call sort_symmetries(sg=sg, criterion=real(sg%ps_id,dp), flags='acsend')
         call sort_symmetries(sg=sg, criterion=real(sg%class_id,dp), flags='ascend')
         !
-        ! get multiplication chartab
-        sg%multab = get_multiplication_table(seitz=sg%seitz)
-        ! determine conjugacy classes (needs identity first, inversion second)
-        sg%class_id = get_conjugacy_classes(multab=sg%multab,ps_id=sg%ps_id)
-        !
+        ! get character table
         sg%chartab = get_character_table(multab=sg%multab,ps_id=sg%ps_id)
         !
         contains
@@ -422,11 +421,10 @@ contains
             class(am_class_symmetry), intent(inout) :: sg
             character(*), intent(in) :: flags
             integer , allocatable :: inds(:)
-            integer , allocatable :: P(:,:)
-            integer , allocatable :: invP(:,:)
+            integer , allocatable ::rinds(:) ! reverse inds
             real(dp) :: criterion(:)
             integer :: total
-            integer :: i
+            integer :: i, j
             !
             allocate(inds(sg%nsyms))
             !
@@ -438,34 +436,23 @@ contains
             !
             if (allocated(sg%seitz   )) sg%seitz    = sg%seitz(:,:,inds)
             if (allocated(sg%ps_id   )) sg%ps_id    = sg%ps_id(inds)
-            ! if (allocated(sg%class_id)) sg%class_id = sg%class_id(inds)
-
-            ! if (allocated(sg%multab)) then
-            !     !
-            !     ! write(*,*) 'NEED TO CONFIRM THAT THIS PROCEDURE IS CORRECT...'
-            !     !
-            !     total = sum(sg%multab(1,:))
-            !     !
-            !     allocate(P(sg%nsyms,sg%nsyms))
-            !     P = 0
-            !     do i = 1, sg%nsyms
-            !         P(i,inds(i)) = 1
-            !     enddo
-            !     !
-            !     allocate(invP(sg%nsyms,sg%nsyms))
-            !     invP = 0
-            !     do i = 1, sg%nsyms
-            !         invP(inds(i),i) = 1
-            !     enddo
-            !     !
-            !     sg%multab = matmul(P,matmul(sg%multab,invP))
-            !     !
-            !     ! basic check
-            !     do i = 1, sg%nsyms
-            !         if (sum(sg%multab(i,:))/=total) stop 'something is wrong with multab'
-            !         if (sum(sg%multab(:,i))/=total) stop 'something is wrong with multab'
-            !     enddo
-            ! endif
+            if (allocated(sg%class_id)) sg%class_id = sg%class_id(inds)
+            !
+            if (allocated(sg%multab)) then
+                !
+                allocate(rinds(sg%nsyms))
+                rinds(inds) = [1:sg%nsyms]
+                !
+                do i = 1, sg%nsyms
+                do j = 1, sg%nsyms
+                    sg%multab(i,j) = rinds(sg%multab(i,j))
+                enddo
+                enddo
+                !
+                sg%multab = sg%multab(:,inds)
+                sg%multab = sg%multab(inds,:)
+                !
+            endif
             !
         end subroutine sort_symmetries
     end subroutine create
@@ -1250,8 +1237,8 @@ contains
         ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
         ! to ensure atoms must permute onto each other
         if (index(flags,'relax_pbc').eq.0) then
-        do i = 1,nsyms
-        do j = 1,ntaus
+        do i = 1, nsyms
+        do j = 1, ntaus
             !
             if (sum(rep(:,j,i)).ne.1) then
                call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
@@ -1300,40 +1287,6 @@ contains
         enddo
         !
     end function   permutation_map
-
-    subroutine     permutation_check(sym)
-        !
-        ! check that each column and row of the sym sums to 1; i.e. sym(:,:,i) is orthonormal for all i.
-        ! this check is equivalent to verifying whther all atoms have been permute onto another other atom
-        !
-        implicit none
-        !
-        integer, intent(in) :: sym(:,:,:)
-        integer :: i, j, ndims, nsyms
-        !
-        ndims = size(sym,1)
-        nsyms = size(sym,3)
-        !
-        do i = 1, nsyms
-        do j = 1, ndims
-            !
-            if (sum(sym(:,j,i)).ne.1) then
-                call am_print('ERROR','Permutation matrix representation has a column which does not sum to 1.')
-                call am_print('sym'//trim(int2char(i)),sym(:,:,i))
-                call am_print_sparse('spy(P_i)',sym(:,:,i))
-                stop
-            endif
-            !
-            if (sum(sym(j,:,i)).ne.1) then
-                call am_print('ERROR','Permutation matrix representation has a row which does not sum to 1.')
-                call am_print('sym'//trim(int2char(i)),sym(:,:,i))
-                call am_print_sparse('spy(P_i)',sym(:,:,i))
-                stop
-            endif
-            !
-        enddo
-        enddo
-    end subroutine permutation_check
 
     ! identifier functions which operate on identifiers
 
@@ -1833,17 +1786,16 @@ contains
         end function   eigen_analysis
     end function   get_character_table
 
-    subroutine     print_character_table(chartab,nclasses,class_nelements,class_member,ps_id)
+    subroutine     print_character_table(chartab,class_nelements,class_member,ps_id)
         !
         implicit none
         !
         complex(dp), intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
-        integer, intent(in) :: nclasses
         integer, intent(in) :: class_nelements(:) ! number of elements in each class
         integer, intent(in) :: class_member(:,:) ! members(nclass,maxval(class_nelements))
         integer, intent(in) :: ps_id(:)
         integer :: i, j, k
-        integer :: nirreps
+        integer :: nirreps, nclasses
         integer :: kk, k_exp
         complex(dp), allocatable :: s(:)
         complex(dp) :: s_exp
@@ -1858,7 +1810,10 @@ contains
         character(50) :: fmt4
         character(50) :: fmt5
         !
-        nirreps = size(class_nelements) ! nirreps = nclasses
+        ! they are always identical...
+        nirreps = size(chartab,1)
+        nclasses = size(chartab,2)
+        !
         ! left-side headers
         fmt2 = '(5x,a10)'
         fmt4 = '(5x,a6,i4)'

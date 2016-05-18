@@ -35,7 +35,6 @@ contains
         type(am_class_options), intent(in) :: opts
         type(am_class_options) :: notalk
         integer, allocatable :: PM(:,:)
-        integer, allocatable :: P(:,:,:)
         logical, allocatable :: mask(:)
         integer, allocatable :: ind(:)
         integer :: i,j,k

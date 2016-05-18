@@ -40,7 +40,7 @@ module am_options
         class(am_class_options), intent(inout) :: opts
         !
         opts%verbosity = 1
-        opts%prec = tiny ! seems to work.
+        opts%prec     = 1.0D-5  ! this is ultimately limited by the input
         opts%n        = [9,9,9] ! monkhorst pack mesh grid dimensions
         opts%s        = real([0,0,0],dp) ! monkhorst pack mesh grid shift
         opts%ibzkpt   = 'IBZKPT'
