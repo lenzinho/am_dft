@@ -101,13 +101,9 @@ contains
                             exit search
                         endif
                     enddo search
-                    ! for some reason this check does not work...
-                    ! if (pc%ic_id(j).eq.0) then 
-                    !     write(*,*) j, pc%ic_id
-                    !     stop 'ERROR: prim->ic mapping failed.'
-                    ! endif
                 enddo
             enddo
+            if (any(pc%ic_id.eq.0)) stop 'ERROR: prim->ic mapping failed.'
             ! maps (input) unit cell atom onto -> irreducible cell
             if (present(uc)) then
                 allocate(uc%ic_id(uc%natoms))

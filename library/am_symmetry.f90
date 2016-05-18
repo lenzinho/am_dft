@@ -25,10 +25,10 @@ module am_symmetry
     type, public :: am_class_symmetry 
         !
         integer :: nsyms
-        real(dp), allocatable :: seitz(:,:,:) ! symmetry elements (operate on fractional atomic basis)
-        integer, allocatable :: class_id(:)   ! integer assigning each element to a conjugacy class
-        integer, allocatable :: ps_id(:)      ! integer which identifies point symmetries (see decode_pointsymmetry)
-        integer, allocatable :: multab(:,:)   ! multiplication table
+        real(dp), allocatable :: seitz(:,:,:)  ! symmetry elements (operate on fractional atomic basis)
+        integer , allocatable :: class_id(:)   ! integer assigning each element to a conjugacy class
+        integer , allocatable :: ps_id(:)      ! integer which identifies point symmetries (see decode_pointsymmetry)
+        integer , allocatable :: multab(:,:)   ! multiplication table
         complex(dp), allocatable :: chartab(:,:) ! character table
         !
         contains
@@ -92,7 +92,7 @@ contains
             !
             write(*,*) maxval(sg%class_id)
             !
-            call print_character_table(chartab=sg%chartab, class_nelements=nelements(sg%class_id), class_member=member(sg%class_id), ps_id=sg%ps_id)
+            call print_character_table(chartab=sg%chartab, class_id=sg%class_id, ps_id=sg%ps_id)
             !
         endif
         !
@@ -151,7 +151,7 @@ contains
             !
             call am_print('point symmetries',pg%nsyms,' ... ')
             !
-            call print_character_table(chartab=pg%chartab, class_nelements=nelements(pg%class_id), class_member=member(pg%class_id), ps_id=pg%ps_id)
+            call print_character_table(chartab=sg%chartab, class_id=sg%class_id, ps_id=sg%ps_id)
             !
         endif
         !
@@ -1786,16 +1786,96 @@ contains
         end function   eigen_analysis
     end function   get_character_table
 
-    subroutine     print_character_table(chartab,class_nelements,class_member,ps_id)
+    function       get_irrep_labels(chartab,class_id,ps_id) result(irrep_label)
         !
         implicit none
         !
         complex(dp), intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
-        integer, intent(in) :: class_nelements(:) ! number of elements in each class
-        integer, intent(in) :: class_member(:,:) ! members(nclass,maxval(class_nelements))
+        integer, intent(in) :: class_id(:)
+        integer, intent(in) :: ps_id(:)
+        character(:), allocatable :: irrep_label(:)
+        integer, allocatable :: class_nelements(:)
+        integer, allocatable :: class_member(:,:)
+        integer :: i, j
+        integer :: nirreps, nclasses
+        integer :: class_containing_identity
+        integer :: class_containing_inversion
+        integer :: class_containing_Cn
+        !
+        ! they are always identical...
+        nirreps  = size(chartab,1)
+        nclasses = size(chartab,2)
+        !
+        ! parse class properties
+        class_nelements = nelements(class_id)
+        class_member = member(class_id)
+        !
+        ! create irrep label
+        allocate(character(7) :: irrep_label(nirreps))
+        !
+        class_containing_identity = get_class_with_ps_id(nclasses=nclasses, id=1, ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
+        class_containing_inversion= get_class_with_ps_id(nclasses=nclasses, id=6, ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
+        class_containing_Cn       = get_class_with_ps_id(nclasses=nclasses, id=1, ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
+        do j = 1, nirreps
+            ! 0) nullify irrep label
+            irrep_label(j) = ''
+            ! 1) find class containing identity (ps_id=1)
+            i = class_containing_identity
+            select case (nint(real(chartab(j,i))))
+                case (1)
+                    irrep_label(j) = trim(irrep_label(j))//' A'
+                case (2)
+                    irrep_label(j) = trim(irrep_label(j))//' E'
+                case (3)
+                    irrep_label(j) = trim(irrep_label(j))//' T'
+            end select
+            ! 2) find class containing inversion (ps_id=6)
+            i = class_containing_inversion
+            if (i.ne.0) then
+            select case (sign(1,nint(real(chartab(j,i)))))
+                case (+1); irrep_label(j) = trim(irrep_label(j))//'_g'
+                case (-1); irrep_label(j) = trim(irrep_label(j))//'_u'
+            end select
+            endif
+            !
+        enddo
+        !
+        contains
+            pure function get_class_with_ps_id(nclasses, id, ps_id, class_nelements, class_member) result(i)
+                !
+                implicit none
+                !
+                integer, intent(in) :: id
+                integer, intent(in) :: nclasses
+                integer, intent(in) :: ps_id(:)
+                integer, intent(in) :: class_nelements(:)
+                integer, intent(in) :: class_member(:,:)
+                integer :: i, j
+                !
+                do i = 1, nclasses
+                do j = 1, class_nelements(i)
+                    if (ps_id(class_member(i,j)).eq.id) then
+                        return
+                    endif
+                enddo
+                enddo
+                ! if not found
+                i = 0
+            end function  get_class_with_ps_id
+    end function   get_irrep_labels
+
+    subroutine     print_character_table(chartab,class_id,ps_id)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
+        integer, intent(in) :: class_id(:)
         integer, intent(in) :: ps_id(:)
         integer :: i, j, k
         integer :: nirreps, nclasses
+        integer, allocatable :: class_nelements(:)
+        integer, allocatable :: class_member(:,:)
+        character(:), allocatable :: irrep_label(:)
         ! complex to symbol
         integer :: kk, k_exp
         complex(dp), allocatable :: s(:)
@@ -1805,11 +1885,6 @@ contains
         character(:), allocatable :: str
         integer :: char_start
         logical :: strmatch
-        ! labels
-        character(:), allocatable :: irrep_label(:)
-        integer :: class_containing_identity
-        integer :: class_containing_inversion
-        integer :: class_containing_Cn
         ! print formats
         character(50) :: fmt1
         character(50) :: fmt2
@@ -1818,8 +1893,12 @@ contains
         character(50) :: fmt5
         !
         ! they are always identical...
-        nirreps = size(chartab,1)
+        nirreps  = size(chartab,1)
         nclasses = size(chartab,2)
+        !
+        ! parse class properties
+        class_nelements = nelements(class_id)
+        class_member = member(class_id)
         !
         ! left-side headers
         fmt2 = '(5x,a10)'
@@ -1831,34 +1910,7 @@ contains
         !
         !
         ! create irrep label
-        allocate(character(7) :: irrep_label(nirreps))
-        !
-        class_containing_identity = get_class_with_ps_id(nclasses=nclasses, id=1, ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
-        class_containing_inversion= get_class_with_ps_id(nclasses=nclasses, id=6, ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
-        class_containing_Cn       = get_class_with_ps_id(nclasses=nclasses, id=1, ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
-        do k = 1, nirreps
-            ! 0) nullify irrep label
-            irrep_label(k) = ''
-            ! 1) find class containing identity (ps_id=1)
-            i = class_containing_identity
-            select case (nint(real(chartab(k,i))))
-                case (1)
-                    irrep_label(k) = trim(irrep_label(k))//' A'
-                case (2)
-                    irrep_label(k) = trim(irrep_label(k))//' E'
-                case (3)
-                    irrep_label(k) = trim(irrep_label(k))//' T'
-            end select
-            ! 2) find class containing inversion (ps_id=6)
-            i = class_containing_inversion
-            if (i.ne.0) then
-            select case (sign(1,nint(real(chartab(k,i)))))
-                case (+1); irrep_label(k) = trim(irrep_label(k))//'_g'
-                case (-1); irrep_label(k) = trim(irrep_label(k))//'_u'
-            end select
-            endif
-            !
-        enddo
+        irrep_label = get_irrep_labels(chartab=chartab, class_id=class_id, ps_id=ps_id)
         !
         !
         !
@@ -1977,38 +2029,15 @@ contains
             write(*,*)
         enddo
         !
+        !
         if (k.ne.0) then
-            !
-            write(*,*)
-            !
+            write(*,'(5x)') 'Definitions:'
             do i = 1, k
                 write(*,'(5x,a,a)') char(char_start+k)//' = ', trim(dbl2char(real(s(i)),8))//trim(dbl2charSP(aimag(s(i)),9))//'i'
             enddo
             !
         endif
         !
-        contains
-            pure function get_class_with_ps_id(nclasses, id, ps_id, class_nelements, class_member) result(i)
-                !
-                implicit none
-                !
-                integer, intent(in) :: id
-                integer, intent(in) :: nclasses
-                integer, intent(in) :: ps_id(:)
-                integer, intent(in) :: class_nelements(:)
-                integer, intent(in) :: class_member(:,:)
-                integer :: i, j
-                !
-                do i = 1, nclasses
-                do j = 1, class_nelements(i)
-                    if (ps_id(class_member(i,j)).eq.id) then
-                        return
-                    endif
-                enddo
-                enddo
-                ! if not found
-                i = 0
-            end function  get_class_with_ps_id
     end subroutine print_character_table
 
 end module am_symmetry

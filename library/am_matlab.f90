@@ -669,10 +669,11 @@ module am_matlab
         !
         ! Character of proper rotation irrep with dimension n and angle th
         !
-        ! T. Wolfram and Ş. Ellialtıoğlu, Applications of Group Theory to Atoms, Molecules, and
-        ! Solids, 1 edition (Cambridge University Press, Cambridge, 2014), p 74, Eq. 3.20.
+        ! T. Wolfram and Ş. Ellialtıoğlu, Applications of Group Theory to Atoms, Molecules,
+        ! and Solids, 1 edition (Cambridge University Press, Cambridge, 2014), p 74, Eq. 3.20.
         !
-        ! M. Tinkham, Group Theory and Quantum Mechanics (McGraw-Hill, 1964), p 100 bottom.
+        ! M. Tinkham, Group Theory and Quantum Mechanics (McGraw-Hill, 1964), p 66 Eq 4.6 
+        ! and p 100 bottom.
         !
         implicit none
         !
@@ -701,8 +702,11 @@ module am_matlab
         !
         ! Character of rotation irrep with dimension n parameterized by rotation matrix R
         !       
-        ! T. Wolfram and Ş. Ellialtıoğlu, Applications of Group Theory to Atoms, Molecules, and
-        ! Solids, 1 edition (Cambridge University Press, Cambridge, 2014), p 74, Eq. 3.20.
+        ! T. Wolfram and Ş. Ellialtıoğlu, Applications of Group Theory to Atoms, Molecules, 
+        ! and Solids, 1 edition (Cambridge University Press, Cambridge, 2014), p 74, Eq. 3.20.
+        !
+        ! M. Tinkham, Group Theory and Quantum Mechanics (McGraw-Hill, 1964), p 66 Eq 4.6 
+        ! and p 100 bottom.
         !
         implicit none
         !
