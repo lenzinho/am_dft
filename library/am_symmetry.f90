@@ -438,34 +438,34 @@ contains
             !
             if (allocated(sg%seitz   )) sg%seitz    = sg%seitz(:,:,inds)
             if (allocated(sg%ps_id   )) sg%ps_id    = sg%ps_id(inds)
-!             if (allocated(sg%class_id)) sg%class_id = sg%class_id(inds)
-            !
-!             if (allocated(sg%multab)) then
-!                 !
-!                 ! write(*,*) 'NEED TO CONFIRM THAT THIS PROCEDURE IS CORRECT...'
-!                 !
-!                 total = sum(sg%multab(1,:))
-!                 !
-!                 allocate(P(sg%nsyms,sg%nsyms))
-!                 P = 0
-!                 do i = 1, sg%nsyms
-!                     P(i,inds(i)) = 1
-!                 enddo
-!                 !
-!                 allocate(invP(sg%nsyms,sg%nsyms))
-!                 invP = 0
-!                 do i = 1, sg%nsyms
-!                     invP(inds(i),i) = 1
-!                 enddo
-!                 !
-!                 sg%multab = matmul(P,matmul(sg%multab,invP))
-!                 !
-!                 ! basic check
-!                 do i = 1, sg%nsyms
-!                     if (sum(sg%multab(i,:))/=total) stop 'something is wrong with multab'
-!                     if (sum(sg%multab(:,i))/=total) stop 'something is wrong with multab'
-!                 enddo
-!             endif
+            ! if (allocated(sg%class_id)) sg%class_id = sg%class_id(inds)
+
+            ! if (allocated(sg%multab)) then
+            !     !
+            !     ! write(*,*) 'NEED TO CONFIRM THAT THIS PROCEDURE IS CORRECT...'
+            !     !
+            !     total = sum(sg%multab(1,:))
+            !     !
+            !     allocate(P(sg%nsyms,sg%nsyms))
+            !     P = 0
+            !     do i = 1, sg%nsyms
+            !         P(i,inds(i)) = 1
+            !     enddo
+            !     !
+            !     allocate(invP(sg%nsyms,sg%nsyms))
+            !     invP = 0
+            !     do i = 1, sg%nsyms
+            !         invP(inds(i),i) = 1
+            !     enddo
+            !     !
+            !     sg%multab = matmul(P,matmul(sg%multab,invP))
+            !     !
+            !     ! basic check
+            !     do i = 1, sg%nsyms
+            !         if (sum(sg%multab(i,:))/=total) stop 'something is wrong with multab'
+            !         if (sum(sg%multab(:,i))/=total) stop 'something is wrong with multab'
+            !     enddo
+            ! endif
             !
         end subroutine sort_symmetries
     end subroutine create
@@ -1198,10 +1198,12 @@ contains
         integer, allocatable :: rep(:,:,:)
         real(dp) :: tau_rot(3)
         integer :: i,j,k
-        integer :: nsyms
+        logical :: found
         integer :: ntaus ! number of tau points tau(1:3,ntaus)
+        integer :: nsyms
         !
         nsyms = size(seitz,3)
+        !
         ntaus = size(tau,2)
         !
         allocate(rep(ntaus,ntaus,nsyms))
@@ -1210,6 +1212,7 @@ contains
         do i = 1, nsyms
             ! determine the permutations of atomic indicies which results from each space symmetry operation
             do j = 1,ntaus
+                found = .false.
                 ! apply rotational component
                 tau_rot = matmul(seitz(1:3,1:3,i),tau(:,j))
                 ! apply translational component
@@ -1222,39 +1225,78 @@ contains
                 search : do k = 1, ntaus
                     if (all(abs(tau_rot-tau(:,k)).lt.prec)) then
                     rep(j,k,i) = 1
+                    found = .true.
                     exit search ! break loop
                     endif
                 enddo search
+                ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
+                ! to ensure atoms must permute onto each other
+                if (index(flags,'relax_pbc').eq.0) then
+                if (found.eq..false.) then
+                    call am_print('ERROR','Unable to find matching atom.',flags='E')
+                    call am_print('tau (all atoms)',transpose(tau))
+                    call am_print('tau',tau(:,j))
+                    call am_print('R',seitz(1:3,1:3,i))
+                    call am_print('T',seitz(1:3,4,i))
+                    call am_print('tau_rot',tau_rot)
+                    stop
+                endif
+                endif
             enddo
         enddo
         !
+        ! check that each column and row of the rep sums to 1; i.e. rep(:,:,i) is orthonormal for all i.
+        !
+        ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
+        ! to ensure atoms must permute onto each other
+        if (index(flags,'relax_pbc').eq.0) then
+        do i = 1,nsyms
+        do j = 1,ntaus
+            !
+            if (sum(rep(:,j,i)).ne.1) then
+               call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
+               call am_print('i',i)
+               call am_print_sparse('spy(P_i)',rep(:,:,i))
+               call am_print('rep',rep(:,:,i))
+               stop
+            endif
+            !
+            if (sum(rep(j,:,i)).ne.1) then
+               call am_print('ERROR','Permutation matrix has a row which does not sum to 1.')
+               call am_print('i',i)
+               call am_print_sparse('spy(P_i)',rep(:,:,i))
+               call am_print('rep',rep(:,:,i))
+               stop
+            endif
+            !
+        enddo
+        enddo
+        endif
+       !
     end function   permutation_rep
-
-    function       permutation_map(rep) result(PM)
+    
+    function       permutation_map(P) result(PM)
         !
         ! PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
         !
         implicit none
         !
-        integer, intent(in)  :: rep(:,:,:)
+        integer, allocatable, intent(in) :: P(:,:,:)
         integer, allocatable :: PM(:,:)
         integer, allocatable :: ind(:)
+        integer :: natoms,nsyms
         integer :: i
-        integer :: ndims
-        integer :: nsyms
         !
-        ! get dimensions
-        ndims = size(rep,2)
-        nsyms = size(rep,3)
-        ! allocate space
-        allocate(PM(ndims,nsyms))
-        ! initialize
-        PM = 0
-        ! get indices
-        ind = [1:ndims]
-        ! construct map
+        natoms = size(P,1)
+        nsyms  = size(P,3)
+        !
+        ind = [1:natoms]
+        !
+        allocate(PM(natoms,nsyms))
+        PM=0
+        !
         do i = 1, nsyms
-            PM(:,i) = matmul(rep(:,:,i),ind)
+            PM(:,i) = matmul(P(:,:,i),ind)
         enddo
         !
     end function   permutation_map

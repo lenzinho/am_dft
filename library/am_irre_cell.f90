@@ -48,9 +48,7 @@ contains
         if (opts%verbosity.ge.1) call am_print('primitive cell atoms',pc%natoms,' ... ')
         !
         ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-        P  = permutation_rep(seitz=sg%seitz, tau=pc%tau, prec=opts%prec, flags='')
-        call permutation_check( P )
-        PM = permutation_map( P )
+        PM = permutation_map( permutation_rep(seitz=sg%seitz, tau=pc%tau, flags='', prec=opts%prec) )
         !
         allocate(mask(pc%natoms))
         allocate(ind(pc%natoms))
