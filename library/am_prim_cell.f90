@@ -18,13 +18,13 @@ module am_prim_cell
 
 contains
 
-    subroutine     get_primitive(prim,uc,opts)
+    subroutine     get_primitive(pc,uc,opts)
         !
         use am_rank_and_sort, only : rank
         !
         implicit none
         !
-        class(am_class_prim_cell), intent(inout) :: prim
+        class(am_class_prim_cell), intent(inout) :: pc
         class(am_class_unit_cell), intent(inout) :: uc
         type(am_class_options), intent(in) :: opts
         integer , allocatable :: indices(:)
@@ -34,20 +34,20 @@ contains
         integer  :: nTs
         integer  :: i, j, k 
         !
-        if ( opts%verbosity .ge. 1) call am_print_title('Reducing to primitive cell')
+        if (opts%verbosity.ge.1) call am_print_title('Reducing to primitive cell')
         !
         ! get basis translations which could serve as primitive cell vectors
         T = translations_from_basis(tau=uc%tau, Z=uc%Z, prec=opts%prec, flags='prim')
         T = matmul(uc%bas,T)
         nTs = size(T,2)
-        if (opts%verbosity.ge.1) call am_print("possible primitive lattice translations found",nTs," ... ")
+        if (opts%verbosity.ge.2) call am_print("lattice translations found",nTs," ... ")
         !
         ! sort primitive vectors based on magnitude (smallest last)
         allocate(indices(nTs))
         call rank(norm2(T,1),indices)
         T=T(1:3, indices(nTs:1:-1) )
-        if (opts%verbosity.ge.1) then
-            call am_print_two_matrices_side_by_side(name='possible primitive lattice vectors',&
+        if (opts%verbosity.ge.2) then
+            call am_print_two_matrices_side_by_side(name='primitive lattice vector candidates',&
                 Atitle='fractional (original)',A=transpose(matmul(inv(uc%bas),T)),&
                 Btitle='cartesian' ,B=transpose(T),&
                 iopt_emph=' ... ',iopt_teaser=.true.)
@@ -73,76 +73,77 @@ contains
             call am_print('ERROR','No primitive basis found',flags='E')
             stop
         endif
-        prim%bas = T(1:3,[i,j,k])
+        pc%bas = T(1:3,[i,j,k])
+        ! output to stdout
+        if (opts%verbosity.ge.2) call am_print("volume",det(pc%bas)," ... ")
         ! output to stdout
         if (opts%verbosity.ge.1) then
-            call am_print("volume",det(prim%bas)," ... ")
             call am_print_two_matrices_side_by_side(name='original basis',&
-                Atitle='fractional (primitive)',A=matmul(inv(prim%bas),uc%bas),&
+                Atitle='fractional (primitive)',A=matmul(inv(pc%bas),uc%bas),&
                 Btitle='cartesian'             ,B=uc%bas,&
                 iopt_emph=' ... ',iopt_teaser=.true.)
             call am_print_two_matrices_side_by_side(name='primitive basis',&
-                Atitle='fractional (original)' ,A=matmul(inv(uc%bas),prim%bas),&
-                Btitle='cartesian'             ,B=prim%bas,&
+                Atitle='fractional (original)' ,A=matmul(inv(uc%bas),pc%bas),&
+                Btitle='cartesian'             ,B=pc%bas,&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
         !
         !
         ! reduce atoms to primitive cell by ...
-        if (opts%verbosity.ge.1) call am_print('number of atoms in original cell',uc%natoms,' ... ')
+        if (opts%verbosity.ge.2) call am_print('atoms in original cell',uc%natoms,' ... ')
         ! ... allocating enough space
-        allocate(prim%tau,source=uc%tau)
+        allocate(pc%tau,source=uc%tau)
         ! ... converting all atoms to primitive fractional coordinates
-        uc2prim = matmul(inv(prim%bas),uc%bas)
+        uc2prim = matmul(inv(pc%bas),uc%bas)
         do i = 1, uc%natoms
-            prim%tau(1:3,i) = matmul(uc2prim, prim%tau(1:3,i))
+            pc%tau(1:3,i) = matmul(uc2prim, pc%tau(1:3,i))
         enddo
         ! ... reducing all atoms to primitive cell
         do i = 1,uc%natoms
-            prim%tau(1:3,i) = modulo(prim%tau(1:3,i)+opts%prec,1.0_dp)-opts%prec
+            pc%tau(1:3,i) = modulo(pc%tau(1:3,i)+opts%prec,1.0_dp)-opts%prec
         enddo
         ! ... getting unique values
-        prim%tau = unique(prim%tau,opts%prec)
-        prim%natoms = size(prim%tau,2)
-        if (opts%verbosity.ge.1) call am_print('number of atoms in primitive cell',prim%natoms,' ... ')
+        pc%tau = unique(pc%tau,opts%prec)
+        pc%natoms = size(pc%tau,2)
+        if (opts%verbosity.ge.1) call am_print('primitive cell atoms',pc%natoms,' ... ')
         if (opts%verbosity.ge.1) then
             call am_print_two_matrices_side_by_side(name='reduced atomic basis',&
-                Atitle='fractional (primitive)',A=transpose(prim%tau),&
-                Btitle='cartesian'             ,B=transpose(matmul(prim%bas,prim%tau)),&
+                Atitle='fractional (primitive)',A=transpose(pc%tau),&
+                Btitle='cartesian'             ,B=transpose(matmul(pc%bas,pc%tau)),&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
         !
         !
         ! transfer atomic species by comparing atomic coordinates
-        allocate(prim%pc_id(prim%natoms),source=[1:prim%natoms])
-        allocate(prim%uc_id(prim%natoms)); prim%uc_id = 0
+        allocate(pc%pc_id(pc%natoms),source=[1:pc%natoms])
+        allocate(pc%uc_id(pc%natoms)); pc%uc_id = 0
         allocate(uc%pc_id(uc%natoms)); uc%pc_id=0
         if (.not.allocated(uc%uc_id)) then
             allocate(uc%uc_id,source=[1:uc%natoms])
         endif
         !
-        allocate(prim%Z(prim%natoms))
-        do i = 1, prim%natoms
-            prim%Z(i) = 0
+        allocate(pc%Z(pc%natoms))
+        do i = 1, pc%natoms
+            pc%Z(i) = 0
             isfirst = .true.
             search_for_atom : do j = 1, uc%natoms
-                if ( all(abs(prim%tau(1:3,i)-modulo( matmul(uc2prim,uc%tau(1:3,j))+opts%prec,1.0_dp)+opts%prec).lt.opts%prec) ) then
+                if ( all(abs(pc%tau(1:3,i)-modulo( matmul(uc2prim,uc%tau(1:3,j))+opts%prec,1.0_dp)+opts%prec).lt.opts%prec) ) then
                     uc%pc_id(j) = i
-                    prim%Z(i) = uc%Z(j)
+                    pc%Z(i) = uc%Z(j)
                     !
                     if (isfirst) then
                         isfirst = .false.
-                        prim%uc_id(i) = j
+                        pc%uc_id(i) = j
                     endif
                 endif
             enddo search_for_atom
-            if (prim%Z(i).eq.0) then
+            if (pc%Z(i).eq.0) then
                 call am_print('ERROR','Unable to identify atom in reduced cell',flags='E')
                 call am_print('atom #',i)
-                call am_print('atomic coordinate of unidentified atoms',prim%tau(1:3,i))
+                call am_print('atomic coordinate of unidentified atoms',pc%tau(1:3,i))
                 call am_print('atom types',uc%Z(:))
                 call am_print('atom original',transpose(uc%tau))
-                call am_print('atom reduced',transpose(prim%tau))
+                call am_print('atom reduced',transpose(pc%tau))
                 stop
             endif
         enddo
@@ -159,12 +160,12 @@ contains
             write(*,*)
             !
             write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (from primitive cell)'
-            do i = 1, prim%natoms
+            do i = 1, pc%natoms
                 if (modulo(i,11).eq.1) then
                     write(*,*)
                     write(*,'(5x)',advance='no')
                 endif
-                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(prim%uc_id(i)))
+                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(pc%uc_id(i)))
             enddo
             write(*,*)
         endif

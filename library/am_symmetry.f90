@@ -91,6 +91,9 @@ contains
             !
             call am_print('classes',maxval(sg%class_id))
             !
+            call print_character_table(chartab=sg%chartab, nclasses=maxval(sg%class_id), &
+                & class_nelements=nelements(sg%class_id), class_member=member(sg%class_id), ps_id=sg%ps_id)
+            !
         endif
         !
         ! write to write_outfile and to file
@@ -145,8 +148,6 @@ contains
             call am_print('point group',decode_pointgroup(pg%pg_id),' ... ')
             !
             call am_print('point symmetries',pg%nsyms,' ... ')
-            !
-            call am_print('classes',maxval(pg%class_id))
             !
             call print_character_table(chartab=pg%chartab, nclasses=maxval(pg%class_id), &
                 & class_nelements=nelements(pg%class_id), class_member=member(pg%class_id), ps_id=pg%ps_id)
@@ -1515,6 +1516,8 @@ contains
         enddo
         nclasses = k
         !
+        ! relabel based on how many elements each class has
+        call relabel_based_on_occurances(class_id)
         ! relabel classes based on point symmetry id of representative class element
         call relabel_based_on_ps_id(class_id,ps_id)
         !
@@ -1530,6 +1533,50 @@ contains
         endif
         !
         contains
+        subroutine     relabel_based_on_occurances(class_id)
+            !
+            implicit none
+            !
+            integer , intent(inout) :: class_id(:)
+            integer , allocatable :: A_sorted(:)
+            integer , allocatable :: occurances(:) 
+            integer , allocatable :: reverse_sort(:)
+            integer , allocatable :: sorted_indices(:)
+            integer , allocatable :: list_relabled(:)
+            integer :: nsyms, i, j
+            !
+            nsyms = size(class_id,1)
+            !
+            allocate(occurances(nsyms))
+            do i = 1, nsyms
+                occurances(i) = count(class_id(i).eq.class_id)
+            enddo
+            !
+            ! this quick and dirty procedure lifts degeneracies
+            !
+            allocate(sorted_indices(nsyms))
+            allocate(A_sorted(nsyms))
+            call rank((1+maxval(class_id))*occurances+class_id,sorted_indices)
+            A_sorted = class_id(sorted_indices)
+            !
+            allocate(list_relabled(nsyms))
+            list_relabled = 0
+            !
+            j=1
+            list_relabled(1) = 1
+            do i = 2, nsyms
+                if (A_sorted(i).ne.A_sorted(i-1)) then
+                    j=j+1
+                endif
+                list_relabled(i) = j
+            enddo
+            !
+            ! return everything to the original order at call
+            !
+            allocate(reverse_sort(nsyms))
+            reverse_sort(sorted_indices)=[1:nsyms]
+            class_id=list_relabled(reverse_sort)
+        end subroutine relabel_based_on_occurances
         subroutine     relabel_based_on_ps_id(class_id,ps_id)
             !
             implicit none
@@ -1653,32 +1700,31 @@ contains
         id_search : do i = 1, nclasses
         do j = 1, class_nelements(i)
             if (ps_id(class_member(i,j)).eq.1) then
+                ! sort based on inversion-containing class character
+                call rank(nint(real(chartab(:,i))),indices)
+                ! indices = indices(nirreps:1:-1)
+                chartab = chartab(indices,:)
+                ! exit loop
                 exit id_search
             endif
         enddo
         enddo id_search
-        ! sort based on inversion-containing class character
-        call rank(nint(real(chartab(:,i))),indices)
-        ! indices = indices(nirreps:1:-1)
-        do j = 1,nclasses
-            chartab(:,j) = chartab(indices,j)
-        enddo
         !
         ! sort irreps based on character of class containing inversion
         ! find class containing inversion (6 is the ps_id for inversion)
         inv_search : do i = 1, nclasses
         do j = 1, class_nelements(i)
             if (ps_id(class_member(i,j)).eq.6) then
+                ! sort based on inversion-containing class character
+                call rank(-sign(1,nint(real(chartab(:,i)))),indices)
+                ! indices = indices(nirreps:1:-1)
+                chartab = chartab(indices,:)
+                ! exit loop
                 exit inv_search
             endif
         enddo
         enddo inv_search
-        ! sort based on inversion-containing class character
-        call rank(-sign(1,nint(real(chartab(:,i)))),indices)
-        ! indices = indices(nirreps:1:-1)
-        do j = 1,nclasses
-            chartab(:,j) = chartab(indices,j)
-        enddo
+        !
         !
         ! check that the number of elements ri in class Ci is a divisor of theorder of the group
         ! Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. Cambridge, UK?; New York: Cambridge University Press, 2008. p 35.
