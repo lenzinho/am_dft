@@ -90,18 +90,26 @@ contains
             allocate(ic%uc_id,source=pc%uc_id(ind(1:k)))
             ! maps primitive cell atom onto -> irreducible cell
             allocate(pc%ic_id(pc%natoms))
+            pc%ic_id = 0
             do i = 1, ic%natoms
                 ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
                 ! PM(1,:) shows all atoms onto which atom 1 is mapped by all space symmetry operations
                 do j = 1, pc%natoms
-                    do k = 1, sg%nsyms
-                        if (PM(j,k).eq.i) pc%ic_id(j) = i
-                    enddo
+                    search : do k = 1, sg%nsyms
+                        if (PM(j,k).eq.ic%pc_id(i)) then
+                            pc%ic_id(j) = i
+                            exit search
+                        endif
+                    enddo search
+                    if (pc%ic_id(j).eq.0) then
+                        stop 'ERROR: prim->ic mapping failed.'
+                    endif
                 enddo
             enddo
             ! maps (input) unit cell atom onto -> irreducible cell
             if (present(uc)) then
                 allocate(uc%ic_id(uc%natoms))
+                uc%ic_id = 0
                 do i = 1, uc%natoms
                     ! j = uc%pc_id(i) shows to which primitive atom j, unit cell atom i is associated with
                     ! now find... to which irreducible atom k, primitive cell atom j is associated with... k =
