@@ -42,6 +42,10 @@ module am_brillouin_zone
         procedure :: get_ibz
     end type am_class_ibz
 
+    ! PATH 
+
+
+
 contains
 
     ! load from vasp
@@ -194,7 +198,7 @@ contains
         class(am_class_fbz), intent(out) :: fbz
         class(am_class_bz) , intent(in)  :: bz
         type(am_class_prim_cell), intent(in) :: pc
-        type(am_class_symmetry) , intent(in) :: pg
+        type(am_class_seitz_group) , intent(in) :: pg
         type(am_class_options)  , intent(in) :: opts
         real(dp), allocatable :: korbit(:,:)
         real(dp), allocatable :: kpoints_fbz(:,:)
@@ -219,7 +223,7 @@ contains
         !$OMP DO
         do i = 1, bz%nkpts
             ! get its orbit
-            korbit = kpoint_orbit(pg%seitz(1:3,1:3,:),bz%kpt(:,i))
+            korbit = kpoint_orbit(pg%sym(1:3,1:3,:),bz%kpt(:,i))
             ! reduce korbit to primitive reciprocal lattice
             korbit = modulo(korbit+opts%prec,1.0_dp)-opts%prec
             ! get unique values
@@ -286,7 +290,7 @@ contains
         !
         class(am_class_ibz), intent(inout) :: ibz
         class(am_class_bz) , intent(inout) :: bz
-        type(am_class_symmetry) , intent(in) :: pg
+        type(am_class_seitz_group) , intent(in) :: pg
         type(am_class_prim_cell), intent(in) :: pc
         type(am_class_options)  , intent(in) :: opts
         real(dp), allocatable :: grid_points(:,:)
@@ -303,7 +307,7 @@ contains
         !$OMP PARALLEL PRIVATE(i) SHARED(grid_points,bz,ibz,pc,pg)
         !$OMP DO
         do i = 1, bz%nkpts
-            ibz%kpt(:,i) = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i),grid_points=grid_points,bas=pc%bas,R=pg%seitz(1:3,1:3,:),prec=opts%prec)
+            ibz%kpt(:,i) = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i),grid_points=grid_points,bas=pc%bas,R=pg%sym(1:3,1:3,:),prec=opts%prec)
         enddo
         !$OMP END DO
         !$OMP END PARALLEL
@@ -317,7 +321,7 @@ contains
         !$OMP PARALLEL PRIVATE(i) SHARED(grid_points,bz,ibz,pc,pg)
         !$OMP DO
         do i = 1, ibz%nkpts
-            ibz%w(i) = kpoint_weight(R=pg%seitz(1:3,1:3,:),kpoint=ibz%kpt(:,i),prec=opts%prec)
+            ibz%w(i) = kpoint_weight(R=pg%sym(1:3,1:3,:),kpoint=ibz%kpt(:,i),prec=opts%prec)
         enddo
         !$OMP END DO
         !$OMP END PARALLEL
@@ -352,6 +356,227 @@ contains
         endif
         !
     end subroutine get_ibz
+
+!     subroutine     get_path()
+!         !
+!         implicit none
+!         !
+
+
+
+! !     function     standardpath(bravais) result(points)
+! !         !
+! !         integer, intent(in) :: bravais
+! !         character(len=3), allocatable :: points(:,:)
+! !         !
+! !         select case(trim(ucposcar%bravaislattice))
+! !             case('CUB')
+! !                 allocate(points(5,2))            
+! !                 points(1,:) = ['GM','X ']
+! !                 points(2,:) = ['X ','M ']
+! !                 points(3,:) = ['M ','GM']
+! !                 points(4,:) = ['GM','R ']
+! !                 points(5,:) = ['R ','X ']
+! !             case('FCC')
+! !                 allocate(points(9,2))
+! !                 points(1,:) = ['GM','X ']
+! !                 points(2,:) = ['X ','W ']
+! !                 points(3,:) = ['W ','K ']
+! !                 points(4,:) = ['K ','GM']
+! !                 points(5,:) = ['GM','L ']
+! !                 points(6,:) = ['L ','U ']
+! !                 points(7,:) = ['U ','W ']
+! !                 points(8,:) = ['W ','L ']
+! !                 points(9,:) = ['L ','K ']
+! !             case('BCC')
+! !                 allocate(points(5,2))
+! !                 points(1,:) = ['GM','H ']
+! !                 points(2,:) = ['H ','N ']
+! !                 points(3,:) = ['N ','GM']
+! !                 points(4,:) = ['GM','P ']
+! !                 points(5,:) = ['P ','H ']
+! !             case('HEX')
+! !                allocate(points(7,2))
+! !                 points(1,:) = ['GM','M ']
+! !                 points(2,:) = ['M ','K ']
+! !                 points(3,:) = ['K ','GM']
+! !                 points(4,:) = ['GM','A ']
+! !                 points(5,:) = ['A ','L ']
+! !                 points(6,:) = ['L ','H ']
+! !                 points(7,:) = ['H ','A ']
+! !             case('RHL1')
+! !                 allocate(points(9,2))
+! !                 points(1,:) = ['GM','L ']
+! !                 points(2,:) = ['L ','B1']
+! !                 points(3,:) = ['B ','Z ']
+! !                 points(4,:) = ['Z ','GM']
+! !                 points(5,:) = ['GM','X ']
+! !                 points(6,:) = ['Q ','F ']
+! !                 points(7,:) = ['F ','P1']
+! !                 points(8,:) = ['P1','Z ']
+! !                 points(9,:) = ['L ','P ']            
+! !             case('TRI')
+! !                 allocate(points(7,2))
+! !                 points(1,:) = ['X ','GM']
+! !                 points(2,:) = ['GM','Y ']
+! !                 points(3,:) = ['L ','GM']
+! !                 points(4,:) = ['GM','Z ']
+! !                 points(5,:) = ['N ','GM']
+! !                 points(6,:) = ['GM','M ']
+! !                 points(7,:) = ['R ','GM']
+! !             case('ORC')
+! !                 allocate(points(7,2))
+! !                 points(1,:) = ['X ','GM']
+! !                 points(2,:) = ['GM','Y ']
+! !                 points(3,:) = ['L ','GM']
+! !                 points(4,:) = ['GM','Z ']
+! !                 points(5,:) = ['N ','GM']
+! !                 points(6,:) = ['GM','M ']
+! !                 points(7,:) = ['R ','GM']
+! !             case('TET')
+! !                allocate(points(9,2))
+! !                 points(1,:) = ['GM','X ']
+! !                 points(2,:) = ['X ','M ']
+! !                 points(3,:) = ['M ','GM']
+! !                 points(4,:) = ['GM','Z ']
+! !                 points(5,:) = ['Z ','R ']
+! !                 points(6,:) = ['R ','A ']
+! !                 points(7,:) = ['A ','Z ']
+! !                 points(8,:) = ['X ','R ']
+! !                 points(9,:) = ['M ','A ']
+! !             case default
+! !                 stop 'could not find path for Bravais lattice'
+! !         end select
+! !         !
+! !     end function standardpath
+! !     subroutine lo_get_coordinates_from_symbolic_point(symbol,qv,ucposcar)
+! !         !
+! !         ! I have not bothered to add all Bravais lattices yet. I will fix that in due time.
+! !         !
+! !         character(len=*), intent(in) :: symbol
+! !         real(dp), dimension(3), intent(out) :: qv
+! !         type(lo_crystalstructure), intent(in) :: ucposcar
+! !         !
+! !         integer :: i
+! !         real(dp), dimension(3) :: v
+! !         real(dp) :: alpha,beta,gm,a,b,c
+! !         real(dp) :: w,x,y,z
+! !         !
+! !         ! Get some parameters from the poscar:
+! !         !
+! !         a=lo_norm(ucposcar%basis(1,:))*ucposcar%latpar
+! !         b=lo_norm(ucposcar%basis(2,:))*ucposcar%latpar
+! !         c=lo_norm(ucposcar%basis(3,:))*ucposcar%latpar
+! !         !
+! !         alpha=lo_angle_between_vectors(ucposcar%basis(1,:),ucposcar%basis(2,:))*180/lo_pi
+! !         beta=lo_angle_between_vectors(ucposcar%basis(2,:),ucposcar%basis(3,:))*180/lo_pi
+! !         gm=lo_angle_between_vectors(ucposcar%basis(1,:),ucposcar%basis(3,:))*180/lo_pi
+! !         !
+! !         v=0.0_dp
+! !         select case(trim(ucposcar%bravaislattice))
+! !             case('CUB')
+! !                 select case(trim(symbol))
+! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp]
+! !                     case('R');  v = [ 0.5_dp, 0.5_dp, 0.5_dp]
+! !                     case('M');  v = [ 0.5_dp, 0.5_dp, 0.0_dp]
+! !                     case('X');  v = [ 0.0_dp, 0.5_dp, 0.0_dp]
+! !                 end select
+! !             case('FCC')
+! !                 select case(trim(symbol))
+! !                 w = 0.25_dp
+! !                 x = 3.0_dp/4.0_dp
+! !                 y = 3.0_dp/8.0_dp
+! !                 z = 5.0_dp/8.0_dp
+! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp]
+! !                     case('X');  v = [ 0.0_dp, 0.5_dp, 0.5_dp]
+! !                     case('X2'); v = [ 0.5_dp, 0.5_dp, 1.0_dp]
+! !                     case('U');  v = [ 0.0_dp, z     , y     ]
+! !                     case('L');  v = [ 0.0_dp, 0.5_dp, 0.0_dp]
+! !                     case('W');  v = [ w     , x     , 0.5_dp]
+! !                     case('K');  v = [ y     , x     , y     ]
+! !                 end select
+! !             case('BCC')
+! !                 select case(trim(symbol))
+! !                     y = 0.25_dp
+! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp]
+! !                     case('H');  v = [ 0.5_dp,-0.5_dp, 0.5_dp]
+! !                     case('P');  v = [ y     , y     , y     ]
+! !                     case('N');  v = [ 0.0_dp, 0.0_dp, 0.5_dp]
+! !                 end select
+! !             case('HEX')
+! !                 select case(trim(symbol))
+! !                     y = 1.0_dp/3.0_dp
+! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp]
+! !                     case('A');  v = [ 0.0_dp, 0.0_dp, 0.5_dp]
+! !                     case('K');  v = [ y     , y     , 0.0_dp]
+! !                     case('H');  v = [ y     , y     , 0.5_dp]
+! !                     case('M');  v = [ 0.5_dp, 0.0_dp, 0.0_dp]
+! !                     case('L');  v = [ 0.5_dp, 0.0_dp, 0.5_dp]
+! !                 end select
+! !             case('BCT')
+! !                 select case(trim(symbol))
+! !                     y  = 0.25_dp
+! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp]
+! !                     case('M');  v = [ 0.5_dp, 0.5_dp,-0.5_dp]
+! !                     case('X');  v = [ 0.0_dp, 0.0_dp, 0.5_dp]
+! !                     case('P');  v = [ y     , y     , y     ]
+! !                     case('N');  v = [ 0.0_dp, 0.5_dp, 0.0_dp]
+! !                 end select
+! !             case('TET') ! normal tetragonal
+! !                 select case(trim(symbol))
+! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp]
+! !                     case('A');  v = [ 0.5_dp, 0.5_dp, 0.5_dp]
+! !                     case('M');  v = [ 0.5_dp, 0.5_dp, 0.0_dp]
+! !                     case('R');  v = [ 0.0_dp, 0.5_dp, 0.5_dp]
+! !                     case('X');  v = [ 0.0_dp, 0.5_dp, 0.0_dp]
+! !                     case('Z');  v = [ 0.0_dp, 0.0_dp, 0.5_dp]
+! !                 end select
+! !             case('RHL1')
+! !                 x = (1.0_dp+4.0_dp*cos(alpha*pi/180.0_dp))/(2.0_dp+4.0_dp*cos(alpha*pi/180.0_dp))
+! !                 y = 3.0_dp/4-x  /2
+! !                 select case(trim(symbol))
+! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp] ! Gamma
+! !                     case('B');  v = [ x     , 0.5_dp, 1-x   ] ! B
+! !                     case('B1'); v = [ 0.5_dp, 1-x   , x  -1 ] ! B1
+! !                     case('F');  v = [ 0.5_dp, 0.5_dp, 0.0_dp] ! F
+! !                     case('L');  v = [ 0.5_dp, 0.0_dp, 0.0_dp] ! L
+! !                     case('L1'); v = [ 0.0_dp, 0.0_dp,-0.5_dp] ! L1
+! !                     case('P');  v = [ x     , y     , y     ] ! P
+! !                     case('P1'); v = [ 1-y   , 1-y   , 1-x   ] ! P1
+! !                     case('P2'); v = [ y     , y     , x  -1 ] ! P2
+! !                     case('X');  v = [ y     , 0.0_dp,-y     ] ! X
+! !                     case('Z');  v = [ 0.5_dp, 0.5_dp, 0.5_dp] ! Z
+! !                 end select
+! !             case('TRI')
+! !                 select case(trim(symbol))
+! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp]
+! !                     case('L');  v = [ 0.5_dp,-0.5_dp, 0.0_dp]
+! !                     case('M');  v = [ 0.0_dp, 0.0_dp, 0.5_dp]
+! !                     case('N');  v = [-0.5_dp,-0.5_dp, 0.5_dp]
+! !                     case('R');  v = [ 0.0_dp,-0.5_dp,-0.5_dp]
+! !                     case('X');  v = [-0.5_dp, 0.0_dp, 0.0_dp]
+! !                     case('Y');  v = [ 0.5_dp, 0.0_dp, 0.0_dp]
+! !                     case('Z');  v = [-0.5_dp, 0.0_dp, 0.5_dp]
+! !                 end select
+! !             case('ORC')
+! !                 select case(trim(symbol))
+! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp]
+! !                     case('R');  v = [ 0.5_dp, 0.5_dp, 0.5_dp]
+! !                     case('S');  v = [ 0.5_dp, 0.5_dp, 0.0_dp]
+! !                     case('T');  v = [ 0.0_dp, 0.5_dp, 0.5_dp]
+! !                     case('U');  v = [ 0.5_dp, 0.0_dp, 0.5_dp]
+! !                     case('X');  v = [ 0.5_dp, 0.0_dp, 0.0_dp]
+! !                     case('Y');  v = [ 0.0_dp, 0.5_dp, 0.0_dp]
+! !                     case('Z');  v = [ 0.0_dp, 0.0_dp, 0.5_dp]
+! !                 end select
+! !         end select
+! !         qv=0.0_dp
+! !         do i=1,3
+! !             qv=qv+v(i)*ucposcar%recbasis(i,:)
+! !         enddo
+! !     end subroutine
+!     end subroutine get_path
+
 
     subroutine     print_weights(bz)
         !
@@ -440,7 +665,7 @@ contains
                 position_in_fbz = -1
             endif
         enddo
-    end function  locate_kpoint_in_fbz
+    end function   locate_kpoint_in_fbz
 
     function       reduce_kpoint_to_fbz(kpoint,grid_points,bas) result(kpoint_fbz)
         !> reduces kpoint (in fractional) to the first Brillouin zone (Wigner-Seitz cell, defined in cartesian coordinates)
@@ -480,7 +705,7 @@ contains
         ! convert back to fractional
         kpoint_fbz = matmul(bas,k_cart)
         !
-    end function  reduce_kpoint_to_fbz
+    end function   reduce_kpoint_to_fbz
 
     function       reduce_kpoint_to_ibz(kpoint,grid_points,bas,R,prec) result(kpoint_in_ibz)
         !
@@ -520,7 +745,7 @@ contains
         ! reduce representative irreducible point to fbz
         kpoint_in_ibz = reduce_kpoint_to_fbz(kpoint=kpoint_in_ibz,grid_points=grid_points,bas=bas)
         !
-    end function  reduce_kpoint_to_ibz
+    end function   reduce_kpoint_to_ibz
 
     pure function  kpoint_orbit(R,kpoint) result(korbit)
         !> Given a kpoint in fractional coordinates, return its orbit (star)
@@ -541,7 +766,7 @@ contains
             korbit(:,i)=matmul(R(:,:,i),kpoint)
         enddo
         !
-    end function  kpoint_orbit
+    end function   kpoint_orbit
 
     function       kpoint_weight(R,kpoint,prec) result(w)
         !
@@ -565,7 +790,7 @@ contains
             stop
         endif
         !
-    end function  kpoint_weight
+    end function   kpoint_weight
 
 end module am_brillouin_zone
 

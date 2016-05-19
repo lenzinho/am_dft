@@ -24,8 +24,12 @@ module am_matlab
     end interface ! ones
 
     interface unique
-        module procedure unique_columns_double, unique_matrices_double, unique_columns_integer, unique_integer
+        module procedure dvunique, dmunique, ivunique, iunique
     end interface ! unique
+
+    interface issubset
+        module procedure dmissubset, imissubset
+    end interface ! issubset
 
     interface meshgrid
         module procedure dmeshgrid, imeshgrid
@@ -99,7 +103,7 @@ module am_matlab
         !
         do m = -l, l
         do mp= -l, l
-            if (mp==m+1) Lp(mp,m) = sqrt(real( (l-m)*(l+m+1) ,dp))
+            if (mp==m+1) Lp(m,mp) = sqrt(real( (l-m)*(l+m+1) ,dp))
         enddo
         enddo
         !
@@ -123,7 +127,7 @@ module am_matlab
         !
         do m = -l, l
         do mp= -l, l
-            if (mp==m-1) Lm(mp,m) = sqrt(real( (l+m)*(l-m+1) ,dp))
+            if (mp==m-1) Lm(m,mp) = sqrt(real( (l+m)*(l-m+1) ,dp))
         enddo
         enddo
         !
@@ -211,7 +215,7 @@ module am_matlab
         !
         do m = 1, n
         do mp= 1, n
-            if (mp==m+1) Jp(mp,m) = sqrt(real( (j-mlist(m))*(j+mlist(m)+1) ,dp))
+            if (mp==m+1) Jp(m,mp) = sqrt(real( (j-mlist(m))*(j+mlist(m)+1) ,dp))
         enddo
         enddo
         !
@@ -248,7 +252,7 @@ module am_matlab
         !
         do m = 1, n
         do mp= 1, n
-            if (mp==m-1) Jm(mp,m) = sqrt(real( (j+mlist(m))*(j-mlist(m)+1) ,dp))
+            if (mp==m-1) Jm(m,mp) = sqrt(real( (j+mlist(m))*(j-mlist(m)+1) ,dp))
         enddo
         enddo
         !
@@ -432,8 +436,8 @@ module am_matlab
         !
         euler(i) = atan2(R(j,k),R(k,k))
         euler(j) = atan2(-R(i,k),sqrt(R(i,i)**2+R(i,j)**2))
-        s=sin(euler(1))
-        c=cos(euler(1))
+        s = sin(euler(1))
+        c = cos(euler(1))
         euler(k) = atan2(s*R(k,i)-c*R(j,i),c*R(j,j)-s*R(k,j))
         !
     end function  rot2euler
@@ -498,13 +502,13 @@ module am_matlab
         !
         ! determine rotation around Y = real( B*P*B' )
         allocate(Y(n,n))
-        B = diag(exp( cmplx_i*euler(2)*D))
+        B = diag(exp( cmplx_i*euler(2)*D)) ! there should be a minus sign here...
         Y = matmul(C,matmul(B,adjoint(C)))
         !
         ! determine rotation around Z = real( (B*V)*T*(B*V)' )
         call am_zheev(A=Lz(l),V=V,D=D)
         H = matmul(C,V)
-        G = diag(exp( cmplx_i*euler(3)*D))
+        G = diag(exp(-cmplx_i*euler(3)*D))
         Z = matmul(H,matmul(G,adjoint(H)))
         !
         ! generate rotation
@@ -617,19 +621,18 @@ module am_matlab
         !
     end function  rot2O3
 
-    function      rot2irrep(n,R) result(irrep)
+    function      rot2irrep(l,R) result(irrep)
         !
         ! generates n-dimensional irreducible representation matrix corresponding to (im)proper rotation R 
         !
         implicit none
         !
-        integer , intent(in) :: n
+        integer , intent(in) :: l
         real(dp), intent(in) :: R(3,3)
         complex(dp), allocatable :: irrep(:,:)
-        complex(dp) :: improper_fac
-        real(dp)    :: Re, Im
+        integer  :: improper_fac
         real(dp) :: d ! det
-        real(dp) :: j
+        real(dp) :: n
         !
         ! convert rotoinversion to pure rotation then back to rotoinversion
         d = R(1,1)*R(2,2)*R(3,3)-R(1,1)*R(2,3)*R(3,2)-R(1,2)*R(2,1)*R(3,3)+R(1,2)*R(2,3)*R(3,1)+R(1,3)*R(2,1)*R(3,2)-R(1,3)*R(2,2)*R(3,1)
@@ -638,30 +641,16 @@ module am_matlab
         if (abs(abs(d)-1.0_dp).gt.tiny) stop 'Rotation is not unitary. det /= +1 or -1'
         !
         ! remove rouding errors
-        d = sign(1.0_dp,d)
+        d = nint(sign(1.0_dp,d))
         !
-        ! determine j
-        j = (n-1.0_dp)/2.0_dp
+        ! determine dimension n
+        n = (2*l+1)
         !
-        ! rotoinversions factor : (-1)**j, euler's identity is used here for numerical precision
-        improper_fac = exp(cmplx_i*pi*j)
+        ! rotoinversions factor : (-1)**l <= this corresponds to inversion matrix, use d instead of conditional statement
+        improper_fac = (d)**l
         !
-        ! correct basic rounding error
-        Re = real(improper_fac)
-        Im = aimag(improper_fac)
-        if ((nint(Re)-Re).lt.tiny) Re = nint(Re)
-        if ((nint(Im)-Im).lt.tiny) Im = nint(Im)
-        improper_fac = cmplx(Re,Im,dp)
-        !
-        ! determine irrep
-        if (modulo(n,2).eq.0) then
-            ! even = SU2 case
-            irrep = euler2SU2(j=j, euler=rot2euler(R)) * improper_fac
-            write(*,*) 'Do not know how to handle inversion for SU2 irrep. Come back to this! Just taking a guess here...'
-        else
-            ! odd = SO3 case
-            irrep = euler2SO3(l=nint(j), euler=rot2euler(R*d)) * improper_fac
-        endif
+        ! converts (im)rotation -> proper rotation -> builds S03 rpresentation -> tack on (im)proper factor to recover inversion
+        irrep = euler2SO3(l=l, euler=rot2euler(R*d)) * improper_fac
         !
     end function  rot2irrep
 
@@ -698,9 +687,9 @@ module am_matlab
         !
     end function  proper_th2chi
 
-    function      proper_rot2chi(n,R) result(chi)
+    function      irrep_character(n,R) result(chi)
         !
-        ! Character of rotation irrep with dimension n parameterized by rotation matrix R
+        ! Character of n-dimensional orthogonal group O(3) irrep parameterized by 3x3 rotoinversion matrix R
         !       
         ! T. Wolfram and Ş. Ellialtıoğlu, Applications of Group Theory to Atoms, Molecules, 
         ! and Solids, 1 edition (Cambridge University Press, Cambridge, 2014), p 74, Eq. 3.20.
@@ -714,6 +703,7 @@ module am_matlab
         real(dp), intent(in) :: R(3,3) ! rotation angle
         real(dp) :: aa(4)
         real(dp) :: d
+        integer :: l
         complex(dp) :: chi
         !
         ! if R is a rotoinversion, get the angle and axis of the rotational part only (without the inversion)
@@ -721,9 +711,11 @@ module am_matlab
         !
         aa = rot2axis_angle(R)
         !
-        chi = proper_th2chi(n=n,th=aa(4))
+        l = nint((n-1.0_dp)/2.0_dp)
         !
-    end function  proper_rot2chi
+        chi = proper_th2chi(n=n,th=aa(4)) * sign(1.0_dp,d)**(l)
+        !
+    end function  irrep_character
 
     ! special functions
 
@@ -1614,9 +1606,29 @@ module am_matlab
         !
     end function  direct_sum
 
+    ! transpose operator in the flattened representation
+
+    pure function transp_operator(n) result(M)
+        ! c_ij -> c_ji in the flattened basis
+        implicit none
+        !
+        integer, intent(in) :: n
+        integer, allocatable :: M(:,:)
+        integer  :: i, j
+        !
+        allocate(M(n**2,n**2))
+        M=0
+        !
+        do i = 1, n
+        do j = 1, n
+           M(i+n*(j-1),j+n*(i-1)) = 1
+        enddo
+        enddo
+    end function  transp_operator
+
     ! unique
 
-    pure function unique_matrices_double(A,iopt_tiny) result(B)
+    pure function dmunique(A,iopt_tiny) result(B)
         !> returns unique matrices of A(:,:,i) within numerical precision
         implicit none
         !
@@ -1625,12 +1637,12 @@ module am_matlab
         real(dp), allocatable :: B(:,:,:)
         integer :: i,j,k
         real(dp), intent(in), optional :: iopt_tiny
-        real(dp) :: tiny_prec
+        real(dp) :: prec
         !
         if ( present(iopt_tiny) ) then
-            tiny_prec = iopt_tiny
+            prec = iopt_tiny
         else
-            tiny_prec = tiny
+            prec = tiny
         endif
         !
         k=1
@@ -1638,7 +1650,7 @@ module am_matlab
         !
         try_loop : do i = 1, size(A,3)
             do j = 1, k
-                if ( all(abs(A(:,:,i)-wrkspace(:,:,j)).lt.tiny_prec) ) cycle try_loop
+                if ( all(abs(A(:,:,i)-wrkspace(:,:,j)).lt.prec) ) cycle try_loop
             enddo
             k = k + 1
             wrkspace(:,:,k) = A(:,:,i)
@@ -1647,9 +1659,9 @@ module am_matlab
         allocate(B(size(A,1),size(A,2),k))
         B(:,:,1:k) = wrkspace(:,:,1:k)
         !
-    end function  unique_matrices_double
+    end function  dmunique
 
-    pure function unique_columns_double(A,iopt_tiny) result(B)
+    pure function dvunique(A,iopt_tiny) result(B)
         !> returns unique columns of double matrix A(:,i) within numerical precision
         implicit none
         !
@@ -1658,12 +1670,12 @@ module am_matlab
         real(dp), allocatable :: B(:,:)
         integer :: i,j,k
         real(dp), intent(in), optional :: iopt_tiny
-        real(dp) :: tiny_prec
+        real(dp) :: prec
         !
         if ( present(iopt_tiny) ) then
-            tiny_prec = iopt_tiny
+            prec = iopt_tiny
         else
-            tiny_prec = tiny
+            prec = tiny
         endif
         !
         k=1
@@ -1671,7 +1683,7 @@ module am_matlab
         !
         try_loop : do i = 1,size(A,2)
             do j = 1,k
-                if ( all(abs(A(:,i)-wrkspace(:,j)).lt.tiny_prec) ) cycle try_loop
+                if ( all(abs(A(:,i)-wrkspace(:,j)).lt.prec) ) cycle try_loop
             enddo
             k = k + 1
             wrkspace(:,k) = A(:,i)
@@ -1682,9 +1694,9 @@ module am_matlab
         do i = 1,k
             B(:,i) = wrkspace(:,i)
         enddo
-    end function  unique_columns_double
+    end function  dvunique
 
-    pure function unique_columns_integer(A) result(B)
+    pure function ivunique(A) result(B)
         !> returns unique columns of double matrix A(:,i) within numerical precision
         implicit none
         !
@@ -1716,9 +1728,9 @@ module am_matlab
         !
         allocate(B,source=wrkspace(:,1:k))
         !
-    end function  unique_columns_integer
+    end function  ivunique
 
-    pure function unique_integer(A) result(B)
+    pure function iunique(A) result(B)
         !> returns unique values of integer array A(:)
         implicit none
         !
@@ -1743,7 +1755,59 @@ module am_matlab
         !
         allocate(B,source=wrkspace(1:k))
         !
-    end function  unique_integer
+    end function  iunique
+
+    ! issubset
+
+    pure function dmissubset(A,B,iopt_tiny) result(bool)
+        ! returns true if B(:,:) is a subset of A(:,:,i)
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:,:)
+        real(dp), intent(in) :: B(:,:)
+        logical :: bool
+        integer :: i,n
+        real(dp), intent(in), optional :: iopt_tiny
+        real(dp) :: prec
+        !
+        if ( present(iopt_tiny) ) then
+            prec = iopt_tiny
+        else
+            prec = tiny
+        endif
+        !
+        n = size(A,3)
+        !
+        bool = .false.
+        do i = 1, n
+            if (all(abs(A(:,:,i)-B(:,:)).lt.prec)) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function  dmissubset
+
+    pure function imissubset(A,B) result(bool)
+        ! returns true if B(:,:) is a subset of A(:,:,i)
+        implicit none
+        !
+        integer, intent(in) :: A(:,:,:)
+        integer, intent(in) :: B(:,:)
+        logical :: bool
+        integer :: i,n
+        !
+        n = size(A,3)
+        !
+        bool = .false.
+        do i = 1, n
+            if (all(A(:,:,i).eq.B(:,:))) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function  imissubset
 
     ! logicals
 

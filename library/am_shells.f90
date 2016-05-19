@@ -314,7 +314,7 @@ contains
             integer :: i, jj, j, k
             !
             ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-            P  = permutation_rep(seitz=pg%seitz, tau=sphere%tau, flags='relax_pbc', prec=opts%prec)
+            P  = permutation_rep(seitz=pg%sym, tau=sphere%tau, flags='relax_pbc', prec=opts%prec)
             PM = permutation_map( P )
             !
             ! get distance of atoms
@@ -627,8 +627,8 @@ contains
 !        implicit none
 !        class(am_class_pair_shell), intent(inout) :: pair
 !        class(am_class_unit_cell) , intent(in) :: ic
-!        type(am_class_symmetry)   , intent(in) :: pg
-!        type(am_class_symmetry)   , intent(in) :: sg
+!        type(am_class_seitz_group)   , intent(in) :: pg
+!        type(am_class_seitz_group)   , intent(in) :: sg
 !        type(am_class_options)    , intent(in) :: opts
 !        integer , allocatable :: ip_id(:) ! unique indicies i and j (see below)
 !        !

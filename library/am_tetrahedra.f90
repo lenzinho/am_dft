@@ -206,7 +206,7 @@ contains
 !         class(am_class_tetrahedra), intent(inout) :: tet
 !         type(am_class_bz), intent(in) :: bz
 !         type(am_class_prim_cell) , intent(in) :: pc
-!         type(am_class_symmetry), intent(in) :: pg
+!         type(am_class_seitz_group), intent(in) :: pg
 !         type(am_class_bz) :: fbz
 !         type(am_class_options), intent(in), optional :: iopts
 !         type(am_class_options) :: opts

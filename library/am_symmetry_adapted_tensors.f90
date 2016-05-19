@@ -6,6 +6,7 @@ module am_symmetry_adapted_tensors
     use am_options
     use am_mkl
     use am_symmetry
+    use am_matlab
 
 	implicit none
 	
@@ -17,7 +18,7 @@ contains
 
     subroutine     get_symmetry_adapted_tensor(pg,uc,opts,relations,property)
         !
-        type(am_class_symmetry), intent(in) :: pg
+        type(am_class_point_group), intent(in) :: pg
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
         character(*), intent(in) :: property
@@ -36,6 +37,7 @@ contains
         logical , allocatable :: is_zero(:)         !> is_zero(nterms) logical array which shows terms equal to zero
         logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
         integer , allocatable :: indices(:)
+        integer , allocatable :: T(:,:)
         character(10) :: flags
         integer :: i, j, k
         integer :: nequations
@@ -96,6 +98,8 @@ contains
         ndim = 3
         nterms = ndim**tensor_rank
         !
+        T = transp_operator(ndim)
+        !
         ! get conjugacy class members
         ! members(nclass,maxval(class_nelements))
         class_member = member(pg%class_id)
@@ -121,14 +125,14 @@ contains
             i=class_member(j,1)
             ! construct symmetry operator in the flattend basis
             ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
-            R = kron_pow(ps_frac2cart(R_frac=pg%seitz(1:3,1:3,i),bas=uc%bas),tensor_rank)
+            R = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=uc%bas),tensor_rank)
             ! apply flip operator. S_{alpha,beta,n,m} = S_{beta,alpha,m,n}
             ! reversal group have operations S which flip n->m and m->n. To return n and m to their correct indicies, apply "flip" operator which flips n<->m AND transposes alpha and beta cartesian indices.
             if (index(property,'pair reversal').ne.0) then
-                R = matmul(T(ndim),R)
+                R = matmul(T,R)
             endif
             ! if the quantity corresponds to an axial tensor
-            if (index(flags,'axial').ne.0) R = det(pg%seitz(1:3,1:3,i)) * R
+            if (index(flags,'axial').ne.0) R = det(pg%sym(1:3,1:3,i)) * R
             ! Save the action of the symmetry operations
             A(2*nterms+indices,0*nterms+indices) = R
             A(2*nterms+indices,1*nterms+indices) = eye(nterms)
@@ -152,7 +156,7 @@ contains
             call lu(A)
             ! debug flags
             ! if (opts%verbosity.ge.2) then
-            !     call am_print('ps',ps_frac2cart(R_frac=pg%seitz(1:3,1:3,i),bas=uc%bas),filename='debug_ps'//trim(int2char(i))//'.txt',permission='w')
+            !     call am_print('ps',ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=uc%bas),filename='debug_ps'//trim(int2char(i))//'.txt',permission='w')
             !     call am_print('R',R,filename='debug_R'//trim(int2char(i))//'.txt',permission='w')
             !     call am_print('A',A,filename='debug_A'//trim(int2char(i))//'.txt',permission='w')
             ! endif
@@ -165,14 +169,14 @@ contains
         if     (index(property,'conductivity'    ).ne.0 &
          & .or. index(property,'resistivity'     ).ne.0 &
          & .or. index(property,'voigt'           ).ne.0) then
-            k=k+1; S(:,:,k) = T(ndim)                     ! s_ij  = s_ji
+            k=k+1; S(:,:,k) = T                     ! s_ij  = s_ji
         elseif (index(property,'piezoelectricity').ne.0) then
-            k=k+1; S(:,:,k) = kron(T(ndim),eye(ndim))     ! d_ijk = d_ikj
+            k=k+1; S(:,:,k) = kron(T,eye(ndim))     ! d_ijk = d_ikj
         elseif (index(property,'elasticity'      ).ne.0) then
             k=k+1; S(:,:,k) = eye(nterms)                 ! cijkl = cijkl
-            k=k+1; S(:,:,k) = kron(eye(ndim**2),T(ndim))  ! cijkl = cjikl
-            k=k+1; S(:,:,k) = kron(T(ndim),eye(ndim**2))  ! cijkl = cjilk
-            k=k+1; S(:,:,k) = kron(T(ndim),T(ndim))       ! cijkl = cjilk
+            k=k+1; S(:,:,k) = kron(eye(ndim**2),T)  ! cijkl = cjikl
+            k=k+1; S(:,:,k) = kron(T,eye(ndim**2))  ! cijkl = cjilk
+            k=k+1; S(:,:,k) = kron(T,T)       ! cijkl = cjilk
         endif
         !
         do i = 1, k
@@ -188,7 +192,7 @@ contains
         call rref(A)
         !
         ! At this point A is an augmented matrix composed of [ LHS | RHS ]. The LHS should be the identity matrix,
-        ! which, together with the RHS, completely  specifies all relationships between variables.
+        ! which, together with the RHS, completely specifies all relationships between variables.
         !
         allocate(LHS(nterms,nterms))
         allocate(RHS(nterms,nterms))
@@ -296,25 +300,5 @@ contains
         endif
         !
     end subroutine parse_symmetry_equations
-
-    ! transpose operator in the flattened basis
-
-    pure function  T(n) result(M)
-        ! c_ij -> c_ji in the flattened basis
-        implicit none
-        !
-        integer, intent(in) :: n
-        real(dp), allocatable :: M(:,:)
-        integer  :: i, j
-        !
-        allocate(M(n**2,n**2))
-        M=0
-        !
-        do i = 1, n
-        do j = 1, n
-           M(i+n*(j-1),j+n*(i-1)) = 1.0_dp
-        enddo
-        enddo
-    end function   T
 
 end module am_symmetry_adapted_tensors

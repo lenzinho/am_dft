@@ -113,44 +113,45 @@ g is the order of the group.
  
 
 \section{Calculation of irreducible representations}
-Wigner functions corresponding to $(2j+1)\times(2j+1)$ irreducible matrix representations of the three-dimensional special orthogonal group SO(3) are obtained from:\cite{martin_electronic_2004}
+Wigner matrices $D^{(l)}(R)$ corresponding to $(2l+1)\times(2l+1)$ irreducible matrix representations of the three-dimensional special orthogonal group SO(3) are obtained from:\cite{martin_electronic_2004}
 \begin{equation}
 \label{eq:imselfenergy}
 % Shankar p 333, Exercise 12.5.7
 % Wolfram p 85-87
 % In the book, Euler angles are used. Here, I use Tait Bryan angles
-\Gamma^{(j)} = \bra{j',m'} e^{-i\theta\hat{J}_x/\hbar} e^{-i\phi\hat{J}_y/\hbar} e^{-i\gamma\hat{J}_z/\hbar} \ket{j,m}
+D^{(l)}(R) = \bra{l',m'} R \ket{l,m}
 \end{equation}
-with rotations about axes $\hat{x}$, $\hat{y}$, and $\hat{z}$ parameterized by Tait Bryan angles $\theta$, $\phi$, and $\gamma$. In the $\hat{J}_y$ basis, the angular momenta matrix elements are:\cite{shankar_fundamentals_2014}
+with rotations about axes $\hat{x}$, $\hat{y}$, and $\hat{z}$ parameterized by Tait Bryan angles $\theta$, $\phi$, and $\psi$:
+\begin{equation}
+R = e^{-i\theta\hat{L}_x/\hbar} e^{-i\phi\hat{L}_y/\hbar} e^{-i\psi\hat{L}_z/\hbar}
+\end{equation}
+%
+In terms of raising $\hat{L}_+$ and lowering $\hat{L}_-$ operators:
+\begin{equation}
+\label{eq:raising_lowering_operator}
+% Shankar p 327, Eq. 12.5.20
+\hat{L}_{\pm}\ket{l,m} = \sqrt{(j\mp m)(j\pm m+1)}\ket{l,m\pm1},
+\end{equation}
+angular momenta matrix elements in the $\hat{L}_y$ basis:\cite{shankar_fundamentals_2014}
 \begin{align}
 \label{eq:angular_momenta}
 % x y z <- z x y
 % Shankar p 327-328, Eq. 12.5.21a-b
 % Wolfram p 85-87
-\hat{J}_x & = \hbar \bra{j',m'} \frac{J_{+}-J_{-}}{2i} \ket{j,m} \\
-\hat{J}_y & = m \hbar \braket{j',m'}{j,m} \\
-\hat{J}_z & = \hbar \bra{j',m'} \frac{J_{+}+J_{-}}{2} \ket{j,m}
+\hat{L}_x & =   \hbar \bra{l',m'} \frac{L_{+}-L_{-}}{2i} \ket{l,m} \\
+\hat{L}_y & = m \hbar \braket{l',m'}{l,m} \\
+\hat{L}_z & =   \hbar \bra{l',m'} \frac{L_{+}+L_{-}}{2} \ket{l,m}
 \end{align}
-with raising ($+$) and lowering ($-$) operators:
-\begin{equation}
-\label{eq:raising_lowering_operator}
-% Shankar p 327, Eq. 12.5.20
-J_{\pm}\ket{j,m} = \sqrt{(j\mp m)(j\pm m+1)}\ket{j,m\pm1}.
-\end{equation}
-The inclusion of improper symmetries (rotoinversions),\cite{sharma_general_1979,el-batanouny_symmetry_2008}
-\begin{equation}
-\label{eq:improper_rotation}
-% Wooten p 604 bottom, under Eq. 14.164 
-(-1)^{j} \Gamma^{(j)}(R\left(\alpha,\beta,\gamma\right))
-\end{equation}
-produces the three-dimensional orthogonal group O(3).
+
+Irreducible matrix representations corresponding to inversion are obtained as diagonal matrices with entries equal to $(-1)^l$. The product $(-1)^{l} D^{(l)}(R)$  can thus produce any irreducible representations of the full three-dimensional orthogonal group O(3).\cite{sharma_general_1979,el-batanouny_symmetry_2008} % Wooten p 604 bottom, under Eq. 14.164 
+
 
 
 %
 %
 %
 \section{Calculation of irreducible characters}
-Reducible representations are decomposed into direct sums of $\alpha$ irreducible representations:
+Reducible representations are decomposed into $\alpha$ irreducible representations:
 \begin{equation}
 \label{eq:irrep_decomposition}
 \Gamma = \bigoplus_\alpha n_\alpha \Gamma_{i\alpha}
@@ -179,13 +180,13 @@ via the relationships:
 \label{eq:tait_bryan_angles}
 % This solution avoids gimbal lock cases and does not require conditional statements.
 %i = 1; j = 2; k = 3
-%euler(i) = atan2(R(j,k),R(k,k))
-%euler(j) = atan2(-R(i,k),sqrt(R(i,i)**2+R(i,j)**2))
+%euler(i) = atan2(R(l,k),R(k,k))
+%euler(l) = atan2(-R(i,k),sqrt(R(i,i)**2+R(i,j)**2))
 %s=sin(euler(1)); c=cos(euler(1))
-%euler(k) = atan2(s*R(k,i)-c*R(j,i),c*R(j,j)-s*R(k,j))
+%euler(k) = atan2(s*R(k,i)-c*R(l,i),c*R(l,j)-s*R(k,j))
 \theta & = {\rm atan2}\left(R_{23},R_{33}\right) \\
-\phi   & = {\rm atan2}\left(-R_{13},\sqrt{R_{11}^2+R_{12}^2}\right) \\
-\gamma & = {\rm atan2}\left(R_{31}\sin{\theta}-R_{21}\cos{\theta},R_{22}\cos{\theta}-R_{32}\sin{\theta}\right)
+\phi   & =-{\rm atan2}\left(-R_{13},\sqrt{R_{11}^2+R_{12}^2}\right) \\
+\gamma & =-{\rm atan2}\left(R_{31}\sin{\theta}-R_{21}\cos{\theta},R_{22}\cos{\theta}-R_{32}\sin{\theta}\right)
 \end{align}
 in which ${\rm atan2}$ is the four-quadrant arctangent function and $R_{ij}$ are the elements corresponding to row i and column j of R. 
 
