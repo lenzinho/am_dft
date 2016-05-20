@@ -65,8 +65,10 @@ contains
         !
         if (present(iopt_len)) then
             allocate(character(iopt_len) :: str)
+            write(buffer,'(f)') nint(dbl*(10.0_dp**iopt_len))/(10.0_dp**iopt_len)
         else
             allocate(character(100) :: str)
+            write(buffer,'(f)') dbl
         endif
         !
         write(buffer,'(f)') dbl
@@ -86,11 +88,12 @@ contains
         !
         if (present(iopt_len)) then
             allocate(character(iopt_len) :: str)
+            write(buffer,'(SP,f)') nint(dbl*(10.0_dp**iopt_len))/(10.0_dp**iopt_len)
         else
             allocate(character(100) :: str)
+            write(buffer,'(SP,f)') dbl
         endif
         !
-        write(buffer,'(SP,f)') dbl
         buffer = trim( adjustl( buffer ) )
         str = buffer(1:len(str))
         !

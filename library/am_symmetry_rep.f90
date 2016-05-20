@@ -18,7 +18,7 @@ module am_symmetry_rep
         procedure :: get_flattened_intrinsic_symmetry_group
         procedure :: get_flattened_point_group
         procedure :: get_direct_product
-        procedure :: get_symmetry_relations
+        procedure :: get_relations
     end type am_class_flattened_group
 
     type, public, extends(am_class_group) :: am_class_regular_group
@@ -30,9 +30,10 @@ module am_symmetry_rep
         character(50) :: property
         character(5)  :: axial_polar
         integer       :: tensor_rank
+        real(dp), allocatable :: relations(:,:)
+        ! direct product of intrinsic and point groups take too long (merging relations instead)
         type(am_class_flattened_group) :: fig  ! flattened intrinsic symmetry group
         type(am_class_flattened_group) :: fpg  ! flattened point group
-        type(am_class_flattened_group) :: flat ! flattened group (direct product: fig * pg)
         contains
         procedure :: get_property
     end type am_class_property
@@ -105,19 +106,42 @@ module am_symmetry_rep
         !
         call initialize_property(prop=prop, property=property)
         !
+        if (opts%verbosity.ge.1) write(*,'(a5,a)') ' ... ', 'getting intrinsic symmetries'
+        !
         call prop%fig%get_flattened_intrinsic_symmetry_group(prop=prop)
-        if (opts%verbosity.ge.1) call am_print('intrinsic symmetries', prop%fig%nsyms)
+        !
+        if (opts%verbosity.ge.1) call am_print('symmetries', prop%fig%nsyms)
+        !
+        prop%fig%relations = prop%fig%get_relations()
+        !
+        call print_relations(relations=prop%fig%relations,flags='')
+        !
+        if (opts%verbosity.ge.1) write(*,'(a5,a)') ' ... ', 'getting point symmetries (flattened representation)'
         !
         call prop%fpg%get_flattened_point_group(prop=prop, pg=pg, uc=uc)
-        if (opts%verbosity.ge.1) call am_print('point symmetries', prop%fpg%nsyms)
         !
-        call prop%flat%get_direct_product(A=prop%fig,B=prop%fpg)
-        if (opts%verbosity.ge.1) call am_print('total symmetries (direct product: intrinsic * point)', prop%flat%nsyms)
+        if (opts%verbosity.ge.1) call am_print('symmetries', prop%fpg%nsyms)
         !
-        if (opts%verbosity.ge.1) write(*,'(a5,a)') ' ... ', 'getting symmetry relations'
-        call prop%flat%get_symmetry_relations()
+        prop%fpg%relations = prop%fpg%get_relations()
         !
-        call print_relations(relations=prop%flat%relations)
+        call print_relations(relations=prop%fpg%relations,flags='')
+        !
+        if (opts%verbosity.ge.1) call am_print('symmetries', prop%fpg%nsyms * prop%fig%nsyms )
+        !
+        if (opts%verbosity.ge.1) write(*,'(a5,a)') ' ... ', 'getting combined intrinsic & point symmetries'
+        !
+        prop%relations = merge_symmetry_relations(prop%fig%relations,prop%fpg%relations)
+        !
+        call print_relations(relations=prop%fpg%relations,flags='show:dependent,independent')
+        !
+        ! call prop%flat%get_direct_product(A=prop%fig,B=prop%fpg)
+        ! !
+        ! if (opts%verbosity.ge.1) call am_print('total symmetries (direct product: intrinsic * point)', prop%flat%nsyms)
+        ! !
+        ! if (opts%verbosity.ge.1) write(*,'(a5,a)') ' ... ', 'getting symmetry relations'
+        ! !
+        ! call prop%flat%get_relations()
+        ! !
         !
         contains
         subroutine     initialize_property(prop,property)
@@ -311,8 +335,6 @@ module am_symmetry_rep
 
     subroutine     get_direct_product(C,A,B)
         !
-        use am_progress_bar
-        !
         implicit none
         !
         class(am_class_flattened_group) :: C
@@ -339,7 +361,7 @@ module am_symmetry_rep
             k = k + 1
             wkr(:,:,k) = matmul(A%sym(:,:,i),B%sym(:,:,j))
             !
-            if(mod(k,10).eq.0) call progress_bar(iteration=k, maximum=A%nsyms*B%nsyms)
+            if(mod(k,10).eq.0) call show_progress(iteration=k, maximum=A%nsyms*B%nsyms)
             !
             ! ps_id has very little meaning here
             if (A%ps_id(i).ne.0) C%ps_id(k) = A%ps_id(i)
@@ -365,7 +387,7 @@ module am_symmetry_rep
         !
     end subroutine get_direct_product
 
-    subroutine     get_symmetry_relations(flat)
+    function       get_relations(flat) result(relations)
         ! At this point A is an augmented matrix of the form
         !
         !        [ A1 , B1 ]
@@ -385,6 +407,7 @@ module am_symmetry_rep
         implicit none
         !
         class(am_class_flattened_group), intent(inout) :: flat
+        real(dp), allocatable :: relations(:,:)     !
         integer , allocatable :: class_member(:,:)  !
         integer , allocatable :: class_nelements(:) ! 
         real(dp), allocatable :: A(:,:)             ! A(2*flat%nbases,2*flat%nbases) - augmented matrix equation
@@ -430,27 +453,79 @@ module am_symmetry_rep
         if (.not.isequal(LHS,eye(flat%nbases))) then
             stop 'Failed to reduce matrix to row echlon form.'
         endif
-        if (count(get_zeros(RHS))+count(get_independent(RHS))+count(get_depenent(RHS)).ne.flat%nbases) then
+        if (count(get_null(RHS))+count(get_independent(RHS))+count(get_depenent(RHS)).ne.flat%nbases) then
             stop 'Number of null, independent, and dependent terms do not sum to the number of terms.'
         endif
         !
-        allocate(flat%relations, source=RHS)
+        allocate(relations, source=RHS)
         !
-    end subroutine get_symmetry_relations
+    end function   get_relations
 
     ! operates on relations
 
-    function       get_zeros(relations) result(is_zero)
+    function       merge_symmetry_relations(relationsA,relationsB) result(relationsC)
+        !
+        implicit none
+        !
+        real(dp), intent(in)  :: relationsA(:,:)    !
+        real(dp), intent(in)  :: relationsB(:,:)    !
+        real(dp), allocatable :: relationsC(:,:)    !
+        integer :: nbases
+        real(dp), allocatable :: A(:,:)             ! A(2*flat%nbases,2*flat%nbases) - augmented matrix equation
+        real(dp), allocatable :: LHS(:,:)           ! LHS(flat%nbases,flat%nbases)   - left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
+        real(dp), allocatable :: RHS(:,:)           ! RHS(flat%nbases,flat%nbases)   - right hand side of augmented matrix equation
+        integer , allocatable :: indices(:)         ! used for clarity
+        !
+        !
+        if (size(relationsA,1).ne.size(relationsB,1)) stop 'Dimension mismatch: A1 vs B1'
+        if (size(relationsA,2).ne.size(relationsB,2)) stop 'Dimension mismatch: A2 vs B2'
+        if (size(relationsA,1).ne.size(relationsA,2)) stop 'Dimension mismatch: A1 vs A2'
+        !
+        nbases = size(relationsA,1)
+        !
+        ! get indices
+        allocate(indices,source=[1:nbases])
+        ! initialize augmented workspace matrix A
+        allocate(A(3*nbases,2*nbases))
+        A = 0
+        ! construct slice of A
+        A(1*nbases+indices,1*nbases+indices) = relationsA
+        A(1*nbases+indices,0*nbases+indices) = eye(nbases)
+        A(2*nbases+indices,1*nbases+indices) = relationsB
+        A(2*nbases+indices,0*nbases+indices) = eye(nbases)
+        ! incorporate symmetry via lu factorization (equivalent to applying rref)
+        call lu(A)
+        ! Apply Gram-Schmidt orthogonalization to obtain A in reduced row echelon form
+        call rref(A)
+        ! At this point, A = [ LHS | RHS ], in which LHS = E, identity matrix; A completely specifies all relationships between variables: LHS = RHS.
+        allocate(LHS(nbases,nbases))
+        allocate(RHS(nbases,nbases))
+        LHS = A(0*nbases+indices,0*nbases+indices)
+        RHS = A(0*nbases+indices,1*nbases+indices)
+        !
+        ! checks
+        if (.not.isequal(LHS,eye(nbases))) then
+            stop 'Failed to reduce matrix to row echlon form.'
+        endif
+        if (count(get_null(RHS))+count(get_independent(RHS))+count(get_depenent(RHS)).ne.nbases) then
+            stop 'Number of null, independent, and dependent terms do not sum to the number of terms.'
+        endif
+        !
+        allocate(relationsC, source=RHS)
+        !
+    end function   merge_symmetry_relations
+
+    function       get_null(relations) result(is_null)
         !
         implicit none
         !
         real(dp), intent(in) :: relations(:,:)
-        logical , allocatable :: is_zero(:)
+        logical , allocatable :: is_null(:)
         !
         ! null terms (equal zero)
-        allocate(is_zero, source=all(abs(relations).lt.tiny,2))
+        allocate(is_null, source=all(abs(relations).lt.tiny,2))
         !
-    end function   get_zeros
+    end function   get_null
 
     function       get_independent(relations) result(is_independent)
         !
@@ -477,50 +552,72 @@ module am_symmetry_rep
         !
     end function   get_depenent
 
-    subroutine     print_relations(relations)
+    subroutine     print_relations(relations,flags)
+        !
+        ! flags - null, dependent, independent
         !
         implicit none
         !
         real(dp), intent(in) :: relations(:,:)
+        character(*), intent(in) :: flags
         integer :: i, j 
-        logical, allocatable :: is_zero(:)
+        logical, allocatable :: is_null(:)
         logical, allocatable :: is_independent(:)
         logical, allocatable :: is_dependent(:)
         integer :: nterms
         !
         ! get terms
         nterms = size(relations,1)
-        ! null terms (equal zero)
-        is_zero = get_zeros(relations)
-        call am_print('null terms',count(is_zero),' ... ')
-        ! independent terms (equal themselves and nothing else)
+        is_null = get_null(relations)
         is_independent = get_independent(relations)
-        call am_print('independent terms',count(is_independent),' ... ')
-        ! dependent terms (can be written via independent terms)
         is_dependent = get_depenent(relations)
-        call am_print('dependent terms',count(is_dependent),' ... ')
+        !
+        write(*,'(a5,a,a)',advance='no') ' ... ', trim(int2char(nterms)), ' terms = '
+        write(*,'(i4,a,f5.1,a)',advance='no') count(is_null)       , ' null ('       , count(is_null)       /real(nterms,dp)*100.0_dp , '%) '
+        write(*,'(i4,a,f5.1,a)',advance='no') count(is_independent), ' independent (', count(is_independent)/real(nterms,dp)*100.0_dp , '%) '
+        write(*,'(i4,a,f5.1,a)',advance='no') count(is_dependent)  , ' dependent ('  , count(is_dependent)  /real(nterms,dp)*100.0_dp , '%) '
+        writE(*,*)
+        !
         ! irreducible symmetry relations
-        write(*,'(a5,a)') ' ... ', 'irreducible symmetry relations (null terms omitted)'
-        ! write the independent terms (equal only to themselves)
-        do i = 1, nterms
-            if (is_independent(i)) then
-                write(*,'(5x,a1,a,a1,a1,a)',advance='no') 'a',trim(int2char(i)),'=', 'a', trim(int2char(i))
-                write(*,*)
-            endif
-        enddo
-        ! write the dependent terms
-        do i = 1,nterms
-            if (is_dependent(i)) then
-                write(*,'(5x,a1,a,a1)',advance='no') 'a',trim(int2char(i)),'='
-                do j = 1,nterms
-                    if (abs(relations(i,j)).gt.tiny) then
-                        write(*,'(a,a,a)',advance='no') trim(dbl2charSP(relations(i,j),7)), '*a', trim(int2char(j))
+        if ((index(flags,'independent').ne.0).or.(index(flags,'dependent').ne.0).or.(index(flags,'null').ne.0)) then
+            !
+            write(*,'(a5,a)') ' ... ', 'irreducible symmetry relations'
+            !
+            if (index(flags,'independent').ne.0) then
+                ! write the independent terms (equal only to themselves)
+                do i = 1, nterms
+                    if (is_independent(i)) then
+                        write(*,'(5x,a1,a,a1,a1,a)',advance='no') 'a',trim(int2char(i)),'=', 'a', trim(int2char(i))
+                        write(*,*)
                     endif
                 enddo
-                write(*,*)
             endif
-        enddo
-        !
+            !
+            if (index(flags,'dependent').ne.0) then
+                ! write the dependent terms
+                do i = 1,nterms
+                    if (is_dependent(i)) then
+                        write(*,'(5x,a1,a,a1)',advance='no') 'a',trim(int2char(i)),'='
+                        do j = 1,nterms
+                            if (abs(relations(i,j)).gt.tiny) then
+                                write(*,'(a,a,a)',advance='no') trim(dbl2charSP(relations(i,j),7)), '*a', trim(int2char(j))
+                            endif
+                        enddo
+                        write(*,*)
+                    endif
+                enddo
+            endif
+            !
+            if (index(flags,'null').ne.0) then
+                ! write null terms
+                do i = 1, nterms
+                    if (is_null(i)) then
+                        write(*,'(5x,a1,a,a1,a1,a)',advance='no') 'a',trim(int2char(i)),'= 0'
+                        write(*,*)
+                    endif
+                enddo
+            endif
+        endif
     end subroutine print_relations
 
 

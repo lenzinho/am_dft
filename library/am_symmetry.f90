@@ -1341,8 +1341,6 @@ contains
         !  seitz   - reduces seitz(1:3,4) to between 0 and 1
         !  prog    - shows progress bar
         !
-        use am_progress_bar
-        !
         implicit none
         !
         real(dp), intent(in) :: sym(:,:,:) ! list of 2D reps...
