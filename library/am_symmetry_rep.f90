@@ -6,14 +6,19 @@ module am_symmetry_rep
     use am_options
     use am_symmetry
     use am_matlab
+    use am_unit_cell
 
     implicit none
 
     private
 
     type, public, extends(am_class_group) :: am_class_flattened_group
+        real(dp), allocatable :: relations(:,:)
         contains
-        procedure :: get_intrinsic_symmetry_group
+        procedure :: get_flattened_intrinsic_symmetry_group
+        procedure :: get_flattened_point_group
+        procedure :: get_direct_product_of_flattened_groups
+        procedure :: get_symmetry_relations
     end type am_class_flattened_group
 
     type, public, extends(am_class_group) :: am_class_regular_group
@@ -23,13 +28,12 @@ module am_symmetry_rep
 
     type, public :: am_class_property
         character(50) :: property
-        integer :: tensor_rank
-        integer :: axial_polar
-        type(am_class_flattened_group) :: ig ! intrinsic symmetries in flattened basis
-        type(am_class_flattened_group) :: pg ! point symmetries in flattened basis
-        type(am_class_flattened_group) :: fg ! all symmetries in flattened basis (direct product: ig * pg)
+        character(5)  :: axial_polar
+        integer       :: tensor_rank
+        type(am_class_flattened_group) :: fig  ! flattened intrinsic symmetry group
+        type(am_class_flattened_group) :: fpg  ! flattened point group
+        type(am_class_flattened_group) :: flat ! flattened group (direct product: fig * pg)
         contains
-        procedure :: initialize_property
         procedure :: get_property
     end type am_class_property
 
@@ -46,7 +50,7 @@ module am_symmetry_rep
 		!
 		rr%sym   = rep_regular(seitz=seitz)
 		!
-		rr%ndims = size(rr%sym,1)
+		rr%nbases= size(rr%sym,1)
         !
 		rr%nsyms = size(rr%sym,3)
 		!
@@ -72,7 +76,7 @@ module am_symmetry_rep
             integer :: i
             !
             ! obtain multiplication table
-            multab = get_multiplication_table(seitz=seitz,flags='seitz,sort')
+            multab = get_multiplication_table(sym=seitz,flags='seitz,sort')
             !
             ! construct regular representation from multiplication table
             n = size(seitz,3)
@@ -87,261 +91,435 @@ module am_symmetry_rep
 
     !
 
-    subroutine     get_property(prop,property,opts)
+    subroutine     get_property(prop,uc,pg,opts,property)
         !
         implicit none
         !
-        class(am_class_property), intent(out) :: prop
-        character(*)            , intent(in)  :: property
-        type(am_class_options)  , intent(in)  :: opts
+        class(am_class_property),    intent(out):: prop
+        class(am_class_unit_cell),   intent(in) :: uc
+        class(am_class_point_group), intent(in) :: pg
+        type(am_class_options),      intent(in) :: opts
+        character(*),                intent(in) :: property
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining group of '//trim(property))
         !
-        call prop%initialize_property(property=property)
+        call initialize_property(prop=prop, property=property)
         !
-        call ig%get_intrinsic_symmetry_group(ndims=ndims, nbases=nbases, property=property)
+        call prop%fig%get_flattened_intrinsic_symmetry_group(prop=prop)
+        if (opts%verbosity.ge.1) call am_print('intrinsic symmetries', prop%fig%nsyms)
         !
+        call prop%fpg%get_flattened_point_group(prop=prop, pg=pg, uc=uc)
+        if (opts%verbosity.ge.1) call am_print('point symmetries', prop%fpg%nsyms)
+        !
+        call prop%flat%get_direct_product_of_flattened_groups(A=prop%fig,B=prop%fpg)
+        if (opts%verbosity.ge.1) call am_print('total symmetries (direct product: intrinsic * point)', prop%flat%nsyms)
+        !
+        if (opts%verbosity.ge.1) write(*,'(a5,a)') ' ... ', 'getting symmetry relations'
+        call prop%flat%get_symmetry_relations()
+        !
+        call print_relations(relations=prop%flat%relations)
+        !
+        contains
+        subroutine     initialize_property(prop,property)
+            !
+            implicit none
+            !
+            class(am_class_property), intent(out) :: prop
+            character(*)            , intent(in)  :: property
+            !
+            !----------------------------------------------------------------------------------------------------------------------
+            !
+            ! Tensors transferm differently whether they are axial or polar:
+            ! POLAR :  T_{i,j,k,l,...} =        sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
+            ! AXIAL :  T_{i,j,k,l,...} = det(R) sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
+            ! Thus, all axial tensors of even rank and polar tensors of odd rank are null are null.  Wooten p 485. Eq. 13.21. 
+            !
+            ! Onsager’s Principle requires that the electric resistivity and thermal conductivity tensors be symmetric.
+            ! This does not hold for the Seebeck and Peltier (thermoelectric) tensors which relate two different flows. Thus
+            ! there are, at most, nine independent parameters rather than six. [Newnham "Properties of Materials"]
+            !
+            prop%property = property
+            !------------------------------------------------- FIRST-RANK TENSORS --------------------------------------------------
+            if     (index(prop%property,'pyroelectricity')          .ne.0) then; prop%tensor_rank = 1                             !    ! P_{i}     = p_{i} \Delta T
+            !------------------------------------------------- SECOND-RANK TENSORS -------------------------------------------------
+            elseif (index(prop%property,'electrical susceptibility').ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! S  ! P_{i}     = \alpha_{ij}  E_{j}
+            elseif (index(prop%property,'magnetic susceptibility')  .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'axial' ! S  ! M_{i}     = \mu_{ij}     H_{j}
+            elseif (index(prop%property,'magneto-electric')         .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'axial' 
+            elseif (index(prop%property,'thermal expansion')        .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
+            elseif (index(prop%property,'electrical conductivity')  .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! S  ! J_{i}     = \sigma_{ij}  E_{i}
+            elseif (index(prop%property,'electrical resistivity')   .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! S  ! E_{i}     = \rho_{ij}    J_{j}
+            elseif (index(prop%property,'thermal conductivity')     .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! S  ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
+            elseif (index(prop%property,'thermoelectricity')        .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! N  ! 
+            elseif (index(prop%property,'seebeck')                  .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
+            elseif (index(prop%property,'peltier')                  .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! N  ! q_{i}     = \pi_{ij}     J_{j}
+            !------------------------------------------------- THIRD-RANK TENSORS -------------------------------------------------
+            elseif (index(prop%property,'hall')                     .ne.0) then; prop%tensor_rank = 3;                            !    ! E_{i}     = h_{ijk}      J_{j} H_{k} 
+            elseif (index(prop%property,'piezoelectricity')         .ne.0) then; prop%tensor_rank = 3; prop%axial_polar = 'polar' !    ! P_{i}     = d_{ijk}      \sigma_{jk}
+            elseif (index(prop%property,'piezomagnetic')            .ne.0) then; prop%tensor_rank = 3; prop%axial_polar = 'axial' !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
+            !------------------------------------------------- FOURTH-RANK TENSORS ------------------------------------------------
+            elseif (index(prop%property,'elasticity')               .ne.0) then; prop%tensor_rank = 4; prop%axial_polar = 'polar' !    ! 
+            elseif (index(prop%property,'piezo-optic')              .ne.0) then; prop%tensor_rank = 4                             !    ! 
+            elseif (index(prop%property,'kerr')                     .ne.0) then; prop%tensor_rank = 4                             !    ! 
+            elseif (index(prop%property,'electrostriction')         .ne.0) then; prop%tensor_rank = 4                             !    ! 
+            !------------------------------------------------- SXITH-RANK TENSORS -------------------------------------------------
+            elseif (index(prop%property,'third-order elasticity')   .ne.0) then; prop%tensor_rank = 6; prop%axial_polar = 'polar' !    ! 
+            !----------------------------------------------------------------------------------------------------------------------
+            else
+                stop 'Unknown property.'
+            endif
+            !----------------------------------------------------------------------------------------------------------------------
+        end subroutine initialize_property
     end subroutine get_property
 
-    subroutine     initialize_property(prop,property)
+    subroutine     get_flattened_intrinsic_symmetry_group(fig,prop)
         !
         implicit none
         !
-        class(am_class_property), intent(out) :: prop
-        character(*)            , intent(in)  :: property
+        class(am_class_flattened_group), intent(out) :: fig ! intrinsic symmetry group
+        class(am_class_property),        intent(in)  :: prop
+        real(dp), allocatable :: T(:,:) ! transpositional operator building block
+        integer :: ndims
+        integer :: k
         !
-        !----------------------------------------------------------------------------------------------------------------------
+        ! number of spatial dimensions
+        ndims = 3
         !
-        ! Tensors transferm differently whether they are axial or polar:
-        ! POLAR :  T_{i,j,k,l,...} =        sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
-        ! AXIAL :  T_{i,j,k,l,...} = det(R) sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
-        ! Thus, all axial tensors of even rank and polar tensors of odd rank are null are null.  Wooten p 485. Eq. 13.21. 
+        ! get transpositional operator
+        T = transp_operator(ndims)
         !
-        ! Onsager’s Principle requires that the electric resistivity and thermal conductivity tensors be symmetric.
-        ! This does not hold for the Seebeck and Peltier (thermoelectric) tensors which relate two different flows. Thus
-        ! there are, at most, nine independent parameters rather than six. [Newnham "Properties of Materials"]
+        ! number of bases functions in representation
+        fig%nbases = ndims**prop%tensor_rank
         !
-        prop%property = property
-        !------------------------------------------------- FIRST-RANK TENSORS --------------------------------------------------
-        if     (index(prop%property,'pyroelectricity')          .ne.0) then; prop%tensor_rank = 1                             !    ! P_{i}     = p_{i} \Delta T
-        !------------------------------------------------- SECOND-RANK TENSORS -------------------------------------------------
-        elseif (index(prop%property,'electrical susceptibility').ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! S  ! P_{i}     = \alpha_{ij}  E_{j}
-        elseif (index(prop%property,'magnetic susceptibility')  .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'axial' ! S  ! M_{i}     = \mu_{ij}     H_{j}
-        elseif (index(prop%property,'magneto-electric')         .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'axial' 
-        elseif (index(prop%property,'thermal expansion')        .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
-        elseif (index(prop%property,'electrical conductivity')  .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! S  ! J_{i}     = \sigma_{ij}  E_{i}
-        elseif (index(prop%property,'electrical resistivity')   .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! S  ! E_{i}     = \rho_{ij}    J_{j}
-        elseif (index(prop%property,'thermal conductivity')     .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! S  ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
-        elseif (index(prop%property,'thermoelectricity')        .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! N  ! 
-        elseif (index(prop%property,'seebeck')                  .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
-        elseif (index(prop%property,'peltier')                  .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! N  ! q_{i}     = \pi_{ij}     J_{j}
-        !------------------------------------------------- THIRD-RANK TENSORS -------------------------------------------------
-        elseif (index(prop%property,'hall')                     .ne.0) then; prop%tensor_rank = 3;                            !    ! E_{i}     = h_{ijk}      J_{j} H_{k} 
-        elseif (index(prop%property,'piezoelectricity')         .ne.0) then; prop%tensor_rank = 3; prop%axial_polar = 'polar' !    ! P_{i}     = d_{ijk}      \sigma_{jk}
-        elseif (index(prop%property,'piezomagnetic')            .ne.0) then; prop%tensor_rank = 3; prop%axial_polar = 'axial' !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
-        !------------------------------------------------- FOURTH-RANK TENSORS ------------------------------------------------
-        elseif (index(prop%property,'elasticity')               .ne.0) then; prop%tensor_rank = 4; prop%axial_polar = 'polar' !    ! 
-        elseif (index(prop%property,'piezo-optic')              .ne.0) then; prop%tensor_rank = 4                             !    ! 
-        elseif (index(prop%property,'kerr')                     .ne.0) then; prop%tensor_rank = 4                             !    ! 
-        elseif (index(prop%property,'electrostriction')         .ne.0) then; prop%tensor_rank = 4                             !    ! 
-        !------------------------------------------------- SXITH-RANK TENSORS -------------------------------------------------
-        elseif (index(prop%property,'third-order elasticity')   .ne.0) then; prop%tensor_rank = 6; prop%axial_polar = 'polar' !    ! 
-        !----------------------------------------------------------------------------------------------------------------------
+        ! generate intrinsic symmetries
+        k=0
+        if     (index(prop%property,'conductivity'     ).ne.0 &
+         & .or. index(prop%property,'resistivity'      ).ne.0 &
+         & .or. index(prop%property,'voigt'            ).ne.0) then
+            !
+            fig%nsyms = 2
+            allocate(fig%sym(fig%nbases,fig%nbases,fig%nsyms))
+            k=k+1; fig%sym(:,:,k) = eye(fig%nbases)        ! E
+            k=k+1; fig%sym(:,:,k) = T                      ! s_ij = s_ji
+            !
+        elseif (index(prop%property,'piezoelectricity' ).ne.0) then
+            !
+            fig%nsyms = 2
+            allocate(fig%sym(fig%nbases,fig%nbases,fig%nsyms))
+            k=k+1; fig%sym(:,:,k) = eye(fig%nbases)        ! E
+            k=k+1; fig%sym(:,:,k) = kron(T,eye(ndims))     ! d_ijk = d_ikj
+            !
+        elseif (index(prop%property,'elasticity'       ).ne.0) then
+            !
+            fig%nsyms = 4
+            allocate(fig%sym(fig%nbases,fig%nbases,fig%nsyms))
+            k=k+1; fig%sym(:,:,k) = eye(fig%nbases)        ! E
+            k=k+1; fig%sym(:,:,k) = kron(eye(ndims**2),T)  ! cijkl = cjikl
+            k=k+1; fig%sym(:,:,k) = kron(T,eye(ndims**2))  ! cijkl = cjilk
+            k=k+1; fig%sym(:,:,k) = kron(T,T)              ! cijkl = cjilk
+            !
+        elseif (index(prop%property,'thermoelectricity').ne.0) then
+            fig%nsyms = 1
+            allocate(fig%sym(fig%nbases,fig%nbases,fig%nsyms))
+            k=k+1; fig%sym(:,:,k) = eye(fig%nbases)        ! E
         else
-            stop 'Unknown property.'
+            stop 'Undefined propery encountered.'
         endif
-        !----------------------------------------------------------------------------------------------------------------------
-    end subroutine initialize_property
-
-    subroutine     get_flattened_group(grp,pg,uc,opts,property)
         !
-        class(am_class_flattened_group), intent(out):: grp
-        type(am_class_point_group)     , intent(in) :: pg
-        type(am_class_unit_cell)       , intent(in) :: uc
-        type(am_class_options)         , intent(in) :: opts
-        character(*)                   , intent(in) :: property
-        type(am_class_flattened_group) :: ig ! intrinsic symmetry group
-        integer  :: ndims       ! number of spatial dimensions (ndims = 3, usually)
-        integer  :: nbases      ! number of basis functions
-        integer  :: tensor_rank ! tensor_rank rank of tensor matrix M, determined automatically by code
-        real(dp), allocatable :: wrk(:,:,:) ! workspace for symmetries
-        real(dp),allocatable :: sort_parameter(:)
-        integer :: max_syms
-        character(10) :: flags
-        integer :: i, j
+        allocate(fig%ps_id(fig%nsyms))
+        fig%ps_id    = default_ps_id_value
+        fig%ps_id(1) = 1
+        !
+        ! get multiplication table
+        fig%multab   = get_multiplication_table(sym=fig%sym,flags='')
+        !
+        ! determine conjugacy classes (needs identity first, inversion second)
+        fig%class_id = get_conjugacy_classes(multab=fig%multab, ps_id=fig%ps_id)
+        !
+        ! sort symmetries based on parameters
+        call fig%sort_symmetries(criterion=fig%sym(1,4,:)        , flags='ascend')
+        call fig%sort_symmetries(criterion=fig%sym(2,4,:)        , flags='ascend')
+        call fig%sort_symmetries(criterion=fig%sym(3,4,:)        , flags='ascend')
+        call fig%sort_symmetries(criterion=real(fig%ps_id,dp)    , flags='acsend')
+        call fig%sort_symmetries(criterion=real(fig%class_id,dp) , flags='ascend')
+        !
+        ! get character table
+        fig%chartab = get_character_table(multab=fig%multab,ps_id=fig%ps_id)
+        !
+        contains
+        pure function transp_operator(n) result(M)
+            ! transposition operator (c_ij -> c_ji) in the flattened representation
+            implicit none
+            !
+            integer, intent(in) :: n
+            integer, allocatable :: M(:,:)
+            integer  :: i, j
+            !
+            allocate(M(n**2,n**2))
+            M=0
+            !
+            do i = 1, n
+            do j = 1, n
+               M(i+n*(j-1),j+n*(i-1)) = 1
+            enddo
+            enddo
+        end function  transp_operator
+    end subroutine get_flattened_intrinsic_symmetry_group
+
+    subroutine     get_flattened_point_group(fpg,prop,pg,uc)
+        !
+        class(am_class_flattened_group), intent(out):: fpg ! flattened point group
+        class(am_class_property),        intent(in) :: prop! properties
+        type(am_class_point_group)     , intent(in) :: pg  ! seitz point group
+        type(am_class_unit_cell)       , intent(in) :: uc  ! unit cell
+        integer :: ndims       ! number of spatial dimensions (ndims = 3, usually)
+        integer :: i
         !
         !
         ! number of spatial dimensions
         ndims = 3
         ! number of bases functions in representation
-        nbases = ndims**tensor_rank
-        !
-        ! get intrinsic symmety group
-        call ig%get_intrinsic_symmetry_group(ndims=ndims, nbases=nbases, property=property)
-        !
-        ! get point symmetries in the flattened basis (convert to cartesian coordinates in the process)
-        allocate(wrk(nbases,nbases,pg%nsyms))
+        fpg%nbases = ndims**prop%tensor_rank
+        ! number of symmetries
+        fpg%nsyms = pg%nsyms
+        ! generate intrinsic symmetries
+        allocate(fpg%sym(fpg%nbases,fpg%nbases,fpg%nsyms))
+        fpg%sym = 0
+        ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
         do i = 1, pg%nsyms
-            ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
-            if     (index(flags,'axial').ne.0) then
-                wrk(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=uc%bas),tensor_rank) * det(pg%sym(1:3,1:3,i))
-            elseif (index(flags,'polar').ne.0) then
-                wrk(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=uc%bas),tensor_rank)
+            if     (index(prop%axial_polar,'axial').ne.0) then
+                fpg%sym(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=uc%bas),prop%tensor_rank) * det(pg%sym(1:3,1:3,i))
+            elseif (index(prop%axial_polar,'polar').ne.0) then
+                fpg%sym(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=uc%bas),prop%tensor_rank)
             endif
+            ! correct basic rounding error
+            where (abs(fpg%sym(:,:,i)).lt.tiny) fpg%sym(:,:,i) = 0
+            where (abs(fpg%sym(:,:,i)-nint(fpg%sym(:,:,i))).lt.tiny) fpg%sym(:,:,i) = nint(fpg%sym(:,:,i))
         enddo
         !
-        ! merge point symmetries with intrinsic symmetries
-        grp%sym = direct_product(symA=wrk(:,:,1:pg%nsyms),symB=igs%sym(:,:,1:S_nsyms))
-        ! get number of symmetries
-        grp%nsyms = size(grp%sym,3)
-        ! get size of bases
-        grp%nbases = nbases
-        ! get multiplication table
-        grp%multab = get_multiplication_table(seitz=grp%sym, flags='')
-        ! transfer ps_id
-        write(*,*) 'Need a more inteligent way to do ps_id here.'
-        allocate(grp%ps_id(grp%nsyms))
-        grp%ps_id = 100
-        do j = 1, grp%nsyms
-        search : do i = 1, pg%nsyms
-            if (isequal(grp%sym(:,:,j),wrk(:,:,i))) then
-                grp%ps_id(j) = pg%ps_id(i)
-                exit search
-            endif
-        enddo search
-        enddo
-        ! determine conjugacy classes (needs identity first, inversion second)
-        grp%class_id = get_conjugacy_classes(multab=grp%multab, ps_id=grp%ps_id)
+        ! copy symmetry ids
+        allocate(fpg%ps_id, source=pg%ps_id)
+        ! copy classes
+        allocate(fpg%class_id, source=pg%class_id)
+        ! copy multiplication table
+        allocate(fpg%multab, source=pg%multab)
+        ! copy character table
+        allocate(fpg%chartab, source=pg%chartab)
         !
-        ! sort symmetries based on parameters
-        allocate(sort_parameter(grp%nsyms))
-        ! 
-        do i = 1, grp%nsyms; sort_parameter(i) = det(grp%sym(:,:,i)); enddo
-        call sort_symmetries(sg=grp, criterion=sort_parameter, flags='acsend')
-        do i = 1, grp%nsyms; sort_parameter(i) = trace(grp%sym(:,:,i)); enddo
-        call sort_symmetries(sg=grp, criterion=sort_parameter, flags='acsend')
-        call sort_symmetries(sg=sg,  criterion=real(sg%class_id,dp), flags='ascend')
+        if (.not.isequal(fpg%sym(:,:,1),eye(fpg%nbases))) stop 'FPG: Identity is not first.'
         !
-        ! get character table
-        sg%chartab = get_character_table(multab=sg%multab,ps_id=sg%ps_id)
-        !
-        contains
-        function       direct_product(symA,symB) result(symC)
-            !
-            implicit none
-            !
-            real(dp), intent(in) :: symA(:,:,:)
-            real(dp), intent(in) :: symB(:,:,:)
-            real(dp), allocatable:: symC(:,:,:)
-            real(dp), allocatable:: try(:,:)
-            integer :: nsymsA
-            integer :: nsymsB
-            integer :: nsymsC
-            integer :: i,j,k
-            !
-            if (size(symsA,1)/=size(symsB,1)) stop 'row mismatch'
-            if (size(symsA,2)/=size(symsB,2)) stop 'column mismatch'
-            !
-            nbases = size(symsA,1)
-            !
-            nsymsA = size(symsA,3)
-            nsymsB = size(symsB,3)
-            nsymsC = nsymsA*nsymsB
-            !
-            allocate(try(nbases,nbases))
-            !
-            allocate(symC(nbases,nbases,nsymsC))
-            symC = 0
-            !
-            k = 0
-            do i = 1, nsymsA
-            do j = 1, nsymsB
-                try = matmul(symA(:,:,i),symB(:,:,j))
-                if (.not.issubset(A=symC,B=try)) then
-                    k = k + 1
-                    symC(:,:,k) = try
-                endif
-            end do
-            end do
-            !
-        end function   direct_product
-        subroutine     multiply_to_closure(sym)
-            !
-            implicit none
-            !
-            real(dp), intent(inout) :: sym(:,:,:)
-            real(dp), intent(in) :: closed_grp(:,:,:)
-            integer :: max_iterations
-            integer :: i
-            !
-            max_iterations = 10
-            !
-            do i = 1, max_iterations
-                closed_grp = direct_product(symA=sym,symB=sym)
-                if (size(sym,3).eq.size(closed_grp,3)) then
-                    exit
-                else
-                    deallocate(sym)
-                    allocate(sym,source=closed_grp)
-                    if (i.eq.max_iterations) stop 'Too many intrisinc symmetries.'
-                endif
-            end do
-            !
-            !
-            end subroutine multiply_to_closure
-    end subroutine get_flattened_group
+    end subroutine get_flattened_point_group
 
-    subroutine     get_intrinsic_symmetry_group(ig,ndims,nbases,property)
+    subroutine     get_direct_product_of_flattened_groups(C,A,B)
         !
         implicit none
         !
-        class(am_class_flattened_group), intent(out) :: ig ! intrinsic symmetry group
-        integer     , intent(in) :: ndims
-        integer     , intent(in) :: nbases
-        character(*), intent(in) :: property
-        real(dp), allocatable :: T(:,:)   ! transpositional operator building block
-        integer :: k
-        integer :: max_syms
+        class(am_class_flattened_group) :: C
+        type(am_class_flattened_group)  :: A
+        type(am_class_flattened_group)  :: B
+        real(dp), allocatable :: wkr(:,:,:)
+        real(dp), allocatable :: try(:,:)
+        integer :: i, j, k
         !
-        ! generate intrinsic symmetry group
-        T = transp_operator(ndims)
+        if (A%nbases/=B%nbases) stop 'dimension mismatch'
         !
-        ! allocate a little space just for generators below
-        ! eventually this space will expand in multiply_to_closure
-        max_syms = 100
-        allocate(ig%sym(nbases,nbases,max_syms))
+        C%nbases = A%nbases
         !
-        k=0
-        if     (index(property,'conductivity'    ).ne.0 &
-         & .or. index(property,'resistivity'     ).ne.0 &
-         & .or. index(property,'voigt'           ).ne.0) then
-            k=k+1; ig%sym(:,:,k) = T                      ! s_ij  = s_ji
-        elseif (index(property,'piezoelectricity').ne.0) then
-            k=k+1; ig%sym(:,:,k) = kron(T,eye(ndims))     ! d_ijk = d_ikj
-        elseif (index(property,'elasticity'      ).ne.0) then
-            k=k+1; ig%sym(:,:,k) = eye(nbases)            ! cijkl = cijkl
-            k=k+1; ig%sym(:,:,k) = kron(eye(ndims**2),T)  ! cijkl = cjikl
-            k=k+1; ig%sym(:,:,k) = kron(T,eye(ndims**2))  ! cijkl = cjilk
-            k=k+1; ig%sym(:,:,k) = kron(T,T)              ! cijkl = cjilk
+        allocate(C%ps_id(A%nsyms*B%nsyms))
+        C%ps_id = default_ps_id_value ! default
+        !
+        allocate(try(C%nbases,C%nbases))
+        allocate(wkr(C%nbases,C%nbases,A%nsyms*B%nsyms))
+        !
+        k = 0
+        do i = 1, A%nsyms
+        do j = 1, B%nsyms
+            try = matmul(A%sym(:,:,i),B%sym(:,:,j))
+            if (.not.issubset(A=wkr(:,:,1:k),B=try)) then
+                !
+                k = k + 1
+                wkr(:,:,k) = try
+                !
+                ! ps_id has very little meaning here
+                if (A%ps_id(i).ne.0) C%ps_id(k) = A%ps_id(i)
+                if (B%ps_id(j).ne.0) C%ps_id(k) = B%ps_id(j)
+                !
+            endif
+        end do
+        end do
+        !
+        C%nsyms = k
+        allocate(C%sym,source=wkr(:,:,1:k))
+        !
+        ! get multiplication table
+        C%multab = get_multiplication_table(sym=C%sym,flags='')
+        ! determine conjugacy classes (needs identity first, inversion second)
+        C%class_id = get_conjugacy_classes(multab=C%multab,ps_id=C%ps_id)
+        !
+        ! sort symmetries based on parameters
+        call C%sort_symmetries(criterion=real(C%ps_id,dp)   , flags='acsend')
+        call C%sort_symmetries(criterion=real(C%class_id,dp), flags='ascend')
+        !
+        ! get character table
+        C%chartab = get_character_table(multab=C%multab, ps_id=C%ps_id)
+        !
+    end subroutine get_direct_product_of_flattened_groups
+
+    subroutine     get_symmetry_relations(flat)
+        ! At this point A is an augmented matrix of the form
+        !
+        !        [ A1 , B1 ]
+        !   A =  [ A2 , B2 ]
+        !        [ A3 , I  ]
+        !
+        ! in which the square matrix [A1,B1;A2,B2] is an augmented upper triangular matrix corresponding to 2*flat%nbases
+        ! coupled equations which describe how the terms are interrelated. The last augmented matrix [A3,I]
+        ! describes how the tensor rotates under the most recently considered symmetry operation R. In order
+        ! incorporate the effect of symmetry operation R on the set of linearly coupled 2*flat%nbases equations, LU
+        ! factorization is performed. By doing so, the augmented matrix A is converted into its factored upper
+        ! triangular matrix U, which, by definition, only occupies rows corresponding to the smallest dimension of
+        ! the matrix [either row or column, i.e. min(m,n)]. For this case, it occupies the top 2x2 augmented blocks.
+        ! This is also why the symmetry equations are added as components in the [A3,I] block -- so they don't
+        ! overlap with U.
+        !
+        implicit none
+        !
+        class(am_class_flattened_group), intent(inout) :: flat
+        integer , allocatable :: class_member(:,:)  !
+        integer , allocatable :: class_nelements(:) ! 
+        real(dp), allocatable :: A(:,:)             ! A(2*flat%nbases,2*flat%nbases) - augmented matrix equation
+        real(dp), allocatable :: LHS(:,:)           ! LHS(flat%nbases,flat%nbases)   - left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
+        real(dp), allocatable :: RHS(:,:)           ! RHS(flat%nbases,flat%nbases)   - right hand side of augmented matrix equation
+        integer , allocatable :: indices(:)         ! used for clarity
+        integer :: nequations                       ! equation counter, for fun
+        integer :: i, j                             ! loop variables
+        !
+        !
+        ! get conjugacy class members
+        class_member = member(id=flat%class_id)
+        ! get nmber of elements in each class
+        class_nelements = nelements(id=flat%class_id)
+        ! intialize indices
+        allocate(indices,source=[1:flat%nbases])
+        ! initialize equation counter
+        nequations = 0
+        ! initialize augmented workspace matrix A
+        allocate(A(3*flat%nbases,2*flat%nbases))
+        A = 0
+        ! use LU factorization to incorporate, one symmetry at a time, the effect of all symmetries on the flattened basis
+        do j = 1, size(class_member,1) ! loop over classes
+            ! track number of symmetry equations for fun
+            nequations = nequations + flat%nbases*class_nelements(j)
+            ! get index of class representative
+            i=class_member(j,1)
+            ! construct slice of A
+            A(2*flat%nbases+indices,0*flat%nbases+indices) = flat%sym(:,:,i)
+            A(2*flat%nbases+indices,1*flat%nbases+indices) = eye(flat%nbases)
+            ! incorporate symmetry via lu factorization (equivalent to applying rref)
+            call lu(A)
+        enddo
+        ! Apply Gram-Schmidt orthogonalization to obtain A in reduced row echelon form
+        call rref(A)
+        ! At this point, A = [ LHS | RHS ], in which LHS = E, identity matrix; A completely specifies all relationships between variables: LHS = RHS.
+        allocate(LHS(flat%nbases,flat%nbases))
+        allocate(RHS(flat%nbases,flat%nbases))
+        LHS = A(0*flat%nbases+indices,0*flat%nbases+indices)
+        RHS = A(0*flat%nbases+indices,1*flat%nbases+indices)
+        !
+        ! checks
+        if (.not.isequal(LHS,eye(flat%nbases))) then
+            stop 'Failed to reduce matrix to row echlon form.'
         endif
-        ! multiply to make ensure group closure
-        call multiply_to_closure(sym=ig%sym)
+        if (count(get_zeros(RHS))+count(get_indep(RHS))+count(get_depen(RHS)).ne.flat%nbases) then
+            stop 'Number of null, independent, and dependent terms do not sum to the number of terms.'
+        endif
         !
-        ! get number of intrisic symmetries and the size of the basis
-        ig%nsyms = size(ig%sym,3)
-        ig%nbases= nbases
+        allocate(flat%relations, source=RHS)
         !
-        ! label symmetries by id
-        allocate(ig%ps_id(ig%nsyms)))
-        ig%ps_id = 10
-        do i = 1, ig%nsyms
-            if (isequal(ig%sym(:,:,i),eye(ig%nbases))) then
-                ig%ps_id(i) = 1
-                exit
+    end subroutine get_symmetry_relations
+
+    function       get_zeros(relations) result(is_zero)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: relations(:,:)
+        logical , allocatable :: is_zero(:)
+        !
+        ! null terms (equal zero)
+        allocate(is_zero, source=all(abs(relations).lt.tiny,2))
+        !
+    end function   get_zeros
+
+    function       get_indep(relations) result(is_independent)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: relations(:,:)
+        logical , allocatable :: is_independent(:)
+        !
+        ! independent terms (equal themselves and nothing else)
+        allocate(is_independent, source=all(abs(relations-eye(size(relations,1))).lt.tiny,2))
+        !
+    end function   get_indep
+
+    function       get_depen(relations) result(is_dependent)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: relations(:,:)
+        logical , allocatable :: is_dependent(:)
+        !
+        ! dependent terms (can be written via independent terms)
+        allocate(is_dependent, source=any(abs(relations).gt.tiny,2))
+        is_dependent = (is_dependent.and..not.get_indep(relations))
+        !
+    end function   get_depen
+
+    subroutine     print_relations(relations)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: relations(:,:)
+        integer :: i, j 
+        logical, allocatable :: is_zero(:)
+        logical, allocatable :: is_independent(:)
+        logical, allocatable :: is_dependent(:)
+        integer :: nterms
+        !
+        ! get terms
+        nterms = size(relations,1)
+        ! null terms (equal zero)
+        is_zero = get_zeros(relations)
+        call am_print('null terms',count(is_zero),' ... ')
+        ! independent terms (equal themselves and nothing else)
+        is_independent = get_indep(relations)
+        call am_print('independent terms',count(is_independent),' ... ')
+        ! dependent terms (can be written via independent terms)
+        is_dependent = get_depen(relations)
+        call am_print('number of dependent terms',count(is_dependent),' ... ')
+        ! irreducible symmetry relations
+        write(*,'(a5,a)') ' ... ', 'irreducible symmetry relations (null terms omitted)'
+        ! write the independent terms (equal only to themselves)
+        do i = 1, nterms
+            if (is_independent(i)) then
+                write(*,'(5x,a1,a,a1,a1,a)',advance='no') 'a',trim(int2char(i)),'=', 'a', trim(int2char(i))
+                write(*,*)
+            endif
+        enddo
+        ! write the dependent terms
+        do i = 1,nterms
+            if (is_dependent(i)) then
+                write(*,'(5x,a1,a,a1)',advance='no') 'a',trim(int2char(i)),'='
+                do j = 1,nterms
+                    if (abs(relations(i,j)).gt.tiny) then
+                        write(*,'(a,a,a)',advance='no') trim(dbl2charSP(relations(i,j),7)), '*a', trim(int2char(j))
+                    endif
+                enddo
+                write(*,*)
             endif
         enddo
         !
-    end function   get_intrinsic_symmetry_group
+    end subroutine print_relations
+
 
 end module am_symmetry_rep
 

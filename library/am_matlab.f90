@@ -28,16 +28,16 @@ module am_matlab
     end interface ! unique
 
     interface issubset
-        module procedure dmissubset, imissubset
+        module procedure dm_issubset, im_issubset, dv_issubset, iv_issubset, d_issubset, i_issubset
     end interface ! issubset
 
     interface meshgrid
         module procedure dmeshgrid, imeshgrid
     end interface ! meshgrid
 
-    interface equals
-        module procedure :: dequals, zequals, dvequals
-    end interface ! equals
+    interface isequal
+        module procedure :: d_isequal, dv_isequal, dm_isequal, z_isequal, zv_isequal, zm_isequal
+    end interface ! isequal
 
     interface trace
         module procedure :: dtrace, ztrace
@@ -1606,29 +1606,41 @@ module am_matlab
         !
     end function  direct_sum
 
-    ! transpose operator in the flattened representation
+    ! logicals
 
-    pure function transp_operator(n) result(M)
-        ! c_ij -> c_ji in the flattened basis
+    pure function isint(x) result(bool)
+        !
         implicit none
         !
-        integer, intent(in) :: n
-        integer, allocatable :: M(:,:)
-        integer  :: i, j
+        real(dp), intent(in) :: x
+        logical :: bool
         !
-        allocate(M(n**2,n**2))
-        M=0
+        if (abs(nint(x)-x).lt.tiny) then
+            bool = .true.
+        else
+            bool = .false.
+        endif
+        !        
+    end function  isint
+
+    pure function iszero(x) result(bool)
         !
-        do i = 1, n
-        do j = 1, n
-           M(i+n*(j-1),j+n*(i-1)) = 1
-        enddo
-        enddo
-    end function  transp_operator
+        implicit none
+        !
+        real(dp), intent(in) :: x
+        logical :: bool
+        !
+        if (abs(x).lt.tiny) then
+            bool = .true.
+        else
+            bool = .false.
+        endif
+        !        
+    end function  iszero
 
     ! unique
 
-    pure function dmunique(A,iopt_tiny) result(B)
+    pure function dmunique(A,iopt_prec) result(B)
         !> returns unique matrices of A(:,:,i) within numerical precision
         implicit none
         !
@@ -1636,11 +1648,11 @@ module am_matlab
         real(dp) :: wrkspace(size(A,1),size(A,2),size(A,3))
         real(dp), allocatable :: B(:,:,:)
         integer :: i,j,k
-        real(dp), intent(in), optional :: iopt_tiny
+        real(dp), intent(in), optional :: iopt_prec
         real(dp) :: prec
         !
-        if ( present(iopt_tiny) ) then
-            prec = iopt_tiny
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
         else
             prec = tiny
         endif
@@ -1661,7 +1673,7 @@ module am_matlab
         !
     end function  dmunique
 
-    pure function dvunique(A,iopt_tiny) result(B)
+    pure function dvunique(A,iopt_prec) result(B)
         !> returns unique columns of double matrix A(:,i) within numerical precision
         implicit none
         !
@@ -1669,11 +1681,11 @@ module am_matlab
         real(dp) :: wrkspace(size(A,1),size(A,2))
         real(dp), allocatable :: B(:,:)
         integer :: i,j,k
-        real(dp), intent(in), optional :: iopt_tiny
+        real(dp), intent(in), optional :: iopt_prec
         real(dp) :: prec
         !
-        if ( present(iopt_tiny) ) then
-            prec = iopt_tiny
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
         else
             prec = tiny
         endif
@@ -1759,7 +1771,7 @@ module am_matlab
 
     ! issubset
 
-    pure function dmissubset(A,B,iopt_tiny) result(bool)
+    pure function dm_issubset(A,B,iopt_prec) result(bool)
         ! returns true if B(:,:) is a subset of A(:,:,i)
         implicit none
         !
@@ -1767,11 +1779,11 @@ module am_matlab
         real(dp), intent(in) :: B(:,:)
         logical :: bool
         integer :: i,n
-        real(dp), intent(in), optional :: iopt_tiny
+        real(dp), intent(in), optional :: iopt_prec
         real(dp) :: prec
         !
-        if ( present(iopt_tiny) ) then
-            prec = iopt_tiny
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
         else
             prec = tiny
         endif
@@ -1786,9 +1798,9 @@ module am_matlab
             endif
         enddo
         !
-    end function  dmissubset
+    end function  dm_issubset
 
-    pure function imissubset(A,B) result(bool)
+    pure function im_issubset(A,B) result(bool)
         ! returns true if B(:,:) is a subset of A(:,:,i)
         implicit none
         !
@@ -1807,112 +1819,285 @@ module am_matlab
             endif
         enddo
         !
-    end function  imissubset
+    end function  im_issubset
 
-    ! logicals
-
-    pure function isint(x) result(bool)
-        !
+    pure function dv_issubset(A,B,iopt_prec) result(bool)
+        ! returns true if B(:,:) is a subset of A(:,:,i)
         implicit none
         !
-        real(dp), intent(in) :: x
+        real(dp), intent(in) :: A(:,:)
+        real(dp), intent(in) :: B(:)
         logical :: bool
+        integer :: i,n
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp) :: prec
         !
-        if (abs(nint(x)-x).lt.tiny) then
-            bool = .true.
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
         else
-            bool = .false.
+            prec = tiny
         endif
-        !        
-    end function  isint
-
-    pure function iszero(x) result(bool)
         !
+        n = size(A,2)
+        !
+        bool = .false.
+        do i = 1, n
+            if (all(abs(A(:,i)-B(:)).lt.prec)) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function  dv_issubset
+
+    pure function iv_issubset(A,B) result(bool)
+        ! returns true if B(:,:) is a subset of A(:,:,i)
         implicit none
         !
-        real(dp), intent(in) :: x
+        integer, intent(in) :: A(:,:)
+        integer, intent(in) :: B(:)
         logical :: bool
+        integer :: i,n
         !
-        if (abs(x).lt.tiny) then
-            bool = .true.
-        else
-            bool = .false.
-        endif
-        !        
-    end function  iszero
+        n = size(A,2)
+        !
+        bool = .false.
+        do i = 1, n
+            if (all(A(:,i).eq.B(:))) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function  iv_issubset
 
-    pure function dequals(x,y) result(bool)
+    pure function d_issubset(A,B,iopt_prec) result(bool)
+        ! returns true if B is a subset of Ai)
+        implicit none
+        !
+        real(dp), intent(in) :: A(:)
+        real(dp), intent(in) :: B
+        logical :: bool
+        integer :: i,n
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp) :: prec
+        !
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        n = size(A,1)
+        !
+        bool = .false.
+        do i = 1, n
+            if (abs(A(i)-B).lt.prec) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function  d_issubset
+
+    pure function i_issubset(A,B) result(bool)
+        ! returns true if B is a subset of A(i)
+        implicit none
+        !
+        integer, intent(in) :: A(:)
+        integer, intent(in) :: B
+        logical :: bool
+        integer :: i,n
+        !
+        n = size(A,1)
+        !
+        bool = .false.
+        do i = 1, n
+            if (A(i).eq.B) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function  i_issubset
+
+    ! _isequal
+
+    pure function d_isequal(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
         real(dp), intent(in) :: x, y
         logical :: bool
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp) :: prec
         !
-        if (abs(x-y).lt.tiny) then
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        !
+        if (abs(x-y).lt.prec) then
             bool = .true.
         else
             bool = .false.
         endif
         !        
-    end function  dequals
+    end function  d_isequal
 
-    pure function zequals(x,y) result(bool)
+    pure function dv_isequal(x,y,iopt_prec) result(bool)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: x(:), y(:)
+        logical :: bool
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp) :: prec
+        !
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        !
+        if (all(abs(x-y).lt.prec)) then
+            bool = .true.
+        else
+            bool = .false.
+        endif
+        !        
+    end function  dv_isequal
+
+    pure function dm_isequal(x,y,iopt_prec) result(bool)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: x(:,:), y(:,:)
+        logical :: bool
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp) :: prec
+        !
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        !
+        if (all(abs(x-y).lt.prec)) then
+            bool = .true.
+        else
+            bool = .false.
+        endif
+        !        
+    end function  dm_isequal
+
+    pure function z_isequal(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
         complex(dp), intent(in) :: x, y
         logical :: bool
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp) :: prec
         !
-        bool = dequals(real(x),real(y)) * dequals(aimag(x),aimag(y))
-        !        
-    end function  zequals
-
-    pure function dvequals(a) result(bool)
-        !
-        ! are all elements of a equal to each other
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: a(:)
-        logical :: bool
-        !
-        if ( all(abs(a(1)-a).lt.tiny) ) then
-            bool = .true.
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
         else
-            bool = .false.
+            prec = tiny
         endif
         !
-    end function  dvequals
- 
-    pure function distinct(a) result(bool)
+        bool = d_isequal(real(x),real(y),iopt_prec) * d_isequal(aimag(x),aimag(y),iopt_prec)
         !
-        ! are all elements of a different from each other?
+    end function  z_isequal
+
+    pure function zv_isequal(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
-        real(dp), intent(in) :: a(:)
+        complex(dp), intent(in) :: x(:), y(:)
         logical :: bool
-        integer :: i, j, n
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp) :: prec
         !
-        n = size(a)
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
         !
-        if (n.eq.1) then
-            bool = .false.
-            return
-        endif    
+        bool = dv_isequal(real(x),real(y),iopt_prec) * dv_isequal(aimag(x),aimag(y),iopt_prec)
         !
-        bool = .true.
-        do i = 1, n
-        do j = 1, i
-            if (i.ne.j) then
-            if (abs(a(i)-a(j)).lt.tiny) then
-                bool = .false.
-                return
-            endif
-            endif
-        enddo
-        enddo        
-    end function  distinct
+    end function  zv_isequal
+
+    pure function zm_isequal(x,y,iopt_prec) result(bool)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: x(:,:), y(:,:)
+        logical :: bool
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp) :: prec
+        !
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        bool = dm_isequal(real(x),real(y),iopt_prec) * dm_isequal(aimag(x),aimag(y),iopt_prec)
+        !
+    end function  zm_isequal
+
+    ! pure function dv_isequal(a) result(bool)
+    ! !
+    ! ! are all elements of a equal to each other
+    ! !
+    ! implicit none
+    ! !
+    ! real(dp), intent(in) :: a(:)
+    ! logical :: bool
+    ! !
+    ! if ( all(abs(a(1)-a).lt.tiny) ) then
+    !     bool = .true.
+    ! else
+    !     bool = .false.
+    ! endif
+    ! !
+    ! end function  dv_isequal
+ 
+    ! pure function dv_distinct(a) result(bool)
+    !     !
+    !     ! are all elements of a different from each other?
+    !     !
+    !     implicit none
+    !     !
+    !     real(dp), intent(in) :: a(:)
+    !     logical :: bool
+    !     integer :: i, j, n
+    !     !
+    !     n = size(a)
+    !     !
+    !     if (n.eq.1) then
+    !         bool = .false.
+    !         return
+    !     endif    
+    !     !
+    !     bool = .true.
+    !     do i = 1, n
+    !     do j = 1, i
+    !         if (i.ne.j) then
+    !         if (abs(a(i)-a(j)).lt.tiny) then
+    !             bool = .false.
+    !             return
+    !         endif
+    !         endif
+    !     enddo
+    !     enddo        
+    ! end function  dv_distinct
 
     ! min/max functions
 
@@ -1935,54 +2120,5 @@ module am_matlab
         enddo
         !
     end function  smallest_nonzero
-
-    ! sort based on occurance
-
-!     subroutine     relabel_based_on_occurances(list)
-!         !
-!         use am_rank_and_sort
-!         !
-!         implicit none
-!         !
-!         integer , intent(inout) :: list(:)
-!         integer , allocatable :: A_sorted(:)
-!         integer , allocatable :: occurances(:) 
-!         integer , allocatable :: reverse_sort(:)
-!         integer , allocatable :: sorted_indices(:)
-!         integer , allocatable :: list_relabled(:)
-!         integer :: nsyms, i, j
-!         !
-!         nsyms = size(list,1)
-!         !
-!         allocate(occurances(nsyms))
-!         do i = 1, nsyms
-!             occurances(i) = count(list(i).eq.list)
-!         enddo
-!         !
-!         ! this quick and dirty procedure lifts degeneracies
-!         !
-!         allocate(sorted_indices(nsyms))
-!         allocate(A_sorted(nsyms))
-!         call rank((1+maxval(list))*occurances+list,sorted_indices)
-!         A_sorted = list(sorted_indices)
-!         !
-!         allocate(list_relabled(nsyms))
-!         list_relabled = 0
-!         !
-!         j=1
-!         list_relabled(1) = 1
-!         do i = 2, nsyms
-!             if (A_sorted(i).ne.A_sorted(i-1)) then
-!                 j=j+1
-!             endif
-!             list_relabled(i) = j
-!         enddo
-!         !
-!         ! return everything to the original order at call
-!         !
-!         allocate(reverse_sort(nsyms))
-!         reverse_sort(sorted_indices)=[1:nsyms]
-!         list=list_relabled(reverse_sort)
-!     end subroutine relabel_based_on_occurances
 
 end module am_matlab

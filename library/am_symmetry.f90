@@ -9,18 +9,7 @@ module am_symmetry
 
     implicit none
 
-    private
-
-    public :: get_multiplication_table
-    
-    public :: permutation_rep   ! am_irre_cell
-    public :: permutation_map   ! am_irre_cell
-
-    public :: member            ! am_symmetry_adapted_tensors
-    public :: decode_pointgroup ! am_shell
-    public :: nelements         ! am_shell
-
-    public :: ps_frac2cart
+    public
     
     type, public :: am_class_group
         integer :: nsyms  ! number of symmetries
@@ -72,7 +61,6 @@ contains
         integer , allocatable ::  inds(:)
         integer , allocatable :: rinds(:) ! reverse inds
         real(dp) :: criterion(:)
-        integer :: total
         integer :: i, j
         !
         allocate(inds(grp%nsyms))
@@ -109,8 +97,8 @@ contains
         !
         implicit none
         !
-        class(am_class_seitz_group), intent(out) :: cp
-        class(am_class_seitz_group), intent(in)  :: grp
+        class(am_class_group), intent(out) :: cp
+        class(am_class_group), intent(in)  :: grp
         !
         cp%nsyms = grp%nsyms
         cp%nbases= grp%nbases
@@ -469,7 +457,7 @@ contains
         end select
         !
         ! get multiplication table
-        sg%multab = get_multiplication_table(seitz=sg%sym,flags='seitz')
+        sg%multab = get_multiplication_table(sym=sg%sym,flags='seitz')
         ! determine conjugacy classes (needs identity first, inversion second)
         sg%class_id = get_conjugacy_classes(multab=sg%multab,ps_id=sg%ps_id)
         !
@@ -483,7 +471,6 @@ contains
         ! get character table
         sg%chartab = get_character_table(multab=sg%multab,ps_id=sg%ps_id)
         !
-        contains
     end subroutine create
 
     subroutine     write_action_table(sg,uc,fname,opts)
@@ -1347,44 +1334,54 @@ contains
 
     ! multiplication chartab
 
-    function       get_multiplication_table(seitz,flags) result(multab)
+    function       get_multiplication_table(sym,flags) result(multab)
         !
         ! flag options:
         !  sort    - sorts rows to put identity along diagonals (useful for constructing regular representation)
         !  seitz   - reduces seitz(1:3,4) to between 0 and 1
+        !  prog    - shows progress bar
         !
         implicit none
         !
-        real(dp), intent(in) :: seitz(:,:,:) ! list of 2D reps...
+        real(dp), intent(in) :: sym(:,:,:) ! list of 2D reps...
         character(*), intent(in) :: flags
         integer, allocatable :: multab(:,:)
         integer, allocatable :: sortmat(:,:)
         integer, allocatable :: indices(:)
-        real(dp) :: W(size(seitz,1),size(seitz,2)) ! workspace
-        integer  :: n
-        integer  :: i, j
+        real(dp) :: W(size(sym,1),size(sym,2)) ! workspace
+        integer :: ref ! used for checking for closure
+        integer :: n
+        integer :: i, j ! loop variabls
+        integer :: k, kmax ! for progress bar
         !
         ! before doing anything, confirm that first element is the identity
-        if (any(abs(seitz(:,:,1)-eye(size(seitz,1))).gt.tiny)) then
-            call am_print('ERROR','First element of seitz is not the identity.')
-            call am_print('first element of seitz',seitz(:,:,1))
+        if (any(abs(sym(:,:,1)-eye(size(sym,1))).gt.tiny)) then
+            call am_print('ERROR','First element of sym is not the identity.')
+            call am_print('first element of sym',sym(:,:,1))
             stop
         endif
         !
-        n=size(seitz,3)
+        n=size(sym,3)
         !
         allocate(multab(n,n))
         !
+        k=0
+        kmax=n**2
         do i = 1, n
         do j = 1, n
-            ! multiply the two seitz operators
-            W = matmul(seitz(:,:,i),seitz(:,:,j))
+            ! show progress bar
+            if (index(flags,'prog').ne.0) then
+                k=k+1 
+                progress_bar(iteration=k, maximum=kmax)
+            endif
+            ! multiply the two sym operators
+            W = matmul(sym(:,:,i),sym(:,:,j))
             ! if 'seitz' flagged, reduce translational part to primitive cell 
             if (index(flags,'seitz')) then
                 W(1:3,4) = modulo(W(1:3,4)+tiny,1.0_dp)-tiny
             endif
             ! get matching lment
-            multab(i,j) = get_matching_element_index_in_list(list=seitz,elem=W)
+            multab(i,j) = get_matching_element_index_in_list(list=sym,elem=W)
         enddo
         enddo
         !
@@ -1400,9 +1397,10 @@ contains
             multab = multab(indices,:)
         endif
         !
-        ! quick consitency check. not comprehensive
+        ! quick consitency check for closure. not comprehensive
+        ref = sum(multab(:,1))
         do i = 1, n
-            if (sum(multab(:,i)).ne.sum(multab(:,1))) then
+            if (sum(multab(:,i)).ne.ref) then
                 call am_print('ERROR','multiplication chartab sums along rows/columns are not consistent.')
                 stop
             endif
@@ -1983,13 +1981,13 @@ contains
                         !
                         s_exp = cmplx(0.0_dp,0.0_dp)
                         k_exp = 0 
-                        do while ( .not. equals(s_exp,cmplx(1,0,dp)) )
+                        do while ( .not. isequal(s_exp,cmplx(1,0,dp)) )
                             ! do a full loop. complex numbers form a cyclic abelian group.
                             ! exponentiate it until it loops back to one, the identity
                             k_exp = k_exp+1
                             s_exp = s(k)**k_exp
                             ! check positive
-                            if ( equals(Z,s_exp) ) then
+                            if ( isequal(Z,s_exp) ) then
                                 !
                                 strmatch = .true.
                                 if (k_exp.eq.1) then
@@ -2001,7 +1999,7 @@ contains
                                 !
                             endif
                             ! check negative
-                            if ( equals(Z,-s_exp) ) then
+                            if ( isequal(Z,-s_exp) ) then
                                 !
                                 strmatch = .true.
                                 if (k_exp.eq.1) then

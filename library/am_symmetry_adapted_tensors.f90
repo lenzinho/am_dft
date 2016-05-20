@@ -87,7 +87,7 @@ contains
         ! Tensors transferm differently whether they are axial or polar:
         ! POLAR :  T_{i,j,k,l,...} =        sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
         ! AXIAL :  T_{i,j,k,l,...} = det(R) sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
-        ! Thus, all axial tensors of even rank and polar tensors of odd rank are null are null.  Wooten p 485. Eq. 13.21. 
+        ! Thus, all axial tensors of even rank and polar tensors of odd rank are null.  Wooten p 485. Eq. 13.21. 
         !
         ! Onsager’s Principle requires that the electric resistivity and thermal conductivity tensors be symmetric.
         ! This does not hold for the Seebeck and Peltier (thermoelectric) tensors which relate two different flows. Thus
