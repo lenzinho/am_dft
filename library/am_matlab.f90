@@ -45,6 +45,20 @@ module am_matlab
     
     contains
 
+    ! progress bar
+
+    subroutine     show_progress(iteration,maximum)
+        !
+        implicit none
+        !
+        integer, intent(in) :: iteration
+        integer, intent(in) :: maximum
+        !
+
+        WRITE(*,"(5x,f6.2,A,$)") iteration/real(maximum,dp)*100.0_dp, CHAR(13)
+        !
+    end subroutine show_progress
+
     ! angular momenta operators
 
     pure function  Lz(l)

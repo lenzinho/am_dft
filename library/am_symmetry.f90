@@ -1374,7 +1374,7 @@ contains
             ! show progress bar
             if (index(flags,'prog').ne.0) then
                 k=k+1
-                call progress_bar(iteration=k, maximum=kmax)
+                call show_progress(iteration=k, maximum=kmax)
             endif
             ! multiply the two sym operators
             W = matmul(sym(:,:,i),sym(:,:,j))

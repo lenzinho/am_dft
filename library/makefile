@@ -4,7 +4,6 @@ LIBS  = libam.a
 OBJS  = am_constants.o                 \
 		am_mkl.o                       \
 		am_matlab.o                    \
-		am_progress_bar.o              \
 		am_stdout.o                    \
 		am_histogram.o                 \
 		am_rank_and_sort.o             \

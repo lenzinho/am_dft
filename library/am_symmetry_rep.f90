@@ -430,13 +430,15 @@ module am_symmetry_rep
         if (.not.isequal(LHS,eye(flat%nbases))) then
             stop 'Failed to reduce matrix to row echlon form.'
         endif
-        if (count(get_zeros(RHS))+count(get_indep(RHS))+count(get_depen(RHS)).ne.flat%nbases) then
+        if (count(get_zeros(RHS))+count(get_independent(RHS))+count(get_depenent(RHS)).ne.flat%nbases) then
             stop 'Number of null, independent, and dependent terms do not sum to the number of terms.'
         endif
         !
         allocate(flat%relations, source=RHS)
         !
     end subroutine get_symmetry_relations
+
+    ! operates on relations
 
     function       get_zeros(relations) result(is_zero)
         !
@@ -450,7 +452,7 @@ module am_symmetry_rep
         !
     end function   get_zeros
 
-    function       get_indep(relations) result(is_independent)
+    function       get_independent(relations) result(is_independent)
         !
         implicit none
         !
@@ -460,9 +462,9 @@ module am_symmetry_rep
         ! independent terms (equal themselves and nothing else)
         allocate(is_independent, source=all(abs(relations-eye(size(relations,1))).lt.tiny,2))
         !
-    end function   get_indep
+    end function   get_independent
 
-    function       get_depen(relations) result(is_dependent)
+    function       get_depenent(relations) result(is_dependent)
         !
         implicit none
         !
@@ -471,9 +473,9 @@ module am_symmetry_rep
         !
         ! dependent terms (can be written via independent terms)
         allocate(is_dependent, source=any(abs(relations).gt.tiny,2))
-        is_dependent = (is_dependent.and..not.get_indep(relations))
+        is_dependent = (is_dependent.and..not.get_independent(relations))
         !
-    end function   get_depen
+    end function   get_depenent
 
     subroutine     print_relations(relations)
         !
@@ -492,11 +494,11 @@ module am_symmetry_rep
         is_zero = get_zeros(relations)
         call am_print('null terms',count(is_zero),' ... ')
         ! independent terms (equal themselves and nothing else)
-        is_independent = get_indep(relations)
+        is_independent = get_independent(relations)
         call am_print('independent terms',count(is_independent),' ... ')
         ! dependent terms (can be written via independent terms)
-        is_dependent = get_depen(relations)
-        call am_print('number of dependent terms',count(is_dependent),' ... ')
+        is_dependent = get_depenent(relations)
+        call am_print('dependent terms',count(is_dependent),' ... ')
         ! irreducible symmetry relations
         write(*,'(a5,a)') ' ... ', 'irreducible symmetry relations (null terms omitted)'
         ! write the independent terms (equal only to themselves)
