@@ -17,7 +17,7 @@ module am_symmetry_rep
         contains
         procedure :: get_flattened_intrinsic_symmetry_group
         procedure :: get_flattened_point_group
-        procedure :: get_direct_product_of_flattened_groups
+        procedure :: get_direct_product
         procedure :: get_symmetry_relations
     end type am_class_flattened_group
 
@@ -111,7 +111,7 @@ module am_symmetry_rep
         call prop%fpg%get_flattened_point_group(prop=prop, pg=pg, uc=uc)
         if (opts%verbosity.ge.1) call am_print('point symmetries', prop%fpg%nsyms)
         !
-        call prop%flat%get_direct_product_of_flattened_groups(A=prop%fig,B=prop%fpg)
+        call prop%flat%get_direct_product(A=prop%fig,B=prop%fpg)
         if (opts%verbosity.ge.1) call am_print('total symmetries (direct product: intrinsic * point)', prop%flat%nsyms)
         !
         if (opts%verbosity.ge.1) write(*,'(a5,a)') ' ... ', 'getting symmetry relations'
@@ -309,7 +309,9 @@ module am_symmetry_rep
         !
     end subroutine get_flattened_point_group
 
-    subroutine     get_direct_product_of_flattened_groups(C,A,B)
+    subroutine     get_direct_product(C,A,B)
+        !
+        use am_progress_bar
         !
         implicit none
         !
@@ -333,25 +335,24 @@ module am_symmetry_rep
         k = 0
         do i = 1, A%nsyms
         do j = 1, B%nsyms
-            try = matmul(A%sym(:,:,i),B%sym(:,:,j))
-            if (.not.issubset(A=wkr(:,:,1:k),B=try)) then
-                !
-                k = k + 1
-                wkr(:,:,k) = try
-                !
-                ! ps_id has very little meaning here
-                if (A%ps_id(i).ne.0) C%ps_id(k) = A%ps_id(i)
-                if (B%ps_id(j).ne.0) C%ps_id(k) = B%ps_id(j)
-                !
-            endif
+            !
+            k = k + 1
+            wkr(:,:,k) = matmul(A%sym(:,:,i),B%sym(:,:,j))
+            !
+            if(mod(k,10).eq.0) call progress_bar(iteration=k, maximum=A%nsyms*B%nsyms)
+            !
+            ! ps_id has very little meaning here
+            if (A%ps_id(i).ne.0) C%ps_id(k) = A%ps_id(i)
+            if (B%ps_id(j).ne.0) C%ps_id(k) = B%ps_id(j)
+            !
         end do
         end do
         !
-        C%nsyms = k
-        allocate(C%sym,source=wkr(:,:,1:k))
+        allocate(C%sym,source=unique(wkr))
+        C%nsyms = size(C%sym,3)
         !
         ! get multiplication table
-        C%multab = get_multiplication_table(sym=C%sym,flags='')
+        C%multab = get_multiplication_table(sym=C%sym,flags='prog')
         ! determine conjugacy classes (needs identity first, inversion second)
         C%class_id = get_conjugacy_classes(multab=C%multab,ps_id=C%ps_id)
         !
@@ -362,7 +363,7 @@ module am_symmetry_rep
         ! get character table
         C%chartab = get_character_table(multab=C%multab, ps_id=C%ps_id)
         !
-    end subroutine get_direct_product_of_flattened_groups
+    end subroutine get_direct_product
 
     subroutine     get_symmetry_relations(flat)
         ! At this point A is an augmented matrix of the form

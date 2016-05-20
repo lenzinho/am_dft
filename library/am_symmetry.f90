@@ -1341,6 +1341,8 @@ contains
         !  seitz   - reduces seitz(1:3,4) to between 0 and 1
         !  prog    - shows progress bar
         !
+        use am_progress_bar
+        !
         implicit none
         !
         real(dp), intent(in) :: sym(:,:,:) ! list of 2D reps...
@@ -1371,8 +1373,8 @@ contains
         do j = 1, n
             ! show progress bar
             if (index(flags,'prog').ne.0) then
-                k=k+1 
-                progress_bar(iteration=k, maximum=kmax)
+                k=k+1
+                call progress_bar(iteration=k, maximum=kmax)
             endif
             ! multiply the two sym operators
             W = matmul(sym(:,:,i),sym(:,:,j))
