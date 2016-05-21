@@ -94,7 +94,7 @@ module am_symmetry_rep
     ! operates on prop
 
     subroutine     get_property(prop,uc,pg,opts,property)
-        !
+        !  
         implicit none
         !
         class(am_class_property),    intent(out):: prop
