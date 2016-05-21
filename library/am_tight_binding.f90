@@ -48,110 +48,64 @@ module am_tight_binding
 
 contains
 
-
-
-    subroutine     initialize_tb(tb,pp,ic,opts)
+    subroutine     initialize_tb(tb,pg,pp,ic,opts)
         !
         implicit none
         !
         class(am_class_tight_binding), intent(out):: tb
+        type(am_class_point_group)   , intent(in) :: pg ! seitz point group
         class(am_class_pair_shell)   , intent(in) :: ip ! irreducible pairs
         type(am_class_irre_cell)     , intent(in) :: ic ! irreducible cell
         type(am_class_pair_shell)    , intent(in) :: pp ! primitive pairs
         type(am_class_prim_cell)     , intent(in) :: pc ! primitive cell
         type(am_class_options)       , intent(in) :: opts
-        integer :: total_orbitals
+        type(am_class_options)       ,            :: notalk
+        type(am_class_point_group)   ,            :: stab
+        integer :: i,j,k
         !
+        notalk = opts
+        notalk%verbosity = 0
         !
         ! ADD OPTION TO READ ORBITALS HERE
         call ic%initialize_orbitals(opts=opts)
         ! call ic%read_orbitals(opts=opts)
         !
         !
-        ! get number of orbitals (dimensions of hamiltonian)
-        total_orbitals = 0
-        do i = 1, pc%natoms
-            ! +1 per orbital per unit cell atom
-            total_orbitals = total_orbitals + ic%atom( pc%ic_id(i) )%norbitals
-        enddo
-        !
-        !
         tb%nshells = ic%nshells
-        !
         allocatable(tb%tbvsk(tb%nshells))
         !
-        do i = 1, ic%nshells
+        do k = 1, tb%nshells
+            ! get rank, dims, flags, property
+            call tb%tbvsk(i)%initialize_tbvsk
+            ! determine stabilizers of a prototypical bond in shell (vector v)
+            call stab%get_stabilizer_group(pg=pg, v=ip%shell(k)%tau(1:3,1), opts=notalk)
             !
-            tb%tbvsk%rank = 2
-            tb%tbvsk%dims = [total_orbitals, total_orbitals]
-            !
-               
-            ! set tensor rank, set tensor dimensions
-            ! get flattened point group
-            ! get flattened instrinct group
-
-
-            !
-            ! tb%tbvsk has these properies:
-            ! type, public :: am_class_tensor
-            !     integer               :: rank           ! tensor rank
-            !     integer , allocatable :: dims(:)        ! tensor dimensions
-            !     real(dp), allocatable :: relations(:,:) ! relations connecting tensor elements
-            !     type(am_class_flattened_group) :: fig   ! flattened intrinsic symmetry group
-            !     type(am_class_flattened_group) :: fpg   ! flattened point group
-            ! end type am_class_tensor
-
-
-
+            call tb%tbvsk(i)%fpg%get_flat_point_group(tens=tb%tbvsk(i), pg=pg, pc=pc)
+            ! call revg%get_reversal_group(sg=sg, v=ip%shell(k)%tau(1:3,1), opts=notalk)
+        enddo
 
 
 
 
 
         enddo
-
-    end subroutine initialize_tbvsk
-
-    subroutine     get_flat_point_group(fpg,tbvsk,pg,pc)
-        !
-        class(am_class_flattened_group), intent(out):: fpg   ! flattened point group
-        class(am_class_tb_tensor)      , intent(in) :: tbvsk ! tb matrix elements
-        type(am_class_point_group)     , intent(in) :: pg    ! seitz point group
-        type(am_class_prim_cell)       , intent(in) :: pc    ! unit cell
-        integer :: i
-        !
-        ! number of bases functions in representation
-        fpg%nbases = product(tbvsk%dims)
-        ! number of symmetries
-        fpg%nsyms = pg%nsyms
-        ! generate intrinsic symmetries
-        allocate(fpg%sym(fpg%nbases,fpg%nbases,fpg%nsyms))
-        fpg%sym = 0
-        ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
-        do i = 1, pg%nsyms
+        contains
+        subroutine     initialize_tbvsk(tbvsk,pc,ic)
             !
-            if     (index(prop%axial_polar,'axial').ne.0) then
-                fpg%sym(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=pc%bas),prop%rank) * det(pg%sym(1:3,1:3,i))
-            elseif (index(prop%axial_polar,'polar').ne.0) then
-                fpg%sym(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=pc%bas),prop%rank)
-            endif
-            ! correct basic rounding error
-            where (abs(fpg%sym(:,:,i)).lt.tiny)  fpg%sym(:,:,i) = 0
-            where (abs(fpg%sym(:,:,i)-nint(fpg%sym(:,:,i))).lt.tiny) fpg%sym(:,:,i) = nint(fpg%sym(:,:,i))
-        enddo
-        !
-        ! copy symmetry ids
-        allocate(fpg%ps_id, source=pg%ps_id)
-        ! copy classes
-        allocate(fpg%class_id, source=pg%class_id)
-        ! copy multiplication table
-        allocate(fpg%multab, source=pg%multab)
-        ! copy character table
-        allocate(fpg%chartab, source=pg%chartab)
-        !
-        if (.not.isequal(fpg%sym(:,:,1),eye(fpg%nbases))) stop 'FPG: Identity is not first.'
-        !
-    end subroutine get_flat_point_group
+            implicit none
+            !
+            class(am_class_tb_tensor), intent(out):: tbvsk
+            class(am_class_prim_cell), intent(in) :: pc
+            class(am_class_irre_cell), intent(in) :: ic
+            !
+            tbvsk%property = 'tb_matrix_elements'
+            tbvsk%rank  = 2
+            tbvsk%flags = 'tight' 
+            tbvsk%dims  = shape(seitz2tb(seitz=eye(4),pc=pc,ic=ic))
+            !
+        end subroutine initialize_tbvsk
+    end subroutine initialize_tb
+
 
 
 

@@ -186,7 +186,7 @@ contains
         do i = 1, ic%natoms
             call ic%atom(i)%gen_orbitals(orbital_flags='2s,2p')
         enddo
-        if (opts%verbosity.ge.1) call print_orbital_basis(ip,ic)
+        if (opts%verbosity.ge.1) call ic%print_orbital_basis()
         !
     end subroutine initialize_orbitals
 
@@ -194,7 +194,7 @@ contains
         !
         implicit none
         !
-        type(am_class_irre_cell) , intent(inout) :: ic
+        class(am_class_irre_cell) , intent(inout) :: ic
         integer :: n,l,m,s
         integer :: i,j
         !

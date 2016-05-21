@@ -187,17 +187,24 @@ module am_symmetry_rep
         end function  transp_operator
     end subroutine get_flat_intrinsic_group
 
-    subroutine     get_flat_point_group(fpg,tens,pg,pc)
+    subroutine     get_flat_point_group(fpg,tens,pg,pc,ic)
         !
         class(am_class_flat_group), intent(out):: fpg  ! flat point group
         class(am_class_tensor)    , intent(in) :: tens ! tensor
         class(am_class_group)     , intent(in) :: pg   ! seitz point group (rev stab rot groups as well)
         type(am_class_prim_cell)  , intent(in), optional :: pc ! only required if property = tb
         type(am_class_irre_cell)  , intent(in), optional :: ic ! only required if property = tb
-        real(dp) :: R_cart(3,3)
+        real(dp), allocatable :: R_cart(:,:)
         integer  :: i
         logical  :: is_seitz
         !
+        ! basic checks
+        if (index(tens%flags,'tight').ne.0) then
+            if (.not.present(pc)) stop 'pc is required for the creation of tb flat pg'
+            if (.not.present(ic)) stop 'ic is required for the creation of tb flat pg'
+        endif
+        !
+        ! set type
         select type (pg)
         class is (am_class_seitz_group)
             is_seitz = .true.
@@ -205,8 +212,9 @@ module am_symmetry_rep
             is_seitz = .false.
         end select
         !
+        !
         ! number of bases functions in representation
-        fpg%nbases = product(prop%dims)
+        fpg%nbases = product(tens%dims)
         ! number of symmetries
         fpg%nsyms = pg%nsyms
         ! generate intrinsic symmetries
@@ -216,14 +224,14 @@ module am_symmetry_rep
         do i = 1, pg%nsyms
             ! convert to cartesian
             if (is_seitz) then
-                R = ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=pc%bas)
+                R_cart = ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=pc%bas)
             else
-                R = pg%sym(:,:,i)
+                R_cart = pg%sym(:,:,i)
             endif
             ! determine rotation in the basis
-            if     (index(prop%flags,'axial').ne.0) then; fpg%sym(:,:,i) = kron_pow(R, prop%rank) * det(R)
-            elseif (index(prop%flags,'polar').ne.0) then; fpg%sym(:,:,i) = kron_pow(R, prop%rank)
-            elseif (index(prop%flags,'tight').ne.0) then; fpg%sym(:,:,i) = ps2tb(R, pc=pc, ic=ic)
+            if     (index(tens%flags,'axial').ne.0) then; fpg%sym(:,:,i) = kron_pow(R_cart, tens%rank) * det(R_cart)
+            elseif (index(tens%flags,'polar').ne.0) then; fpg%sym(:,:,i) = kron_pow(R_cart, tens%rank)
+            elseif (index(tens%flags,'tight').ne.0) then; fpg%sym(:,:,i) = ps2tb(R=R_cart,pc=pc,ic=ic)
             endif
             ! correct basic rounding error
             where (abs(fpg%sym(:,:,i)).lt.tiny)  fpg%sym(:,:,i) = 0
@@ -242,18 +250,18 @@ module am_symmetry_rep
         if (.not.isequal(fpg%sym(:,:,1),eye(fpg%nbases))) stop 'FPG: Identity is not first.'
         !
         contains
-        function       ps_frac2tb(R,pc,ic) result(H)
+        function       ps2tb(R,pc,ic) result(H)
             !
             implicit none
             !
             real(dp), intent(in) :: R(3,3)
-            type(am_class_irre_cell), intent(in) :: ic ! irreducible cell
             type(am_class_prim_cell), intent(in) :: pc ! primitive cell
+            type(am_class_irre_cell), intent(in) :: ic ! irreducible cell
             real(dp), allocatable :: H(:,:)
             integer , allocatable :: H_start(:), H_end(:)
             real(dp) :: R_cart(3,3)
             integer :: Hdim ! hamiltonian dimensions
-            integer :: i,j
+            integer :: i,j,k
             !
             ! allocate space for defining subsections of the rotation in Hamiltonian basis
             i = maxval(ic%atom(:)%nazimuthals) * pc%natoms
@@ -282,7 +290,7 @@ module am_symmetry_rep
             enddo
             enddo
             !
-        end function   ps_frac2tb
+        end function   ps2tb
     end subroutine get_flat_point_group
 
     ! operates on prop
@@ -301,13 +309,13 @@ module am_symmetry_rep
         !
         call initialize_property(prop=prop, property=property)
         !
-        call prop%fig%get_flat_intrinsic_group(prop=prop)
+        call prop%fig%get_flat_intrinsic_group(tens=prop)
         if (opts%verbosity.ge.1) call am_print('intrinsict symmetries', prop%fig%nsyms)
         !
         prop%fig%relations = prop%fig%get_relations()
         call print_relations(relations=prop%fig%relations,flags='')
         !
-        call prop%fpg%get_flat_point_group(prop=prop, pg=pg, pc=pc)
+        call prop%fpg%get_flat_point_group(tens=prop, pg=pg, pc=pc)
         if (opts%verbosity.ge.1) call am_print('point symmetries', prop%fpg%nsyms)
         !
         prop%fpg%relations = prop%fpg%get_relations()
