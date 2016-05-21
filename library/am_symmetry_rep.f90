@@ -568,7 +568,7 @@ module am_symmetry_rep
             if (index(flags,'dependent').ne.0) then
             do i = 1,nterms
                 if (is_dependent(i)) then
-                    str = get_basis_label(dims=dims, ind=i ,flags='')
+                    str = get_basis_label(dims=dims, ind=i ,flags=flags)
                     write(*,'(5x,a,a)',advance='no') trim(str), ' = '
                     do j = 1,nterms
                         if (abs(relations(i,j)).gt.tiny) then
@@ -612,9 +612,9 @@ module am_symmetry_rep
                 sub = ind2sub(dims=dims,ind=ind)
                 !
                 i = 1
-                if     (index(flags,'bra')) then
+                if     (index(flags,'bra').ne.0) then
                     str = '<'//trim(int2char(sub(i)))
-                elseif (index(flags,'ket')) then
+                elseif (index(flags,'ket').ne.0) then
                     str = '|'//trim(int2char(sub(i)))
                 else
                     str = 'a('//trim(int2char(sub(i)))
@@ -626,9 +626,9 @@ module am_symmetry_rep
                 enddo
                 endif
                 !
-                if     (index(flags,'bra')) then
+                if     (index(flags,'bra').ne.0) then
                     str = trim(str)//'|'
-                elseif (index(flags,'ket')) then
+                elseif (index(flags,'ket').ne.0) then
                     str = trim(str)//'>'
                 else
                     str = trim(str)//')'
