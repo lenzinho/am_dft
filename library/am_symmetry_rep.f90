@@ -15,6 +15,8 @@ module am_symmetry_rep
 
     public :: ps2tb ! used in am_tight_binding
 
+    public :: print_relations
+
     type, public, extends(am_class_group) :: am_class_flat_group
         real(dp), allocatable :: relations(:,:)
         contains
@@ -103,7 +105,7 @@ module am_symmetry_rep
         implicit none
         !
         class(am_class_flat_group), intent(out) :: fig ! intrinsic symmetry group
-        class(am_class_tensor)         , intent(in)  :: tens
+        class(am_class_tensor)    , intent(in)  :: tens
         real(dp), allocatable :: T(:,:) ! transpositional operator building block
         integer :: ndims
         integer :: k
@@ -116,7 +118,14 @@ module am_symmetry_rep
         fig%nbases = ndims**tens%rank
         ! generate intrinsic symmetries
         k=0
-        if     (index(tens%property,'conductivity'     ).ne.0 &
+        if     (index(tens%property,'thermoelectricity').ne.0 &
+         & .or. index(tens%property,'tightbinding'     ).ne.0) then
+            !
+            fig%nsyms = 1
+            allocate(fig%sym(fig%nbases,fig%nbases,fig%nsyms))
+            k=k+1; fig%sym(:,:,k) = eye(fig%nbases)        ! E
+            !
+        elseif (index(tens%property,'conductivity'     ).ne.0 &
          & .or. index(tens%property,'resistivity'      ).ne.0 &
          & .or. index(tens%property,'voigt'            ).ne.0) then
             !
@@ -141,10 +150,6 @@ module am_symmetry_rep
             k=k+1; fig%sym(:,:,k) = kron(T,eye(ndims**2))  ! cijkl = cjilk
             k=k+1; fig%sym(:,:,k) = kron(T,T)              ! cijkl = cjilk
             !
-        elseif (index(tens%property,'thermoelectricity').ne.0) then
-            fig%nsyms = 1
-            allocate(fig%sym(fig%nbases,fig%nbases,fig%nsyms))
-            k=k+1; fig%sym(:,:,k) = eye(fig%nbases)        ! E
         else
             stop 'Undefined propery encountered.'
         endif
@@ -231,12 +236,12 @@ module am_symmetry_rep
                 R_cart = pg%sym(:,:,i)
             endif
             ! determine rotation in the basis
-            if     (index(tens%flags,'axial').ne.0) then; fpg%sym(:,:,i) = kron_pow(R_cart, tens%rank) * det(R_cart)
-            elseif (index(tens%flags,'polar').ne.0) then; fpg%sym(:,:,i) = kron_pow(R_cart, tens%rank)
-            elseif (index(tens%flags,'tight').ne.0) then; fpg%sym(:,:,i) = ps2tb(R=R_cart,pc=pc,ic=ic)
+            if     (index(tens%flags,'axial').ne.0) then; fpg%sym(:,:,i) = kron_pow(R_cart                     , tens%rank) * det(R_cart)
+            elseif (index(tens%flags,'polar').ne.0) then; fpg%sym(:,:,i) = kron_pow(R_cart                     , tens%rank)
+            elseif (index(tens%flags,'tight').ne.0) then; fpg%sym(:,:,i) = kron_pow(ps2tb(R=R_cart,pc=pc,ic=ic), tens%rank)
             endif
             ! correct basic rounding error
-            where (abs(fpg%sym(:,:,i)).lt.tiny)  fpg%sym(:,:,i) = 0
+            where (abs(fpg%sym(:,:,i))                     .lt.tiny) fpg%sym(:,:,i) = 0
             where (abs(fpg%sym(:,:,i)-nint(fpg%sym(:,:,i))).lt.tiny) fpg%sym(:,:,i) = nint(fpg%sym(:,:,i))
         enddo
         !
@@ -683,20 +688,27 @@ module am_symmetry_rep
         real(dp), allocatable :: H(:,:)
         integer , allocatable :: H_start(:), H_end(:)
         integer :: Hdim ! hamiltonian dimensions
+        integer :: maxnazimuthals
         integer :: i,j,k
         !
+        ! get largest azimuthal quantum number
+        maxnazimuthals = 0
+        do i = 1, ic%natoms
+            if (maxnazimuthals.lt.ic%atom(i)%nazimuthals) maxnazimuthals = ic%atom(i)%nazimuthals
+        enddo
         ! allocate space for defining subsections of the rotation in Hamiltonian basis
-        i = maxval(ic%atom(:)%nazimuthals) * pc%natoms
+        i = maxnazimuthals * pc%natoms
         allocate(H_start(i))
         allocate(H_end(i))
-        ! determine subsections: 1 per primitive atom per azimuthal quantum number
+        ! determine subsections: 1 per primitive atom per azimuthal quantum number per magnetic number per spin
+        ! ignoring spin contributions at this stage
         Hdim = 0
         k = 0
         do i = 1, pc%natoms
         do j = 1, ic%atom(pc%ic_id(i))%nazimuthals
             k=k+1
             H_start(k) = Hdim + 1
-            Hdim = Hdim + ic%atom(pc%ic_id(i))%azimuthal(j)
+            Hdim = Hdim + ic%atom(pc%ic_id(i))%azimuthal(j)*2+1
             H_end(k) = Hdim
         enddo
         enddo

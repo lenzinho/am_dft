@@ -25,26 +25,9 @@ module am_tight_binding
     type, public :: am_class_tight_binding
         integer :: nshells ! how many shells irreducible atoms
         type(am_class_tbvsk), allocatable :: tbvsk(:)  ! tbvsk(nshells)
+        contains
+        procedure :: initialize_tb
     end type am_class_tight_binding
-
-! 	type, public :: am_class_tb
-! 		!
-! 		! matrix elements
-!         integer :: nshells ! how many shells irreducible atoms
-!         !
-! 		integer :: nVsks ! number of irreducible matrix elements
-! 		real(dp), allocatable :: Vsk(:)   ! irreducible matrix elements
-! 		integer , allocatable :: ind(:,:) ! ind([i,n,l,m,s,j,n,l,m,s,k],:)
-!         ! i irreducible cell atom, jth neighbor shell around i, li orbital on i, lj orbital on j, m overlap
-! 		!
-! 	contains
-!         procedure :: get_Vsk   ! gets irreducible matrix element given overlap indicies 
-!         procedure :: set_Vsk   ! sets irreducible matrix element given overlap indicies
-!         procedure :: build_Vsk ! 
-!         procedure :: print_Vsk ! to stdout
-!         procedure :: write_Vsk ! to file
-!    		procedure :: read_Vsk  ! from file
-! 	end type am_class_tb
 
 contains
 
@@ -52,15 +35,15 @@ contains
         !
         implicit none
         !
-        class(am_class_tight_binding), intent(out):: tb
-        type(am_class_point_group)   , intent(in) :: pg ! seitz point group
-        type(am_class_prim_cell)     , intent(in) :: pc ! primitive cell
+        class(am_class_tight_binding), intent(out) :: tb
+        type(am_class_point_group)   , intent(in)  :: pg   ! seitz point group
+        type(am_class_prim_cell)     , intent(in)  :: pc   ! primitive cell
         type(am_class_irre_cell)     , intent(inout) :: ic ! irreducible cell
-        class(am_class_pair_shell)   , intent(in) :: ip ! irreducible pairs
-        type(am_class_options)       , intent(in) :: opts
-        type(am_class_options)                    :: notalk
-        type(am_class_point_group)                :: stab
-        integer :: i,j,k
+        class(am_class_pair_shell)   , intent(in)  :: ip   ! irreducible pairs
+        type(am_class_options)       , intent(in)  :: opts
+        type(am_class_options)                     :: notalk
+        type(am_class_point_group)                 :: stab
+        integer :: i,k
         !
         notalk = opts
         notalk%verbosity = 0
@@ -73,14 +56,12 @@ contains
         tb%nshells = ip%nshells
         !
         allocate(tb%tbvsk(tb%nshells))
-        do k = 1, ip%nshells
-            ! get rank, dims, flags, property
-            call initialize_tbvsk(tbvsk=tb%tbvsk(i), pc=pc, ic=ic)
-            ! determine stabilizers of a prototypical bond in shell (vector v)
-            call stab%get_stabilizer_group(pg=pg, v=ip%shell(k)%tau(1:3,1), opts=notalk)
-            !
-            call tb%tbvsk(i)%fpg%get_flat_point_group(tens=tb%tbvsk(i), pg=pg, pc=pc)
-            ! call revg%get_reversal_group(sg=sg, v=ip%shell(k)%tau(1:3,1), opts=notalk)
+        do k = 1, tb%nshells
+            ! tb shell and ip shell correspond to the same "object"
+            if (opts%verbosity.ge.1) call am_print('irreducible pair',k)
+            i = k
+            call get_relations(tbvsk=tb%tbvsk(k), pc=pc, ic=ic, shell=ip%shell(k))
+
         enddo
         !
         contains
@@ -92,12 +73,35 @@ contains
             class(am_class_prim_cell), intent(in) :: pc
             class(am_class_irre_cell), intent(in) :: ic
             !
-            tbvsk%property = 'tb_matrix_elements'
+            tbvsk%property = 'tightbinding'
             tbvsk%rank  = 2
             tbvsk%flags = 'tight' 
             tbvsk%dims  = shape(ps2tb(R=eye(3),pc=pc,ic=ic))
             !
         end subroutine initialize_tbvsk
+        subroutine     get_relations(tbvsk,pc,ic,shell)
+                !
+                implicit none
+                !
+                type(am_class_tbvsk)    , intent(inout) :: tbvsk
+                type(am_class_prim_cell), intent(in)    :: pc
+                type(am_class_irre_cell), intent(inout) :: ic
+                type(am_shell_cell)     , intent(in)    :: shell
+                !
+                ! get rank, dims, flags, property
+                call initialize_tbvsk(tbvsk=tbvsk, pc=pc, ic=ic)
+                ! determine stabilizers of a prototypical bond in shell (vector v)
+                call stab%get_stabilizer_group(pg=pg, v=shell%tau(1:3,1), opts=notalk)
+                ! get point group in the flattened hamiltonin basis
+                call tbvsk%fpg%get_flat_point_group(tens=tbvsk, pg=pg, pc=pc, ic=ic)
+                ! write point symmetries
+                if (opts%verbosity.ge.1) call am_print('point symmetries', tbvsk%fpg%nsyms)
+                ! get relations
+                tbvsk%fpg%relations = tbvsk%fpg%get_relations()
+                ! write relations
+                call print_relations(relations=tbvsk%fpg%relations, dims=tbvsk%dims, flags='show:dependent,independent')
+                !
+        end subroutine get_relations
     end subroutine initialize_tb
 
 
