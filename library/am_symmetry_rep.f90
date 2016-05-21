@@ -15,8 +15,8 @@ module am_symmetry_rep
     type, public, extends(am_class_group) :: am_class_flattened_group
         real(dp), allocatable :: relations(:,:)
         contains
-        procedure :: get_flattened_intrinsic_symmetry_group
-        procedure :: get_flattened_point_group
+        procedure :: get_flat_intrinsic_group
+        procedure :: get_flat_point_group
         procedure :: get_direct_product
         procedure :: get_relations
     end type am_class_flattened_group
@@ -29,9 +29,10 @@ module am_symmetry_rep
     type, public :: am_class_property
         character(50) :: property
         character(5)  :: axial_polar
-        integer       :: tensor_rank
+        integer       :: rank ! tensor rank
+        integer , allocatable :: dims(:) ! tensor dimensions
         real(dp), allocatable :: relations(:,:)
-        ! direct product of intrinsic and point groups take too long (merging relations instead)
+        ! direct product of intrinsic and point groups takes too long (merging relations instead)
         type(am_class_flattened_group) :: fig  ! flattened intrinsic symmetry group
         type(am_class_flattened_group) :: fpg  ! flattened point group
         contains
@@ -90,7 +91,7 @@ module am_symmetry_rep
         end function   rep_regular
 	end subroutine create_regular
 
-    !
+    ! operates on prop
 
     subroutine     get_property(prop,uc,pg,opts,property)
         !
@@ -106,33 +107,22 @@ module am_symmetry_rep
         !
         call initialize_property(prop=prop, property=property)
         !
-        if (opts%verbosity.ge.1) write(*,'(a5,a)') ' ... ', 'getting intrinsic symmetries'
-        !
-        call prop%fig%get_flattened_intrinsic_symmetry_group(prop=prop)
-        !
-        if (opts%verbosity.ge.1) call am_print('symmetries', prop%fig%nsyms)
+        call prop%fig%get_flat_intrinsic_group(prop=prop)
+        if (opts%verbosity.ge.1) call am_print('intrinsict symmetries', prop%fig%nsyms)
         !
         prop%fig%relations = prop%fig%get_relations()
-        !
         call print_relations(relations=prop%fig%relations,flags='')
         !
-        if (opts%verbosity.ge.1) write(*,'(a5,a)') ' ... ', 'getting point symmetries (flattened representation)'
-        !
-        call prop%fpg%get_flattened_point_group(prop=prop, pg=pg, uc=uc)
-        !
-        if (opts%verbosity.ge.1) call am_print('symmetries', prop%fpg%nsyms)
+        call prop%fpg%get_flat_point_group(prop=prop, pg=pg, uc=uc)
+        if (opts%verbosity.ge.1) call am_print('point symmetries', prop%fpg%nsyms)
         !
         prop%fpg%relations = prop%fpg%get_relations()
-        !
         call print_relations(relations=prop%fpg%relations,flags='')
         !
-        if (opts%verbosity.ge.1) call am_print('symmetries', prop%fpg%nsyms * prop%fig%nsyms )
+        if (opts%verbosity.ge.1) call am_print('total symmetries', prop%fpg%nsyms * prop%fig%nsyms )
         !
-        if (opts%verbosity.ge.1) write(*,'(a5,a)') ' ... ', 'getting combined intrinsic & point symmetries'
-        !
-        prop%relations = merge_symmetry_relations(prop%fig%relations,prop%fpg%relations)
-        !
-        call print_relations(relations=prop%fpg%relations,flags='show:dependent,independent')
+        prop%relations = combine_relations(prop%fig%relations,prop%fpg%relations)
+        call print_relations(relations=prop%fpg%relations, dims=prop%dims, flags='show:dependent,independent')
         !
         ! call prop%flat%get_direct_product(A=prop%fig,B=prop%fpg)
         ! !
@@ -164,38 +154,41 @@ module am_symmetry_rep
             !
             prop%property = property
             !------------------------------------------------- FIRST-RANK TENSORS --------------------------------------------------
-            if     (index(prop%property,'pyroelectricity')          .ne.0) then; prop%tensor_rank = 1                             !    ! P_{i}     = p_{i} \Delta T
+            if     (index(prop%property,'pyroelectricity')          .ne.0) then; prop%rank = 1                             !    ! P_{i}     = p_{i} \Delta T
             !------------------------------------------------- SECOND-RANK TENSORS -------------------------------------------------
-            elseif (index(prop%property,'electrical susceptibility').ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! S  ! P_{i}     = \alpha_{ij}  E_{j}
-            elseif (index(prop%property,'magnetic susceptibility')  .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'axial' ! S  ! M_{i}     = \mu_{ij}     H_{j}
-            elseif (index(prop%property,'magneto-electric')         .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'axial' 
-            elseif (index(prop%property,'thermal expansion')        .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
-            elseif (index(prop%property,'electrical conductivity')  .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! S  ! J_{i}     = \sigma_{ij}  E_{i}
-            elseif (index(prop%property,'electrical resistivity')   .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! S  ! E_{i}     = \rho_{ij}    J_{j}
-            elseif (index(prop%property,'thermal conductivity')     .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! S  ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
-            elseif (index(prop%property,'thermoelectricity')        .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! N  ! 
-            elseif (index(prop%property,'seebeck')                  .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
-            elseif (index(prop%property,'peltier')                  .ne.0) then; prop%tensor_rank = 2; prop%axial_polar = 'polar' ! N  ! q_{i}     = \pi_{ij}     J_{j}
+            elseif (index(prop%property,'electrical susceptibility').ne.0) then; prop%rank = 2; prop%axial_polar = 'polar' ! S  ! P_{i}     = \alpha_{ij}  E_{j}
+            elseif (index(prop%property,'magnetic susceptibility')  .ne.0) then; prop%rank = 2; prop%axial_polar = 'axial' ! S  ! M_{i}     = \mu_{ij}     H_{j}
+            elseif (index(prop%property,'magneto-electric')         .ne.0) then; prop%rank = 2; prop%axial_polar = 'axial' 
+            elseif (index(prop%property,'thermal expansion')        .ne.0) then; prop%rank = 2; prop%axial_polar = 'polar' ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
+            elseif (index(prop%property,'electrical conductivity')  .ne.0) then; prop%rank = 2; prop%axial_polar = 'polar' ! S  ! J_{i}     = \sigma_{ij}  E_{i}
+            elseif (index(prop%property,'electrical resistivity')   .ne.0) then; prop%rank = 2; prop%axial_polar = 'polar' ! S  ! E_{i}     = \rho_{ij}    J_{j}
+            elseif (index(prop%property,'thermal conductivity')     .ne.0) then; prop%rank = 2; prop%axial_polar = 'polar' ! S  ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
+            elseif (index(prop%property,'thermoelectricity')        .ne.0) then; prop%rank = 2; prop%axial_polar = 'polar' ! N  ! 
+            elseif (index(prop%property,'seebeck')                  .ne.0) then; prop%rank = 2; prop%axial_polar = 'polar' ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
+            elseif (index(prop%property,'peltier')                  .ne.0) then; prop%rank = 2; prop%axial_polar = 'polar' ! N  ! q_{i}     = \pi_{ij}     J_{j}
             !------------------------------------------------- THIRD-RANK TENSORS -------------------------------------------------
-            elseif (index(prop%property,'hall')                     .ne.0) then; prop%tensor_rank = 3;                            !    ! E_{i}     = h_{ijk}      J_{j} H_{k} 
-            elseif (index(prop%property,'piezoelectricity')         .ne.0) then; prop%tensor_rank = 3; prop%axial_polar = 'polar' !    ! P_{i}     = d_{ijk}      \sigma_{jk}
-            elseif (index(prop%property,'piezomagnetic')            .ne.0) then; prop%tensor_rank = 3; prop%axial_polar = 'axial' !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
+            elseif (index(prop%property,'hall')                     .ne.0) then; prop%rank = 3;                            !    ! E_{i}     = h_{ijk}      J_{j} H_{k} 
+            elseif (index(prop%property,'piezoelectricity')         .ne.0) then; prop%rank = 3; prop%axial_polar = 'polar' !    ! P_{i}     = d_{ijk}      \sigma_{jk}
+            elseif (index(prop%property,'piezomagnetic')            .ne.0) then; prop%rank = 3; prop%axial_polar = 'axial' !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
             !------------------------------------------------- FOURTH-RANK TENSORS ------------------------------------------------
-            elseif (index(prop%property,'elasticity')               .ne.0) then; prop%tensor_rank = 4; prop%axial_polar = 'polar' !    ! 
-            elseif (index(prop%property,'piezo-optic')              .ne.0) then; prop%tensor_rank = 4                             !    ! 
-            elseif (index(prop%property,'kerr')                     .ne.0) then; prop%tensor_rank = 4                             !    ! 
-            elseif (index(prop%property,'electrostriction')         .ne.0) then; prop%tensor_rank = 4                             !    ! 
+            elseif (index(prop%property,'elasticity')               .ne.0) then; prop%rank = 4; prop%axial_polar = 'polar' !    ! 
+            elseif (index(prop%property,'piezo-optic')              .ne.0) then; prop%rank = 4                             !    ! 
+            elseif (index(prop%property,'kerr')                     .ne.0) then; prop%rank = 4                             !    ! 
+            elseif (index(prop%property,'electrostriction')         .ne.0) then; prop%rank = 4                             !    ! 
             !------------------------------------------------- SXITH-RANK TENSORS -------------------------------------------------
-            elseif (index(prop%property,'third-order elasticity')   .ne.0) then; prop%tensor_rank = 6; prop%axial_polar = 'polar' !    ! 
+            elseif (index(prop%property,'third-order elasticity')   .ne.0) then; prop%rank = 6; prop%axial_polar = 'polar' !    ! 
             !----------------------------------------------------------------------------------------------------------------------
             else
                 stop 'Unknown property.'
             endif
             !----------------------------------------------------------------------------------------------------------------------
+            allocate(prop%dims(prop%rank))
+            prop%dims = 3
+            !
         end subroutine initialize_property
     end subroutine get_property
 
-    subroutine     get_flattened_intrinsic_symmetry_group(fig,prop)
+    subroutine     get_flat_intrinsic_group(fig,prop)
         !
         implicit none
         !
@@ -207,13 +200,10 @@ module am_symmetry_rep
         !
         ! number of spatial dimensions
         ndims = 3
-        !
         ! get transpositional operator
         T = transp_operator(ndims)
-        !
         ! number of bases functions in representation
-        fig%nbases = ndims**prop%tensor_rank
-        !
+        fig%nbases = ndims**prop%rank
         ! generate intrinsic symmetries
         k=0
         if     (index(prop%property,'conductivity'     ).ne.0 &
@@ -287,22 +277,19 @@ module am_symmetry_rep
             enddo
             enddo
         end function  transp_operator
-    end subroutine get_flattened_intrinsic_symmetry_group
+    end subroutine get_flat_intrinsic_group
 
-    subroutine     get_flattened_point_group(fpg,prop,pg,uc)
+    subroutine     get_flat_point_group(fpg,prop,pg,uc)
         !
         class(am_class_flattened_group), intent(out):: fpg ! flattened point group
         class(am_class_property),        intent(in) :: prop! properties
         type(am_class_point_group)     , intent(in) :: pg  ! seitz point group
         type(am_class_unit_cell)       , intent(in) :: uc  ! unit cell
-        integer :: ndims       ! number of spatial dimensions (ndims = 3, usually)
         integer :: i
         !
         !
-        ! number of spatial dimensions
-        ndims = 3
         ! number of bases functions in representation
-        fpg%nbases = ndims**prop%tensor_rank
+        fpg%nbases = product(prop%dims)
         ! number of symmetries
         fpg%nsyms = pg%nsyms
         ! generate intrinsic symmetries
@@ -311,9 +298,9 @@ module am_symmetry_rep
         ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
         do i = 1, pg%nsyms
             if     (index(prop%axial_polar,'axial').ne.0) then
-                fpg%sym(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=uc%bas),prop%tensor_rank) * det(pg%sym(1:3,1:3,i))
+                fpg%sym(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=uc%bas),prop%rank) * det(pg%sym(1:3,1:3,i))
             elseif (index(prop%axial_polar,'polar').ne.0) then
-                fpg%sym(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=uc%bas),prop%tensor_rank)
+                fpg%sym(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=uc%bas),prop%rank)
             endif
             ! correct basic rounding error
             where (abs(fpg%sym(:,:,i)).lt.tiny) fpg%sym(:,:,i) = 0
@@ -331,7 +318,7 @@ module am_symmetry_rep
         !
         if (.not.isequal(fpg%sym(:,:,1),eye(fpg%nbases))) stop 'FPG: Identity is not first.'
         !
-    end subroutine get_flattened_point_group
+    end subroutine get_flat_point_group
 
     subroutine     get_direct_product(C,A,B)
         !
@@ -387,52 +374,31 @@ module am_symmetry_rep
         !
     end subroutine get_direct_product
 
+    ! operates on relations
+
     function       get_relations(flat) result(relations)
-        ! At this point A is an augmented matrix of the form
-        !
-        !        [ A1 , B1 ]
-        !   A =  [ A2 , B2 ]
-        !        [ A3 , I  ]
-        !
-        ! in which the square matrix [A1,B1;A2,B2] is an augmented upper triangular matrix corresponding to 2*flat%nbases
-        ! coupled equations which describe how the terms are interrelated. The last augmented matrix [A3,I]
-        ! describes how the tensor rotates under the most recently considered symmetry operation R. In order
-        ! incorporate the effect of symmetry operation R on the set of linearly coupled 2*flat%nbases equations, LU
-        ! factorization is performed. By doing so, the augmented matrix A is converted into its factored upper
-        ! triangular matrix U, which, by definition, only occupies rows corresponding to the smallest dimension of
-        ! the matrix [either row or column, i.e. min(m,n)]. For this case, it occupies the top 2x2 augmented blocks.
-        ! This is also why the symmetry equations are added as components in the [A3,I] block -- so they don't
-        ! overlap with U.
-        !
+        ! 
         implicit none
         !
         class(am_class_flattened_group), intent(inout) :: flat
         real(dp), allocatable :: relations(:,:)     !
-        integer , allocatable :: class_member(:,:)  !
-        integer , allocatable :: class_nelements(:) ! 
+        integer , allocatable :: class_member(:,:)  ! 
         real(dp), allocatable :: A(:,:)             ! A(2*flat%nbases,2*flat%nbases) - augmented matrix equation
         real(dp), allocatable :: LHS(:,:)           ! LHS(flat%nbases,flat%nbases)   - left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
         real(dp), allocatable :: RHS(:,:)           ! RHS(flat%nbases,flat%nbases)   - right hand side of augmented matrix equation
         integer , allocatable :: indices(:)         ! used for clarity
-        integer :: nequations                       ! equation counter, for fun
         integer :: i, j                             ! loop variables
         !
         !
         ! get conjugacy class members
         class_member = member(id=flat%class_id)
-        ! get nmber of elements in each class
-        class_nelements = nelements(id=flat%class_id)
         ! intialize indices
         allocate(indices,source=[1:flat%nbases])
-        ! initialize equation counter
-        nequations = 0
         ! initialize augmented workspace matrix A
         allocate(A(3*flat%nbases,2*flat%nbases))
         A = 0
         ! use LU factorization to incorporate, one symmetry at a time, the effect of all symmetries on the flattened basis
         do j = 1, size(class_member,1) ! loop over classes
-            ! track number of symmetry equations for fun
-            nequations = nequations + flat%nbases*class_nelements(j)
             ! get index of class representative
             i=class_member(j,1)
             ! construct slice of A
@@ -459,11 +425,25 @@ module am_symmetry_rep
         !
         allocate(relations, source=RHS)
         !
+        ! NOTES:
+        !
+        !        [ A1 , B1 ]
+        !   A =  [ A2 , B2 ]
+        !        [ A3 , I  ]
+        !
+        ! in which the square matrix [A1,B1;A2,B2] is an augmented upper triangular matrix corresponding to 2*flat%nbases
+        ! coupled equations which describe how the terms are interrelated. The last augmented matrix [A3,I]
+        ! describes how the tensor rotates under the most recently considered symmetry operation R. In order
+        ! incorporate the effect of symmetry operation R on the set of linearly coupled 2*flat%nbases equations, LU
+        ! factorization is performed. By doing so, the augmented matrix A is converted into its factored upper
+        ! triangular matrix U, which, by definition, only occupies rows corresponding to the smallest dimension of
+        ! the matrix [either row or column, i.e. min(m,n)]. For this case, it occupies the top 2x2 augmented blocks.
+        ! This is also why the symmetry equations are added as components in the [A3,I] block -- so they don't
+        ! overlap with U.    end function   get_relations
+        !
     end function   get_relations
 
-    ! operates on relations
-
-    function       merge_symmetry_relations(relationsA,relationsB) result(relationsC)
+    function       combine_relations(relationsA,relationsB) result(relationsC)
         !
         implicit none
         !
@@ -513,9 +493,9 @@ module am_symmetry_rep
         !
         allocate(relationsC, source=RHS)
         !
-    end function   merge_symmetry_relations
+    end function   combine_relations
 
-    function       get_null(relations) result(is_null)
+    pure function  get_null(relations) result(is_null)
         !
         implicit none
         !
@@ -527,7 +507,7 @@ module am_symmetry_rep
         !
     end function   get_null
 
-    function       get_independent(relations) result(is_independent)
+    pure function  get_independent(relations) result(is_independent)
         !
         implicit none
         !
@@ -539,7 +519,7 @@ module am_symmetry_rep
         !
     end function   get_independent
 
-    function       get_depenent(relations) result(is_dependent)
+    pure function  get_depenent(relations) result(is_dependent)
         !
         implicit none
         !
@@ -552,18 +532,21 @@ module am_symmetry_rep
         !
     end function   get_depenent
 
-    subroutine     print_relations(relations,flags)
+    subroutine     print_relations(relations,dims,flags)
         !
         ! flags - null, dependent, independent
+        !       - bra, ket
         !
         implicit none
         !
         real(dp), intent(in) :: relations(:,:)
+        integer , optional, intent(in) :: dims(:)
         character(*), intent(in) :: flags
         integer :: i, j 
         logical, allocatable :: is_null(:)
         logical, allocatable :: is_independent(:)
         logical, allocatable :: is_dependent(:)
+        character(:), allocatable :: str
         integer :: nterms
         !
         ! get terms
@@ -581,43 +564,92 @@ module am_symmetry_rep
         ! irreducible symmetry relations
         if ((index(flags,'independent').ne.0).or.(index(flags,'dependent').ne.0).or.(index(flags,'null').ne.0)) then
             !
+            if (.not.present(dims)) stop 'dims is required for priting relations'
+            !
             write(*,'(a5,a)') ' ... ', 'irreducible symmetry relations'
             !
+            ! write the independent terms (equal only to themselves)
             if (index(flags,'independent').ne.0) then
-                ! write the independent terms (equal only to themselves)
-                do i = 1, nterms
-                    if (is_independent(i)) then
-                        write(*,'(5x,a1,a,a1,a1,a)',advance='no') 'a',trim(int2char(i)),'=', 'a', trim(int2char(i))
-                        write(*,*)
-                    endif
-                enddo
+            do i = 1, nterms
+                if (is_independent(i)) then
+                    str = get_basis_label(dims=dims, ind=i ,flags=flags)
+                    write(*,'(5x,a,a,a)',advance='no') trim(str),' = ', trim(str)
+                    write(*,*)
+                endif
+            enddo
             endif
             !
+            ! write the dependent terms
             if (index(flags,'dependent').ne.0) then
-                ! write the dependent terms
-                do i = 1,nterms
-                    if (is_dependent(i)) then
-                        write(*,'(5x,a1,a,a1)',advance='no') 'a',trim(int2char(i)),'='
-                        do j = 1,nterms
-                            if (abs(relations(i,j)).gt.tiny) then
-                                write(*,'(a,a,a)',advance='no') trim(dbl2charSP(relations(i,j),7)), '*a', trim(int2char(j))
-                            endif
-                        enddo
-                        write(*,*)
-                    endif
-                enddo
+            do i = 1,nterms
+                if (is_dependent(i)) then
+                    str = get_basis_label(dims=dims, ind=i ,flags='')
+                    write(*,'(5x,a,a)',advance='no') trim(str), ' = '
+                    do j = 1,nterms
+                        if (abs(relations(i,j)).gt.tiny) then
+                            str = get_basis_label(dims=dims, ind=j ,flags=flags)
+                            write(*,'(a,a)',advance='no') trim(dbl2charSP(relations(i,j),7)), trim(str)
+                        endif
+                    enddo
+                    write(*,*)
+                endif
+            enddo
             endif
             !
+            ! write null terms
             if (index(flags,'null').ne.0) then
-                ! write null terms
-                do i = 1, nterms
-                    if (is_null(i)) then
-                        write(*,'(5x,a1,a,a1,a1,a)',advance='no') 'a',trim(int2char(i)),'= 0'
-                        write(*,*)
-                    endif
-                enddo
+            do i = 1, nterms
+                if (is_null(i)) then
+                    str = get_basis_label(dims=dims, ind=i ,flags=flags)
+                    write(*,'(5x,a,a)',advance='no') trim(str),' = 0'
+                    write(*,*)
+                endif
+            enddo
             endif
         endif
+        !
+        contains
+            function     get_basis_label(dims,ind,flags) result(str)
+                !
+                implicit none
+                !
+                integer     , intent(in) :: dims(:)
+                integer     , intent(in) :: ind
+                character(*), intent(in) :: flags
+                character(:), allocatable :: str
+                integer     , allocatable :: sub(:)
+                integer :: i, n
+                !
+                allocate(character(100) :: str)
+                !
+                n = size(dims)
+                !
+                sub = ind2sub(dims=dims,ind=ind)
+                !
+                i = 1
+                if     (index(flags,'bra')) then
+                    str = '<'//trim(int2char(sub(i)))
+                elseif (index(flags,'ket')) then
+                    str = '|'//trim(int2char(sub(i)))
+                else
+                    str = 'a('//trim(int2char(sub(i)))
+                endif
+                !
+                if (n.ge.2) then
+                do i = 2, n
+                    str = trim(str)//','//trim(int2char(sub(i)))
+                enddo
+                endif
+                !
+                if     (index(flags,'bra')) then
+                    str = trim(str)//'|'
+                elseif (index(flags,'ket')) then
+                    str = trim(str)//'>'
+                else
+                    str = trim(str)//')'
+                endif
+                !
+            end function get_basis_label
     end subroutine print_relations
 
 

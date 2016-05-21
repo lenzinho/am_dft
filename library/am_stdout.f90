@@ -119,14 +119,13 @@ contains
 
     function      print_pretty(dbl) result(str)
         !
-        ! call it with trim
+        ! call it with trim(print_pretty())
         !
         implicit none
         !
         real(dp), intent(in) :: dbl
         character(len=column_width) :: str
         integer :: num_den(2)
-        !
         !
         ! convert double to 0
         if (abs(dbl).lt.tiny) then

@@ -23,6 +23,18 @@ module am_matlab
         module procedure ones, ones_nxm
     end interface ! ones
 
+    interface meshgrid
+        module procedure dmeshgrid, imeshgrid
+    end interface ! meshgrid
+
+    interface isequal
+        module procedure d_isequal, dv_isequal, dm_isequal, z_isequal, zv_isequal, zm_isequal
+    end interface ! isequal
+
+    interface trace
+        module procedure dtrace, ztrace
+    end interface ! trace
+    
     interface unique
         module procedure dvunique, dmunique, ivunique, iunique
     end interface ! unique
@@ -31,18 +43,14 @@ module am_matlab
         module procedure dm_issubset, im_issubset, dv_issubset, iv_issubset, d_issubset, i_issubset
     end interface ! issubset
 
-    interface meshgrid
-        module procedure dmeshgrid, imeshgrid
-    end interface ! meshgrid
+    interface cumsum
+        module procedure dcumsum, icumsum
+    end interface ! cumsum
 
-    interface isequal
-        module procedure :: d_isequal, dv_isequal, dm_isequal, z_isequal, zv_isequal, zm_isequal
-    end interface ! isequal
+    interface cumprod
+        module procedure dcumprod, icumprod
+    end interface ! cumprod
 
-    interface trace
-        module procedure :: dtrace, ztrace
-    end interface ! trace
-    
     contains
 
     ! progress bar
@@ -58,6 +66,8 @@ module am_matlab
         WRITE(*,"(5x,f6.2,A,$)") iteration/real(maximum,dp)*100.0_dp, CHAR(13)
         !
     end subroutine show_progress
+
+    ! physics
 
     ! angular momenta operators
 
@@ -271,6 +281,125 @@ module am_matlab
         enddo
         !
     end function   Jm
+
+    ! special functions
+
+    pure function legendre(l,m,x) result(y)
+        !
+        ! Associated legrende polynomial
+        !
+        ! W. H. Press, B. P. Flannery, S. A. Teukolsky, and W. T. Vetterling, Numerical Recipes in Fortran 77: The Art
+        ! of Scientific Computing, 2 edition (Cambridge University Press, Cambridge England ; New York, 1992), p 246.
+        !
+        implicit none
+        !
+        integer , intent(in) :: l,m
+        real(dp), intent(in) :: x(:)
+        real(dp), allocatable :: y(:)
+        integer  :: ll
+        real(dp) :: pll(size(x))
+        real(dp) :: pmm(size(x))
+        real(dp) :: pmmp1(size(x))
+        real(dp) :: somx2(size(x))
+        !
+        allocate(y(size(x)))
+        !
+        if ((m.lt.0).or.(m.gt.l).or.(all(abs(x).gt.1.0_dp))) then
+            y = 0
+        endif
+        !
+        pmm=1.0
+        if (m > 0) then
+            somx2=sqrt((1.0_dp-x)*(1.0_dp+x))
+            pmm=product(arth(1.0_dp,2.0_dp,m))*somx2**m
+            if (mod(m,2) == 1) pmm=-pmm
+        end if
+        if (l == m) then
+            y=pmm
+        else
+            pmmp1=x*(2*m+1)*pmm
+            if (l == m+1) then
+                y=pmmp1
+            else
+                do ll=m+2,l
+                    pll=(x*(2*ll-1)*pmmp1-(ll+m-1)*pmm)/(ll-m)
+                    pmm=pmmp1
+                    pmmp1=pll
+                end do
+                y=pll
+            end if
+        end if
+        contains
+        pure function arth(first,increment,n)
+            !
+            implicit none
+            !
+            real(dp), intent(in) :: first
+            real(dp), intent(in) :: increment
+            integer , intent(in) :: n
+            real(dp) :: arth(n)
+            integer  :: k,k2
+            real(dp) :: temp
+            !
+            if (n > 0) arth(1)=first
+            if (n <= 16) then
+                do k=2,n
+                    arth(k)=arth(k-1)+increment
+                enddo
+            else
+                do k=2,8
+                    arth(k)=arth(k-1)+increment
+                end do
+                temp=increment*8
+                k=8
+                do
+                    if (k >= n) exit
+                    k2=k+k
+                    arth(k+1:min(k2,n))=temp+arth(1:min(k,n-k))
+                    temp=temp+temp
+                    k=k2
+                enddo
+            end if
+        end function arth
+    end function  legendre
+
+    pure function laguerre(k,p,x) result(y)
+        ! associated Laguerre polynomial L_k^p(x)(k,p,x)
+        ! Using the expression from Samuel Shaw Ming Wong "Computational Methods in Physics and Engineering", Eq 4-86 p 139
+        ! Note, there is a typographical error on http://mathworld.wolfram.com/AssociatedLaguerrePolynomial.html Eq 10
+        ! Also see Linus Pauling "Introuction to Quantum Mechancs"
+        implicit none 
+        !
+        integer , intent(in) :: k, p
+        real(dp), intent(in) :: x(:)
+        real(dp), allocatable :: y(:)
+        integer :: j
+        !
+        allocate(y,mold=x)
+        y=0.0_dp
+        !
+        do j = 0, k
+            y = y + nchoosek(k+p,k-j) * (-x)**j / factorial(j)
+        enddo
+        !
+    end function  laguerre
+
+    pure function heavi(m)
+        !
+        ! A. V. Podolskiy and P. Vogl, Phys. Rev. B 69, 233101 (2004). Eq 15
+        !
+        implicit none
+        !
+        integer, intent(in) :: m
+        real(dp) :: heavi
+        !
+        if (m.ge.0) then
+            heavi = 1.0_dp
+        else
+            heavi = 0.0_dp
+        endif
+        !
+    end function  heavi
 
     ! rotation functions
 
@@ -731,126 +860,7 @@ module am_matlab
         !
     end function  irrep_character
 
-    ! special functions
-
-    pure function legendre(l,m,x) result(y)
-        !
-        ! Associated legrende polynomial
-        !
-        ! W. H. Press, B. P. Flannery, S. A. Teukolsky, and W. T. Vetterling, Numerical Recipes in Fortran 77: The Art
-        ! of Scientific Computing, 2 edition (Cambridge University Press, Cambridge England ; New York, 1992), p 246.
-        !
-        implicit none
-        !
-        integer , intent(in) :: l,m
-        real(dp), intent(in) :: x(:)
-        real(dp), allocatable :: y(:)
-        integer  :: ll
-        real(dp) :: pll(size(x))
-        real(dp) :: pmm(size(x))
-        real(dp) :: pmmp1(size(x))
-        real(dp) :: somx2(size(x))
-        !
-        allocate(y(size(x)))
-        !
-        if ((m.lt.0).or.(m.gt.l).or.(all(abs(x).gt.1.0_dp))) then
-            y = 0
-        endif
-        !
-        pmm=1.0
-        if (m > 0) then
-            somx2=sqrt((1.0_dp-x)*(1.0_dp+x))
-            pmm=product(arth(1.0_dp,2.0_dp,m))*somx2**m
-            if (mod(m,2) == 1) pmm=-pmm
-        end if
-        if (l == m) then
-            y=pmm
-        else
-            pmmp1=x*(2*m+1)*pmm
-            if (l == m+1) then
-                y=pmmp1
-            else
-                do ll=m+2,l
-                    pll=(x*(2*ll-1)*pmmp1-(ll+m-1)*pmm)/(ll-m)
-                    pmm=pmmp1
-                    pmmp1=pll
-                end do
-                y=pll
-            end if
-        end if
-        contains
-        pure function arth(first,increment,n)
-            !
-            implicit none
-            !
-            real(dp), intent(in) :: first
-            real(dp), intent(in) :: increment
-            integer , intent(in) :: n
-            real(dp) :: arth(n)
-            integer  :: k,k2
-            real(dp) :: temp
-            !
-            if (n > 0) arth(1)=first
-            if (n <= 16) then
-                do k=2,n
-                    arth(k)=arth(k-1)+increment
-                enddo
-            else
-                do k=2,8
-                    arth(k)=arth(k-1)+increment
-                end do
-                temp=increment*8
-                k=8
-                do
-                    if (k >= n) exit
-                    k2=k+k
-                    arth(k+1:min(k2,n))=temp+arth(1:min(k,n-k))
-                    temp=temp+temp
-                    k=k2
-                enddo
-            end if
-        end function arth
-    end function  legendre
-
-    pure function laguerre(k,p,x) result(y)
-        ! associated Laguerre polynomial L_k^p(x)(k,p,x)
-        ! Using the expression from Samuel Shaw Ming Wong "Computational Methods in Physics and Engineering", Eq 4-86 p 139
-        ! Note, there is a typographical error on http://mathworld.wolfram.com/AssociatedLaguerrePolynomial.html Eq 10
-        ! Also see Linus Pauling "Introuction to Quantum Mechancs"
-        implicit none 
-        !
-        integer , intent(in) :: k, p
-        real(dp), intent(in) :: x(:)
-        real(dp), allocatable :: y(:)
-        integer :: j
-        !
-        allocate(y,mold=x)
-        y=0.0_dp
-        !
-        do j = 0, k
-            y = y + nchoosek(k+p,k-j) * (-x)**j / factorial(j)
-        enddo
-        !
-    end function  laguerre
-
-    pure function heavi(m)
-        !
-        ! A. V. Podolskiy and P. Vogl, Phys. Rev. B 69, 233101 (2004). Eq 15
-        !
-        implicit none
-        !
-        integer, intent(in) :: m
-        real(dp) :: heavi
-        !
-        if (m.ge.0) then
-            heavi = 1.0_dp
-        else
-            heavi = 0.0_dp
-        endif
-        !
-    end function  heavi
-
-    ! statistics functions
+    ! statistics
 
     pure function factorial(n) result(y)
         !
@@ -946,7 +956,7 @@ module am_matlab
         !
     end function  primes
 
-    ! file io functions
+    ! file io and stdout stuff
 
     function      fopen(filename,permission) result(fid)
         !
@@ -1053,6 +1063,8 @@ module am_matlab
         !
     end function  strsplit
     
+
+
     pure function cross_product(a,b) result(c)
         !
         implicit none
@@ -1065,6 +1077,8 @@ module am_matlab
         c(3) = a(1) * b(2) - a(2) * b(1)
         !
     end function  cross_product
+
+    ! fraction functions
 
     pure function lcm(a,b)
         !
@@ -1290,6 +1304,56 @@ module am_matlab
         end do
         deallocate(temp)
     end subroutine  rref    
+
+    ! matrix indexing
+
+    function      ind2sub(dims,ind) result(sub)
+        ! test with: ind2sub(dims=[5,3],ind=sub2ind(dims=[5,3],sub=[1,3]))
+        ! Map a scalar index of a flat 1D array to the equivalent
+        ! d-dimensional index
+        ! Example:
+        !     ind      -->        sub
+        ! | 1  4  7 |      | 1,1  1,2  1,3 |
+        ! | 2  5  8 |  --> | 2,1  2,2  2,3 |
+        ! | 3  6  9 |      | 3,1  3,2  3,3 |
+        integer, intent(in)  :: ind
+        integer, intent(in)  :: dims(:)
+        integer, allocatable :: sub(:)
+        integer :: i, ndims, ind1, ind2
+        !
+        ind1=ind
+        ndims = size(dims)
+        allocate(sub(ndims))
+        !
+        do i=1,ndims-1
+            ind2 = (ind1-1)/dims(i) + 1
+            sub(i) = ind1 - dims(i)*(ind2-1)
+            ind1 = ind2
+        enddo
+        sub(ndims) = ind1
+    end function  ind2sub
+
+    function      sub2ind(dims,sub) result(ind)
+        ! test with: ind2sub(dims=[5,3],ind=sub2ind(dims=[5,3],sub=[1,3]))
+        ! Map a d-dimensional index to the scalar index of the equivalent flat array
+        ! Example:
+        !       sub         -->     ind
+        ! | 1,1  1,2  1,3 |     | 1  4  7 |
+        ! | 2,1  2,2  2,3 | --> | 2  5  8 |
+        ! | 3,1  3,2  3,3 |     | 3  6  9 |
+        integer, intent(in) :: dims(:)
+        integer, intent(in) :: sub(:)
+        integer :: ind
+        integer, allocatable :: k(:)
+        integer :: i, ndims
+        !
+        ndims = size(dims)
+        allocate(k,source=[1,cumprod(dims(1:(ndims-1)))])
+        ind = 1
+        do i = 1, ndims
+            ind = ind + (sub(i)-1)*k(i);
+        enddo
+    end function  sub2ind
 
     ! matrix generation
 
@@ -1935,7 +1999,145 @@ module am_matlab
         !
     end function  i_issubset
 
-    ! _isequal
+    ! cumulative sum / product (from numerical recipies)
+
+    recursive function dcumsum(arr,seed) result(ans)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: arr(:)
+        real(dp), intent(in), optional :: seed
+        real(dp), allocatable :: ans(:)
+        real(dp) :: sd
+        integer  :: n,j
+        integer  :: npar_cumsum
+        npar_cumsum = 8
+        !
+        n=size(arr)
+        if (n.eq.0) return
+        !
+        if (present(seed)) then
+            sd=seed
+        else
+            sd=0.0_dp
+        endif
+        !
+        ans(1)=arr(1)+sd
+        if (n < npar_cumsum) then
+            do j=2,n
+                ans(j)=ans(j-1)+arr(j)
+            end do
+        else
+            ans(2:n:2)=cumsum(arr(2:n:2)+arr(1:n-1:2),sd)
+            ans(3:n:2)=ans(2:n-1:2)+arr(3:n:2)
+        end if
+        !
+    end function       dcumsum
+
+    recursive function icumsum(arr,seed) result(ans)
+        !
+        implicit none
+        !
+        integer, intent(in) :: arr(:)
+        integer, intent(in), optional :: seed
+        integer, allocatable :: ans(:)
+        integer :: sd
+        integer :: n,j
+        integer :: npar_cumsum
+        npar_cumsum = 8
+        !
+        n=size(arr)
+        if (n.eq.0) return
+        !
+        if (present(seed)) then
+            sd=seed
+        else
+            sd=0.0_dp
+        endif
+        !
+        ans(1)=arr(1)+sd
+        if (n < npar_cumsum) then
+            do j=2,n
+                ans(j)=ans(j-1)+arr(j)
+            end do
+        else
+            ans(2:n:2)=cumsum(arr(2:n:2)+arr(1:n-1:2),sd)
+            ans(3:n:2)=ans(2:n-1:2)+arr(3:n:2)
+        end if
+        !
+    end function       icumsum
+
+    recursive function dcumprod(arr,seed) result(ans)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: arr(:)
+        real(dp), intent(in), optional :: seed
+        real(dp), allocatable :: ans(:)
+        real(dp) :: sd
+        integer  :: n,j
+        integer  :: npar_cumprod
+        npar_cumprod = 8
+        !
+        n=size(arr)
+        allocate(ans(n))
+        !
+        if (n.eq.0) return
+        !
+        if (present(seed)) then
+            sd=seed
+        else
+            sd=1.0_dp
+        endif
+        !
+        ans(1)=arr(1)*sd
+        if (n < npar_cumprod) then
+            do j=2,n
+                ans(j)=ans(j-1)*arr(j)
+            end do
+        else
+            ans(2:n:2)=cumprod(arr(2:n:2)*arr(1:n-1:2),sd)
+            ans(3:n:2)=ans(2:n-1:2)*arr(3:n:2)
+        end if
+        !
+    end function       dcumprod
+
+    recursive function icumprod(arr,seed) result(ans)
+        !
+        implicit none
+        !
+        integer, intent(in) :: arr(:)
+        integer, intent(in), optional :: seed
+        integer, allocatable :: ans(:)
+        integer :: sd
+        integer :: n,j
+        integer :: npar_cumprod
+        npar_cumprod = 8
+        !
+        n=size(arr)
+        allocate(ans(n))
+        !
+        if (n.eq.0) return
+        !
+        if (present(seed)) then
+            sd=seed
+        else
+            sd=1.0_dp
+        endif
+        !
+        ans(1)=arr(1)*sd
+        if (n < npar_cumprod) then
+            do j=2,n
+                ans(j)=ans(j-1)*arr(j)
+            end do
+        else
+            ans(2:n:2)=cumprod(arr(2:n:2)*arr(1:n-1:2),sd)
+            ans(3:n:2)=ans(2:n-1:2)*arr(3:n:2)
+        end if
+        !
+    end function       icumprod
+
+    ! isequal
 
     pure function d_isequal(x,y,iopt_prec) result(bool)
         !
@@ -2134,5 +2336,6 @@ module am_matlab
         enddo
         !
     end function  smallest_nonzero
+
 
 end module am_matlab
