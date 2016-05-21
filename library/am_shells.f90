@@ -15,41 +15,20 @@ module am_shells
     private
 
     type, public, extends(am_class_unit_cell) :: am_shell_cell
-        !
-        ! identifies irreducible atoms
-        integer :: i
-        integer :: j
-        ! identifies primitive atoms
-        integer :: m
-        integer :: n
-        ! tight binding matrix elements
-        real(dp), allocatable :: Vsk(:,:)
-        !
-        ! <Inherited from am_class_unit_cell>
-        ! real(dp) :: bas(3,3) !> column vectors a(1:3,i), a(1:3,j), a(1:3,k)
-        ! integer  :: natoms   !> number of atoms
-        ! real(dp), allocatable :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates
-        ! integer , allocatable :: Z(:) !> identifies type of element
-        ! integer , allocatable :: uc_id(:) ! identifies corresponding atom in unit cell
-        ! integer , allocatable :: pc_id(:) ! identifies corresponding atom in primitive cell
-        ! integer , allocatable :: ic_id(:) ! identifies corresponding atom in irreducible cell
-        ! </Inherited from am_class_unit_cell>
-        !
+        integer :: i ! identifies irreducible atoms
+        integer :: j ! identifies irreducible atoms
+        integer :: m ! identifies primitive atoms
+        integer :: n ! identifies primitive atoms
     end type am_shell_cell
 
     type, public :: am_class_pair_shell
-        ! 
         integer :: nshells ! how many shells irreducible atoms
         type(am_shell_cell), allocatable :: shell(:) ! shell(k)
-        !
         integer, allocatable :: ip_id(:) ! identifies irreducible pair
         integer, allocatable :: pp_id(:) ! identifies primitive cell pair
-        !
     contains
-        !
         procedure :: get_primitive
         procedure :: get_irreducible
-        !
     end type am_class_pair_shell
 
 contains

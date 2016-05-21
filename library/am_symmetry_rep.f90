@@ -144,8 +144,8 @@ module am_symmetry_rep
             !----------------------------------------------------------------------------------------------------------------------
             !
             ! Tensors transferm differently whether they are axial or polar:
-            ! POLAR :  T_{i,j,k,l,...} =        sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
-            ! AXIAL :  T_{i,j,k,l,...} = det(R) sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
+            ! POLAR ( odd under inv.):  T_{i,j,k,l,...} =        sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
+            ! AXIAL (even under inv.):  T_{i,j,k,l,...} = det(R) sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
             ! Thus, all axial tensors of even rank and polar tensors of odd rank are null are null.  Wooten p 485. Eq. 13.21. 
             !
             ! Onsager’s Principle requires that the electric resistivity and thermal conductivity tensors be symmetric.
@@ -156,6 +156,7 @@ module am_symmetry_rep
             !------------------------------------------------- FIRST-RANK TENSORS --------------------------------------------------
             if     (index(prop%property,'pyroelectricity')          .ne.0) then; prop%rank = 1                             !    ! P_{i}     = p_{i} \Delta T
             !------------------------------------------------- SECOND-RANK TENSORS -------------------------------------------------
+            elseif (index(prop%property,'dielectric')               .ne.0) then; prop%rank = 2; prop%axial_polar = 'polar' 
             elseif (index(prop%property,'electrical susceptibility').ne.0) then; prop%rank = 2; prop%axial_polar = 'polar' ! S  ! P_{i}     = \alpha_{ij}  E_{j}
             elseif (index(prop%property,'magnetic susceptibility')  .ne.0) then; prop%rank = 2; prop%axial_polar = 'axial' ! S  ! M_{i}     = \mu_{ij}     H_{j}
             elseif (index(prop%property,'magneto-electric')         .ne.0) then; prop%rank = 2; prop%axial_polar = 'axial' 
@@ -167,7 +168,7 @@ module am_symmetry_rep
             elseif (index(prop%property,'seebeck')                  .ne.0) then; prop%rank = 2; prop%axial_polar = 'polar' ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
             elseif (index(prop%property,'peltier')                  .ne.0) then; prop%rank = 2; prop%axial_polar = 'polar' ! N  ! q_{i}     = \pi_{ij}     J_{j}
             !------------------------------------------------- THIRD-RANK TENSORS -------------------------------------------------
-            elseif (index(prop%property,'hall')                     .ne.0) then; prop%rank = 3;                            !    ! E_{i}     = h_{ijk}      J_{j} H_{k} 
+            elseif (index(prop%property,'hall')                     .ne.0) then; prop%rank = 3;                            !    ! E_{i}     = h_{ijk}      J_{j} H_{k} - has two polar componnts {ij} and one axial component {k}
             elseif (index(prop%property,'piezoelectricity')         .ne.0) then; prop%rank = 3; prop%axial_polar = 'polar' !    ! P_{i}     = d_{ijk}      \sigma_{jk}
             elseif (index(prop%property,'piezomagnetic')            .ne.0) then; prop%rank = 3; prop%axial_polar = 'axial' !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
             !------------------------------------------------- FOURTH-RANK TENSORS ------------------------------------------------
@@ -400,6 +401,7 @@ module am_symmetry_rep
         allocate(A(3*flat%nbases,2*flat%nbases))
         A = 0
         ! use LU factorization to incorporate, one symmetry at a time, the effect of all symmetries on the flattened basis
+        ! enough to loop over class representatives, which are group generators
         do j = 1, size(class_member,1) ! loop over classes
             ! get index of class representative
             i=class_member(j,1)
