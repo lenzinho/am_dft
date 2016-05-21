@@ -300,6 +300,7 @@ contains
         type(am_class_options)     , intent(in) :: opts
         integer, allocatable :: indicies(:)
         logical, allocatable :: mask(:)
+        real(dp),allocatable :: wrk(:,:,:)
         integer :: i
         !
         allocate(mask(sg%nsyms))
@@ -314,8 +315,11 @@ contains
         allocate(indicies(sg%nsyms))
         indicies=[1:sg%nsyms]
         !
+        allocate(wrk, source=sg%sym(:,:,pack(indicies,mask)))
+        wrk(1:3,4,:) = 0 ! set all translations to zero
+        !
         ! create group
-        call revg%create(seitz=sg%sym(:,:,pack(indicies,mask)))
+        call revg%create(seitz=unique(wrk))
         !
     end subroutine get_reversal_group
 
@@ -2037,9 +2041,12 @@ contains
         !
         !
         if (k.ne.0) then
-            write(*,'(5x)') 'Definitions:'
+            write(*,'(5x,a)') 'Definitions:'
             do i = 1, k
-                write(*,'(5x,a,a)') char(char_start+k)//' = ', trim(dbl2char(real(s(i)),8))//trim(dbl2charSP(aimag(s(i)),9))//'i'
+                write(*,'(5x)',advance='no')
+                write(*,'(a)' ,advance='no') char(char_start+k)//' = '
+                write(*,'(a)' ,advance='no') trim(dbl2char(real(s(i)),8))//trim(dbl2charSP(aimag(s(i)),9))//'i'
+                write(*,*)
             enddo
             !
         endif

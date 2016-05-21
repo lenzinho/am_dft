@@ -6,7 +6,7 @@ module am_symmetry_rep
     use am_options
     use am_symmetry
     use am_matlab
-    use am_unit_cell
+    use am_prim_cell
 
     implicit none
 
@@ -32,7 +32,7 @@ module am_symmetry_rep
         integer       :: rank ! tensor rank
         integer , allocatable :: dims(:) ! tensor dimensions
         real(dp), allocatable :: relations(:,:)
-        ! direct product of intrinsic and point groups takes too long (merging relations instead)
+        ! direct product of intrinsic and point groups takes too long (combine their relations instead)
         type(am_class_flattened_group) :: fig  ! flattened intrinsic symmetry group
         type(am_class_flattened_group) :: fpg  ! flattened point group
         contains
@@ -93,12 +93,12 @@ module am_symmetry_rep
 
     ! operates on prop
 
-    subroutine     get_property(prop,uc,pg,opts,property)
+    subroutine     get_property(prop,pc,pg,opts,property)
         !  
         implicit none
         !
         class(am_class_property),    intent(out):: prop
-        class(am_class_unit_cell),   intent(in) :: uc
+        class(am_class_prim_cell),   intent(in) :: pc
         class(am_class_point_group), intent(in) :: pg
         type(am_class_options),      intent(in) :: opts
         character(*),                intent(in) :: property
@@ -113,7 +113,7 @@ module am_symmetry_rep
         prop%fig%relations = prop%fig%get_relations()
         call print_relations(relations=prop%fig%relations,flags='')
         !
-        call prop%fpg%get_flat_point_group(prop=prop, pg=pg, uc=uc)
+        call prop%fpg%get_flat_point_group(prop=prop, pg=pg, pc=pc)
         if (opts%verbosity.ge.1) call am_print('point symmetries', prop%fpg%nsyms)
         !
         prop%fpg%relations = prop%fpg%get_relations()
@@ -182,6 +182,7 @@ module am_symmetry_rep
                 stop 'Unknown property.'
             endif
             !----------------------------------------------------------------------------------------------------------------------
+            !
             allocate(prop%dims(prop%rank))
             prop%dims = 3
             !
@@ -279,12 +280,12 @@ module am_symmetry_rep
         end function  transp_operator
     end subroutine get_flat_intrinsic_group
 
-    subroutine     get_flat_point_group(fpg,prop,pg,uc)
+    subroutine     get_flat_point_group(fpg,prop,pg,pc)
         !
         class(am_class_flattened_group), intent(out):: fpg ! flattened point group
         class(am_class_property),        intent(in) :: prop! properties
         type(am_class_point_group)     , intent(in) :: pg  ! seitz point group
-        type(am_class_unit_cell)       , intent(in) :: uc  ! unit cell
+        type(am_class_prim_cell)       , intent(in) :: pc  ! unit cell
         integer :: i
         !
         !
@@ -299,9 +300,9 @@ module am_symmetry_rep
         do i = 1, pg%nsyms
             !
             if     (index(prop%axial_polar,'axial').ne.0) then
-                fpg%sym(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=uc%bas),prop%rank) * det(pg%sym(1:3,1:3,i))
+                fpg%sym(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=pc%bas),prop%rank) * det(pg%sym(1:3,1:3,i))
             elseif (index(prop%axial_polar,'polar').ne.0) then
-                fpg%sym(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=uc%bas),prop%rank)
+                fpg%sym(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=pc%bas),prop%rank)
             endif
             ! correct basic rounding error
             where (abs(fpg%sym(:,:,i)).lt.tiny)  fpg%sym(:,:,i) = 0
@@ -428,23 +429,30 @@ module am_symmetry_rep
         !
     end function   get_relations
 
-    function       combine_relations(relationsA,relationsB) result(relationsC)
+    function       combine_relations(relationsA,relationsB,relationsC) result(relations)
+        !
+        ! combins up to three relations
         !
         implicit none
         !
-        real(dp), intent(in)  :: relationsA(:,:)    !
-        real(dp), intent(in)  :: relationsB(:,:)    !
-        real(dp), allocatable :: relationsC(:,:)    !
-        integer :: nbases
+        real(dp), intent(in) :: relationsA(:,:)
+        real(dp), intent(in) :: relationsB(:,:)
+        real(dp), intent(in), optional :: relationsC(:,:)
+        real(dp), allocatable :: relations(:,:)     !
         real(dp), allocatable :: A(:,:)             ! A(2*flat%nbases,2*flat%nbases) - augmented matrix equation
         real(dp), allocatable :: LHS(:,:)           ! LHS(flat%nbases,flat%nbases)   - left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
         real(dp), allocatable :: RHS(:,:)           ! RHS(flat%nbases,flat%nbases)   - right hand side of augmented matrix equation
         integer , allocatable :: indices(:)         ! used for clarity
+        integer :: nbases
         !
         !
-        if (size(relationsA,1).ne.size(relationsB,1)) stop 'Dimension mismatch: A1 vs B1'
-        if (size(relationsA,2).ne.size(relationsB,2)) stop 'Dimension mismatch: A2 vs B2'
         if (size(relationsA,1).ne.size(relationsA,2)) stop 'Dimension mismatch: A1 vs A2'
+        if (size(relationsA,1).ne.size(relationsB,1)) stop 'Dimension mismatch: A1 vs B1'
+        if (size(relationsA,1).ne.size(relationsB,2)) stop 'Dimension mismatch: A1 vs B2'
+        if (present(relationsC)) then
+        if (size(relationsA,1).ne.size(relationsC,1)) stop 'Dimension mismatch: A1 vs C1'
+        if (size(relationsA,1).ne.size(relationsC,2)) stop 'Dimension mismatch: A1 vs C2'
+        endif
         !
         nbases = size(relationsA,1)
         !
@@ -458,6 +466,10 @@ module am_symmetry_rep
         A(0*nbases+indices,0*nbases+indices) = eye(nbases)
         A(1*nbases+indices,1*nbases+indices) = relationsB
         A(1*nbases+indices,0*nbases+indices) = eye(nbases)
+        if (present(relationsC)) then
+        A(2*nbases+indices,1*nbases+indices) = relationsC
+        A(2*nbases+indices,0*nbases+indices) = eye(nbases)
+        endif
         ! incorporate symmetry via lu factorization (equivalent to applying rref)
         call lu(A)
         ! Apply Gram-Schmidt orthogonalization to obtain A in reduced row echelon form
@@ -476,7 +488,7 @@ module am_symmetry_rep
             stop 'Number of null, independent, and dependent terms do not sum to the number of terms.'
         endif
         !
-        allocate(relationsC, source=RHS)
+        allocate(relations, source=RHS)
         !
     end function   combine_relations
 
@@ -542,8 +554,8 @@ module am_symmetry_rep
         !
         write(*,'(a5,a,a)',advance='no') ' ... ', trim(int2char(nterms)), ' terms = '
         write(*,'(i4,a,f5.1,a)',advance='no') count(is_null)       , ' null ('       , count(is_null)       /real(nterms,dp)*100.0_dp , '%) '
-        write(*,'(i4,a,f5.1,a)',advance='no') count(is_independent), ' independent (', count(is_independent)/real(nterms,dp)*100.0_dp , '%) '
         write(*,'(i4,a,f5.1,a)',advance='no') count(is_dependent)  , ' dependent ('  , count(is_dependent)  /real(nterms,dp)*100.0_dp , '%) '
+        write(*,'(i4,a,f5.1,a)',advance='no') count(is_independent), ' independent (', count(is_independent)/real(nterms,dp)*100.0_dp , '%) '
         writE(*,*)
         !
         ! irreducible symmetry relations
