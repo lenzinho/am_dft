@@ -11,6 +11,7 @@ module am_atom
 	type am_class_atom
 		!
         integer :: norbitals
+        integer :: nazimuthals
         integer, allocatable :: orbital(:,:) ! quantum numbers [n,l,m,s]
         integer, allocatable :: azimuthal(:) ! list of l oribtal angular momenta, used for the construction of O3 irrep rotation
         !
@@ -173,6 +174,8 @@ module am_atom
 			endif
 		enddo
 		enddo
+		!
+		atom%nazimuthals = nazimuthals
 		!
 	end subroutine  gen_orbitals
 

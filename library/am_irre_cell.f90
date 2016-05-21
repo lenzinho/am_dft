@@ -19,7 +19,8 @@ module am_irre_cell
         !
     contains
         procedure :: get_irreducible
-        procedure :: get_Vsk_ind
+        procedure :: initialize_orbitals
+        procedure :: print_orbital_basis
     end type am_class_irre_cell
 
 contains
@@ -163,6 +164,62 @@ contains
         !
     end subroutine get_irreducible
 
+    subroutine     initialize_orbitals(ic,opts)
+        !
+        ! Useful if no states on atoms are defined. Gives each atom all the possible states
+        !
+        ! Correspoding to the L shell (n=2) [ s p   states (1+3=4   states) ]
+        ! Correspoding to the M shell (n=3) [ s p d states (1+3+5=9 states) ]
+        !
+        ! There will be 1 matrix element for every irreducible pair of orbitals
+        !
+        implicit none
+        !
+        class(am_class_irre_cell), intent(inout) :: ic
+        type(am_class_options)   , intent(in) :: opts
+        integer :: i
+        !
+        if (opts%verbosity.ge.1) call am_print_title('Initializing orbital basis')
+        !
+        ! create basis on each irreducible atoms
+        allocate(ic%atom(ic%natoms))
+        do i = 1, ic%natoms
+            call ic%atom(i)%gen_orbitals(orbital_flags='2s,2p')
+        enddo
+        if (opts%verbosity.ge.1) call print_orbital_basis(ip,ic)
+        !
+    end subroutine initialize_orbitals
+
+    subroutine     print_orbital_basis(ic)
+        !
+        implicit none
+        !
+        type(am_class_irre_cell) , intent(inout) :: ic
+        integer :: n,l,m,s
+        integer :: i,j
+        !
+        do i = 1, ic%natoms
+            write(*,'(a5,a)',advance='no') ' ... ', 'irreducible atom '//trim(int2char(i))//' contributes '//trim(int2char(ic%atom(i)%norbitals))//' orbitals (n,l,m,s):'
+            !
+            do j = 1, ic%atom(i)%norbitals
+                if (mod(j,6).eq.1) then
+                    write(*,*)
+                    write(*,'(5x)',advance='no')
+                endif
+                n = ic%atom(i)%orbital(1,j)
+                l = ic%atom(i)%orbital(2,j)
+                m = ic%atom(i)%orbital(3,j)
+                s = ic%atom(i)%orbital(4,j)
+                write(*,'(a2,i2,a1,i2,a1,i2,a1,i2,a2)',advance='no') ' (', n, ',', l, ',', m, ',', s, ') '
+            enddo
+            write(*,*)
+        enddo
+    end subroutine print_orbital_basis
+
+
+
+
+
     function       get_Vsk_ind(ic,i,alpha,j,beta,k) result(ind)
         ! returns matrix element indices given irreducible atoms (i,j), orbitals (alpha,beta), anda shell k
         ! ind = [i,ni,li,mi,si,j,nj,lj,mj,sj,k]
@@ -218,5 +275,7 @@ contains
             !
         end function   flip_orbitals
     end function   get_Vsk_ind
+
+
 
 end module am_irre_cell

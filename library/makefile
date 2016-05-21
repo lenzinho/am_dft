@@ -14,9 +14,9 @@ OBJS  = am_constants.o                 \
 		am_prim_cell.o                 \
 		am_conv_cell.o                 \
 		am_symmetry.o                  \
-		am_symmetry_rep.o 			   \
 		am_irre_cell.o                 \
 		am_shells.o                    \
+		am_symmetry_rep.o 			   \
 		am_tight_binding.o             \
 		am_tet_mesh.o                  \
 		am_brillouin_zone.o            \

@@ -13,7 +13,19 @@ module am_tight_binding
 	implicit none
 
 	private
-    
+
+    type, public, extends(am_class_group) :: am_class_tb_pg
+        contains
+    end type am_class_tb_pg
+
+    type, public, extends(am_class_tensor) :: am_class_tb_tensor
+    end type am_class_tb_tensor
+
+    type, public :: am_class_tight_binding
+        integer :: nshells ! how many shells irreducible atoms
+        type(am_class_tb_tensor), allocatable :: tbvsk(:)  ! tbvsk(nshells)
+    end type am_class_tight_binding
+
 	type, public :: am_class_tb
 		!
 		! matrix elements
@@ -25,7 +37,7 @@ module am_tight_binding
         ! i irreducible cell atom, jth neighbor shell around i, li orbital on i, lj orbital on j, m overlap
 		!
 	contains
-		procedure :: template_Vsk
+		procedure :: initialize_orbitals
         procedure :: get_Vsk   ! gets irreducible matrix element given overlap indicies 
         procedure :: set_Vsk   ! sets irreducible matrix element given overlap indicies
         procedure :: build_Vsk ! 
@@ -35,6 +47,248 @@ module am_tight_binding
 	end type am_class_tb
 
 contains
+
+
+
+    subroutine     initialize_tb(tb,pp,ic,opts)
+        !
+        implicit none
+        !
+        class(am_class_tight_binding), intent(out):: tb
+        class(am_class_pair_shell)   , intent(in) :: ip ! irreducible pairs
+        type(am_class_irre_cell)     , intent(in) :: ic ! irreducible cell
+        type(am_class_pair_shell)    , intent(in) :: pp ! primitive pairs
+        type(am_class_prim_cell)     , intent(in) :: pc ! primitive cell
+        type(am_class_options)       , intent(in) :: opts
+        integer :: total_orbitals
+        !
+        !
+        ! ADD OPTION TO READ ORBITALS HERE
+        call ic%initialize_orbitals(opts=opts)
+        ! call ic%read_orbitals(opts=opts)
+        !
+        !
+        ! get number of orbitals (dimensions of hamiltonian)
+        total_orbitals = 0
+        do i = 1, pc%natoms
+            ! +1 per orbital per unit cell atom
+            total_orbitals = total_orbitals + ic%atom( pc%ic_id(i) )%norbitals
+        enddo
+        !
+        !
+        tb%nshells = ic%nshells
+        !
+        allocatable(tb%tbvsk(tb%nshells))
+        !
+        do i = 1, ic%nshells
+            !
+            tb%tbvsk%rank = 2
+            tb%tbvsk%dims = [total_orbitals, total_orbitals]
+            !
+               
+            ! set tensor rank, set tensor dimensions
+            ! get flattened point group
+            ! get flattened instrinct group
+
+
+            !
+            ! tb%tbvsk has these properies:
+            ! type, public :: am_class_tensor
+            !     integer               :: rank           ! tensor rank
+            !     integer , allocatable :: dims(:)        ! tensor dimensions
+            !     real(dp), allocatable :: relations(:,:) ! relations connecting tensor elements
+            !     type(am_class_flattened_group) :: fig   ! flattened intrinsic symmetry group
+            !     type(am_class_flattened_group) :: fpg   ! flattened point group
+            ! end type am_class_tensor
+
+
+
+
+
+
+
+
+        enddo
+
+    end subroutine initialize_tbvsk
+
+    subroutine     get_flat_point_group(fpg,tbvsk,pg,pc)
+        !
+        class(am_class_flattened_group), intent(out):: fpg   ! flattened point group
+        class(am_class_tb_tensor)      , intent(in) :: tbvsk ! tb matrix elements
+        type(am_class_point_group)     , intent(in) :: pg    ! seitz point group
+        type(am_class_prim_cell)       , intent(in) :: pc    ! unit cell
+        integer :: i
+        !
+        ! number of bases functions in representation
+        fpg%nbases = product(tbvsk%dims)
+        ! number of symmetries
+        fpg%nsyms = pg%nsyms
+        ! generate intrinsic symmetries
+        allocate(fpg%sym(fpg%nbases,fpg%nbases,fpg%nsyms))
+        fpg%sym = 0
+        ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
+        do i = 1, pg%nsyms
+            !
+            if     (index(prop%axial_polar,'axial').ne.0) then
+                fpg%sym(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=pc%bas),prop%rank) * det(pg%sym(1:3,1:3,i))
+            elseif (index(prop%axial_polar,'polar').ne.0) then
+                fpg%sym(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=pc%bas),prop%rank)
+            endif
+            ! correct basic rounding error
+            where (abs(fpg%sym(:,:,i)).lt.tiny)  fpg%sym(:,:,i) = 0
+            where (abs(fpg%sym(:,:,i)-nint(fpg%sym(:,:,i))).lt.tiny) fpg%sym(:,:,i) = nint(fpg%sym(:,:,i))
+        enddo
+        !
+        ! copy symmetry ids
+        allocate(fpg%ps_id, source=pg%ps_id)
+        ! copy classes
+        allocate(fpg%class_id, source=pg%class_id)
+        ! copy multiplication table
+        allocate(fpg%multab, source=pg%multab)
+        ! copy character table
+        allocate(fpg%chartab, source=pg%chartab)
+        !
+        if (.not.isequal(fpg%sym(:,:,1),eye(fpg%nbases))) stop 'FPG: Identity is not first.'
+        !
+    end subroutine get_flat_point_group
+
+
+
+
+
+
+
+
+
+
+    subroutine     get_irreducible(ip,pp,pg,sg,ic,opts)
+        !
+        implicit none
+        !
+        class(am_class_pair_shell), intent(out) :: ip
+        class(am_class_pair_shell), intent(inout) :: pp
+        type(am_class_space_group), intent(in) :: sg ! space group
+        type(am_class_point_group), intent(in) :: pg ! point group
+        class(am_class_unit_cell) , intent(in) :: ic
+        type(am_class_options)    , intent(in) :: opts
+        type(am_class_point_group) :: stab
+        type(am_class_point_group) :: revg
+        type(am_class_point_group) :: rotg
+        type(am_class_options)     :: notalk
+        integer , allocatable :: ip_id(:) ! can have negative, it means bond was flipped!
+        integer , allocatable :: ip_id_unique(:) ! strictly positive
+        integer , allocatable :: multiplicity(:)
+        integer :: i,j,k
+        !
+        do k = 1, ip%nshells
+            !
+            i = ip%shell(k)%i
+            j = ip%shell(k)%j
+            ! determine stabilizers of a prototypical bond in shell (vector v)
+            call stab%get_stabilizer_group(pg=pg, v=ip%shell(k)%tau(1:3,1), opts=notalk)
+            ! determine rotations which leaves shell invariant
+            call rotg%get_rotational_group(pg=pg, uc=ip%shell(k), opts=notalk)
+            ! determine reversal group, space symmetries, which interchange the position of atoms at the edges of the bond
+            call revg%get_reversal_group(sg=sg, v=ip%shell(k)%tau(1:3,1), opts=notalk)
+            write(*,'(5x)'    ,advance='no')
+            write(*,'(i5)'    ,advance='no') k ! shell
+            write(*,'(a6)'    ,advance='no') trim(atm_symb(ic%Z( ip%shell(k)%i )))//'-'//trim(atm_symb(ic%Z( ip%shell(k)%j )))
+            write(*,'(a6)'    ,advance='no') trim(int2char(ip%shell(k)%i))//'-'//trim(int2char(ip%shell(k)%j))
+            write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%m))//'-'//trim(int2char(pp%shell(k)%n))
+            write(*,'(i5)'    ,advance='no') multiplicity(k)
+            write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( stab%pg_id ))
+            write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( rotg%pg_id ))
+            write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( revg%pg_id ))
+            write(*,'(f10.3)' ,advance='no') norm2(matmul(ip%shell(k)%bas,ip%shell(k)%tau(1:3,1)))
+            write(*,'(3f10.3)',advance='no') matmul(ip%shell(k)%bas,ip%shell(k)%tau(1:3,1))
+            write(*,'(f10.3)' ,advance='no') norm2(ip%shell(k)%tau(1:3,1))
+            write(*,'(3f10.3)',advance='no') ip%shell(k)%tau(1:3,1)
+            write(*,*)
+        enddo
+        !
+        contains
+    end subroutine get_irreducible
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    subroutine     get_tb_relations(tb,ip,ic,opts)
+        !
+        implicit none
+        !
+        class(am_class_tb)        , intent(inout) :: tb
+        class(am_class_pair_shell), intent(inout) :: ip
+        class(am_class_irre_cell) , intent(inout) :: ic
+        type(am_class_options)    , intent(in) :: opts
+        integer, allocatable :: ind(:,:)
+        integer :: nVsks
+        integer :: label_dim
+        integer :: i,j,alpha,beta,k,kk
+        !
+        ! get total matrix elements
+        nVsks = 0
+        do k = 1, ip%nshells
+            nVsks = nVsks + ic%atom( ip%shell(k)%i )%norbitals * ic%atom( ip%shell(k)%j )%norbitals
+        enddo
+        call am_print('total matrix elements',nVsks)
+        !
+        ! determine irreducible matrix elements
+        label_dim = 11
+        allocate(ind(label_dim,nVsks))
+        kk=0
+        do k = 1, ip%nshells
+            ! irreducible atoms i and j
+            i = ip%shell(k)%i
+            j = ip%shell(k)%j
+            ! loop over all combination of orbitals (outer product of li x lj)
+            do alpha = 1, ic%atom(i)%norbitals
+            do beta  = 1, ic%atom(j)%norbitals
+                ! matrix element vanishes unless m = m'
+                if (ic%atom(i)%orbital(3,alpha).eq.ic%atom(j)%orbital(3,beta)) then
+                    kk=kk+1
+                    ! (l,l',m) = (l,l',-m) and (l,l',m) = (-1)^(l-m) * (l',l,m) symmetries enforced in get_Vsk_ind
+                    ind(:,kk) = ic%get_Vsk_ind(i=i,alpha=alpha,j=j,beta=beta,k=k)
+                    !
+                endif
+            enddo
+            enddo
+        enddo
+        ! get number of matrix elements equal to zero (those for which m/=m')
+        call am_print('null matrix elements',nVsks-kk)
+        ! determine irrducible matrix elements
+        tb%ind = unique(ind(:,1:kk))
+        ! allocate space and initialize irrducible matrix elements as 1.0
+        tb%nVsks = size(tb%ind,2)
+        allocate(tb%Vsk(tb%nVsks))
+        tb%Vsk = 1.0_dp
+        ! write matrix elements to stdout
+        if (opts%verbosity.ge.1) call tb%print_Vsk()
+        !
+    end subroutine initialize_orbitals
 
     ! functions which operate on Vsk
 
@@ -97,105 +351,6 @@ contains
         !
     end subroutine set_Vsk
 
-	subroutine     template_Vsk(tb,ip,ic,opts)
-		!
-    	! Useful if no states on atoms are defined. Gives each atom all the possible states
-        !
-    	! Correspoding to the L shell (n=2) [ s p   states (1+3=4   states) ]
-        ! Correspoding to the M shell (n=3) [ s p d states (1+3+5=9 states) ]
-    	!
-        ! There will be 1 matrix element for every irreducible pair of orbitals
-		!
-		implicit none
-        !
-        class(am_class_tb)        , intent(inout) :: tb
-        class(am_class_pair_shell), intent(inout) :: ip
-        class(am_class_irre_cell) , intent(inout) :: ic
-        type(am_class_options)    , intent(in) :: opts
-        integer, allocatable :: ind(:,:)
-        integer :: nVsks
-        integer :: label_dim
-    	integer :: i,j,alpha,beta,k,kk
-        ! integer :: ni,li,mi,si, nj,lj,mj,sj
-        !
-        
-        !
-        if (opts%verbosity.ge.1) call am_print_title('Creating orbital basis functions from template')
-        !
-    	! create basis on each irreducible atoms
-		allocate(ic%atom(ic%natoms))
-		do i = 1, ic%natoms
-			call ic%atom(i)%gen_orbitals(orbital_flags='2s,2p')
-		enddo
-		if (opts%verbosity.ge.1) call print_orbital_basis(ip,ic)
-        !
-        ! get total matrix elements
-        nVsks = 0
-        do k = 1, ip%nshells
-            nVsks = nVsks + ic%atom( ip%shell(k)%i )%norbitals * ic%atom( ip%shell(k)%j )%norbitals
-        enddo
-        call am_print('total matrix elements',nVsks)
-		!
-    	! determine irreducible matrix elements
-        label_dim = 11
-        allocate(ind(label_dim,nVsks))
-        kk=0
-        do k = 1, ip%nshells
-            ! irreducible atoms i and j
-            i = ip%shell(k)%i
-            j = ip%shell(k)%j
-            ! loop over all combination of orbitals (outer product of li x lj)
-            do alpha = 1, ic%atom(i)%norbitals
-            do beta  = 1, ic%atom(j)%norbitals
-                ! matrix element vanishes unless m = m'
-                if (ic%atom(i)%orbital(3,alpha).eq.ic%atom(j)%orbital(3,beta)) then
-                    kk=kk+1
-                    ! (l,l',m) = (l,l',-m) and (l,l',m) = (-1)^(l-m) * (l',l,m) symmetries enforced in get_Vsk_ind
-                    ind(:,kk) = ic%get_Vsk_ind(i=i,alpha=alpha,j=j,beta=beta,k=k)
-                    !
-                endif
-            enddo
-            enddo
-        enddo
-        ! get number of matrix elements equal to zero (those for which m/=m')
-        call am_print('null matrix elements',nVsks-kk)
-        ! determine irrducible matrix elements
-        tb%ind = unique(ind(:,1:kk))
-        ! allocate space and initialize irrducible matrix elements as 1.0
-        tb%nVsks = size(tb%ind,2)
-        allocate(tb%Vsk(tb%nVsks))
-        tb%Vsk = 1.0_dp
-        ! write matrix elements to stdout
-		if (opts%verbosity.ge.1) call tb%print_Vsk()
-        !
-        contains
-	    subroutine     print_orbital_basis(ip,ic)
-		    !
-		    implicit none
-            !
-            type(am_class_pair_shell), intent(inout) :: ip
-            type(am_class_irre_cell) , intent(inout) :: ic
-    	    integer :: n,l,m,s
-    	    integer :: i,j
-            !
-		    do i = 1, ic%natoms
-			    write(*,'(a5,a)',advance='no') ' ... ', 'irreducible atom '//trim(int2char(i))//' contributes '//trim(int2char(ic%atom(i)%norbitals))//' orbitals (n,l,m,s):'
-			    !
-			    do j = 1, ic%atom(i)%norbitals
-				    if (mod(j,6).eq.1) then
-					    write(*,*)
-					    write(*,'(5x)',advance='no')
-				    endif
-				    n = ic%atom(i)%orbital(1,j)
-				    l = ic%atom(i)%orbital(2,j)
-				    m = ic%atom(i)%orbital(3,j)
-				    s = ic%atom(i)%orbital(4,j)
-				    write(*,'(a2,i2,a1,i2,a1,i2,a1,i2,a2)',advance='no') ' (', n, ',', l, ',', m, ',', s, ') '
-			    enddo
-			    write(*,*)
-		    enddo
-	    end subroutine print_orbital_basis
-    end subroutine template_Vsk
 
     subroutine     print_Vsk(tb)
         !
