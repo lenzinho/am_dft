@@ -13,6 +13,8 @@ module am_symmetry_rep
 
     private
 
+    public :: ps2tb ! used in am_tight_binding
+
     type, public, extends(am_class_group) :: am_class_flat_group
         real(dp), allocatable :: relations(:,:)
         contains
@@ -249,48 +251,6 @@ module am_symmetry_rep
         !
         if (.not.isequal(fpg%sym(:,:,1),eye(fpg%nbases))) stop 'FPG: Identity is not first.'
         !
-        contains
-        function       ps2tb(R,pc,ic) result(H)
-            !
-            implicit none
-            !
-            real(dp), intent(in) :: R(3,3)
-            type(am_class_prim_cell), intent(in) :: pc ! primitive cell
-            type(am_class_irre_cell), intent(in) :: ic ! irreducible cell
-            real(dp), allocatable :: H(:,:)
-            integer , allocatable :: H_start(:), H_end(:)
-            real(dp) :: R_cart(3,3)
-            integer :: Hdim ! hamiltonian dimensions
-            integer :: i,j,k
-            !
-            ! allocate space for defining subsections of the rotation in Hamiltonian basis
-            i = maxval(ic%atom(:)%nazimuthals) * pc%natoms
-            allocate(H_start(i))
-            allocate(H_end(i))
-            ! determine subsections: 1 per primitive atom per azimuthal quantum number
-            Hdim = 0
-            k = 0
-            do i = 1, pc%natoms
-            do j = 1, ic%atom(pc%ic_id(i))%nazimuthals
-                k=k+1
-                H_start(k) = Hdim + 1
-                Hdim = Hdim + ic%atom(pc%ic_id(i))%azimuthal(j)
-                H_end(k) = Hdim
-            enddo
-            enddo
-            ! allocate and initialize space for rotations in Hamiltonin bais
-            allocate(H(Hdim,Hdim))
-            H = 0.0_dp
-            ! construct rotation in the Hamiltonian basis
-            k=0
-            do i = 1, pc%natoms
-            do j = 1, ic%atom(pc%ic_id(i))%nazimuthals
-                k=k+1
-                H(H_start(k):H_end(k), H_start(k):H_end(k)) = rot2irrep(l=ic%atom(pc%ic_id(i))%azimuthal(j), R=R)
-            enddo
-            enddo
-            !
-        end function   ps2tb
     end subroutine get_flat_point_group
 
     ! operates on prop
@@ -711,6 +671,48 @@ module am_symmetry_rep
             end function get_basis_label
     end subroutine print_relations
 
+    ! write point symmetry operation in tight binding basis
+
+    function       ps2tb(R,pc,ic) result(H)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: R(3,3)
+        type(am_class_prim_cell), intent(in) :: pc ! primitive cell
+        type(am_class_irre_cell), intent(in) :: ic ! irreducible cell
+        real(dp), allocatable :: H(:,:)
+        integer , allocatable :: H_start(:), H_end(:)
+        integer :: Hdim ! hamiltonian dimensions
+        integer :: i,j,k
+        !
+        ! allocate space for defining subsections of the rotation in Hamiltonian basis
+        i = maxval(ic%atom(:)%nazimuthals) * pc%natoms
+        allocate(H_start(i))
+        allocate(H_end(i))
+        ! determine subsections: 1 per primitive atom per azimuthal quantum number
+        Hdim = 0
+        k = 0
+        do i = 1, pc%natoms
+        do j = 1, ic%atom(pc%ic_id(i))%nazimuthals
+            k=k+1
+            H_start(k) = Hdim + 1
+            Hdim = Hdim + ic%atom(pc%ic_id(i))%azimuthal(j)
+            H_end(k) = Hdim
+        enddo
+        enddo
+        ! allocate and initialize space for rotations in Hamiltonin bais
+        allocate(H(Hdim,Hdim))
+        H = 0.0_dp
+        ! construct rotation in the Hamiltonian basis
+        k=0
+        do i = 1, pc%natoms
+        do j = 1, ic%atom(pc%ic_id(i))%nazimuthals
+            k=k+1
+            H(H_start(k):H_end(k), H_start(k):H_end(k)) = rot2irrep(l=ic%atom(pc%ic_id(i))%azimuthal(j), R=R)
+        enddo
+        enddo
+        !
+    end function   ps2tb
 
 end module am_symmetry_rep
 
