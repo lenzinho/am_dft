@@ -121,8 +121,8 @@ module am_symmetry_rep
         !
         if (opts%verbosity.ge.1) call am_print('total symmetries', prop%fpg%nsyms * prop%fig%nsyms )
         !
-        prop%relations = combine_relations(prop%fig%relations,prop%fpg%relations)
-        call print_relations(relations=prop%fpg%relations, dims=prop%dims, flags='show:dependent,independent')
+        prop%relations = combine_relations(prop%fig%relations, prop%fpg%relations)
+        call print_relations(relations=prop%relations, dims=prop%dims, flags='show:dependent,independent')
         !
         ! call prop%flat%get_direct_product(A=prop%fig,B=prop%fpg)
         ! !
@@ -297,13 +297,14 @@ module am_symmetry_rep
         fpg%sym = 0
         ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
         do i = 1, pg%nsyms
+            !
             if     (index(prop%axial_polar,'axial').ne.0) then
                 fpg%sym(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=uc%bas),prop%rank) * det(pg%sym(1:3,1:3,i))
             elseif (index(prop%axial_polar,'polar').ne.0) then
                 fpg%sym(:,:,i) = kron_pow(ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=uc%bas),prop%rank)
             endif
             ! correct basic rounding error
-            where (abs(fpg%sym(:,:,i)).lt.tiny) fpg%sym(:,:,i) = 0
+            where (abs(fpg%sym(:,:,i)).lt.tiny)  fpg%sym(:,:,i) = 0
             where (abs(fpg%sym(:,:,i)-nint(fpg%sym(:,:,i))).lt.tiny) fpg%sym(:,:,i) = nint(fpg%sym(:,:,i))
         enddo
         !
@@ -425,22 +426,6 @@ module am_symmetry_rep
         !
         allocate(relations, source=RHS)
         !
-        ! NOTES:
-        !
-        !        [ A1 , B1 ]
-        !   A =  [ A2 , B2 ]
-        !        [ A3 , I  ]
-        !
-        ! in which the square matrix [A1,B1;A2,B2] is an augmented upper triangular matrix corresponding to 2*flat%nbases
-        ! coupled equations which describe how the terms are interrelated. The last augmented matrix [A3,I]
-        ! describes how the tensor rotates under the most recently considered symmetry operation R. In order
-        ! incorporate the effect of symmetry operation R on the set of linearly coupled 2*flat%nbases equations, LU
-        ! factorization is performed. By doing so, the augmented matrix A is converted into its factored upper
-        ! triangular matrix U, which, by definition, only occupies rows corresponding to the smallest dimension of
-        ! the matrix [either row or column, i.e. min(m,n)]. For this case, it occupies the top 2x2 augmented blocks.
-        ! This is also why the symmetry equations are added as components in the [A3,I] block -- so they don't
-        ! overlap with U.    end function   get_relations
-        !
     end function   get_relations
 
     function       combine_relations(relationsA,relationsB) result(relationsC)
@@ -469,10 +454,10 @@ module am_symmetry_rep
         allocate(A(3*nbases,2*nbases))
         A = 0
         ! construct slice of A
-        A(1*nbases+indices,1*nbases+indices) = relationsA
+        A(0*nbases+indices,1*nbases+indices) = relationsA
+        A(0*nbases+indices,0*nbases+indices) = eye(nbases)
+        A(1*nbases+indices,1*nbases+indices) = relationsB
         A(1*nbases+indices,0*nbases+indices) = eye(nbases)
-        A(2*nbases+indices,1*nbases+indices) = relationsB
-        A(2*nbases+indices,0*nbases+indices) = eye(nbases)
         ! incorporate symmetry via lu factorization (equivalent to applying rref)
         call lu(A)
         ! Apply Gram-Schmidt orthogonalization to obtain A in reduced row echelon form

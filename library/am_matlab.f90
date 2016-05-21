@@ -956,7 +956,7 @@ module am_matlab
         !
     end function  primes
 
-    ! file io and stdout stuff
+    ! file io functions
 
     function      fopen(filename,permission) result(fid)
         !
@@ -1063,8 +1063,6 @@ module am_matlab
         !
     end function  strsplit
     
-
-
     pure function cross_product(a,b) result(c)
         !
         implicit none
@@ -1077,8 +1075,6 @@ module am_matlab
         c(3) = a(1) * b(2) - a(2) * b(1)
         !
     end function  cross_product
-
-    ! fraction functions
 
     pure function lcm(a,b)
         !
@@ -2336,6 +2332,5 @@ module am_matlab
         enddo
         !
     end function  smallest_nonzero
-
 
 end module am_matlab
