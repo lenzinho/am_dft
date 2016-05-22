@@ -107,10 +107,8 @@ contains
                 ! get relations
                 tbvsk%fstab%relations = tbvsk%fstab%get_relations()
                 !
-                !
-                !
-                !
                 tbvsk%relations = tbvsk%fstab%relations
+                !
                 call dump_relations(relations=tbvsk%relations,iopt_filename='dump.relations')
                 !
                 ! ! determine reversal group of a prototypical bond in shell (vector v)

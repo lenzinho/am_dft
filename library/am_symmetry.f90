@@ -96,7 +96,7 @@ contains
         ! conjugacy class
         if (allocated(grp%cc%id)) then
             !
-            grp%cc%id = rinds(grp%cc%id(inds))
+            grp%cc%id = grp%cc%id(inds)
             !
             do i = 1, grp%cc%nclasses
             do j = 1, grp%cc%nelements(i)
@@ -105,7 +105,6 @@ contains
             enddo
             !
             do i = 1, grp%cc%nclasses
-                write(*,*) grp%cc%representative
             grp%cc%representative(i) = rinds(grp%cc%representative(i))
             enddo
             !
@@ -202,7 +201,6 @@ contains
         implicit none
         !
         class(am_class_group), intent(inout) :: grp
-        !
         !
         ! get conjugacy classes (ps_id is required for sorting the classes: proper before improper)
         grp%cc%id = get_class_id(multab=grp%mt%multab, inv_id=grp%mt%inv_id, ps_id=grp%ps_id)
