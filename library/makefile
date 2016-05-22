@@ -13,6 +13,7 @@ OBJS  = am_constants.o                 \
 		am_unit_cell.o                 \
 		am_prim_cell.o                 \
 		am_conv_cell.o                 \
+		am_symmetry_tables.o  		   \
 		am_symmetry.o                  \
 		am_irre_cell.o                 \
 		am_shells.o                    \

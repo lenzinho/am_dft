@@ -20,8 +20,8 @@ module am_tight_binding
 
     type, public, extends(am_class_tensor) :: am_class_tbvsk
         !
-        type(am_class_point_group):: stab  ! stabilizer group symmetry
-        type(am_class_flat_group) :: fstab ! flat stabilizer group symmetry
+        type(am_class_point_group) :: stab  ! stabilizer group symmetry
+        type(am_class_flat_group)  :: fstab ! flat stabilizer group symmetry
       ! type(am_class_flat_group) :: frevg ! flat reversal group symmetry
     end type am_class_tbvsk
 
@@ -99,15 +99,10 @@ contains
                 ! determine stabilizers of a prototypical bond in shell (vector v)
                 call tbvsk%stab%get_stabilizer_group(pg=pg, v=shell%tau(1:3,1), opts=notalk)
                 !
-                call tbvsk%stab%dump('dmp_tbvsk_stab')
-                !
                 call am_print('stabilizer group', trim(decode_pointgroup( tbvsk%stab%pg_id )))
                 ! get point group in the flattened hamiltonin basis
-                call tbvsk%fstab%get_flat_point_group(tens=tbvsk, pg=stab, pc=pc, ic=ic)
+                call tbvsk%fstab%get_flat_point_group(tens=tbvsk, pg=tbvsk%stab, pc=pc, ic=ic)
                 !
-
-
-                call tbvsk%fstab%dump('dmp_tbvsk_fstab')
 
                 ! get relations
                 tbvsk%fstab%relations = tbvsk%fstab%get_relations()
@@ -116,6 +111,7 @@ contains
                 !
                 !
                 tbvsk%relations = tbvsk%fstab%relations
+                call dump_relations(relations=tbvsk%relations,iopt_filename='dump.relations')
                 !
                 ! ! determine reversal group of a prototypical bond in shell (vector v)
                 ! call revg%get_reversal_group(sg=sg, v=shell%tau(1:3,1), opts=notalk)

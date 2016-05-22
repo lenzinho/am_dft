@@ -8,6 +8,7 @@ module am_symmetry_rep
     use am_matlab
     use am_prim_cell
     use am_irre_cell
+    use am_symmetry_tables , only : get_multab
 
     implicit none
 
@@ -15,9 +16,7 @@ module am_symmetry_rep
 
     public :: ps2tb ! used in am_tight_binding
 
-    public :: print_relations
-
-    public :: combine_relations
+    public :: print_relations, combine_relations, dump_relations
 
     type, public, extends(am_class_group) :: am_class_flat_group
         real(dp), allocatable :: relations(:,:)
@@ -87,7 +86,7 @@ module am_symmetry_rep
             integer :: i
             !
             ! obtain multiplication table
-            multab = get_multiplication_table(sym=seitz,flags='seitz,sort')
+            multab = get_multab(sym=seitz,flags='seitz,sort')
             !
             ! construct regular representation from multiplication table
             n = size(seitz,3)
@@ -160,21 +159,14 @@ module am_symmetry_rep
         fig%ps_id    = default_ps_id_value
         fig%ps_id(1) = 1
         !
-        ! get multiplication table
-        fig%multab   = get_multiplication_table(sym=fig%sym,flags='')
+        ! get multiplication table (determines determine conjugacy classes in the process)
+        call fig%get_multiplication_table()
         !
-        ! determine conjugacy classes (needs identity first, inversion second)
-        fig%class_id = get_conjugacy_classes(multab=fig%multab, ps_id=fig%ps_id)
-        !
-        ! sort symmetries based on parameters
-        call fig%sort_symmetries(criterion=fig%sym(1,4,:)        , flags='ascend')
-        call fig%sort_symmetries(criterion=fig%sym(2,4,:)        , flags='ascend')
-        call fig%sort_symmetries(criterion=fig%sym(3,4,:)        , flags='ascend')
         call fig%sort_symmetries(criterion=real(fig%ps_id,dp)    , flags='acsend')
         call fig%sort_symmetries(criterion=real(fig%class_id,dp) , flags='ascend')
         !
         ! get character table
-        fig%chartab = get_character_table(multab=fig%multab,ps_id=fig%ps_id)
+        call fig%get_character_table()
         !
         contains
         pure function transp_operator(n) result(M)
@@ -252,9 +244,9 @@ module am_symmetry_rep
         ! copy classes
         allocate(fpg%class_id, source=pg%class_id)
         ! copy multiplication table
-        allocate(fpg%multab,   source=pg%multab)
+        fpg%mt = pg%mt
         ! copy character table
-        allocate(fpg%chartab,  source=pg%chartab)
+        fpg%ct = pg%ct
         !
         if (.not.isequal(fpg%sym(:,:,1),eye(fpg%nbases))) stop 'FPG: Identity is not first.'
         !
@@ -390,17 +382,15 @@ module am_symmetry_rep
         allocate(C%sym,source=unique(wkr))
         C%nsyms = size(C%sym,3)
         !
-        ! get multiplication table
-        C%multab = get_multiplication_table(sym=C%sym,flags='prog')
-        ! determine conjugacy classes (needs identity first, inversion second)
-        C%class_id = get_conjugacy_classes(multab=C%multab,ps_id=C%ps_id)
+        ! get multiplication table (and conjugacy classes in the process)
+        call C%get_multiplication_table()
         !
         ! sort symmetries based on parameters
         call C%sort_symmetries(criterion=real(C%ps_id,dp)   , flags='acsend')
         call C%sort_symmetries(criterion=real(C%class_id,dp), flags='ascend')
         !
         ! get character table
-        C%chartab = get_character_table(multab=C%multab, ps_id=C%ps_id)
+        call C%get_character_table()
         !
     end subroutine get_direct_product
 
@@ -503,6 +493,8 @@ module am_symmetry_rep
         call lu(A)
         ! Apply Gram-Schmidt orthogonalization to obtain A in reduced row echelon form
         call rref(A)
+        ! correct basic rounding error
+        where (abs(nint(A)-A).lt.tiny) A = nint(A)
         ! At this point, A = [ LHS | RHS ], in which LHS = E, identity matrix; A completely specifies all relationships between variables: LHS = RHS.
         allocate(LHS(nbases,nbases))
         allocate(RHS(nbases,nbases))
@@ -614,7 +606,7 @@ module am_symmetry_rep
                     do j = 1,nterms
                         if (abs(relations(i,j)).gt.tiny) then
                             str = get_basis_label(dims=dims, ind=j ,flags=flags)
-                            write(*,'(a,a)',advance='no') trim(dbl2charSP(relations(i,j),7)), trim(str)
+                            write(*,'(a,a,a)',advance='no') trim(dbl2charSP(relations(i,j),7)), '*', trim(str)
                         endif
                     enddo
                     write(*,*)
@@ -677,6 +669,39 @@ module am_symmetry_rep
                 !
             end function get_basis_label
     end subroutine print_relations
+
+    subroutine     dump_relations(relations,iopt_filename)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: relations(:,:)
+        character(*), intent(in), optional :: iopt_filename
+        character(100) :: fname
+        integer :: fid
+        integer :: m,n
+        integer :: j,k
+        !
+        ! set default
+        fname = 'dump.relations'
+        if (present(iopt_filename)) fname = iopt_filename
+        !
+        m = size(relations,1)
+        n = size(relations,2)
+        !
+        fid = 1
+        open(unit=fid,file=trim(iopt_filename),status="replace",action='write')
+            !
+            do j = 1, m
+            do k = 1, n
+                write(fid,"(f)",advance='no') relations(j,k)
+            enddo
+            write(fid,*)
+            enddo
+            !
+        close(fid)
+        !
+    end subroutine dump_relations
+
 
     ! write point symmetry operation in tight binding basis
 
