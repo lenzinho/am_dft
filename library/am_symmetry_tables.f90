@@ -556,6 +556,150 @@ contains
             end function  find_class_containing_ps
     end function   get_muliken
 
+    function       get_rep_characters(sym,nclasses,class_representative) result(repchi)
+        !
+        implicit none
+        !
+        real(dp),    intent(in) :: sym(:,:,:)
+        integer,	 intent(in) :: nclasses
+        integer,	 intent(in) :: class_representative(:)
+        integer, allocatable :: repchi(:)
+        integer :: i
+        !
+        do i = 1, nclasses
+        	repchi(i) = trace( sym(:,:,class_representative(i)) )
+    	enddo
+    	!
+    end function   get_rep_characters
+
+    subroutine     print_chartab_header(nclasses,class_nelements,class_member,ps_id,fmts)
+    	!
+    	implicit none
+    	!
+        integer		, intent(in) :: nclasses
+		integer		, intent(in) :: class_nelements(:)
+		integer		, intent(in) :: class_member(:,:)
+        integer		, intent(in) :: ps_id(:)
+        character(*), intent(in) :: fmts(:)
+        integer :: i
+    	!
+        ! start printing
+        write(*,fmts(2),advance='no') 'class'
+        do i = 1, nclasses
+            write(*,fmts(1),advance='no') i
+        enddo
+        write(*,*)
+        !
+        write(*,fmts(2),advance='no') 'elements'
+        do i = 1, nclasses
+            write(*,fmts(1),advance='no') class_nelements(i)
+        enddo
+        write(*,*)
+        !
+        write(*,fmts(2),advance='no') 'class rep'
+        do i = 1, nclasses
+            write(*,fmts(3),advance='no') trim(decode_pointsymmetry(ps_id(class_member(i,1))))
+        enddo
+        write(*,*)
+        !
+        write(*,fmts(2),advance='no') repeat('-',10)
+        do i = 1, nclasses
+            write(*,fmts(3),advance='no') repeat('-',6)
+        enddo
+        write(*,*)
+        !
+    end subroutine print_chartab_header
+
+    subroutine     print_chartab_symb(Z,char_start,s,k,fmts,str)
+    	!
+    	implicit none
+    	!
+        complex(dp), intent(in) :: Z
+        integer    , intent(in) :: char_start
+        complex(dp), intent(inout) :: s(:)
+        integer    , intent(inout) :: k
+        character(*), intent(in) :: fmts(:)
+        character(:), allocatable, intent(out) :: str
+        !
+        integer :: kk, k_exp
+        complex(dp) :: s_exp
+        real(dp) :: Zr,Zi
+        logical :: strmatch
+        !
+	    strmatch = .false.
+	    !
+	    Zr= real(Z)
+	    Zi= aimag(Z)
+	    !
+	    if ( isint(Zr) .and. iszero(Zi) ) then
+	        ! no imaginary, integer real
+	        strmatch = .true.
+	        str = trim(int2char(nint(Zr)))
+	        !
+	    elseif ( iszero(Zr) .and. isint(Zi) ) then
+	        ! no real, imaginary integer
+	        strmatch = .true.
+	        str = trim(int2char(nint(Zi)))//'i'
+	        !
+	    elseif ( (.not. isint(Zr)) .and. (.not. isint(Zi)) ) then
+	        ! complex number
+	        !
+	        if (k.ge.1) then
+	        search : do kk = 1, k
+	            !
+	            s_exp = cmplx(0.0_dp,0.0_dp)
+	            k_exp = 0 
+	            do while ( .not. isequal(s_exp,cmplx(1,0,dp)) )
+	                ! do a full loop. complex numbers form a cyclic abelian group.
+	                ! exponentiate it until it loops back to one, the identity
+	                k_exp = k_exp+1
+	                s_exp = s(k)**k_exp
+	                ! check positive
+	                if ( isequal(Z,s_exp) ) then
+	                    !
+	                    strmatch = .true.
+	                    if (k_exp.eq.1) then
+	                        str = char(char_start+k)
+	                    else
+	                        str = char(char_start+k)//trim(int2char(k_exp))
+	                    endif
+	                    exit search
+	                    !
+	                endif
+	                ! check negative
+	                if ( isequal(Z,-s_exp) ) then
+	                    !
+	                    strmatch = .true.
+	                    if (k_exp.eq.1) then
+	                        str = '-'//char(char_start+k)
+	                    else
+	                        str = '-'//char(char_start+k)//trim(int2char(k_exp))
+	                    endif
+	                    exit search
+	                    !
+	                endif
+	            enddo
+	        enddo search
+	        endif
+	        !
+	        ! if match is not found assign a new character to variable
+	        if (.not.strmatch) then
+	            !
+	            strmatch = .true.
+	            k = k + 1
+	            s(k) = Z
+	            str = char(char_start+k)
+	            !
+	        endif
+	    endif
+	    !
+	    if (.not.strmatch) then
+	        write(str,fmts(5)) real(Z)
+	    endif
+	    !
+    end subroutine print_chartab_symb
+
+
     subroutine     print_chartab(chartab,nclasses,class_nelements,class_member,irrep_label,ps_id)
         !
         implicit none
@@ -569,58 +713,26 @@ contains
         integer :: i, j, k
         integer :: nirreps
         ! complex to symbol
-        integer :: kk, k_exp
         complex(dp), allocatable :: s(:)
-        complex(dp) :: s_exp
-        complex(dp) :: Z
-        real(dp) :: Zr,Zi
         character(:), allocatable :: str
         integer :: char_start
-        logical :: strmatch
         ! print formats
-        character(50) :: fmt1
-        character(50) :: fmt2
-        character(50) :: fmt3
-        character(50) :: fmt4
-        character(50) :: fmt5
+        character(50) :: fmts(5)
         !
         ! they are always identical...
         nirreps = nclasses
         !
-        ! left-side headers
-        fmt2 = '(5x,a10)'
-        fmt4 = '(5x,a6,i4)'
-        ! chartab
-        fmt1 = '(i6)'
-        fmt3 = '(a6)'
-        fmt5 = '(f6.2)'
+        ! left-side headers (sum to 10)
+        fmts(2) = '(5x,a10)'
+        fmts(4) = '(5x,a6,i4)'
+        ! chartab (sum to 6)
+        fmts(1) = '(i6)'
+        fmts(3) = '(a6)'
+        fmts(5) = '(f6.2)'
         !
-        ! start printing
-        write(*,fmt2,advance='no') 'class'
-        do i = 1, nclasses
-            write(*,fmt1,advance='no') i
-        enddo
-        write(*,*)
+        call print_chartab_header(nclasses,class_nelements,class_member,ps_id,fmts)
         !
-        write(*,fmt2,advance='no') 'elements'
-        do i = 1, nclasses
-            write(*,fmt1,advance='no') class_nelements(i)
-        enddo
-        write(*,*)
-        !
-        write(*,fmt2,advance='no') 'class rep'
-        do i = 1, nclasses
-            write(*,fmt3,advance='no') trim(decode_pointsymmetry(ps_id(class_member(i,1))))
-        enddo
-        write(*,*)
-        !
-        write(*,fmt2,advance='no') repeat('-',10)
-        do i = 1, nclasses
-            write(*,fmt3,advance='no') repeat('-',6)
-        enddo
-        write(*,*)
-        !
-        allocate(s(30)) ! value of symbolic output, 30 possible options
+        allocate(s(100)) ! value of symbolic output, 30 possible options
         allocate(character(4)::str)
         char_start = 96 ! 97 = a
         k=0
@@ -632,80 +744,9 @@ contains
             !
             do j = 1, nclasses
                 !
-                strmatch = .false.
+                call print_chartab_symb(Z=chartab(i,j),char_start=char_start,s=s,k=k,fmts=fmts,str=str)
                 !
-                Z = chartab(i,j)
-                Zr= real(Z)
-                Zi= aimag(Z)
-                !
-                !
-                if ( isint(Zr) .and. iszero(Zi) ) then
-                    ! no imaginary, integer real
-                    strmatch = .true.
-                    str = trim(int2char(nint(Zr)))
-                    !
-                elseif ( iszero(Zr) .and. isint(Zi) ) then
-                    ! no real, imaginary integer
-                    strmatch = .true.
-                    str = trim(int2char(nint(Zi)))//'i'
-                    !
-                elseif ( (.not. isint(Zr)) .and. (.not. isint(Zi)) ) then
-                    ! complex number
-                    !
-                    if (k.ge.1) then
-                    search : do kk = 1, k
-                        !
-                        s_exp = cmplx(0.0_dp,0.0_dp)
-                        k_exp = 0 
-                        do while ( .not. isequal(s_exp,cmplx(1,0,dp)) )
-                            ! do a full loop. complex numbers form a cyclic abelian group.
-                            ! exponentiate it until it loops back to one, the identity
-                            k_exp = k_exp+1
-                            s_exp = s(k)**k_exp
-                            ! check positive
-                            if ( isequal(Z,s_exp) ) then
-                                !
-                                strmatch = .true.
-                                if (k_exp.eq.1) then
-                                    str = char(char_start+k)
-                                else
-                                    str = char(char_start+k)//trim(int2char(k_exp))
-                                endif
-                                exit search
-                                !
-                            endif
-                            ! check negative
-                            if ( isequal(Z,-s_exp) ) then
-                                !
-                                strmatch = .true.
-                                if (k_exp.eq.1) then
-                                    str = '-'//char(char_start+k)
-                                else
-                                    str = '-'//char(char_start+k)//trim(int2char(k_exp))
-                                endif
-                                exit search
-                                !
-                            endif
-                        enddo
-                    enddo search
-                    endif
-                    !
-                    ! if match is not found assign a new character to variable
-                    if (.not.strmatch) then
-                        !
-                        strmatch = .true.
-                        k = k + 1
-                        s(k) = Z
-                        str = char(char_start+k)
-                        !
-                    endif
-                endif 
-                !
-                if (strmatch) then
-                    write(*,fmt3,advance='no') str
-                else
-                    write(*,fmt5,advance='no') real(chartab(i,j))
-                endif
+                write(*,fmts(3),advance='no') str
                 !
             enddo
             write(*,*)
@@ -724,60 +765,6 @@ contains
         endif
         !
     end subroutine print_chartab
-
-!     function       rep_characters(sym,class_id) result(rep_trace)
-!         !
-!         implicit none
-!         !
-!         complex(dp), intent(in) :: chartab(:,:) ! character table
-!         real(dp),    intent(in) :: sym(:,:,:) 	! representation
-!         integer, allocatable :: rep_trace(:)
-!         integer, allocatable :: class_nelements(:)
-!         integer, allocatable :: class_representative(:)
-!         integer :: i
-!         !
-!         ! they are always identical...
-!         nirreps  = size(chartab,1)
-!         nclasses = size(chartab,2)
-!         !
-!         ! parse class properties
-!         class_nelements = nelements(class_id)
-!         class_representative = representative(class_id)
-!         !
-!         do i = 1, nclasses
-!         	rep_trace(i) = trace( sym(:,:,class_representative(i)) )
-!     	enddo
-!     	!
-!     end function   rep_characters
-
-!     function       irrep_decomposition(chartab,sym,class_id) result(coefficients)
-!         !
-!         implicit none
-!         !
-!         complex(dp), intent(in) :: chartab(:,:) ! character table
-!         real(dp)   , intent(in) :: sym(:,:,:) 	! representation
-!         integer    ,allocatable :: coefficients ! decomposition cofficients
-!         integer, allocatable :: class_nelements(:)
-!         integer, allocatable :: class_representative(:)
-!         integer :: i
-!         !
-!         ! they are always identical...
-!         nirreps  = size(chartab,1)
-!         nclasses = size(chartab,2)
-!         !
-!         ! parse class properties
-!         class_nelements = nelements(class_id)
-!         class_representative = representative(class_id)
-!         !
-!         do i = 1, nclasses
-!         	!
-!         	j = class_representative(i)
-!         	!
-!         	trace(sym(:,:,j))
-!     	enddo
-!     	!
-!     end function   irrep_decomposition
-
 
     ! identifier functions which operate on identifiers
 

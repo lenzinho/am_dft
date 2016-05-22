@@ -220,14 +220,6 @@ contains
         implicit none
         !
         class(am_class_group), intent(inout) :: grp
-        character(100) :: flags
-        !
-        select type(grp)
-        class is(am_class_seitz_group)
-            flags='seitz'
-        class default
-            flags=''
-        end select
         !
         ! get character table (ps_id is required for sorting the irreps: proper before improper)
         grp%ct%chartab = get_chartab(multab=grp%mt%multab, nclasses=grp%cc%nclasses, &
@@ -249,6 +241,26 @@ contains
             irrep_label=grp%ct%muliken, ps_id=grp%ps_id)
         !
     end subroutine print_character_table
+
+!     subroutine     print_irrep_decomposition(grp,flags)
+!         !
+!         implicit none
+!         !
+!         class(am_class_group), intent(in) :: grp
+!         character(*), intent(in) :: flags
+!         !
+!         if (index(flags,'rep')) then
+!         if (index(flags,'l=s')) then
+!         if (index(flags,'l=p')) then
+!         if (index(flags,'l=d')) then
+!         if (index(flags,'l=f')) then
+!         if (index(flags,'m')) then
+
+!         ! get rep characters
+!         grp%ct%repchi = get_rep_characters(sym=grp%sym, nclasses=grp%cc%nclasses, &
+!             class_representative=grp%cc%representative)
+!         !
+!     end subroutine print_irrep_decomposition
 
     subroutine     create(sg,seitz)
         !
@@ -304,6 +316,34 @@ contains
         call sg%get_character_table()
         !
     end subroutine create
+
+!     function       print_irrep_decomposition(grp)
+!         !
+!         implicit none
+!         !
+!         complex(dp), intent(in) :: chartab(:,:) ! character table
+!         real(dp)   , intent(in) :: sym(:,:,:)   ! representation
+!         integer    ,allocatable :: coefficients ! decomposition cofficients
+!         integer, allocatable :: class_nelements(:)
+!         integer, allocatable :: class_representative(:)
+!         integer :: i
+!         !
+!         ! they are always identical...
+!         nirreps  = size(chartab,1)
+!         nclasses = size(chartab,2)
+!         !
+!         ! parse class properties
+!         class_nelements = nelements(class_id)
+!         class_representative = representative(class_id)
+!         !
+!         do i = 1, nclasses
+!             !
+!             j = class_representative(i)
+!             !
+!             trace(sym(:,:,j))
+!         enddo
+!         !
+!     end function   print_irrep_decomposition
 
     ! high level routines which operate on sg
 
