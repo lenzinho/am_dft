@@ -184,6 +184,7 @@ contains
         ! create basis on each irreducible atoms
         allocate(ic%atom(ic%natoms))
         do i = 1, ic%natoms
+            ! call ic%atom(i)%gen_orbitals(orbital_flags='2s,2p')
             call ic%atom(i)%gen_orbitals(orbital_flags='2s,2p')
         enddo
         if (opts%verbosity.ge.1) call ic%print_orbital_basis()

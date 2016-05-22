@@ -20,8 +20,9 @@ module am_symmetry
         integer , allocatable :: multab(:,:)     ! multiplication table
         complex(dp), allocatable :: chartab(:,:) ! character table
         contains
-        procedure :: copy
         procedure :: sort_symmetries
+        procedure :: copy
+        procedure :: dump
     end type am_class_group
 
     type, public, extends(am_class_group) :: am_class_seitz_group 
@@ -110,6 +111,39 @@ contains
         if (allocated(grp%chartab))  allocate(cp%chartab,  source=grp%chartab)
         !
     end subroutine copy
+
+    subroutine     dump(grp,iopt_filename)
+        !
+        implicit none
+        !
+        class(am_class_group), intent(in) :: grp
+        character(*), intent(in), optional :: iopt_filename
+        character(100) :: fname
+        integer :: fid
+        integer :: i,j,k
+        !
+        ! set default
+        fname = 'outfile.grp_dump'
+        if (present(iopt_filename)) fname = iopt_filename
+        !
+        fid = 1
+        open(unit=fid,file=trim(iopt_filename),status="replace",action='write')
+            !
+            !
+            !
+            do i = 1, grp%nsyms 
+                write(fid,*) 'symmetry', i
+                do j = 1, grp%nbases
+                    do k = 1, grp%nbases
+                        write(fid,"(f)",advance='no') grp%sym(j,k,i)
+                    enddo
+                    write(fid,*)
+                enddo
+            enddo
+            !
+        close(fid)
+        !
+    end subroutine dump
 
     ! high level routines which operate on sg
 

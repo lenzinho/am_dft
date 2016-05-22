@@ -28,7 +28,7 @@ module am_matlab
     end interface ! meshgrid
 
     interface isequal
-        module procedure d_isequal, dv_isequal, dm_isequal, z_isequal, zv_isequal, zm_isequal
+        module procedure d_isequal, dv_isequal, dm_isequal, z_isequal, zv_isequal, zm_isequal, i_isequal, iv_isequal, im_isequal
     end interface ! isequal
 
     interface trace
@@ -36,7 +36,7 @@ module am_matlab
     end interface ! trace
     
     interface unique
-        module procedure dvunique, dmunique, ivunique, iunique
+        module procedure dv_unique, dm_unique, iv_unique, i_unique
     end interface ! unique
 
     interface issubset
@@ -1299,7 +1299,7 @@ module am_matlab
         pivot = pivot + 1
         end do
         deallocate(temp)
-    end subroutine  rref    
+    end subroutine  rref
 
     ! matrix indexing
 
@@ -1712,289 +1712,6 @@ module am_matlab
         !        
     end function  iszero
 
-    ! unique
-
-    pure function dmunique(A,iopt_prec) result(B)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        real(dp), intent(in) :: A(:,:,:)
-        real(dp) :: wrkspace(size(A,1),size(A,2),size(A,3))
-        real(dp), allocatable :: B(:,:,:)
-        integer :: i,j,k
-        real(dp), intent(in), optional :: iopt_prec
-        real(dp) :: prec
-        !
-        if ( present(iopt_prec) ) then
-            prec = iopt_prec
-        else
-            prec = tiny
-        endif
-        !
-        k=1
-        wrkspace(:,:,1) = A(:,:,1)
-        !
-        try_loop : do i = 1, size(A,3)
-            do j = 1, k
-                if ( all(abs(A(:,:,i)-wrkspace(:,:,j)).lt.prec) ) cycle try_loop
-            enddo
-            k = k + 1
-            wrkspace(:,:,k) = A(:,:,i)
-        enddo try_loop
-        !
-        allocate(B(size(A,1),size(A,2),k))
-        B(:,:,1:k) = wrkspace(:,:,1:k)
-        !
-    end function  dmunique
-
-    pure function dvunique(A,iopt_prec) result(B)
-        !> returns unique columns of double matrix A(:,i) within numerical precision
-        implicit none
-        !
-        real(dp), intent(in) :: A(:,:)
-        real(dp) :: wrkspace(size(A,1),size(A,2))
-        real(dp), allocatable :: B(:,:)
-        integer :: i,j,k
-        real(dp), intent(in), optional :: iopt_prec
-        real(dp) :: prec
-        !
-        if ( present(iopt_prec) ) then
-            prec = iopt_prec
-        else
-            prec = tiny
-        endif
-        !
-        k=1
-        wrkspace(:,1) = A(:,1)
-        !
-        try_loop : do i = 1,size(A,2)
-            do j = 1,k
-                if ( all(abs(A(:,i)-wrkspace(:,j)).lt.prec) ) cycle try_loop
-            enddo
-            k = k + 1
-            wrkspace(:,k) = A(:,i)
-        enddo try_loop
-        !
-        allocate(B(size(A,1),k))
-        !
-        do i = 1,k
-            B(:,i) = wrkspace(:,i)
-        enddo
-    end function  dvunique
-
-    pure function ivunique(A) result(B)
-        !> returns unique columns of double matrix A(:,i) within numerical precision
-        implicit none
-        !
-        integer, intent(in) :: A(:,:)
-        integer :: wrkspace(size(A,1),size(A,2))
-        integer, allocatable :: B(:,:)
-        integer :: i,j,k
-        logical :: found
-        !
-        k=1
-        wrkspace(:,1) = A(:,1)
-        !
-        do i = 1, size(A,2)
-            !
-            found = .false.
-            !
-            do j = 1, k
-            if ( all(A(:,i).eq.wrkspace(:,j)) ) then
-                found = .true.
-                exit
-            endif
-            enddo
-            !
-            if (.not.found) then
-                k = k + 1
-                wrkspace(:,k) = A(:,i)
-            endif
-        enddo 
-        !
-        allocate(B,source=wrkspace(:,1:k))
-        !
-    end function  ivunique
-
-    pure function iunique(A) result(B)
-        !> returns unique values of integer array A(:)
-        implicit none
-        !
-        integer, intent(in) :: A(:)
-        integer, allocatable :: wrkspace(:)
-        integer, allocatable :: B(:)
-        integer :: i, k, n
-        !
-        n = size(A)
-        !
-        allocate(wrkspace(n))
-        wrkspace=0
-        !
-        !
-        k=0
-        do i = 1, n
-        if (.not. any(A(i).eq.wrkspace)) then
-            k=k+1
-            wrkspace(k) = A(i)
-        endif
-        enddo 
-        !
-        allocate(B,source=wrkspace(1:k))
-        !
-    end function  iunique
-
-    ! issubset
-
-    pure function dm_issubset(A,B,iopt_prec) result(bool)
-        ! returns true if B(:,:) is a subset of A(:,:,i)
-        implicit none
-        !
-        real(dp), intent(in) :: A(:,:,:)
-        real(dp), intent(in) :: B(:,:)
-        logical :: bool
-        integer :: i,n
-        real(dp), intent(in), optional :: iopt_prec
-        real(dp) :: prec
-        !
-        if ( present(iopt_prec) ) then
-            prec = iopt_prec
-        else
-            prec = tiny
-        endif
-        !
-        n = size(A,3)
-        !
-        bool = .false.
-        do i = 1, n
-            if (all(abs(A(:,:,i)-B(:,:)).lt.prec)) then
-                bool = .true.
-                return 
-            endif
-        enddo
-        !
-    end function  dm_issubset
-
-    pure function im_issubset(A,B) result(bool)
-        ! returns true if B(:,:) is a subset of A(:,:,i)
-        implicit none
-        !
-        integer, intent(in) :: A(:,:,:)
-        integer, intent(in) :: B(:,:)
-        logical :: bool
-        integer :: i,n
-        !
-        n = size(A,3)
-        !
-        bool = .false.
-        do i = 1, n
-            if (all(A(:,:,i).eq.B(:,:))) then
-                bool = .true.
-                return 
-            endif
-        enddo
-        !
-    end function  im_issubset
-
-    pure function dv_issubset(A,B,iopt_prec) result(bool)
-        ! returns true if B(:,:) is a subset of A(:,:,i)
-        implicit none
-        !
-        real(dp), intent(in) :: A(:,:)
-        real(dp), intent(in) :: B(:)
-        logical :: bool
-        integer :: i,n
-        real(dp), intent(in), optional :: iopt_prec
-        real(dp) :: prec
-        !
-        if ( present(iopt_prec) ) then
-            prec = iopt_prec
-        else
-            prec = tiny
-        endif
-        !
-        n = size(A,2)
-        !
-        bool = .false.
-        do i = 1, n
-            if (all(abs(A(:,i)-B(:)).lt.prec)) then
-                bool = .true.
-                return 
-            endif
-        enddo
-        !
-    end function  dv_issubset
-
-    pure function iv_issubset(A,B) result(bool)
-        ! returns true if B(:,:) is a subset of A(:,:,i)
-        implicit none
-        !
-        integer, intent(in) :: A(:,:)
-        integer, intent(in) :: B(:)
-        logical :: bool
-        integer :: i,n
-        !
-        n = size(A,2)
-        !
-        bool = .false.
-        do i = 1, n
-            if (all(A(:,i).eq.B(:))) then
-                bool = .true.
-                return 
-            endif
-        enddo
-        !
-    end function  iv_issubset
-
-    pure function d_issubset(A,B,iopt_prec) result(bool)
-        ! returns true if B is a subset of Ai)
-        implicit none
-        !
-        real(dp), intent(in) :: A(:)
-        real(dp), intent(in) :: B
-        logical :: bool
-        integer :: i,n
-        real(dp), intent(in), optional :: iopt_prec
-        real(dp) :: prec
-        !
-        if ( present(iopt_prec) ) then
-            prec = iopt_prec
-        else
-            prec = tiny
-        endif
-        !
-        n = size(A,1)
-        !
-        bool = .false.
-        do i = 1, n
-            if (abs(A(i)-B).lt.prec) then
-                bool = .true.
-                return 
-            endif
-        enddo
-        !
-    end function  d_issubset
-
-    pure function i_issubset(A,B) result(bool)
-        ! returns true if B is a subset of A(i)
-        implicit none
-        !
-        integer, intent(in) :: A(:)
-        integer, intent(in) :: B
-        logical :: bool
-        integer :: i,n
-        !
-        n = size(A,1)
-        !
-        bool = .false.
-        do i = 1, n
-            if (A(i).eq.B) then
-                bool = .true.
-                return 
-            endif
-        enddo
-        !
-    end function  i_issubset
-
     ! cumulative sum / product (from numerical recipies)
 
     recursive function dcumsum(arr,seed) result(ans)
@@ -2167,6 +1884,7 @@ module am_matlab
         logical :: bool
         real(dp), intent(in), optional :: iopt_prec
         real(dp) :: prec
+        integer :: i, m
         !
         if ( present(iopt_prec) ) then
             prec = iopt_prec
@@ -2174,13 +1892,16 @@ module am_matlab
             prec = tiny
         endif
         !
+        m = size(x,1)
         !
-        if (all(abs(x-y).lt.prec)) then
-            bool = .true.
-        else
-            bool = .false.
-        endif
-        !        
+        bool = .true.
+        do i = 1, m
+            if (abs(x(i)-y(i)).gt.prec) then
+                bool = .false.
+                return
+            endif
+        enddo
+        !          
     end function  dv_isequal
 
     pure function dm_isequal(x,y,iopt_prec) result(bool)
@@ -2191,6 +1912,7 @@ module am_matlab
         logical :: bool
         real(dp), intent(in), optional :: iopt_prec
         real(dp) :: prec
+        integer :: i, j, m, n
         !
         if ( present(iopt_prec) ) then
             prec = iopt_prec
@@ -2198,12 +1920,18 @@ module am_matlab
             prec = tiny
         endif
         !
+        m = size(x,1)
+        n = size(x,2)
         !
-        if (all(abs(x-y).lt.prec)) then
-            bool = .true.
-        else
-            bool = .false.
-        endif
+        bool = .true.
+        do i = 1, m
+        do j = 1, n
+            if (abs(x(i,j)-y(i,j)).gt.prec) then
+                bool = .false.
+                return
+            endif
+        enddo
+        enddo
         !        
     end function  dm_isequal
 
@@ -2263,6 +1991,330 @@ module am_matlab
         bool = dm_isequal(real(x),real(y),iopt_prec) * dm_isequal(aimag(x),aimag(y),iopt_prec)
         !
     end function  zm_isequal
+
+    pure function i_isequal(x,y) result(bool)
+        !
+        implicit none
+        !
+        integer, intent(in) :: x, y
+        logical :: bool
+        !
+        if (x.eq.y) then
+            bool = .true.
+        else
+            bool = .false.
+        endif
+        !        
+    end function  i_isequal
+
+    pure function iv_isequal(x,y) result(bool)
+        !
+        implicit none
+        !
+        integer, intent(in) :: x(:), y(:)
+        logical :: bool
+        integer :: i, m
+        !
+        m = size(x,1)
+        !
+        bool = .true.
+        do i = 1, m
+            if (x(i).ne.y(i)) then
+                bool = .false.
+                return
+            endif
+        enddo
+        !          
+    end function  iv_isequal
+
+    pure function im_isequal(x,y) result(bool)
+        !
+        implicit none
+        !
+        integer, intent(in) :: x(:,:), y(:,:)
+        logical :: bool
+        integer :: i, j, m, n
+        !
+        m = size(x,1)
+        n = size(x,2)
+        !
+        bool = .true.
+        do i = 1, m
+        do j = 1, n
+            if (x(i,j).ne.y(i,j)) then
+                bool = .false.
+                return
+            endif
+        enddo
+        enddo
+        !        
+    end function  im_isequal
+
+    ! issubset
+
+    pure function dm_issubset(A,B,iopt_prec) result(bool)
+        ! returns true if B(:,:) is a subset of A(:,:,i)
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:,:)
+        real(dp), intent(in) :: B(:,:)
+        logical :: bool
+        integer :: i,n
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp) :: prec
+        !
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        n = size(A,3)
+        !
+        bool = .false.
+        do i = 1, n
+            if (isequal(A(:,:,i),B,iopt_prec=prec)) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function  dm_issubset
+
+    pure function im_issubset(A,B) result(bool)
+        ! returns true if B(:,:) is a subset of A(:,:,i)
+        implicit none
+        !
+        integer, intent(in) :: A(:,:,:)
+        integer, intent(in) :: B(:,:)
+        logical :: bool
+        integer :: i,n
+        !
+        n = size(A,3)
+        !
+        bool = .false.
+        do i = 1, n
+            if (isequal(A(:,:,i),B)) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function  im_issubset
+
+    pure function dv_issubset(A,B,iopt_prec) result(bool)
+        ! returns true if B(:,:) is a subset of A(:,:,i)
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:)
+        real(dp), intent(in) :: B(:)
+        logical :: bool
+        integer :: i,n
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp) :: prec
+        !
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        n = size(A,2)
+        !
+        bool = .false.
+        do i = 1, n
+            if (isequal(A(:,i),B,iopt_prec=prec)) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function  dv_issubset
+
+    pure function iv_issubset(A,B) result(bool)
+        ! returns true if B(:,:) is a subset of A(:,:,i)
+        implicit none
+        !
+        integer, intent(in) :: A(:,:)
+        integer, intent(in) :: B(:)
+        logical :: bool
+        integer :: i,n
+        !
+        n = size(A,2)
+        !
+        bool = .false.
+        do i = 1, n
+            if (isequal(A(:,i),B)) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function  iv_issubset
+
+    pure function d_issubset(A,B,iopt_prec) result(bool)
+        ! returns true if B is a subset of Ai)
+        implicit none
+        !
+        real(dp), intent(in) :: A(:)
+        real(dp), intent(in) :: B
+        logical :: bool
+        integer :: i,n
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp) :: prec
+        !
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        n = size(A,1)
+        !
+        bool = .false.
+        do i = 1, n
+            if (isequal(A(i),B,iopt_prec=prec)) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function  d_issubset
+
+    pure function i_issubset(A,B) result(bool)
+        ! returns true if B is a subset of A(i)
+        implicit none
+        !
+        integer, intent(in) :: A(:)
+        integer, intent(in) :: B
+        logical :: bool
+        integer :: i,n
+        !
+        n = size(A,1)
+        !
+        bool = .false.
+        do i = 1, n
+            if (A(i).eq.B) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function  i_issubset
+
+    ! unique
+
+    pure function dm_unique(A,iopt_prec) result(B)
+        !> returns unique matrices of A(:,:,i) within numerical precision
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:,:)
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp), allocatable :: B(:,:,:)
+        real(dp) :: wrk(size(A,1),size(A,2),size(A,3))
+        integer :: i,j,k
+        real(dp) :: prec
+        !
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        k=1
+        wrk(:,:,1) = A(:,:,1)
+        !
+        try_loop : do i = 1, size(A,3)
+            do j = 1, k
+                if ( isequal(A(:,:,i),wrk(:,:,j),prec) ) cycle try_loop
+            enddo
+            k = k + 1
+            wrk(:,:,k) = A(:,:,i)
+        enddo try_loop
+        !
+        allocate(B,source=wrk(:,:,1:k))
+        !
+    end function  dm_unique
+
+    pure function dv_unique(A,iopt_prec) result(B)
+        !> returns unique columns of double matrix A(:,i) within numerical precision
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:)
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp), allocatable :: B(:,:)
+        real(dp) :: wrk(size(A,1),size(A,2))
+        integer :: i,j,k
+        real(dp) :: prec
+        !
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        k=1
+        wrk(:,1) = A(:,1)
+        !
+        try_loop : do i = 1, size(A,2)
+            do j = 1, k
+                if ( isequal(A(:,i),wrk(:,j),prec) ) cycle try_loop
+            enddo
+            k = k + 1
+            wrk(:,k) = A(:,i)
+        enddo try_loop
+        !
+        allocate(B,source=wrk(:,1:k))
+        !
+    end function  dv_unique
+
+    pure function iv_unique(A) result(B)
+        !> returns unique columns of double matrix A(:,i) within numerical precision
+        implicit none
+        !
+        integer,  intent(in) :: A(:,:)
+        integer, allocatable :: B(:,:)
+        integer :: wrk(size(A,1),size(A,2))
+        integer :: i,j,k
+        !
+        k=1
+        wrk(:,1) = A(:,1)
+        !
+        try_loop : do i = 1,size(A,2)
+            do j = 1,k
+                if ( isequal(A(:,i),wrk(:,j)) ) cycle try_loop
+            enddo
+            k = k + 1
+            wrk(:,k) = A(:,i)
+        enddo try_loop
+        !
+        allocate(B,source=wrk(:,1:k))
+        !
+    end function  iv_unique
+
+    pure function i_unique(A) result(B)
+        !> returns unique columns of double matrix A(:,i) within numerical precision
+        implicit none
+        !
+        integer,  intent(in) :: A(:)
+        integer, allocatable :: B(:)
+        integer :: wrk(size(A,1))
+        integer :: i,j,k
+        !
+        k=1
+        wrk(1) = A(1)
+        !
+        try_loop : do i = 1,size(A,1)
+            do j = 1, k
+                if ( isequal(A(i),wrk(j)) ) cycle try_loop
+            enddo
+            k = k + 1
+            wrk(k) = A(i)
+        enddo try_loop
+        !
+        allocate(B,source=wrk(1:k))
+        !
+    end function  i_unique
 
     ! pure function dv_isequal(a) result(bool)
     ! !

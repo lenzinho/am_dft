@@ -17,6 +17,8 @@ module am_symmetry_rep
 
     public :: print_relations
 
+    public :: combine_relations
+
     type, public, extends(am_class_group) :: am_class_flat_group
         real(dp), allocatable :: relations(:,:)
         contains
@@ -37,11 +39,11 @@ module am_symmetry_rep
         integer               :: rank           ! tensor rank
         integer , allocatable :: dims(:)        ! tensor dimensions
         real(dp), allocatable :: relations(:,:) ! relations connecting tensor elements
-        type(am_class_flat_group) :: fig   ! flattened intrinsic symmetry group
-        type(am_class_flat_group) :: fpg   ! flattened point group
     end type am_class_tensor
 
     type, public, extends(am_class_tensor) :: am_class_property
+        type(am_class_flat_group) :: fig        ! flattened intrinsic symmetry group
+        type(am_class_flat_group) :: fpg        ! flattened point group
         contains
         procedure :: get_property
     end type am_class_property

@@ -16,10 +16,13 @@ module am_tight_binding
 	private
 
     type, public, extends(am_class_group) :: am_class_tb_pg
-        contains
     end type am_class_tb_pg
 
     type, public, extends(am_class_tensor) :: am_class_tbvsk
+        !
+        type(am_class_point_group):: stab  ! stabilizer group symmetry
+        type(am_class_flat_group) :: fstab ! flat stabilizer group symmetry
+      ! type(am_class_flat_group) :: frevg ! flat reversal group symmetry
     end type am_class_tbvsk
 
     type, public :: am_class_tight_binding
@@ -31,27 +34,22 @@ module am_tight_binding
 
 contains
 
-    subroutine     initialize_tb(tb,pg,ip,ic,pc,opts)
+    subroutine     initialize_tb(tb,sg,pg,ip,ic,pc,opts)
         !
         implicit none
         !
         class(am_class_tight_binding), intent(out) :: tb
+        type(am_class_space_group)   , intent(in)  :: sg   ! seitz space group
         type(am_class_point_group)   , intent(in)  :: pg   ! seitz point group
         type(am_class_prim_cell)     , intent(in)  :: pc   ! primitive cell
         type(am_class_irre_cell)     , intent(inout) :: ic ! irreducible cell
         class(am_class_pair_shell)   , intent(in)  :: ip   ! irreducible pairs
         type(am_class_options)       , intent(in)  :: opts
-        type(am_class_options)                     :: notalk
-        type(am_class_point_group)                 :: stab
         integer :: i,k
-        !
-        notalk = opts
-        notalk%verbosity = 0
         !
         ! ADD OPTION TO READ ORBITALS HERE
         call ic%initialize_orbitals(opts=opts)
         ! call ic%read_orbitals(opts=opts)
-        !
         !
         tb%nshells = ip%nshells
         !
@@ -60,8 +58,7 @@ contains
             ! tb shell and ip shell correspond to the same "object"
             if (opts%verbosity.ge.1) call am_print('irreducible pair',k)
             i = k
-            call get_relations(tbvsk=tb%tbvsk(k), pc=pc, ic=ic, shell=ip%shell(k))
-
+            call get_relations(tbvsk=tb%tbvsk(k), sg=sg, pg=pg, pc=pc, ic=ic, shell=ip%shell(k))
         enddo
         !
         contains
@@ -79,27 +76,59 @@ contains
             tbvsk%dims  = shape(ps2tb(R=eye(3),pc=pc,ic=ic))
             !
         end subroutine initialize_tbvsk
-        subroutine     get_relations(tbvsk,pc,ic,shell)
+        subroutine     get_relations(tbvsk,sg,pg,pc,ic,shell)
                 !
                 implicit none
                 !
-                type(am_class_tbvsk)    , intent(inout) :: tbvsk
-                type(am_class_prim_cell), intent(in)    :: pc
-                type(am_class_irre_cell), intent(inout) :: ic
-                type(am_shell_cell)     , intent(in)    :: shell
+                type(am_class_tbvsk)      , intent(inout) :: tbvsk
+                type(am_class_space_group), intent(in)    :: sg   ! seitz space group
+                type(am_class_point_group), intent(in)    :: pg   ! seitz point group
+                type(am_class_prim_cell)  , intent(in)    :: pc
+                type(am_class_irre_cell)  , intent(inout) :: ic
+                type(am_shell_cell)       , intent(in)    :: shell
+                type(am_class_options)     :: notalk
+                type(am_class_point_group) :: stab
+                type(am_class_point_group) :: revg
+                !
+                notalk = opts
+                notalk%verbosity = 0
                 !
                 ! get rank, dims, flags, property
                 call initialize_tbvsk(tbvsk=tbvsk, pc=pc, ic=ic)
+                !
                 ! determine stabilizers of a prototypical bond in shell (vector v)
-                call stab%get_stabilizer_group(pg=pg, v=shell%tau(1:3,1), opts=notalk)
+                call tbvsk%stab%get_stabilizer_group(pg=pg, v=shell%tau(1:3,1), opts=notalk)
+                !
+                call tbvsk%stab%dump('dmp_tbvsk_stab')
+                !
+                call am_print('stabilizer group', trim(decode_pointgroup( tbvsk%stab%pg_id )))
                 ! get point group in the flattened hamiltonin basis
-                call tbvsk%fpg%get_flat_point_group(tens=tbvsk, pg=pg, pc=pc, ic=ic)
-                ! write point symmetries
-                if (opts%verbosity.ge.1) call am_print('point symmetries', tbvsk%fpg%nsyms)
+                call tbvsk%fstab%get_flat_point_group(tens=tbvsk, pg=stab, pc=pc, ic=ic)
+                !
+
+
+                call tbvsk%fstab%dump('dmp_tbvsk_fstab')
+
                 ! get relations
-                tbvsk%fpg%relations = tbvsk%fpg%get_relations()
-                ! write relations
-                call print_relations(relations=tbvsk%fpg%relations, dims=tbvsk%dims, flags='show:dependent,independent')
+                tbvsk%fstab%relations = tbvsk%fstab%get_relations()
+                !
+                !
+                !
+                !
+                tbvsk%relations = tbvsk%fstab%relations
+                !
+                ! ! determine reversal group of a prototypical bond in shell (vector v)
+                ! call revg%get_reversal_group(sg=sg, v=shell%tau(1:3,1), opts=notalk)
+                ! call am_print('reveral group', trim(decode_pointgroup( revg%pg_id )))
+                ! ! get point group in the flattened hamiltonin basis
+                ! call tbvsk%revg%get_flat_point_group(tens=tbvsk, pg=revg, pc=pc, ic=ic)
+                ! !
+                ! ! get relations
+                ! tbvsk%revg%relations = tbvsk%revg%get_relations()
+                ! !
+                ! tbvsk%relations = combine_relations(relationsA=tbvsk%stab%relations, relationsB=tbvsk%revg%relations)
+                ! print relations
+                call print_relations(relations=tbvsk%relations, dims=tbvsk%dims, flags='show:dependent,independent')
                 !
         end subroutine get_relations
     end subroutine initialize_tb
