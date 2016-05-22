@@ -12,18 +12,19 @@ module am_symmetry
     public
 
     type, public :: am_class_group
-        integer :: nsyms  ! number of symmetries
-        integer :: nbases ! number of bases functions (dimensions of rep)
-        real(dp), allocatable :: sym(:,:,:)      ! symmetry elements (operate on fractional atomic basis)
-        integer , allocatable :: class_id(:)     ! integer assigning each element to a conjugacy class
-        integer , allocatable :: ps_id(:)        ! integer which identifies point symmetries (see decode_pointsymmetry)
-        type(am_class_character_table)      :: ct      ! character table
-        type(am_class_multiplication_table) :: mt      ! multiplication table
+        integer :: nsyms                          ! number of symmetries
+        integer :: nbases                         ! number of bases functions (dimensions of rep)
+        real(dp), allocatable :: sym(:,:,:)       ! symmetry elements (operate on fractional atomic basis)
+        integer , allocatable :: ps_id(:)         ! integer which identifies point symmetries (see decode_pointsymmetry)
+        type(am_class_conjugacy_class)      :: cc ! conjugacy classes
+        type(am_class_character_table)      :: ct ! character table
+        type(am_class_multiplication_table) :: mt ! multiplication table
         contains
         procedure :: sort_symmetries
         procedure :: copy
         procedure :: dump
         procedure :: get_multiplication_table
+        procedure :: get_conjugacy_classes
         procedure :: get_character_table
         procedure :: print_character_table
     end type am_class_group
@@ -79,13 +80,39 @@ contains
             inds = inds(grp%nsyms:1:-1)
         endif
         !
-        if (allocated(grp%sym     )) grp%sym      = grp%sym(:,:,inds)
-        if (allocated(grp%ps_id   )) grp%ps_id    = grp%ps_id(inds)
-        if (allocated(grp%class_id)) grp%class_id = grp%class_id(inds)
+        ! get reverse indices
+        allocate(rinds(grp%nsyms))
+        rinds(inds) = [1:grp%nsyms]
         !
+        ! symmerties
+        if (allocated(grp%sym)) then
+            grp%sym = grp%sym(:,:,inds)
+        endif
+        ! symmetry id
+        if (allocated(grp%ps_id)) then
+            grp%ps_id = grp%ps_id(inds)
+        endif
+        !
+        ! conjugacy class
+        if (allocated(grp%cc%id)) then
+            !
+            grp%cc%id = rinds(grp%cc%id(inds))
+            !
+            do i = 1, grp%cc%nclasses
+            do j = 1, grp%cc%nelements(i)
+            grp%cc%member(i,j) = rinds(grp%cc%member(i,j))
+            enddo
+            enddo
+            !
+            do i = 1, grp%cc%nclasses
+                write(*,*) grp%cc%representative
+            grp%cc%representative(i) = rinds(grp%cc%representative(i))
+            enddo
+            !
+        endif
+        !
+        ! multiplication table
         if (allocated(grp%mt%multab)) then
-            allocate(rinds(grp%nsyms))
-            rinds(inds) = [1:grp%nsyms]
             do i = 1, grp%nsyms
             do j = 1, grp%nsyms
                 grp%mt%multab(i,j) = rinds(grp%mt%multab(i,j))
@@ -164,13 +191,31 @@ contains
         ! get multiplication table
         grp%mt%multab = get_multab(sym=grp%sym, flags=flags//'prog')
         ! get inverse indices
-        grp%mt%inv = get_inverse_indices(multab=grp%mt%multab)
+        grp%mt%inv_id = get_inverse_indices(multab=grp%mt%multab)
         ! get cyclic order
         grp%mt%order = get_cyclic_order(multab=grp%mt%multab)
-        ! get conjugacy classes (ps_id is required for sorting the classes: proper before improper)
-        grp%class_id = get_conjugacy_classes(multab=grp%mt%multab, ps_id=grp%ps_id)
-        !
+        ! 
     end subroutine get_multiplication_table
+
+    subroutine     get_conjugacy_classes(grp)
+        !
+        implicit none
+        !
+        class(am_class_group), intent(inout) :: grp
+        !
+        !
+        ! get conjugacy classes (ps_id is required for sorting the classes: proper before improper)
+        grp%cc%id = get_class_id(multab=grp%mt%multab, inv_id=grp%mt%inv_id, ps_id=grp%ps_id)
+        ! number of classes
+        grp%cc%nclasses = maxval(grp%cc%id)
+        ! get number of elements in each class
+        grp%cc%nelements = nelements(id=grp%cc%id)
+        ! get members
+        grp%cc%member = member(id=grp%cc%id)
+        ! get representatives
+        grp%cc%representative= representative(id=grp%cc%id)
+        !
+    end subroutine get_conjugacy_classes
 
     subroutine     get_character_table(grp)
         !
@@ -187,9 +232,11 @@ contains
         end select
         !
         ! get character table (ps_id is required for sorting the irreps: proper before improper)
-        grp%ct%chartab = get_chartab(multab=grp%mt%multab, ps_id=grp%ps_id)
+        grp%ct%chartab = get_chartab(multab=grp%mt%multab, nclasses=grp%cc%nclasses, &
+            class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
         ! get muliken labels for irreps
-        grp%ct%muliken = get_muliken(chartab=grp%ct%chartab, class_id=grp%class_id, ps_id=grp%ps_id)
+        grp%ct%muliken = get_muliken(chartab=grp%ct%chartab, nclasses=grp%cc%nclasses, &
+            class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
         !
     end subroutine get_character_table
 
@@ -199,7 +246,9 @@ contains
         !
         class(am_class_group), intent(in) :: grp
         !
-        call print_chartab(chartab=grp%ct%chartab, class_id=grp%class_id, ps_id=grp%ps_id)
+        call print_chartab(chartab=grp%ct%chartab, nclasses=grp%cc%nclasses, &
+            class_nelements=grp%cc%nelements, class_member=grp%cc%member, &
+            irrep_label=grp%ct%muliken, ps_id=grp%ps_id)
         !
     end subroutine print_character_table
 
@@ -245,14 +294,14 @@ contains
         !
         ! get multiplication table
         call sg%get_multiplication_table()
-        !
+        ! get conjugacy classes
+        call sg%get_conjugacy_classes()
         ! sort symmetries based on parameters
         call sg%sort_symmetries(criterion=sg%sym(1,4,:), flags='ascend')
         call sg%sort_symmetries(criterion=sg%sym(2,4,:), flags='ascend')
         call sg%sort_symmetries(criterion=sg%sym(3,4,:), flags='ascend')
         call sg%sort_symmetries(criterion=real(sg%ps_id,dp), flags='acsend')
-        call sg%sort_symmetries(criterion=real(sg%class_id,dp), flags='ascend')
-        !
+        call sg%sort_symmetries(criterion=real(sg%cc%id,dp), flags='ascend')
         ! get character table
         call sg%get_character_table()
         !
@@ -290,9 +339,7 @@ contains
             !
             call am_print('space symmetries',sg%nsyms,' ... ')
             !
-            call am_print('classes',maxval(sg%class_id))
-            !
-            write(*,*) maxval(sg%class_id)
+            call am_print('classes',sg%cc%nclasses)
             !
             call sg%print_character_table()
             !
@@ -619,7 +666,7 @@ contains
             write(fid,'(5x)',advance='no')
             write(fid,fmt1,advance='no') 'class'
             do i = 1, sg%nsyms
-                write(fid,fmt5,advance='no') sg%class_id(i)
+                write(fid,fmt5,advance='no') sg%cc%id(i)
             enddo
             write(fid,*)
             ! HEADER / SEPERATOR

@@ -9,15 +9,24 @@ module am_symmetry_tables
 
 	public
 
+	type, public :: am_class_conjugacy_class
+		integer :: nclasses							! nclasses number of classes
+		integer, allocatable :: id(:)				! class_id(nsyms) identify conjugacy classes
+		integer, allocatable :: nelements(:)		! class_nelements(nclasses) get number of elements in each class
+		integer, allocatable :: member(:,:)			! members(nclass,maxval(class_nelements)) record indicies of each class_member element for each class 
+		integer, allocatable :: representative(:)	! class_nelements(nclasses) get number of elements in each class
+		contains
+	end type am_class_conjugacy_class
+
 	type, public :: am_class_character_table
-		complex(dp), allocatable :: chartab(:,:)
-		character(:),allocatable :: muliken(:)
+		complex(dp), allocatable :: chartab(:,:)	! character table ( irreps * classes )
+		character(:),allocatable :: muliken(:)  	! irrep label
 		contains
 	end type am_class_character_table
 
 	type, public :: am_class_multiplication_table
 		integer, allocatable :: multab(:,:)
-		integer, allocatable :: inv(:)
+		integer, allocatable :: inv_id(:)
 		integer, allocatable :: order(:)
 		contains
 	end type am_class_multiplication_table
@@ -113,21 +122,21 @@ contains
         end function   get_matching_element_index_in_list
     end function   get_multab
 
-    pure function  get_inverse_indices(multab) result(inv_ind)
-        ! returns the inv_ind of the inverse elements given the multiplication chartab.
+    pure function  get_inverse_indices(multab) result(inv_id)
+        ! returns the inv_id of the inverse elements given the multiplication chartab.
         ! requires identity as first element
         implicit none
         !
         integer, intent(in) :: multab(:,:)
-        integer, allocatable :: inv_ind(:)
+        integer, allocatable :: inv_id(:)
         integer, allocatable :: P(:,:)
         !
-        inv_ind = [1:size(multab,1)]
+        inv_id = [1:size(multab,1)]
         !
         allocate(P,source=multab)
         where (P.ne.1) P = 0
         !
-        inv_ind = matmul(P,inv_ind)
+        inv_id = matmul(P,inv_id)
         !
     end function   get_inverse_indices
 
@@ -163,15 +172,17 @@ contains
         !
     end function   get_cyclic_order
 
-    function       get_conjugacy_classes(multab,ps_id) result(class_id)
+    ! conjugacy classes
+
+    function       get_class_id(multab,inv_id,ps_id) result(class_id)
         !
         ! for AX = XB, if elements A and B are conjugate pairs for some other element X in the group, then they are in the same class
         !
         implicit none
         !
-        integer, intent(in)  :: multab(:,:) ! multiplication chartab
-        integer, intent(in)  :: ps_id(:)    ! sort classes basd on point symmetry id: puts identity first and orders classes containing inversion nicely in the second half
-        integer, allocatable :: inv_ind(:)  ! inv_ind(nsyms) index of the inverse of symmetry element i
+        integer, intent(in) :: multab(:,:) ! multiplication chartab
+        integer, intent(in) :: ps_id(:)    ! sort classes basd on point symmetry id: puts identity first and orders classes containing inversion nicely in the second half
+        integer, intent(in) :: inv_id(:)   ! inv_id(nsyms) index of the inverse of symmetry element i
         integer, allocatable :: conjugates(:)
         integer, allocatable :: class_id(:)
         integer :: i, j, k
@@ -184,9 +195,6 @@ contains
         allocate(class_id(nsyms))
         class_id = 0
         !
-        ! get element inverse
-        inv_ind = get_inverse_indices(multab)
-        !
         ! allocate space for conjugate elements
         allocate(conjugates(nsyms))
         !
@@ -198,7 +206,7 @@ contains
             ! conjugate each element with all other group elements
             ! A = X(j) * B * X(j)^-1
             do j = 1, nsyms
-                conjugates(j) = multab(j,multab(i,inv_ind(j)))
+                conjugates(j) = multab(j,multab(i,inv_id(j)))
             enddo
             ! for each subgroup element created by conjugation find the corresponding index of the element in the group
             ! in order to save the class class_id number
@@ -315,11 +323,11 @@ contains
             enddo
             !
         end subroutine relabel_based_on_ps_id
-    end function   get_conjugacy_classes
+    end function   get_class_id
 
 	! character table
 
-    function       get_chartab(multab,ps_id) result(chartab)
+    function       get_chartab(multab,nclasses,class_nelements,class_member,ps_id) result(chartab)
         !
 	    use am_rank_and_sort
         !
@@ -327,33 +335,19 @@ contains
         !
         integer, intent(in) :: multab(:,:)
         integer, intent(in) :: ps_id(:)
+        integer, intent(in) :: nclasses
+		integer, intent(in) :: class_nelements(:) ! number of elements in each class
+		integer, intent(in) :: class_member(:,:) ! members(nclass,maxval(class_nelements))
+        complex(dp), allocatable :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
         integer :: i, j, k
         integer :: nsyms
-        integer :: nclasses
         integer :: nirreps  ! just to make things clearer; always equal to nclasses
-        integer, allocatable :: class_nelements(:) ! number of elements in each class
-        integer, allocatable :: class_member(:,:) ! members(nclass,maxval(class_nelements))
         integer, allocatable :: H(:,:,:) ! class multiplication 
-        complex(dp), allocatable :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
         integer, allocatable :: irrep_dim(:) ! sym dimensions
         integer, allocatable :: indices(:)
-        integer, allocatable :: class_id(:)
         real(dp) :: wrk
         !
         nsyms = size(multab,2)
-        !
-        ! id(nsyms) identify conjugacy classes
-        class_id = get_conjugacy_classes(multab=multab,ps_id=ps_id)
-        !
-        ! get number of classes
-        nclasses = maxval(class_id)
-        !
-        ! class_nelements(nclasses) get number of elements in each class
-        class_nelements = nelements(class_id)
-        !
-        ! members(nclass,maxval(class_nelements)) record indicies of each class_member element for each class 
-        ! (use the first class_member of class as class representative)
-        class_member = member(class_id)
         !
         ! get class coefficients (thenumber of times class k appears in the pdocut o class j and k )
         ! Wooten p 35, Eq 2.10; p 40, Example 2.8; p 89, Example 4.6
@@ -490,36 +484,30 @@ contains
         end function   eigen_analysis
     end function   get_chartab
 
-    function       get_muliken(chartab,class_id,ps_id) result(irrep_label)
+    function       get_muliken(chartab,nclasses,class_nelements,class_member,ps_id) result(irrep_label)
         !
         implicit none
         !
         complex(dp), intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
-        integer, intent(in) :: class_id(:)
+        integer, intent(in) :: nclasses
+		integer, intent(in) :: class_nelements(:)
+		integer, intent(in) :: class_member(:,:)
         integer, intent(in) :: ps_id(:)
         character(:), allocatable :: irrep_label(:)
-        integer, allocatable :: class_nelements(:)
-        integer, allocatable :: class_member(:,:)
         integer :: i, j
-        integer :: nirreps, nclasses
+        integer :: nirreps
         integer :: class_containing_identity
         integer :: class_containing_inversion
-        integer :: class_containing_Cn
         !
         ! they are always identical...
-        nirreps  = size(chartab,1)
-        nclasses = size(chartab,2)
-        !
-        ! parse class properties
-        class_nelements = nelements(class_id)
-        class_member = member(class_id)
+        nirreps = nclasses
         !
         ! create irrep label
         allocate(character(7) :: irrep_label(nirreps))
         !
-        class_containing_identity = get_class_with_ps_id(nclasses=nclasses, id=1, ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
-        class_containing_inversion= get_class_with_ps_id(nclasses=nclasses, id=6, ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
-        class_containing_Cn       = get_class_with_ps_id(nclasses=nclasses, id=1, ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
+        class_containing_identity  = find_class_containing_ps(nclasses=nclasses, id=1, ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
+        class_containing_inversion = find_class_containing_ps(nclasses=nclasses, id=6, ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
+        !
         do j = 1, nirreps
             ! 0) nullify irrep label
             irrep_label(j) = ''
@@ -545,7 +533,7 @@ contains
         enddo
         !
         contains
-            pure function get_class_with_ps_id(nclasses, id, ps_id, class_nelements, class_member) result(i)
+            pure function find_class_containing_ps(nclasses, id, ps_id, class_nelements, class_member) result(i)
                 !
                 implicit none
                 !
@@ -565,21 +553,21 @@ contains
                 enddo
                 ! if not found
                 i = 0
-            end function  get_class_with_ps_id
+            end function  find_class_containing_ps
     end function   get_muliken
 
-    subroutine     print_chartab(chartab,class_id,ps_id)
+    subroutine     print_chartab(chartab,nclasses,class_nelements,class_member,irrep_label,ps_id)
         !
         implicit none
         !
-        complex(dp), intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
-        integer, intent(in) :: class_id(:)
-        integer, intent(in) :: ps_id(:)
+        complex(dp) , intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
+        integer		, intent(in) :: nclasses
+		integer		, intent(in) :: class_nelements(:)
+		integer		, intent(in) :: class_member(:,:)
+        character(*), intent(in) :: irrep_label(:)
+        integer		, intent(in) :: ps_id(:)
         integer :: i, j, k
-        integer :: nirreps, nclasses
-        integer, allocatable :: class_nelements(:)
-        integer, allocatable :: class_member(:,:)
-        character(:), allocatable :: irrep_label(:)
+        integer :: nirreps
         ! complex to symbol
         integer :: kk, k_exp
         complex(dp), allocatable :: s(:)
@@ -597,12 +585,7 @@ contains
         character(50) :: fmt5
         !
         ! they are always identical...
-        nirreps  = size(chartab,1)
-        nclasses = size(chartab,2)
-        !
-        ! parse class properties
-        class_nelements = nelements(class_id)
-        class_member = member(class_id)
+        nirreps = nclasses
         !
         ! left-side headers
         fmt2 = '(5x,a10)'
@@ -612,12 +595,7 @@ contains
         fmt3 = '(a6)'
         fmt5 = '(f6.2)'
         !
-        !
-        ! create irrep label
-        irrep_label = get_muliken(chartab=chartab, class_id=class_id, ps_id=ps_id)
-        !
-        !
-        !
+        ! start printing
         write(*,fmt2,advance='no') 'class'
         do i = 1, nclasses
             write(*,fmt1,advance='no') i
@@ -747,6 +725,60 @@ contains
         !
     end subroutine print_chartab
 
+!     function       rep_characters(sym,class_id) result(rep_trace)
+!         !
+!         implicit none
+!         !
+!         complex(dp), intent(in) :: chartab(:,:) ! character table
+!         real(dp),    intent(in) :: sym(:,:,:) 	! representation
+!         integer, allocatable :: rep_trace(:)
+!         integer, allocatable :: class_nelements(:)
+!         integer, allocatable :: class_representative(:)
+!         integer :: i
+!         !
+!         ! they are always identical...
+!         nirreps  = size(chartab,1)
+!         nclasses = size(chartab,2)
+!         !
+!         ! parse class properties
+!         class_nelements = nelements(class_id)
+!         class_representative = representative(class_id)
+!         !
+!         do i = 1, nclasses
+!         	rep_trace(i) = trace( sym(:,:,class_representative(i)) )
+!     	enddo
+!     	!
+!     end function   rep_characters
+
+!     function       irrep_decomposition(chartab,sym,class_id) result(coefficients)
+!         !
+!         implicit none
+!         !
+!         complex(dp), intent(in) :: chartab(:,:) ! character table
+!         real(dp)   , intent(in) :: sym(:,:,:) 	! representation
+!         integer    ,allocatable :: coefficients ! decomposition cofficients
+!         integer, allocatable :: class_nelements(:)
+!         integer, allocatable :: class_representative(:)
+!         integer :: i
+!         !
+!         ! they are always identical...
+!         nirreps  = size(chartab,1)
+!         nclasses = size(chartab,2)
+!         !
+!         ! parse class properties
+!         class_nelements = nelements(class_id)
+!         class_representative = representative(class_id)
+!         !
+!         do i = 1, nclasses
+!         	!
+!         	j = class_representative(i)
+!         	!
+!         	trace(sym(:,:,j))
+!     	enddo
+!     	!
+!     end function   irrep_decomposition
+
+
     ! identifier functions which operate on identifiers
 
     function       member(id) result(class_member)
@@ -778,6 +810,20 @@ contains
             enddo
         enddo
     end function   member
+
+    function       representative(id) result(class_representative)
+        !
+        implicit none
+        !
+        integer, intent(in) :: id(:)
+        integer, allocatable :: class_member(:,:) ! members(nclass,maxval(class_nelements))
+        integer, allocatable :: class_representative(:)
+        !
+        class_member = member(id)
+        !
+        allocate(class_representative, source=class_member(:,1))
+        !
+    end function   representative
 
     function       nelements(id) result(class_nelements)
         !

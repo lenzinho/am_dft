@@ -162,8 +162,8 @@ module am_symmetry_rep
         ! get multiplication table (determines determine conjugacy classes in the process)
         call fig%get_multiplication_table()
         !
-        call fig%sort_symmetries(criterion=real(fig%ps_id,dp)    , flags='acsend')
-        call fig%sort_symmetries(criterion=real(fig%class_id,dp) , flags='ascend')
+        call fig%sort_symmetries(criterion=real(fig%ps_id,dp), flags='acsend')
+        call fig%sort_symmetries(criterion=real(fig%cc%id,dp), flags='ascend')
         !
         ! get character table
         call fig%get_character_table()
@@ -242,7 +242,7 @@ module am_symmetry_rep
         ! copy symmetry ids
         allocate(fpg%ps_id,    source=pg%ps_id)
         ! copy classes
-        allocate(fpg%class_id, source=pg%class_id)
+        allocate(fpg%cc%id, source=pg%cc%id)
         ! copy multiplication table
         fpg%mt = pg%mt
         ! copy character table
@@ -387,7 +387,7 @@ module am_symmetry_rep
         !
         ! sort symmetries based on parameters
         call C%sort_symmetries(criterion=real(C%ps_id,dp)   , flags='acsend')
-        call C%sort_symmetries(criterion=real(C%class_id,dp), flags='ascend')
+        call C%sort_symmetries(criterion=real(C%cc%id,dp), flags='ascend')
         !
         ! get character table
         call C%get_character_table()
@@ -411,7 +411,7 @@ module am_symmetry_rep
         !
         !
         ! get conjugacy class members
-        class_member = member(id=flat%class_id)
+        class_member = member(id=flat%cc%id)
         ! intialize indices
         allocate(indices,source=[1:flat%nbases])
         ! initialize augmented workspace matrix A
