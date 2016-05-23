@@ -235,9 +235,6 @@ module am_symmetry_rep
             elseif (index(tens%flags,'polar').ne.0) then; fpg%sym(:,:,i) = kron_pow(R_cart, tens%rank)
             elseif (index(tens%flags,'tight').ne.0) then; fpg%sym(:,:,i) = kron(ps2tb(R_cart,atom_m), ps2tb(R_cart,atom_n))
             endif
-            ! correct basic rounding error
-            where (abs(fpg%sym(:,:,i))                     .lt.tiny) fpg%sym(:,:,i) = 0
-            where (abs(fpg%sym(:,:,i)-nint(fpg%sym(:,:,i))).lt.tiny) fpg%sym(:,:,i) = nint(fpg%sym(:,:,i))
         enddo
         !
         ! copy symmetry ids
@@ -431,6 +428,8 @@ module am_symmetry_rep
         enddo
         ! Apply Gram-Schmidt orthogonalization to obtain A in reduced row echelon form
         call rref(A)
+        ! correct basic rounding error
+        where (abs(nint(A)-A).lt.tiny) A = nint(A)
         ! At this point, A = [ LHS | RHS ], in which LHS = E, identity matrix; A completely specifies all relationships between variables: LHS = RHS.
         allocate(LHS(flat%nbases,flat%nbases))
         allocate(RHS(flat%nbases,flat%nbases))
@@ -703,56 +702,9 @@ module am_symmetry_rep
         !
     end subroutine dump_relations
 
+    ! write point symmetry operation in tight binding basis ()
 
-    ! write point symmetry operation in tight binding basis
-
-!     function       ps2tb(R,pc,ic) result(H)
-!         !
-!         implicit none
-!         !
-!         real(dp), intent(in) :: R(3,3)
-!         type(am_class_prim_cell), intent(in) :: pc ! primitive cell
-!         type(am_class_irre_cell), intent(in) :: ic ! irreducible cell
-!         real(dp), allocatable :: H(:,:)
-!         integer , allocatable :: H_start(:), H_end(:)
-!         integer :: Hdim ! hamiltonian dimensions
-!         integer :: maxnazimuthals
-!         integer :: i,j,k
-!         !
-!         ! get largest azimuthal quantum number
-!         maxnazimuthals = 0
-!         do i = 1, ic%natoms
-!             if (maxnazimuthals.lt.ic%atom(i)%nazimuthals) maxnazimuthals = ic%atom(i)%nazimuthals
-!         enddo
-!         ! allocate space for defining subsections of the rotation in Hamiltonian basis
-!         i = maxnazimuthals * pc%natoms
-!         allocate(H_start(i))
-!         allocate(H_end(i))
-!         ! determine subsections: 1 per primitive atom per azimuthal quantum number per magnetic number per spin
-!         ! ignoring spin contributions at this stage
-!         Hdim = 0
-!         k = 0
-!         do i = 1, pc%natoms
-!         do j = 1, ic%atom(pc%ic_id(i))%nazimuthals
-!             k=k+1
-!             H_start(k) = Hdim + 1
-!             Hdim = Hdim + ic%atom(pc%ic_id(i))%azimuthal(j)*2+1
-!             H_end(k) = Hdim
-!         enddo
-!         enddo
-!         ! allocate and initialize space for rotations in Hamiltonin bais
-!         allocate(H(Hdim,Hdim))
-!         H = 0.0_dp
-!         ! construct rotation in the Hamiltonian basis
-!         k=0
-!         do i = 1, pc%natoms
-!         do j = 1, ic%atom(pc%ic_id(i))%nazimuthals
-!             k=k+1
-!             H(H_start(k):H_end(k), H_start(k):H_end(k)) = rot2irrep(l=ic%atom(pc%ic_id(i))%azimuthal(j), R=R)
-!         enddo
-!         enddo
-!         !
-!     end function   ps2tb
+    ! produces rotation which operates on a subsection of the Hamiltonian (useful for determining symmetry relations)
 
     function       ps2tb(R,atom) result(H)
         ! construct rotation representation which transforms all orbitals on input atom
@@ -785,6 +737,56 @@ module am_symmetry_rep
         enddo
         !
     end function   ps2tb
+
+    ! produces rotation which commutes with the entire Hamiltonian (will be useful later when going to kpoints)
+
+    function       ps2tb_H(R,pc,ic) result(H)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: R(3,3)
+        type(am_class_prim_cell), intent(in) :: pc ! primitive cell
+        type(am_class_irre_cell), intent(in) :: ic ! irreducible cell
+        real(dp), allocatable :: H(:,:)
+        integer , allocatable :: H_start(:), H_end(:)
+        integer :: Hdim ! hamiltonian dimensions
+        integer :: maxnazimuthals
+        integer :: i,j,k
+        !
+        ! get largest azimuthal quantum number
+        maxnazimuthals = 0
+        do i = 1, ic%natoms
+            if (maxnazimuthals.lt.ic%atom(i)%nazimuthals) maxnazimuthals = ic%atom(i)%nazimuthals
+        enddo
+        ! allocate space for defining subsections of the rotation in Hamiltonian basis
+        i = maxnazimuthals * pc%natoms
+        allocate(H_start(i))
+        allocate(H_end(i))
+        ! determine subsections: 1 per primitive atom per azimuthal quantum number per magnetic number per spin
+        ! ignoring spin contributions at this stage
+        Hdim = 0
+        k = 0
+        do i = 1, pc%natoms
+        do j = 1, ic%atom(pc%ic_id(i))%nazimuthals
+            k=k+1
+            H_start(k) = Hdim + 1
+            Hdim = Hdim + ic%atom(pc%ic_id(i))%azimuthal(j)*2+1
+            H_end(k) = Hdim
+        enddo
+        enddo
+        ! allocate and initialize space for rotations in Hamiltonin bais
+        allocate(H(Hdim,Hdim))
+        H = 0.0_dp
+        ! construct rotation in the Hamiltonian basis
+        k=0
+        do i = 1, pc%natoms
+        do j = 1, ic%atom(pc%ic_id(i))%nazimuthals
+            k=k+1
+            H(H_start(k):H_end(k), H_start(k):H_end(k)) = rot2irrep(l=ic%atom(pc%ic_id(i))%azimuthal(j), R=R)
+        enddo
+        enddo
+        !
+    end function   ps2tb_H
 
 end module am_symmetry_rep
 
