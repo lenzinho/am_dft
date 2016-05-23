@@ -39,6 +39,8 @@ module am_symmetry_rep
         integer               :: rank           ! tensor rank
         integer , allocatable :: dims(:)        ! tensor dimensions
         real(dp), allocatable :: relations(:,:) ! relations connecting tensor elements
+        real(dp), allocatable :: V(:)           ! the value of the tensor, use reshape(V,dims)
+                                                ! to apply symmetry operations V_symmetrized = matmul(relations,V); computes dependent from independent parameters
     end type am_class_tensor
 
     type, public, extends(am_class_tensor) :: am_class_property
@@ -264,23 +266,36 @@ module am_symmetry_rep
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining group of '//trim(property))
         !
+        ! initialize
         call initialize_property(prop=prop, property=property)
         !
+        ! get intrinsic symmetries
         call prop%fig%get_flat_intrinsic_group(tens=prop)
+        ! write number of intrinsic symmetries
         if (opts%verbosity.ge.1) call am_print('intrinsict symmetries', prop%fig%nsyms)
-        !
+        ! get symmetry relations
         prop%fig%relations = prop%fig%get_relations()
+        ! print relations
         call print_relations(relations=prop%fig%relations,flags='')
         !
+        ! get point symmetries
         call prop%fpg%get_flat_point_group(tens=prop, pg=pg, pc=pc)
+        ! write number of point symmetries
         if (opts%verbosity.ge.1) call am_print('point symmetries', prop%fpg%nsyms)
-        !
+        ! get symmetry relations
         prop%fpg%relations = prop%fpg%get_relations()
+        ! print relations
         call print_relations(relations=prop%fpg%relations,flags='')
         !
+        ! combine point and intrisnci symmetries
         if (opts%verbosity.ge.1) call am_print('total symmetries', prop%fpg%nsyms * prop%fig%nsyms )
-        !
+        ! combined relations
         prop%relations = combine_relations(prop%fig%relations, prop%fpg%relations)
+        ! determine which symmetries are independent, dependent, and null
+        allocate(prop%isi, source=get_independent(relations=prop%relations))
+        allocate(prop%isd, source=get_dependent(relations=prop%relations))
+        allocate(prop%isn, source=get_null(relations=prop%relations))
+        ! print relations
         call print_relations(relations=prop%relations, dims=prop%dims, flags='show:dependent,independent')
         !
         contains
@@ -689,7 +704,7 @@ module am_symmetry_rep
         n = size(relations,2)
         !
         fid = 1
-        open(unit=fid,file=trim(iopt_filename),status="replace",action='write')
+        open(unit=fid,file=trim(fname),status="replace",action='write')
             !
             do j = 1, m
             do k = 1, n

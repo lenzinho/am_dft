@@ -7,6 +7,10 @@ module am_matlab
     
     public
 
+    interface adjoint
+        module procedure zadjoint, dadjoint
+    end interface ! adjoint
+    
     interface linspace
         module procedure linspace_double, linspace_integer
     end interface ! linspace
@@ -1151,17 +1155,29 @@ module am_matlab
 
     ! matrix properties
 
-    pure function adjoint(A)
+    pure function zadjoint(A) result(adj)
         !
         implicit none
         !
         complex(dp), intent(in) :: A(:,:)
-        complex(dp), allocatable :: adjoint(:,:)
+        complex(dp), allocatable :: adj(:,:)
         !
-        allocate(adjoint(size(A,2),size(A,1)))
-        adjoint = transpose(conjg(A))
+        allocate(adj(size(A,2),size(A,1)))
+        adj = transpose(conjg(A))
         !
-    end function  adjoint
+    end function  zadjoint
+
+    pure function dadjoint(A) result(adj)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:)
+        real(dp), allocatable :: adj(:,:)
+        !
+        allocate(adj(size(A,2),size(A,1)))
+        adj = transpose(A)
+        !
+    end function  dadjoint
 
     pure function dtrace(R) result(tr)
         !
