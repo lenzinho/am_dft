@@ -797,69 +797,6 @@ module am_matlab
         !
     end function  rot2irrep
 
-    function      proper_th2chi(n,th) result(chi)
-        !
-        ! Character of proper rotation irrep with dimension n and angle th
-        !
-        ! T. Wolfram and Ş. Ellialtıoğlu, Applications of Group Theory to Atoms, Molecules,
-        ! and Solids, 1 edition (Cambridge University Press, Cambridge, 2014), p 74, Eq. 3.20.
-        !
-        ! M. Tinkham, Group Theory and Quantum Mechanics (McGraw-Hill, 1964), p 66 Eq 4.6 
-        ! and p 100 bottom.
-        !
-        implicit none
-        !
-        integer,  intent(in) :: n  ! dimension of irrep
-        real(dp), intent(in) :: th ! rotation angle
-        real(dp)    :: j           ! azimuthal + spin quantum number
-        complex(dp) :: chi
-        !
-        j = (n-1.0_dp)/2.0_dp
-        !
-        ! check that j is an integer or half integer number
-        if (abs(modulo(j+tiny,0.5_dp)-tiny).gt.tiny) stop 'Quantum number j invalid.'
-        !
-        ! evaluate the character of the irrep
-        if (abs(th).lt.tiny) then
-            ! limiting case is obtained by expanding sin( (j+1/2)*x ) / sin( x/2 ) at zero
-            chi = (2*j+1)
-        else
-            ! general case
-            chi = sin( (j+0.5_dp)*th ) / sin( th*0.5_dp )
-        endif
-        !
-    end function  proper_th2chi
-
-    function      irrep_character(n,R) result(chi)
-        !
-        ! Character of n-dimensional orthogonal group O(3) irrep parameterized by 3x3 rotoinversion matrix R
-        !       
-        ! T. Wolfram and Ş. Ellialtıoğlu, Applications of Group Theory to Atoms, Molecules, 
-        ! and Solids, 1 edition (Cambridge University Press, Cambridge, 2014), p 74, Eq. 3.20.
-        !
-        ! M. Tinkham, Group Theory and Quantum Mechanics (McGraw-Hill, 1964), p 66 Eq 4.6 
-        ! and p 100 bottom.
-        !
-        implicit none
-        !
-        integer,  intent(in) :: n ! dimension of irrep
-        real(dp), intent(in) :: R(3,3) ! rotation angle
-        real(dp) :: aa(4)
-        real(dp) :: d
-        integer :: l
-        complex(dp) :: chi
-        !
-        ! if R is a rotoinversion, get the angle and axis of the rotational part only (without the inversion)
-        d = R(1,1)*R(2,2)*R(3,3)-R(1,1)*R(2,3)*R(3,2)-R(1,2)*R(2,1)*R(3,3)+R(1,2)*R(2,3)*R(3,1)+R(1,3)*R(2,1)*R(3,2)-R(1,3)*R(2,2)*R(3,1)
-        !
-        aa = rot2axis_angle(R)
-        !
-        l = nint((n-1.0_dp)/2.0_dp)
-        !
-        chi = proper_th2chi(n=n,th=aa(4)) * sign(1.0_dp,d)**(l)
-        !
-    end function  irrep_character
-
     ! statistics
 
     pure function factorial(n) result(y)

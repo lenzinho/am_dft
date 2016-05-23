@@ -235,11 +235,123 @@ contains
         implicit none
         !
         class(am_class_group), intent(in) :: grp
+        integer :: i
+        integer :: nreps
+        complex(dp) , allocatable :: rep_chi(:,:)
+        character(7), allocatable :: rep_label(:)
         !
-        call print_chartab(chartab=grp%ct%chartab, nclasses=grp%cc%nclasses, &
-            class_nelements=grp%cc%nelements, class_member=grp%cc%member, &
-            irrep_label=grp%ct%muliken, ps_id=grp%ps_id)
+        ! start rep counter
+        i=0
         !
+        select type (grp)
+        class is (am_class_point_group) 
+            nreps = 5
+            allocate(rep_chi(nreps,grp%cc%nclasses))
+            allocate(rep_label(nreps))
+            ! representation based on basis functions
+            i=i+1; rep_label(i) = 'rep'
+            rep_chi(i,:) = get_rep_characters(sym=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            ! representation based on s orbitals
+            i=i+1; rep_label(i) = 's D^(0)'
+            rep_chi(i,:) = get_orb_characters(l=0, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            ! representation based on p orbitals
+            i=i+1; rep_label(i) = 'p D^(1)'
+            rep_chi(i,:) = get_orb_characters(l=1, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            ! representation based on d orbitals
+            i=i+1; rep_label(i) = 'd D^(2)'
+            rep_chi(i,:) = get_orb_characters(l=2, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            ! representation based on f orbitals
+            i=i+1; rep_label(i) = 'f D^(3)'
+            rep_chi(i,:) = get_orb_characters(l=3, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+        class is (am_class_space_group) 
+            ! do nothing.
+        class default
+            nreps = 1
+            allocate(rep_chi(nreps,grp%cc%nclasses))
+            allocate(rep_label(nreps))
+            ! representation based on basis functions
+            i=i+1; rep_label(i) = 'rep'
+            rep_chi(i,:) = get_rep_characters(sym=grp%sym, nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+        end select
+        !
+        !
+        if (allocated(rep_chi).and.allocated(rep_label)) then
+            call print_chartab(chartab=grp%ct%chartab, nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, &
+                class_member=grp%cc%member, irrep_label=grp%ct%muliken, ps_id=grp%ps_id, rep_chi=rep_chi, rep_label=rep_label)
+        else
+            call print_chartab(chartab=grp%ct%chartab, nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, &
+                class_member=grp%cc%member, irrep_label=grp%ct%muliken, ps_id=grp%ps_id)
+        endif
+        !
+        contains
+        function       get_rep_characters(sym,nclasses,class_representative) result(repchi)
+            !
+            implicit none
+            !
+            real(dp),    intent(in) :: sym(:,:,:)
+            integer,     intent(in) :: nclasses
+            integer,     intent(in) :: class_representative(:)
+            integer, allocatable :: repchi(:)
+            integer :: i
+            !
+            allocate(repchi(nclasses))
+            !
+            do i = 1, nclasses
+                repchi(i) = trace( sym(:,:,class_representative(i)) )
+            enddo
+            !
+        end function   get_rep_characters
+        function       get_orb_characters(l,R,nclasses,class_representative) result(orbchi)
+            !
+            implicit none
+            !
+            integer,  intent(in) :: l
+            real(dp), intent(in) :: R(:,:,:)
+            integer,  intent(in) :: nclasses
+            integer,  intent(in) :: class_representative(:)
+            complex(dp), allocatable :: orbchi(:)
+            integer :: i
+            !
+            allocate(orbchi(nclasses))
+            !
+            do i = 1, nclasses
+                orbchi(i) = get_orbchi(l=l,R=R(:,:,class_representative(i)))
+            enddo
+            !
+        end function   get_orb_characters
+        function       get_orbchi(l,R) result(chi)
+            !
+            ! Character of (2l+1)-dimensional orthogonal group O(3) irrep parameterized by 3x3 rotoinversion matrix R
+            !       
+            ! T. Wolfram and Ş. Ellialtıoğlu, Applications of Group Theory to Atoms, Molecules, 
+            ! and Solids, 1 edition (Cambridge University Press, Cambridge, 2014), p 74, Eq. 3.20.
+            !
+            ! M. Tinkham, Group Theory and Quantum Mechanics (McGraw-Hill, 1964), p 66 Eq 4.6 
+            ! and p 100 bottom.
+            !
+            implicit none
+            !
+            integer,  intent(in) :: l ! dimension of irrep
+            real(dp), intent(in) :: R(3,3) ! rotation angle
+            real(dp) :: aa(4)
+            real(dp) :: d
+            complex(dp) :: chi
+            !
+            ! if R is a rotoinversion, get the angle and axis of the rotational part only (without the inversion)
+            d = R(1,1)*R(2,2)*R(3,3)-R(1,1)*R(2,3)*R(3,2)-R(1,2)*R(2,1)*R(3,3)+R(1,2)*R(2,3)*R(3,1)+R(1,3)*R(2,1)*R(3,2)-R(1,3)*R(2,2)*R(3,1)
+            ! convert to proper rotation
+            aa = rot2axis_angle(d*R)
+            if (abs(aa(4)).lt.tiny) then
+                ! limiting case is obtained by expanding sin( (j+1/2)*x ) / sin( x/2 ) at zero
+                chi = (2*l+1)
+            else
+                ! general case
+                chi = sin( (l+0.5_dp)*aa(4) ) / sin( aa(4)*0.5_dp )
+            endif
+            ! convert back to improper rotation
+            chi = chi * sign(1.0_dp,d)**(l)
+            !
+        end function   get_orbchi
     end subroutine print_character_table
 
 !     subroutine     print_irrep_decomposition(grp,flags)
@@ -257,8 +369,7 @@ contains
 !         if (index(flags,'m')) then
 
 !         ! get rep characters
-!         grp%ct%repchi = get_rep_characters(sym=grp%sym, nclasses=grp%cc%nclasses, &
-!             class_representative=grp%cc%representative)
+
 !         !
 !     end subroutine print_irrep_decomposition
 

@@ -54,6 +54,17 @@ contains
         !
     end function  int2char
     
+    function      int2charSP(int) result(str)
+        !
+        implicit none
+        !
+        integer, intent(in) :: int
+        character(100) :: str
+        !
+        write(str,'(SP,i)') int
+        !
+    end function  int2charSP
+
     function      dbl2char(dbl,iopt_len) result(str)
         !
         implicit none
