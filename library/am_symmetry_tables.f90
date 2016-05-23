@@ -639,6 +639,8 @@ contains
         ! rep decompositions
 	    if (present(rep_chi).and.present(rep_label)) then
 	        call print_bar(fmts=fmts, nclasses=nclasses)
+	        !
+	        write(*,'(5x,a)') 'Decompositions:'
 	        ! initialize
 	        allocate(beta(nreps,nirreps))
 	        beta = 0
@@ -662,7 +664,7 @@ contains
 	        	write(*,'(5x,a9,a)',advance='no') trim(rep_label(i)), ' = '
 	        	do j = 1, nirreps
         		if (beta(i,j).ne.0) then
-	        		write(*,'(a)',advance='no') trim(int2char(beta(i,j),'SP'))//trim(irrep_label(j))//'('//trim(int2char(j))//')'
+	        		write(*,'(a)',advance='no') trim(int2char(beta(i,j),'SP'))//'*'//trim(irrep_label(j))//'('//trim(int2char(j))//') '
 	        	endif
 	        	enddo
 	        	write(*,*)

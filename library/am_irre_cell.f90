@@ -179,12 +179,9 @@ contains
         type(am_class_options)   , intent(in) :: opts
         integer :: i
         !
-        if (opts%verbosity.ge.1) call am_print_title('Initializing orbital basis')
-        !
         ! create basis on each irreducible atoms
         allocate(ic%atom(ic%natoms))
         do i = 1, ic%natoms
-            ! call ic%atom(i)%gen_orbitals(orbital_flags='2s,2p')
             call ic%atom(i)%gen_orbitals(orbital_flags='2s,2p')
         enddo
         if (opts%verbosity.ge.1) call ic%print_orbital_basis()
@@ -216,10 +213,6 @@ contains
             write(*,*)
         enddo
     end subroutine print_orbital_basis
-
-
-
-
 
     function       get_Vsk_ind(ic,i,alpha,j,beta,k) result(ind)
         ! returns matrix element indices given irreducible atoms (i,j), orbitals (alpha,beta), anda shell k
@@ -276,7 +269,5 @@ contains
             !
         end function   flip_orbitals
     end function   get_Vsk_ind
-
-
 
 end module am_irre_cell

@@ -19,10 +19,7 @@ module am_tight_binding
     end type am_class_tb_pg
 
     type, public, extends(am_class_tensor) :: am_class_tbvsk
-        !
-        type(am_class_point_group) :: stab  ! stabilizer group symmetry
         type(am_class_flat_group)  :: fstab ! flat stabilizer group symmetry
-      ! type(am_class_flat_group) :: frevg ! flat reversal group symmetry
     end type am_class_tbvsk
 
     type, public :: am_class_tight_binding
@@ -45,9 +42,13 @@ contains
         type(am_class_irre_cell)     , intent(inout) :: ic ! irreducible cell
         class(am_class_pair_shell)   , intent(in)  :: ip   ! irreducible pairs
         type(am_class_options)       , intent(in)  :: opts
-        integer :: i,k
+        integer :: k
+        !
+        !
+        if (opts%verbosity.ge.1) call am_print_title('Imposing symmetry constraints on tight-binding model')
         !
         ! ADD OPTION TO READ ORBITALS HERE
+        if (opts%verbosity.ge.1) write(*,'(5x,a5,a)') ' ... ', 'initializing from orbitals as s,p'
         call ic%initialize_orbitals(opts=opts)
         ! call ic%read_orbitals(opts=opts)
         !
@@ -55,25 +56,36 @@ contains
         !
         allocate(tb%tbvsk(tb%nshells))
         do k = 1, tb%nshells
-            ! tb shell and ip shell correspond to the same "object"
             if (opts%verbosity.ge.1) call am_print('irreducible pair',k)
-            i = k
+            !
             call get_relations(tbvsk=tb%tbvsk(k), sg=sg, pg=pg, pc=pc, ic=ic, shell=ip%shell(k))
         enddo
         !
         contains
-        subroutine     initialize_tbvsk(tbvsk,pc,ic)
+        subroutine     initialize_tbvsk(tbvsk,pc,ic,shell)
             !
             implicit none
             !
-            class(am_class_tbvsk), intent(out):: tbvsk
-            class(am_class_prim_cell), intent(in) :: pc
-            class(am_class_irre_cell), intent(in) :: ic
+            type(am_class_tbvsk)    , intent(out) :: tbvsk
+            type(am_class_prim_cell), intent(in)  :: pc
+            type(am_class_irre_cell), intent(in)  :: ic
+            type(am_shell_cell)     , intent(in)  :: shell
+            integer :: i
             !
             tbvsk%property = 'tightbinding'
             tbvsk%rank  = 2
             tbvsk%flags = 'tight' 
-            tbvsk%dims  = shape(ps2tb(R=eye(3),pc=pc,ic=ic))
+            ! set dimensions of matrix elements
+            allocate(tbvsk%dims(tbvsk%rank))
+            tbvsk%dims = 0 
+            ! dimension of Hamiltonian subsection corresponding to primitive atom m (irreducible atoms i)
+            do i = 1, ic%atom(shell%i)%nazimuthals
+                tbvsk%dims(1) = tbvsk%dims(1) + ic%atom(shell%i)%azimuthal(i)*2+1
+            enddo
+            ! dimension of Hamiltonian subsection corresponding to primitive atom n (irreducible atoms j)
+            do i = 1, ic%atom(shell%j)%nazimuthals
+                tbvsk%dims(2) = tbvsk%dims(2) + ic%atom(shell%j)%azimuthal(i)*2+1
+            enddo
             !
         end subroutine initialize_tbvsk
         subroutine     get_relations(tbvsk,sg,pg,pc,ic,shell)
@@ -94,16 +106,12 @@ contains
                 notalk%verbosity = 0
                 !
                 ! get rank, dims, flags, property
-                call initialize_tbvsk(tbvsk=tbvsk, pc=pc, ic=ic)
+                call initialize_tbvsk(tbvsk=tbvsk, pc=pc, ic=ic, shell=shell)
                 !
                 ! determine stabilizers of a prototypical bond in shell (vector v)
-                call tbvsk%stab%get_stabilizer_group(pg=pg, v=shell%tau(1:3,1), opts=notalk)
-                !
-                call am_print('stabilizer group', trim(decode_pointgroup( tbvsk%stab%pg_id )))
+                call stab%get_stabilizer_group(pg=pg, v=shell%tau(1:3,1), opts=notalk)
                 ! get point group in the flattened hamiltonin basis
-                call tbvsk%fstab%get_flat_point_group(tens=tbvsk, pg=tbvsk%stab, pc=pc, ic=ic)
-                !
-
+                call tbvsk%fstab%get_flat_point_group(tens=tbvsk, pg=stab, pc=pc, atom_m=ic%atom(shell%i), atom_n=ic%atom(shell%j))
                 ! get relations
                 tbvsk%fstab%relations = tbvsk%fstab%get_relations()
                 !
@@ -111,17 +119,6 @@ contains
                 !
                 call dump_relations(relations=tbvsk%relations,iopt_filename='dump.relations')
                 !
-                ! ! determine reversal group of a prototypical bond in shell (vector v)
-                ! call revg%get_reversal_group(sg=sg, v=shell%tau(1:3,1), opts=notalk)
-                ! call am_print('reveral group', trim(decode_pointgroup( revg%pg_id )))
-                ! ! get point group in the flattened hamiltonin basis
-                ! call tbvsk%revg%get_flat_point_group(tens=tbvsk, pg=revg, pc=pc, ic=ic)
-                ! !
-                ! ! get relations
-                ! tbvsk%revg%relations = tbvsk%revg%get_relations()
-                ! !
-                ! tbvsk%relations = combine_relations(relationsA=tbvsk%stab%relations, relationsB=tbvsk%revg%relations)
-                ! print relations
                 call print_relations(relations=tbvsk%relations, dims=tbvsk%dims, flags='show:dependent,independent')
                 !
         end subroutine get_relations
