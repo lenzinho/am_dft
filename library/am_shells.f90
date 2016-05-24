@@ -411,7 +411,6 @@ contains
             !
         endif
         do k = 1, ip%nshells
-            !
             ! print to stdout
             if (opts%verbosity.ge.1) then
                 i = ip%shell(k)%i
@@ -440,9 +439,9 @@ contains
         enddo
         !
         ! create map
-        allocate(pp%pp_id  , source = [1:pp%nshells])
-        allocate(pp%ip_id  , source = ip_id)
-        allocate(ip%ip_id , source = [1:ip%nshells])
+        allocate(pp%pp_id, source = [1:pp%nshells])
+        allocate(pp%ip_id, source = ip_id)
+        allocate(ip%ip_id, source = [1:ip%nshells])
         allocate(ip%pp_id(ip%nshells))
         do i = 1, ip%nshells
             ip%pp_id(i) = ip_id_unique(i)

@@ -36,6 +36,9 @@ module am_tight_binding
             integer, allocatable :: niVs            ! number of irreducible matrix element values
             integer, allocatable :: iV(:)           ! their values
             integer, allocatable :: iV_indices(:,:) ! their indices iV_indices( [i,j], niVs); j = compound [alpha x beta index, see set Vsk subroutine]
+            !
+            type(am_class_hamiltonian_group) :: ham_pg
+            !
             contains
                 procedure :: initialize_tb
         end type am_class_tight_binding
@@ -61,6 +64,8 @@ contains
         !
         !
         if (opts%verbosity.ge.1) call am_print_title('Imposing symmetry constraints on tight-binding model')
+        !
+        call tb%ham_pg%get_hamiltonian_point_group(pg=pg, pc=pc, ic=ic)
         !
         tb%nshells = ip%nshells
         allocate(tb%tbvsk(tb%nshells))
@@ -88,13 +93,12 @@ contains
                 endif
             enddo
         enddo
-
-        ! print statistics about parameters
+        !
         if (opts%verbosity.ge.1) then
-            ! header
+            ! print statistics about parameters
             write(*,'(a5,2a6,3a14)') ' ... ', 'shell', 'terms', 'null', 'dependent', 'independent'
             write(*,'(5x,a)') repeat(' '//repeat('-',5),2)//repeat(' '//repeat('-',13),3)
-            ! body
+            ! print table
             a=0;b=0;c=0;nterms=0
             do i = 1, tb%nshells
                 m = count(get_null(tb%tbvsk(i)%relations))
@@ -111,21 +115,19 @@ contains
                 b = b + n
                 c = c + o
             enddo
-            ! total
+            ! print total
             write(*,'(5x,a6)'        ,advance='no') 'total'
             write(*,'(i6)'           ,advance='no') (a+b+c)
             write(*,'(i5,a2,f5.1,a2)',advance='no') a, '(', (a*100_dp)/real(a+b+c,dp) , '%)'
             write(*,'(i5,a2,f5.1,a2)',advance='no') b, '(', (b*100_dp)/real(a+b+c,dp) , '%)'
             write(*,'(i5,a2,f5.1,a2)',advance='no') c, '(', (c*100_dp)/real(a+b+c,dp) , '%)'
             write(*,*)
-            ! symmetry relations
+            ! print symmetry relations
             do i = 1, tb%nshells
                 write(*,'(a5,a)') ' ... ', 'shell '//trim(int2char(i))//' irreducible symmetry relations:'
                 call print_relations(relations=tb%tbvsk(i)%relations, dims=tb%tbvsk(i)%dims, flags='print:dependent,independent')
             enddo
-            !
         endif
-        !
         !
         contains
         subroutine     initialize_tbvsk(tbvsk,pc,ic,shell)
@@ -187,6 +189,76 @@ contains
         end subroutine get_shell_relations
     end subroutine initialize_tb
 
+    function       get_Hamiltonian(tb,ip,ic,pp,pc,kpt) result(H)
+        ! 
+        ! Get tight binding Hamiltonian at kpt.
+        ! 
+        implicit none
+        !
+        class(am_class_tight_binding), intent(out):: tb ! tight binding matrix elements
+        class(am_class_pair_shell)   , intent(in) :: ip ! irreducible pairs
+        type(am_class_irre_cell)     , intent(in) :: ic ! irreducible cell
+        type(am_class_pair_shell)    , intent(in) :: pp ! primitive pairs
+        type(am_class_prim_cell)     , intent(in) :: pc ! primitive cell
+        real(dp)                     , intent(in) :: kpt(3) ! fractional
+        complex(dp), allocatable :: H(:,:)
+        integer    , allocatable :: H_start(:), H_end(:)
+        complex(dp) :: E ! exponential factor in bloch sum
+        integer :: Hdim ! hamiltonian dimensions
+        integer :: m ! primitive atom 1 index 
+        integer :: n ! primitive atom 2 index
+        integer :: i,j,k
+        !
+        ! allocate space for Hamiltonian
+        ! determine Hamiltonian subsections corresponding to primitive atoms
+        Hdim = 0
+        allocate(H_start(pc%natoms))
+        allocate(H_end(pc%natoms))
+        do i = 1, pc%natoms
+            H_start(i) = Hdim + 1
+            Hdim = Hdim + ic%atom( pc%ic_id(i) )%norbitals
+            H_end(i) = Hdim
+        enddo
+        !
+        ! allocate and initialize
+        allocate(H(Hdim,Hdim))
+        H = cmplx(0,0,dp)
+        !
+        ! construct Hamiltonian
+        do k = 1, pp%nshells
+            ! primitive atom indicies
+            m = pp%shell(k)%m
+            n = pp%shell(k)%n
+            ! get irreducible shell index
+            i = pp%ip_id(k)
+            ! compute bloch sum by loop over atoms in shell
+            E = cmplx(0,0,dp)
+            do j = 1, pp%shell(k)%natoms
+                ! get vector connecting primitive atom to atom j in shell k
+                R = pp%shell(k)%tau(1:3,j)
+
+
+
+                ! get exponent factor
+                E = exp(-cmplx_i*dot_product(R,kpt))
+                !
+                get_Vsk(tb=tb, i=i)
+
+                ! NEED TO ROTATE V_sk
+
+                ! multiply everything and add to the sum
+                H(H_start(m):H_end(m), H_start(n):H_end(n)) = &
+              & H(H_start(m):H_end(m), H_start(n):H_end(n)) + matmul(transpose(T), matmul(ip%shell(pp%ip_id(k))%Vsk, T)) * E
+                !
+            enddo
+            ! multiply by bloch sum add to the sum
+            !
+            call am_print('H'//trim(int2char(k)),H)
+            !
+        enddo
+    end function   get_Hamiltonian
+
+
     ! functions which operate on V
 
     function       get_Vsk(tb,i) result(V)
@@ -230,19 +302,6 @@ contains
         !
     end subroutine set_Vsk
 
-!     subroutine     transfer
-!         !
-!         implicit none
-!         !
-!         ! transfer from tb%iV
-!         do k = 1, tb%niVs
-!         if (tb%iV_indices(1,k).eq.i) then
-!             j = tb%iV_indices(2,k)
-!             tb%tbvsk(i)%iV(j) = tb%iV(k)
-!         endif
-!         enddo
-!         !
-!     end subroutine
 
 !     subroutine     apply_relations(Vsk,is_independent,relations)
 !         !
@@ -401,74 +460,6 @@ contains
 
 
 
-
-    ! function       get_Hamiltonian(tb,ip,ic,pp,pc,kpt) result(H)
-    !     ! 
-    !     ! Get tight binding Hamiltonian at kpt.
-    !     ! 
-    !     implicit none
-    !     !
-    !     class(am_class_tight_binding), intent(out):: tb ! tight binding matrix elements
-    !     class(am_class_pair_shell)   , intent(in) :: ip ! irreducible pairs
-    !     type(am_class_irre_cell)     , intent(in) :: ic ! irreducible cell
-    !     type(am_class_pair_shell)    , intent(in) :: pp ! primitive pairs
-    !     type(am_class_prim_cell)     , intent(in) :: pc ! primitive cell
-    !     real(dp)                     , intent(in) :: kpt(3) ! fractional
-    !     complex(dp), allocatable, target :: H(:,:)
-    !     integer, allocatable :: H_start(:), H_end(:)
-    !     complex(dp), pointer :: H_sub(:,:) 
-    !     integer :: Hdim ! hamiltonian dimensions
-    !     real(dp), allocatable :: T(:,:) ! similarity transform usd to get molecular axis paralle to z
-    !     real(dp) :: R(3) ! vector connecting atom to shell
-    !     real(dp) :: E ! exponential factor in bloch sum
-    !     integer  :: k ! shell index
-    !     integer  :: m ! primitive atom 1 index 
-    !     integer  :: n ! primitive atom 2 index
-    !     integer  :: i,j ! loop variable
-    !     !
-    !     ! allocate space for Hamiltonian and determine the subsections of the Hamiltonian corresponding to each primitive atom
-    !     Hdim = 0
-    !     allocate(H_start(pc%natoms))
-    !     allocate(H_end(pc%natoms))
-    !     do i = 1, pc%natoms
-    !         H_start(i) = Hdim + 1
-    !         Hdim = Hdim + ic%atom( pc%ic_id(i) )%norbitals
-    !         H_end(i) = Hdim
-    !     enddo
-    !     !
-    !     ! allocate and initialize
-    !     allocate(H(Hdim,Hdim))
-    !     H = 0.0_dp
-    !     !
-    !     ! construct Hamiltonian
-    !     do k = 1, pp%nshells
-    !         ! primitive atom indicies
-    !         m = pp%shell( k )%m
-    !         n = pp%shell( k )%n
-    !         ! loop over atoms in shell
-    !         do j = 1, pp%shell( k )%natoms
-    !             ! get vector connecting primitive atom to atom j in shell k
-    !             R = pp%shell(k)%tau(1:3,j)
-    !             ! get rotation that will transform matrix elements
-
-
-    !             ! WORKING ON STUFF HERE.... 
-    !             ! T = O3_rotations(azimuthal=[ic%atom(m)%azimuthal,ic%atom(n)%azimuthal],th=th,phi=phi,is_spin_polarized=is_spin_polarized)
-
-
-
-    !             ! get exponent factor
-    !             E = exp(-cmplx_i*dot_product(R,kpt))
-    !             ! multiply everything and add to the sum
-    !             H(H_start(m):H_end(m), H_start(n):H_end(n)) = &
-    !           & H(H_start(m):H_end(m), H_start(n):H_end(n)) + matmul(transpose(T), matmul(ip%shell(pp%ip_id(k))%Vsk, T)) * E
-    !             !
-    !         enddo
-    !         !
-    !         call am_print('H'//trim(int2char(k)),H)
-    !         !
-    !     enddo
-    ! end function   get_Hamiltonian
 
 
 
