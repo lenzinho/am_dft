@@ -245,7 +245,9 @@ contains
         ind(4)=abs(ind(4))
         ind(9)=abs(ind(9))
         !
-        ! 2) (l,l',m) = (-1)^(l-m) * (l',l,m)
+        ! (l,l',m) = (-1)^(l+l') * (l',l,m)
+
+
         ! if irreducible atoms are identical, flipped orbitals are related
         if (ind(1).eq.ind(6)) then !  i = j
             if (ind(2).gt.ind(7))  ind = flip_orbitals(ind) ! n > n'

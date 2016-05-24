@@ -15,33 +15,32 @@ module am_tight_binding
 
 	private
 
-        type, public, extends(am_class_group) :: am_class_tb_pg
-        end type am_class_tb_pg
+    type, public, extends(am_class_group) :: am_class_tb_pg
+    end type am_class_tb_pg
 
-        type, public, extends(am_class_tensor) :: am_class_tbvsk
-            type(am_class_flat_group) :: flat_pg      ! flat stabilizer group symmetry
-            ! <INHERITED: am_class_tensor>
-            ! character(100)        :: property       ! name of propertty
-            ! character(100)        :: flags          ! axial/polar
-            ! integer               :: rank           ! tensor rank
-            ! integer , allocatable :: dims(:)        ! tensor dimensions
-            ! real(dp), allocatable :: relations(:,:) ! relations connecting tensor elements
-            ! </INHERITED: am_class_tensor>
-        end type am_class_tbvsk
+    type, public, extends(am_class_tensor) :: am_class_tens_tb
+        ! <INHERITED: am_class_tensor>
+        ! character(100)        :: property       ! name of propertty
+        ! character(100)        :: flags          ! axial/polar
+        ! integer               :: rank           ! tensor rank
+        ! integer , allocatable :: dims(:)        ! tensor dimensions
+        ! real(dp), allocatable :: relations(:,:) ! relations connecting tensor elements
+        ! </INHERITED: am_class_tensor>
+    end type am_class_tens_tb
 
-        type, public :: am_class_tight_binding
-            integer :: nshells ! how many shells irreducible atoms
-            type(am_class_tbvsk), allocatable :: tbvsk(:)  ! tbvsk(nshells)
-            !
-            integer, allocatable :: niVs            ! number of irreducible matrix element values
-            integer, allocatable :: iV(:)           ! their values
-            integer, allocatable :: iV_indices(:,:) ! their indices iV_indices( [i,j], niVs); j = compound [alpha x beta index, see set Vsk subroutine]
-            !
-            type(am_class_hamiltonian_group) :: ham_pg
-            !
-            contains
-                procedure :: initialize_tb
-        end type am_class_tight_binding
+    type, public :: am_class_tight_binding
+        integer :: nshells ! how many shells irreducible atoms
+        type(am_class_tens_tb), allocatable :: tbvsk(:)  ! tbvsk(nshells)
+        !
+        integer, allocatable :: niVs            ! number of irreducible matrix element values
+        integer, allocatable :: iV(:)           ! their values
+        integer, allocatable :: iV_indices(:,:) ! their indices iV_indices( [i,j], niVs); j = compound [alpha x beta index, see set Vsk subroutine]
+        !
+        type(am_class_hamiltonian_group) :: ham_pg
+        !
+        contains
+            procedure :: initialize_tb
+    end type am_class_tight_binding
 
 contains
 
@@ -80,8 +79,10 @@ contains
         enddo
         ! allocate space for iV independent (irreducible) matrix elements
         allocate(tb%iV(tb%niVs))
+        tb%iV = 0
         ! indices : iV_indices( [i, subd2ind(dims=tb%tbvsk(i)%dims,sub=[alpha,beta])], niVs)
         allocate(tb%iV_indices(2,tb%niVs))
+        tb%iV_indices = 0
         k=0
         do i = 1, tb%nshells
             is_independent = get_independent(tb%tbvsk(i)%relations)
@@ -134,7 +135,7 @@ contains
             !
             implicit none
             !
-            type(am_class_tbvsk)    , intent(out) :: tbvsk
+            type(am_class_tens_tb)    , intent(out) :: tbvsk
             type(am_class_prim_cell), intent(in)  :: pc
             type(am_class_irre_cell), intent(in)  :: ic
             type(am_shell_cell)     , intent(in)  :: shell
@@ -162,31 +163,64 @@ contains
                 !
                 implicit none
                 !
-                type(am_class_tbvsk)      , intent(inout) :: tbvsk
+                type(am_class_tens_tb)      , intent(inout) :: tbvsk
                 type(am_class_space_group), intent(in) :: sg   ! seitz space group
                 type(am_class_point_group), intent(in) :: pg   ! seitz point group
                 type(am_class_prim_cell)  , intent(in) :: pc
                 type(am_class_irre_cell)  , intent(in) :: ic
                 type(am_shell_cell)       , intent(in) :: shell
                 type(am_class_options)    , intent(in) :: opts
-                type(am_class_options)     :: notalk
+                type(am_class_flat_group)  :: flat_pg
                 type(am_class_point_group) :: stab
+                type(am_class_options)     :: notalk
+                integer :: i 
+                integer :: j
                 !
                 notalk = opts
                 notalk%verbosity = 0
                 !
                 ! get rank, dims, flags, property
                 call initialize_tbvsk(tbvsk=tbvsk, pc=pc, ic=ic, shell=shell)
-                ! determine stabilizers of a prototypical bond in shell (vector v)
+                !
+                ! determine intrinsic symmetries (if both irreducible atoms are of the same irreducible type)
+                ! Interchange of indices: (l,l',m) = (-1)^(l+l') * (l',l,m), due to parity of wavefunction. (s,d are even under inversion, p,f are odd)
+                ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245.
+                if ( shell%i .ne. shell%j ) then
+                    allocate(M(ic%atom(shell%i)%norbitals, ic%atom(shell%j)%norbitals))
+                    M = 0
+                    do i = 1, ic%atom(shell%i)%norbitals
+                    do j = 1, ic%atom(shell%j)%norbitals
+
+
+
+                            !
+                            ! WORK NO STUFF HERE... NEED TO FIGURE OUT HOW TO BUILD THE SYMMTRY CORRSPONDING TO 
+                            ! (l,l',m) = (-1)^(l+l') * (l',l,m)
+                            !
+
+
+
+                        if (ic%atom(shell%i))orbital(i)
+                        M(i,j) = ! quantum numbers [n,l,m,s]
+                    enddo
+                    enddo
+                endif
+                ! 
+                ! determine stabilizers relations
                 call stab%get_stabilizer_group(pg=pg, v=shell%tau(1:3,1), opts=notalk)
                 ! get point group in the flattened hamiltonin basis
-                call tbvsk%flat_pg%get_flat_point_group(tens=tbvsk, pg=stab, pc=pc, atom_m=ic%atom(shell%i), atom_n=ic%atom(shell%j))
+                call flat_pg%get_flat_point_group(tens=tbvsk, pg=stab, pc=pc, atom_m=ic%atom(shell%i), atom_n=ic%atom(shell%j))
                 ! get relations
-                tbvsk%flat_pg%relations = tbvsk%flat_pg%get_relations()
+                flat_pg%relations = flat_pg%get_relations()
+                !
+
+
                 ! copy relations to tbvsk
                 allocate(tbvsk%relations, source=tbvsk%flat_pg%relations)
                 !
         end subroutine get_shell_relations
+
+
     end subroutine initialize_tb
 
     function       get_Hamiltonian(tb,ip,ic,pp,pc,kpt) result(H)
