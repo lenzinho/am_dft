@@ -15,30 +15,30 @@ module am_tight_binding
 
 	private
 
-    type, public, extends(am_class_group) :: am_class_tb_pg
-    end type am_class_tb_pg
+        type, public, extends(am_class_group) :: am_class_tb_pg
+        end type am_class_tb_pg
 
-    type, public, extends(am_class_tensor) :: am_class_tbvsk
-        type(am_class_flat_group) :: fstab        ! flat stabilizer group symmetry
-        ! <INHERITED: am_class_tensor>
-        ! character(100)        :: property       ! name of propertty
-        ! character(100)        :: flags          ! axial/polar
-        ! integer               :: rank           ! tensor rank
-        ! integer , allocatable :: dims(:)        ! tensor dimensions
-        ! real(dp), allocatable :: relations(:,:) ! relations connecting tensor elements
-        ! </INHERITED: am_class_tensor>
-    end type am_class_tbvsk
+        type, public, extends(am_class_tensor) :: am_class_tbvsk
+            type(am_class_flat_group) :: fstab        ! flat stabilizer group symmetry
+            ! <INHERITED: am_class_tensor>
+            ! character(100)        :: property       ! name of propertty
+            ! character(100)        :: flags          ! axial/polar
+            ! integer               :: rank           ! tensor rank
+            ! integer , allocatable :: dims(:)        ! tensor dimensions
+            ! real(dp), allocatable :: relations(:,:) ! relations connecting tensor elements
+            ! </INHERITED: am_class_tensor>
+        end type am_class_tbvsk
 
-    type, public :: am_class_tight_binding
-        integer :: nshells ! how many shells irreducible atoms
-        type(am_class_tbvsk), allocatable :: tbvsk(:)  ! tbvsk(nshells)
-        !
-        integer, allocatable :: niVs            ! number of irreducible matrix element values
-        integer, allocatable :: iV(:)           ! their values
-        integer, allocatable :: iV_indices(:,:) ! their indices iV_indices( [i, subd2ind(dims=tb%tbvsk(i)%dims,sub=[alpha,beta]), alpha, beta], niVs)
-        contains
-            procedure :: initialize_tb
-    end type am_class_tight_binding
+        type, public :: am_class_tight_binding
+            integer :: nshells ! how many shells irreducible atoms
+            type(am_class_tbvsk), allocatable :: tbvsk(:)  ! tbvsk(nshells)
+            !
+            integer, allocatable :: niVs            ! number of irreducible matrix element values
+            integer, allocatable :: iV(:)           ! their values
+            integer, allocatable :: iV_indices(:,:) ! their indices iV_indices( [i, subd2ind(dims=tb%tbvsk(i)%dims,sub=[alpha,beta]), alpha, beta], niVs)
+            contains
+                procedure :: initialize_tb
+        end type am_class_tight_binding
 
 contains
 
@@ -241,7 +241,6 @@ contains
         enddo
         !
     end subroutine
-
 
     subroutine     apply_relations(Vsk,is_independent,relations)
         !

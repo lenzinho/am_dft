@@ -40,12 +40,12 @@ module am_symmetry_rep
         integer , allocatable :: dims(:)        ! tensor dimensions
         real(dp), allocatable :: relations(:,:) ! relations connecting tensor elements
         real(dp), allocatable :: V(:)           ! the value of the tensor, use reshape(V,dims)
-                                                ! to apply symmetry operations V_symmetrized = matmul(relations,V); computes dependent from independent parameters
+                                                ! to apply symmetry operations: V_symmetrized = matmul(relations,V); computes dependent from independent parameters
     end type am_class_tensor
 
     type, public, extends(am_class_tensor) :: am_class_property
-        type(am_class_flat_group) :: fig        ! flattened intrinsic symmetry group
-        type(am_class_flat_group) :: fpg        ! flattened point group
+        type(am_class_flat_group) :: flat_ig        ! flattened intrinsic symmetry group
+        type(am_class_flat_group) :: flat_pg        ! flattened point group
         contains
         procedure :: get_property
     end type am_class_property
@@ -119,57 +119,57 @@ module am_symmetry_rep
         ! get transpositional operator
         T = transp_operator(ndims)
         ! number of bases functions in representation
-        fig%nbases = ndims**tens%rank
+        flat_ig%nbases = ndims**tens%rank
         ! generate intrinsic symmetries
         k=0
         if     (index(tens%property,'thermoelectricity').ne.0 &
          & .or. index(tens%property,'tightbinding'     ).ne.0) then
             !
-            fig%nsyms = 1
-            allocate(fig%sym(fig%nbases,fig%nbases,fig%nsyms))
-            k=k+1; fig%sym(:,:,k) = eye(fig%nbases)        ! E
+            flat_ig%nsyms = 1
+            allocate(flat_ig%sym(flat_ig%nbases,flat_ig%nbases,flat_ig%nsyms))
+            k=k+1; flat_ig%sym(:,:,k) = eye(flat_ig%nbases)        ! E
             !
         elseif (index(tens%property,'conductivity'     ).ne.0 &
          & .or. index(tens%property,'resistivity'      ).ne.0 &
          & .or. index(tens%property,'voigt'            ).ne.0) then
             !
-            fig%nsyms = 2
-            allocate(fig%sym(fig%nbases,fig%nbases,fig%nsyms))
-            k=k+1; fig%sym(:,:,k) = eye(fig%nbases)        ! E
-            k=k+1; fig%sym(:,:,k) = T                      ! s_ij = s_ji
+            flat_ig%nsyms = 2
+            allocate(flat_ig%sym(flat_ig%nbases,flat_ig%nbases,flat_ig%nsyms))
+            k=k+1; flat_ig%sym(:,:,k) = eye(flat_ig%nbases)        ! E
+            k=k+1; flat_ig%sym(:,:,k) = T                      ! s_ij = s_ji
             !
         elseif (index(tens%property,'piezoelectricity' ).ne.0) then
             !
-            fig%nsyms = 2
-            allocate(fig%sym(fig%nbases,fig%nbases,fig%nsyms))
-            k=k+1; fig%sym(:,:,k) = eye(fig%nbases)        ! E
-            k=k+1; fig%sym(:,:,k) = kron(T,eye(ndims))     ! d_ijk = d_ikj
+            flat_ig%nsyms = 2
+            allocate(flat_ig%sym(flat_ig%nbases,flat_ig%nbases,flat_ig%nsyms))
+            k=k+1; flat_ig%sym(:,:,k) = eye(flat_ig%nbases)        ! E
+            k=k+1; flat_ig%sym(:,:,k) = kron(T,eye(ndims))     ! d_ijk = d_ikj
             !
         elseif (index(tens%property,'elasticity'       ).ne.0) then
             !
-            fig%nsyms = 4
-            allocate(fig%sym(fig%nbases,fig%nbases,fig%nsyms))
-            k=k+1; fig%sym(:,:,k) = eye(fig%nbases)        ! E
-            k=k+1; fig%sym(:,:,k) = kron(eye(ndims**2),T)  ! cijkl = cjikl
-            k=k+1; fig%sym(:,:,k) = kron(T,eye(ndims**2))  ! cijkl = cjilk
-            k=k+1; fig%sym(:,:,k) = kron(T,T)              ! cijkl = cjilk
+            flat_ig%nsyms = 4
+            allocate(flat_ig%sym(flat_ig%nbases,flat_ig%nbases,flat_ig%nsyms))
+            k=k+1; flat_ig%sym(:,:,k) = eye(flat_ig%nbases)        ! E
+            k=k+1; flat_ig%sym(:,:,k) = kron(eye(ndims**2),T)  ! cijkl = cjikl
+            k=k+1; flat_ig%sym(:,:,k) = kron(T,eye(ndims**2))  ! cijkl = cjilk
+            k=k+1; flat_ig%sym(:,:,k) = kron(T,T)              ! cijkl = cjilk
             !
         else
             stop 'Undefined propery encountered.'
         endif
         !
-        allocate(fig%ps_id(fig%nsyms))
-        fig%ps_id    = default_ps_id_value
-        fig%ps_id(1) = 1
+        allocate(flat_ig%ps_id(flat_ig%nsyms))
+        flat_ig%ps_id    = default_ps_id_value
+        flat_ig%ps_id(1) = 1
         !
         ! get multiplication table (determines determine conjugacy classes in the process)
-        call fig%get_multiplication_table()
+        call flat_ig%get_multiplication_table()
         !
-        call fig%sort_symmetries(criterion=real(fig%ps_id,dp), flags='acsend')
-        call fig%sort_symmetries(criterion=real(fig%cc%id,dp), flags='ascend')
+        call flat_ig%sort_symmetries(criterion=real(flat_ig%ps_id,dp), flags='acsend')
+        call flat_ig%sort_symmetries(criterion=real(flat_ig%cc%id,dp), flags='ascend')
         !
         ! get character table
-        call fig%get_character_table()
+        call flat_ig%get_character_table()
         !
         contains
         pure function transp_operator(n) result(M)
@@ -218,12 +218,12 @@ module am_symmetry_rep
         end select
         !
         ! number of bases functions in representation
-        fpg%nbases = product(tens%dims)
+        flat_pg%nbases = product(tens%dims)
         ! number of symmetries
-        fpg%nsyms = pg%nsyms
+        flat_pg%nsyms = pg%nsyms
         ! generate intrinsic symmetries
-        allocate(fpg%sym(fpg%nbases,fpg%nbases,fpg%nsyms))
-        fpg%sym = 0
+        allocate(flat_pg%sym(flat_pg%nbases,flat_pg%nbases,flat_pg%nsyms))
+        flat_pg%sym = 0
         ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
         do i = 1, pg%nsyms
             ! convert to cartesian
@@ -233,22 +233,22 @@ module am_symmetry_rep
                 R_cart = pg%sym(:,:,i)
             endif
             ! determine rotation in the basis
-            if     (index(tens%flags,'axial').ne.0) then; fpg%sym(:,:,i) = kron_pow(R_cart, tens%rank) * det(R_cart)
-            elseif (index(tens%flags,'polar').ne.0) then; fpg%sym(:,:,i) = kron_pow(R_cart, tens%rank)
-            elseif (index(tens%flags,'tight').ne.0) then; fpg%sym(:,:,i) = kron(ps2tb(R_cart,atom_m), ps2tb(R_cart,atom_n))
+            if     (index(tens%flags,'axial').ne.0) then; flat_pg%sym(:,:,i) = kron_pow(R_cart, tens%rank) * det(R_cart)
+            elseif (index(tens%flags,'polar').ne.0) then; flat_pg%sym(:,:,i) = kron_pow(R_cart, tens%rank)
+            elseif (index(tens%flags,'tight').ne.0) then; flat_pg%sym(:,:,i) = kron(ps2tb(R_cart,atom_m), ps2tb(R_cart,atom_n))
             endif
         enddo
         !
         ! copy symmetry ids
-        allocate(fpg%ps_id, source=pg%ps_id)
+        allocate(flat_pg%ps_id, source=pg%ps_id)
         ! copy classes
-        allocate(fpg%cc%id, source=pg%cc%id)
+        allocate(flat_pg%cc%id, source=pg%cc%id)
         ! copy multiplication table
-        fpg%mt = pg%mt
+        flat_pg%mt = pg%mt
         ! copy character table
-        fpg%ct = pg%ct
+        flat_pg%ct = pg%ct
         !
-        if (.not.isequal(fpg%sym(:,:,1),eye(fpg%nbases))) stop 'FPG: Identity is not first.'
+        if (.not.isequal(flat_pg%sym(:,:,1),eye(flat_pg%nbases))) stop 'FPG: Identity is not first.'
         !
     end subroutine get_flat_point_group
 
@@ -270,27 +270,27 @@ module am_symmetry_rep
         call initialize_property(prop=prop, property=property)
         !
         ! get intrinsic symmetries
-        call prop%fig%get_flat_intrinsic_group(tens=prop)
+        call prop%flat_ig%get_flat_intrinsic_group(tens=prop)
         ! write number of intrinsic symmetries
-        if (opts%verbosity.ge.1) call am_print('intrinsict symmetries', prop%fig%nsyms)
+        if (opts%verbosity.ge.1) call am_print('intrinsict symmetries', prop%flat_ig%nsyms)
         ! get symmetry relations
-        prop%fig%relations = prop%fig%get_relations()
+        prop%flat_ig%relations = prop%flat_ig%get_relations()
         ! print relations
-        call print_relations(relations=prop%fig%relations,flags='')
+        call print_relations(relations=prop%flat_ig%relations,flags='')
         !
         ! get point symmetries
-        call prop%fpg%get_flat_point_group(tens=prop, pg=pg, pc=pc)
+        call prop%flat_pg%get_flat_point_group(tens=prop, pg=pg, pc=pc)
         ! write number of point symmetries
-        if (opts%verbosity.ge.1) call am_print('point symmetries', prop%fpg%nsyms)
+        if (opts%verbosity.ge.1) call am_print('point symmetries', prop%flat_pg%nsyms)
         ! get symmetry relations
-        prop%fpg%relations = prop%fpg%get_relations()
+        prop%flat_pg%relations = prop%flat_pg%get_relations()
         ! print relations
-        call print_relations(relations=prop%fpg%relations,flags='')
+        call print_relations(relations=prop%flat_pg%relations,flags='')
         !
         ! combine point and intrisnci symmetries
-        if (opts%verbosity.ge.1) call am_print('total symmetries', prop%fpg%nsyms * prop%fig%nsyms )
+        if (opts%verbosity.ge.1) call am_print('total symmetries', prop%flat_pg%nsyms * prop%flat_ig%nsyms )
         ! combined relations
-        prop%relations = combine_relations(prop%fig%relations, prop%fpg%relations)
+        prop%relations = combine_relations(prop%flat_ig%relations, prop%flat_pg%relations)
         ! determine which symmetries are independent, dependent, and null
         allocate(prop%isi, source=get_independent(relations=prop%relations))
         allocate(prop%isd, source=get_dependent(relations=prop%relations))
