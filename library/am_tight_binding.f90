@@ -19,7 +19,7 @@ module am_tight_binding
         end type am_class_tb_pg
 
         type, public, extends(am_class_tensor) :: am_class_tbvsk
-            type(am_class_flat_group) :: fstab        ! flat stabilizer group symmetry
+            type(am_class_flat_group) :: flat_pg      ! flat stabilizer group symmetry
             ! <INHERITED: am_class_tensor>
             ! character(100)        :: property       ! name of propertty
             ! character(100)        :: flags          ! axial/polar
@@ -35,7 +35,7 @@ module am_tight_binding
             !
             integer, allocatable :: niVs            ! number of irreducible matrix element values
             integer, allocatable :: iV(:)           ! their values
-            integer, allocatable :: iV_indices(:,:) ! their indices iV_indices( [i, subd2ind(dims=tb%tbvsk(i)%dims,sub=[alpha,beta]), alpha, beta], niVs)
+            integer, allocatable :: iV_indices(:,:) ! their indices iV_indices( [i,j], niVs); j = compound [alpha x beta index, see set Vsk subroutine]
             contains
                 procedure :: initialize_tb
         end type am_class_tight_binding
@@ -50,77 +50,82 @@ contains
         type(am_class_space_group)   , intent(in)  :: sg   ! seitz space group
         type(am_class_point_group)   , intent(in)  :: pg   ! seitz point group
         type(am_class_prim_cell)     , intent(in)  :: pc   ! primitive cell
-        type(am_class_irre_cell)     , intent(inout) :: ic ! irreducible cell
+        type(am_class_irre_cell)     , intent(in)  :: ic ! irreducible cell
         type(am_class_pair_shell)    , intent(in)  :: ip   ! irreducible pairs
         type(am_class_options)       , intent(in)  :: opts
-        integer :: nnuls, ninds, ndeps
-        logical, allocatable :: is_null(:)
         logical, allocatable :: is_independent(:)
-        logical, allocatable :: is_dependent(:)
-        integer :: alpha_beta(2)
-        integer :: k
+        integer :: nterms
+        integer :: i,j,k
+        integer :: a,b,c
+        integer :: m,n,o
         !
         !
         if (opts%verbosity.ge.1) call am_print_title('Imposing symmetry constraints on tight-binding model')
         !
-        ! ADD OPTION TO READ ORBITALS HERE
-        if (opts%verbosity.ge.1) write(*,'(5x,a5,a)') ' ... ', 'initializing from orbitals as s,p'
-        call ic%initialize_orbitals(opts=opts)
-        ! call ic%read_orbitals(opts=opts)
-        !
         tb%nshells = ip%nshells
-        !
         allocate(tb%tbvsk(tb%nshells))
+        !
         do k = 1, tb%nshells
-            if (opts%verbosity.ge.1) call am_print('irreducible pair',k)
-            call get_relations(tbvsk=tb%tbvsk(k), sg=sg, pg=pg, pc=pc, ic=ic, shell=ip%shell(k))
+            call get_shell_relations(tbvsk=tb%tbvsk(k), sg=sg, pg=pg, pc=pc, ic=ic, shell=ip%shell(k), opts=opts)
         enddo
-        !
-        !
-        ! count total number of dependent indepndent, and null terms
-        nnuls = 0
-        ninds = 0
-        ndeps = 0
+        ! get number of independent (irreducible) matrix elements
+        tb%niVs = 0
         do i = 1, tb%nshells
-            !
-            is_null        = get_null(tb%tbvsk(i)%relations)
-            is_independent = get_independent(tb%tbvsk(i)%relations)
-            is_dependent   = get_depenent(tb%tbvsk(i)%relations)
-            !
-            nnuls = nnuls + count(is_null)
-            ninds = ninds + count(is_independent)
-            ndeps = ndeps + count(is_dependent)
-            !
+            tb%niVs = tb%niVs + count(get_independent(tb%tbvsk(i)%relations)) 
         enddo
-        !
-        ! print statistics about parameters
-        if (opts%verbosity.ge.1) then
-            write(*,'(a5,a,a)',advance='no') ' ... ', trim(int2char(nterms)), ' terms = '
-            write(*,'(i4,a,f5.1,a)',advance='no') count(nnuls), ' null ('       , count(nnuls)/real(nterms,dp)*100.0_dp , '%) '
-            write(*,'(i4,a,f5.1,a)',advance='no') count(ndeps), ' dependent ('  , count(ndeps)/real(nterms,dp)*100.0_dp , '%) '
-            write(*,'(i4,a,f5.1,a)',advance='no') count(ninds), ' independent (', count(ninds)/real(nterms,dp)*100.0_dp , '%) '
-        endif
-        !
-        ! get number of irreducible (independent) matrix elements
-        tb%niVs = ninds
-        ! allocate space for irreducible (independent) matrix elements iV
+        ! allocate space for iV independent (irreducible) matrix elements
         allocate(tb%iV(tb%niVs))
-        ! indices : iV_indices( [i, subd2ind(dims=tb%tbvsk(i)%dims,sub=[alpha,beta]), alpha, beta], niVs)
-        allocate(tb%iV_indices(4,tb%niVs))
+        ! indices : iV_indices( [i, subd2ind(dims=tb%tbvsk(i)%dims,sub=[alpha,beta])], niVs)
+        allocate(tb%iV_indices(2,tb%niVs))
         k=0
         do i = 1, tb%nshells
             is_independent = get_independent(tb%tbvsk(i)%relations)
             do j = 1, product(tb%tbvsk(i)%dims)
                 k=k+1
-                if (is_independent(k)) then
-                    alpha_beta = ind2sub(dims=tb%tbvsk(i)%dims, ind=j)
+                if (is_independent(j)) then
                     tb%iV_indices(1,k) = i
                     tb%iV_indices(2,k) = j
-                    tb%iV_indices(3,k) = alpha_beta(1)
-                    tb%iV_indices(4,k) = alpha_beta(2)
                 endif
             enddo
         enddo
+
+        ! print statistics about parameters
+        if (opts%verbosity.ge.1) then
+            ! header
+            write(*,'(a5,2a6,3a14)') ' ... ', 'shell', 'terms', 'null', 'dependent', 'independent'
+            write(*,'(5x,a)') repeat(' '//repeat('-',5),2)//repeat(' '//repeat('-',13),3)
+            ! body
+            a=0;b=0;c=0;nterms=0
+            do i = 1, tb%nshells
+                m = count(get_null(tb%tbvsk(i)%relations))
+                n = count(get_depenent(tb%tbvsk(i)%relations)) 
+                o = count(get_independent(tb%tbvsk(i)%relations))
+                nterms = m+n+o
+                write(*,'(5x,i6)'        ,advance='no') i
+                write(*,'(i6)'           ,advance='no') nterms
+                write(*,'(i5,a2,f5.1,a2)',advance='no') m, '(', (m*100_dp)/real(nterms,dp) , '%)'
+                write(*,'(i5,a2,f5.1,a2)',advance='no') n, '(', (n*100_dp)/real(nterms,dp) , '%)'
+                write(*,'(i5,a2,f5.1,a2)',advance='no') o, '(', (o*100_dp)/real(nterms,dp) , '%)'
+                write(*,*)
+                a = a + m
+                b = b + n
+                c = c + o
+            enddo
+            ! total
+            write(*,'(5x,a6)'        ,advance='no') 'total'
+            write(*,'(i6)'           ,advance='no') (a+b+c)
+            write(*,'(i5,a2,f5.1,a2)',advance='no') a, '(', (a*100_dp)/real(a+b+c,dp) , '%)'
+            write(*,'(i5,a2,f5.1,a2)',advance='no') b, '(', (b*100_dp)/real(a+b+c,dp) , '%)'
+            write(*,'(i5,a2,f5.1,a2)',advance='no') c, '(', (c*100_dp)/real(a+b+c,dp) , '%)'
+            write(*,*)
+            ! symmetry relations
+            do i = 1, tb%nshells
+                write(*,'(a5,a)') ' ... ', 'shell '//trim(int2char(i))//' irreducible symmetry relations:'
+                call print_relations(relations=tb%tbvsk(i)%relations, dims=tb%tbvsk(i)%dims, flags='print:dependent,independent')
+            enddo
+            !
+        endif
+        !
         !
         contains
         subroutine     initialize_tbvsk(tbvsk,pc,ic,shell)
@@ -151,20 +156,19 @@ contains
             allocate(tbvsk%V(tbvsk%dims(1)*tbvsk%dims(2)))
             ! allocate space for matrix descriptors
         end subroutine initialize_tbvsk
-        subroutine     get_relations(tbvsk,sg,pg,pc,ic,shell,opts)
+        subroutine     get_shell_relations(tbvsk,sg,pg,pc,ic,shell,opts)
                 !
                 implicit none
                 !
                 type(am_class_tbvsk)      , intent(inout) :: tbvsk
-                type(am_class_space_group), intent(in)    :: sg   ! seitz space group
-                type(am_class_point_group), intent(in)    :: pg   ! seitz point group
-                type(am_class_prim_cell)  , intent(in)    :: pc
-                type(am_class_irre_cell)  , intent(inout) :: ic
-                type(am_shell_cell)       , intent(in)    :: shell
-                type(am_class_options)    , intent(in)  :: opts
+                type(am_class_space_group), intent(in) :: sg   ! seitz space group
+                type(am_class_point_group), intent(in) :: pg   ! seitz point group
+                type(am_class_prim_cell)  , intent(in) :: pc
+                type(am_class_irre_cell)  , intent(in) :: ic
+                type(am_shell_cell)       , intent(in) :: shell
+                type(am_class_options)    , intent(in) :: opts
                 type(am_class_options)     :: notalk
                 type(am_class_point_group) :: stab
-                type(am_class_point_group) :: revg
                 !
                 notalk = opts
                 notalk%verbosity = 0
@@ -174,15 +178,13 @@ contains
                 ! determine stabilizers of a prototypical bond in shell (vector v)
                 call stab%get_stabilizer_group(pg=pg, v=shell%tau(1:3,1), opts=notalk)
                 ! get point group in the flattened hamiltonin basis
-                call tbvsk%fstab%get_flat_point_group(tens=tbvsk, pg=stab, pc=pc, atom_m=ic%atom(shell%i), atom_n=ic%atom(shell%j))
+                call tbvsk%flat_pg%get_flat_point_group(tens=tbvsk, pg=stab, pc=pc, atom_m=ic%atom(shell%i), atom_n=ic%atom(shell%j))
                 ! get relations
-                tbvsk%fstab%relations = tbvsk%fstab%get_relations()
+                tbvsk%flat_pg%relations = tbvsk%flat_pg%get_relations()
                 ! copy relations to tbvsk
-                allocate(tbvsk%relations, source=tbvsk%fstab%relations)
-                ! print relations
-                if (opts%verbosity.ge.1) call print_relations(relations=tbvsk%relations, dims=tbvsk%dims, flags='show:dependent,independent')
+                allocate(tbvsk%relations, source=tbvsk%flat_pg%relations)
                 !
-        end subroutine get_relations
+        end subroutine get_shell_relations
     end subroutine initialize_tb
 
     ! functions which operate on V
@@ -228,33 +230,33 @@ contains
         !
     end subroutine set_Vsk
 
-    subroutine     transfer
-        !
-        implicit none
-        !
-        ! transfer from tb%iV
-        do k = 1, tb%niVs
-        if (tb%iV_indices(1,k).eq.i) then
-            j = tb%iV_indices(2,k)
-            tb%tbvsk(i)%iV(j) = tb%iV(k)
-        endif
-        enddo
-        !
-    end subroutine
+!     subroutine     transfer
+!         !
+!         implicit none
+!         !
+!         ! transfer from tb%iV
+!         do k = 1, tb%niVs
+!         if (tb%iV_indices(1,k).eq.i) then
+!             j = tb%iV_indices(2,k)
+!             tb%tbvsk(i)%iV(j) = tb%iV(k)
+!         endif
+!         enddo
+!         !
+!     end subroutine
 
-    subroutine     apply_relations(Vsk,is_independent,relations)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: Vsk(:)
-        real(dp), intent(in) :: relations(:,:)
-        !
-        !
-        tb%tbvsk(i)%Vsk(ind) = V
-        !
-        matmul(relations,V)
-        !
-    end subroutine apply_relations
+!     subroutine     apply_relations(Vsk,is_independent,relations)
+!         !
+!         implicit none
+!         !
+!         real(dp), intent(in) :: Vsk(:)
+!         real(dp), intent(in) :: relations(:,:)
+!         !
+!         !
+!         tb%tbvsk(i)%Vsk(ind) = V
+!         !
+!         matmul(relations,V)
+!         !
+!     end subroutine apply_relations
 
 !     subroutine     print_Vsk(tb)
 !         !

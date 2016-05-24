@@ -19,6 +19,8 @@ module am_symmetry_rep
 
     public :: print_relations, combine_relations, dump_relations
 
+    public :: get_null, get_independent, get_depenent
+
     type, public, extends(am_class_group) :: am_class_flat_group
         real(dp), allocatable :: relations(:,:)
         contains
@@ -104,11 +106,11 @@ module am_symmetry_rep
 
     ! operators on tensors
 
-    subroutine     get_flat_intrinsic_group(fig,tens)
+    subroutine     get_flat_intrinsic_group(flat_ig,tens)
         !
         implicit none
         !
-        class(am_class_flat_group), intent(out) :: fig ! intrinsic symmetry group
+        class(am_class_flat_group), intent(out) :: flat_ig ! intrinsic symmetry group
         class(am_class_tensor)    , intent(in)  :: tens
         real(dp), allocatable :: T(:,:) ! transpositional operator building block
         integer :: ndims
@@ -191,9 +193,9 @@ module am_symmetry_rep
         end function  transp_operator
     end subroutine get_flat_intrinsic_group
 
-    subroutine     get_flat_point_group(fpg,tens,pg,pc,atom_m,atom_n)
+    subroutine     get_flat_point_group(flat_pg,tens,pg,pc,atom_m,atom_n)
         !
-        class(am_class_flat_group), intent(out):: fpg  ! flat point group
+        class(am_class_flat_group), intent(out):: flat_pg  ! flat point group
         class(am_class_tensor)    , intent(in) :: tens ! tensor
         class(am_class_group)     , intent(in) :: pg   ! seitz point group (rev stab rot groups as well)
         type(am_class_prim_cell)  , intent(in) :: pc   ! primitive cell
@@ -248,7 +250,7 @@ module am_symmetry_rep
         ! copy character table
         flat_pg%ct = pg%ct
         !
-        if (.not.isequal(flat_pg%sym(:,:,1),eye(flat_pg%nbases))) stop 'FPG: Identity is not first.'
+        if (.not.isequal(flat_pg%sym(:,:,1),eye(flat_pg%nbases))) stop 'flat_pg: Identity is not first.'
         !
     end subroutine get_flat_point_group
 
@@ -291,10 +293,6 @@ module am_symmetry_rep
         if (opts%verbosity.ge.1) call am_print('total symmetries', prop%flat_pg%nsyms * prop%flat_ig%nsyms )
         ! combined relations
         prop%relations = combine_relations(prop%flat_ig%relations, prop%flat_pg%relations)
-        ! determine which symmetries are independent, dependent, and null
-        allocate(prop%isi, source=get_independent(relations=prop%relations))
-        allocate(prop%isd, source=get_dependent(relations=prop%relations))
-        allocate(prop%isn, source=get_null(relations=prop%relations))
         ! print relations
         call print_relations(relations=prop%relations, dims=prop%dims, flags='show:dependent,independent')
         !
@@ -567,7 +565,7 @@ module am_symmetry_rep
 
     subroutine     print_relations(relations,dims,flags)
         !
-        ! flags - null, dependent, independent
+        ! flags - null, dependent, independent, header
         !       - bra, ket
         !
         implicit none
@@ -588,18 +586,19 @@ module am_symmetry_rep
         is_independent = get_independent(relations)
         is_dependent = get_depenent(relations)
         !
-        write(*,'(a5,a,a)',advance='no') ' ... ', trim(int2char(nterms)), ' terms = '
-        write(*,'(i4,a,f5.1,a)',advance='no') count(is_null)       , ' null ('       , count(is_null)       /real(nterms,dp)*100.0_dp , '%) '
-        write(*,'(i4,a,f5.1,a)',advance='no') count(is_dependent)  , ' dependent ('  , count(is_dependent)  /real(nterms,dp)*100.0_dp , '%) '
-        write(*,'(i4,a,f5.1,a)',advance='no') count(is_independent), ' independent (', count(is_independent)/real(nterms,dp)*100.0_dp , '%) '
-        writE(*,*)
+        ! print header
+        if (index(flags,'header').ne.0) then
+            write(*,'(a5,a,a)',advance='no') ' ... ', trim(int2char(nterms)), ' terms = '
+            write(*,'(i4,a,f5.1,a)',advance='no') count(is_null)       , ' null ('       , count(is_null)       /real(nterms,dp)*100.0_dp , '%) '
+            write(*,'(i4,a,f5.1,a)',advance='no') count(is_dependent)  , ' dependent ('  , count(is_dependent)  /real(nterms,dp)*100.0_dp , '%) '
+            write(*,'(i4,a,f5.1,a)',advance='no') count(is_independent), ' independent (', count(is_independent)/real(nterms,dp)*100.0_dp , '%) '
+            writE(*,*)
+        endif
         !
-        ! irreducible symmetry relations
+        ! print irreducible symmetry relations
         if ((index(flags,'independent').ne.0).or.(index(flags,'dependent').ne.0).or.(index(flags,'null').ne.0)) then
             !
-            if (.not.present(dims)) stop 'dims is required for priting relations'
-            !
-            write(*,'(a5,a)') ' ... ', 'irreducible symmetry relations'
+            if (.not.present(dims)) stop 'dims is required for printing relations'
             !
             ! write the independent terms (equal only to themselves)
             if (index(flags,'independent').ne.0) then
