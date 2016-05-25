@@ -15,10 +15,14 @@ module am_shells
     private
 
     type, public, extends(am_class_unit_cell) :: am_shell_cell
-        integer :: i ! identifies irreducible atoms
-        integer :: j ! identifies irreducible atoms
-        integer :: m ! identifies primitive atoms
-        integer :: n ! identifies primitive atoms
+        real(dp):: center(3) ! center of shell
+        integer :: i ! identifies irreducible atoms (center)
+        integer :: j ! identifies irreducible atoms (shell)
+        integer :: m ! identifies primitive atoms (center)
+        integer :: n ! identifies primitive atoms (shell)
+        type(am_class_rotational_group) :: rotg ! local point groupas seen by rotating the shell
+        type(am_class_point_group) :: revg ! reversal group of a typical bond in the shell v
+        type(am_class_point_group) :: stab ! stabilizer of a typical bond in the shell v
     end type am_shell_cell
 
     type, public :: am_class_pair_shell
@@ -46,18 +50,14 @@ contains
         real(dp), intent(inout) :: pair_cutoff
         !
         character(11) :: pctype
-        type(am_class_point_group) :: rotg ! local point groupas seen by rotating the shell
-        type(am_class_point_group) :: revg ! reversal group of a typical bond in the shell v
-        type(am_class_point_group) :: stab ! stabilizer of a typical bond in the shell v
         type(am_class_unit_cell) :: sphere ! sphere containing atoms up to a cutoff
-        type(am_class_options) :: notalk ! supress verbosity
-        integer , allocatable :: pair_nelements(:)
-        integer , allocatable :: pair_member(:,:)
-        integer , allocatable :: ind_u(:)
+        integer , allocatable :: shell_nelements(:)
+        integer , allocatable :: shell_member(:,:)
+        integer , allocatable :: shell_id(:)
         integer , allocatable :: ind(:)
-        integer  :: npairs !  number of pairs
-        integer  :: nshells
-        real(dp) :: D(3)
+        integer  :: nshells !  number of pairs
+        integer  :: nshells ! number of shells
+        real(dp) :: D(3) ! center of sphere in fractional coordinates
         integer  :: k,i,j
         !
         select type (pc)
@@ -69,10 +69,6 @@ contains
         !
         ! print title
         if (opts%verbosity.ge.1) call am_print_title('Determining '//trim(pctype)//' nearest-neighbor pairs')
-        !
-        ! set notalk option
-        notalk = opts 
-        notalk%verbosity = 0
         !
         ! set pair cutoff radius (smaller than half the smallest cell dimension, larger than the smallest distance between atoms)
         pair_cutoff = minval([norm2(uc%bas(:,:),1)/real(2,dp), pair_cutoff])
@@ -86,7 +82,7 @@ contains
             ! create sphere
             sphere = create_sphere(uc=uc, sphere_center=D, pair_cutoff=pair_cutoff, opts=opts )
             ! get number of pairs
-            nshells = nshells + maxval(identify_pairs(sphere=sphere,pg=pg))
+            nshells = nshells + maxval(identify_shells(sphere=sphere,pg=pg))
         enddo
         !
         ! allocate pair space, pair centered on atom pc%natoms 
@@ -102,108 +98,102 @@ contains
             !
             ! get center of sphere in fractional supercell coordinates
             D = matmul(matmul(inv(uc%bas),pc%bas),pc%tau(:,i))
-            !
             ! create sphere
             sphere = create_sphere(uc=uc, sphere_center=D, pair_cutoff=pair_cutoff, opts=opts )
-            !
             ! identify atoms in the whole sphere that can be mapped onto each other by point symmetry operations and return the id of the pair for each atom (including the center atom)
-            ind_u = identify_pairs(sphere=sphere,pg=pg)
+            shell_id = identify_shells(sphere=sphere,pg=pg)
             ! get number of pairs
-            npairs = maxval(ind_u)
-            ! get pair members [pair representative is given by pair_member(:,1)]
-            pair_member = member(ind_u)
+            nshells = maxval(shell_id)
+            ! get pair members [pair representative is given by shell_member(:,1)]
+            shell_member = member(shell_id)
             ! get number of pair elements (essentially the oribital weights)
-            pair_nelements = nelements(ind_u)
-            !
-            if (opts%verbosity.ge.1) then
-                !
-                write(*,'(" ... ",a," atom ",a," at "   ,a,",",a,",",a,  " (frac) has ",a," nearest-neighbor shells")') &
-                    & trim(pctype), trim(int2char(i)), (trim(dbl2char(D(j),4)),j=1,3), trim(int2char(npairs))
-                !
-                write(*,'(5x)' ,advance='no')
-                write(*,'(a5)' ,advance='no') 'shell'
-                write(*,'(a6)' ,advance='no') 'Zi-Zj'
-                write(*,'(a6)' ,advance='no') 'i-j'
-                write(*,'(a6)' ,advance='no') 'm-n'
-                write(*,'(a5)' ,advance='no') 'm'
-                write(*,'(a8)' ,advance='no') 'stab.'
-                write(*,'(a8)' ,advance='no') 'rot.'
-                write(*,'(a8)' ,advance='no') 'rev.'
-                write(*,'(a10)',advance='no') '|v(cart)|'
-                write(*,'(a30)',advance='no') centertitle('v(cart)',30)
-                write(*,'(a10)',advance='no') '|v(frac)|'
-                write(*,'(a30)',advance='no') centertitle('v(frac)',30)
-                write(*,*)
-                write(*,'(5x)' ,advance='no')
-                write(*,'(a5)' ,advance='no')      repeat('-',5)
-                write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
-                write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
-                write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
-                write(*,'(a5)' ,advance='no') ' '//repeat('-',4)
-                write(*,'(a8)', advance='no') ' '//repeat('-',7)
-                write(*,'(a8)', advance='no') ' '//repeat('-',7)
-                write(*,'(a8)', advance='no') ' '//repeat('-',7)
-                write(*,'(a10)',advance='no') ' '//repeat('-',9)
-                write(*,'(a30)',advance='no') ' '//repeat('-',29)
-                write(*,'(a10)',advance='no') ' '//repeat('-',9)
-                write(*,'(a30)',advance='no') ' '//repeat('-',29)
-                write(*,*)
-                !
-            endif
-            !
-            ! each atom has npairs, with a representative for each; save their positions
-            ! representative is given by the first element of the pair_member(npair,1)
-            do j = 1, npairs
+            shell_nelements = nelements(shell_id)
+            do j = 1, nshells
                 !
                 if (allocated(ind)) deallocate(ind)
-                allocate(ind,source=pair_member(j,1:pair_nelements(j)))
-                !
+                allocate(ind,source=shell_member(j,1:shell_nelements(j)))
                 ! create the jth shell centered on primitive atom i
                 k=k+1
                 call pp%shell(k)%copy(uc=sphere)
                 call pp%shell(k)%filter(indices=ind)
-                !
+                ! take not of shell center
+                pp%shell(k)%center = D
+                ! get irreducible atom indices
                 pp%shell(k)%i = pc%ic_id(i)
                 pp%shell(k)%j = pp%shell(k)%ic_id(1)
-                !
+                ! get primitive atom indices
                 pp%shell(k)%m = pc%pc_id(i)
                 pp%shell(k)%n = pp%shell(k)%pc_id(1)
-                !
-                ! print to stdout
-                if (opts%verbosity.ge.1) then
-                    ! determine stabilizers of a prototypical bond in shell (vector v)
-                    call stab%get_stabilizer_group(pg=pg, v=pp%shell(k)%tau(1:3,1), opts=notalk)
-                    ! determine rotations which leaves shell invariant
-                    call rotg%get_rotational_group(pg=pg, uc=pp%shell(k), opts=notalk)
-                    ! determine reversal group, space symmetries, which interchange the position of atoms at the edges of the bond
-                    call revg%get_reversal_group(sg=sg, v=pp%shell(k)%tau(1:3,1), opts=notalk)
-                    write(*,'(5x)'    ,advance='no')
-                    write(*,'(i5)'    ,advance='no') j
-                    write(*,'(a6)'    ,advance='no') trim(atm_symb(pc%Z( pp%shell(k)%i )))//'-'//trim(atm_symb(pc%Z( pp%shell(k)%j )))
-                    write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%i))//'-'//trim(int2char(pp%shell(k)%j))
-                    write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%m))//'-'//trim(int2char(pp%shell(k)%n))
-                    write(*,'(i5)'    ,advance='no') pp%shell(k)%natoms
-                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( stab%pg_id ))
-                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( rotg%pg_id ))
-                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( revg%pg_id ))
-                    write(*,'(f10.3)' ,advance='no') norm2(matmul(pp%shell(k)%bas,pp%shell(k)%tau(1:3,1)))
-                    write(*,'(3f10.3)',advance='no') matmul(pp%shell(k)%bas,pp%shell(k)%tau(1:3,1))
-                    write(*,'(f10.3)' ,advance='no') norm2(pp%shell(k)%tau(1:3,1))
-                    write(*,'(3f10.3)',advance='no') pp%shell(k)%tau(1:3,1)
-                    write(*,*)
-                endif
-                !
+                ! determine stabilizers of a prototypical bond in shell (vector v)
+                call pp%shell(k)%stab%get_stabilizer_group(pg=pg, v=pp%shell(k)%tau(1:3,1), opts=opts)
+                ! determine rotations which leaves shell invariant
+                call pp%shell(k)%rotg%get_rotational_group(pg=pg, uc=pp%shell(k), opts=opts)
+                ! determine reversal group, space symmetries, which interchange the position of atoms at the edges of the bond
+                call pp%shell(k)%revg%get_reversal_group(sg=sg, v=pp%shell(k)%tau(1:3,1), opts=opts)
+            enddo
+        enddo
+        !
+        ! print stuff
+        if (opts%verbosity.ge.1) then
+            ! write the number of shells each primitive cell atom hsa
+            do i = 1, pc%natoms
+                D = matmul(matmul(inv(uc%bas),pc%bas),pc%tau(:,i))
+                write(*,'(" ... ",a," atom ",a," at "   ,a,",",a,",",a,  " (frac) has ",a," nearest-neighbor shells")') &
+                    & trim(pctype), trim(int2char(i)), (trim(dbl2char(D(j),4)),j=1,3), trim(int2char(nshells))
             enddo
             !
-        enddo ! primitive cell atoms
-        ! write some definitions just to remember
-        write(*,'(a5,a)') ' ... ', 'Definitions:'
-        write(*,'(5x,a)') ' - i, j             : irreducible indicies'
-        write(*,'(5x,a)') ' - m, n             : primitive indicies'
-        write(*,'(5x,a)') ' - multiplicity (m) : pair apperences'
-        write(*,'(5x,a)') ' - stabilizer (stab): point symmetries which leave a representative bond in shell invariant'
-        write(*,'(5x,a)') ' - rotational (rot) : point symmetries which leave shell invariant'
-        write(*,'(5x,a)') ' - reversal   (rev) : (im)proper rotational parts of space symmetries which flip bond endpoints'
+            write(*,'(5x)' ,advance='no')
+            write(*,'(a5)' ,advance='no') 'shell'
+            write(*,'(a6)' ,advance='no') 'Zi-Zj'
+            write(*,'(a6)' ,advance='no') 'i-j'
+            write(*,'(a6)' ,advance='no') 'm-n'
+            write(*,'(a5)' ,advance='no') 'm'
+            write(*,'(a8)' ,advance='no') 'stab.'
+            write(*,'(a8)' ,advance='no') 'rot.'
+            write(*,'(a8)' ,advance='no') 'rev.'
+            write(*,'(a10)',advance='no') '|v(cart)|'
+            write(*,'(a30)',advance='no') centertitle('v(cart)',30)
+            write(*,'(a10)',advance='no') '|v(frac)|'
+            write(*,'(a30)',advance='no') centertitle('v(frac)',30)
+            write(*,*)
+            write(*,'(5x)' ,advance='no')
+            write(*,'(a5)' ,advance='no')      repeat('-',5)
+            write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
+            write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
+            write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
+            write(*,'(a5)' ,advance='no') ' '//repeat('-',4)
+            write(*,'(a8)', advance='no') ' '//repeat('-',7)
+            write(*,'(a8)', advance='no') ' '//repeat('-',7)
+            write(*,'(a8)', advance='no') ' '//repeat('-',7)
+            write(*,'(a10)',advance='no') ' '//repeat('-',9)
+            write(*,'(a30)',advance='no') ' '//repeat('-',29)
+            write(*,'(a10)',advance='no') ' '//repeat('-',9)
+            write(*,'(a30)',advance='no') ' '//repeat('-',29)
+            write(*,*)
+            do j = 1, pp%nshells
+                write(*,'(5x)'    ,advance='no')
+                write(*,'(i5)'    ,advance='no') j
+                write(*,'(a6)'    ,advance='no') trim(atm_symb(pc%Z( pp%shell(k)%i )))//'-'//trim(atm_symb(pc%Z( pp%shell(k)%j )))
+                write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%i))//'-'//trim(int2char(pp%shell(k)%j))
+                write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%m))//'-'//trim(int2char(pp%shell(k)%n))
+                write(*,'(i5)'    ,advance='no') pp%shell(k)%natoms
+                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( pp%shell(k)%stab%pg_id ))
+                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( pp%shell(k)%rotg%pg_id ))
+                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( pp%shell(k)%revg%pg_id ))
+                write(*,'(f10.3)' ,advance='no') norm2(matmul(pp%shell(k)%bas,pp%shell(k)%tau(1:3,1)))
+                write(*,'(3f10.3)',advance='no') matmul(pp%shell(k)%bas,pp%shell(k)%tau(1:3,1))
+                write(*,'(f10.3)' ,advance='no') norm2(pp%shell(k)%tau(1:3,1))
+                write(*,'(3f10.3)',advance='no') pp%shell(k)%tau(1:3,1)
+                write(*,*)
+            enddo
+            write(*,'(a5,a)') ' ... ', 'Definitions:'
+            write(*,'(5x,a)') ' - i, j             : irreducible indicies'
+            write(*,'(5x,a)') ' - m, n             : primitive indicies'
+            write(*,'(5x,a)') ' - multiplicity (m) : pair apperences'
+            write(*,'(5x,a)') ' - stabilizer (stab): point symmetries which leave a representative bond in shell invariant'
+            write(*,'(5x,a)') ' - rotational (rot) : point symmetries which leave shell invariant'
+            write(*,'(5x,a)') ' - reversal   (rev) : (im)proper rotational parts of space symmetries which flip bond endpoints'
+        endif
         !
         contains
         function       create_sphere(uc,sphere_center,pair_cutoff,opts) result(sphere)
@@ -277,7 +267,7 @@ contains
             endif
             !
         end function   create_sphere
-        function       identify_pairs(sphere,pg) result(ind_u)
+        function       identify_shells(sphere,pg) result(shell_id)
             !
             use am_rank_and_sort
             !
@@ -287,9 +277,9 @@ contains
             type(am_class_point_group), intent(in) :: pg ! rotational group (space symmetries which have translational part set to zero and are still compatbile with the atomic basis)
             integer , allocatable :: P(:,:,:)
             integer , allocatable :: PM(:,:) ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-            real(dp), allocatable :: d(:)    ! d(npairs) array containing distances between atoms
+            real(dp), allocatable :: d(:)    ! d(nshells) array containing distances between atoms
             integer , allocatable :: indices(:)
-            integer , allocatable :: ind_u(:)
+            integer , allocatable :: shell_id(:)
             integer :: i, jj, j, k
             !
             ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
@@ -307,22 +297,22 @@ contains
             call rank(d,indices)
             !
             ! get pairs starting with closest atoms first
-            allocate(ind_u(sphere%natoms))
-            ind_u=0
+            allocate(shell_id(sphere%natoms))
+            shell_id=0
             k=0
             do jj = 1, sphere%natoms
                 i = indices(jj)
-                if (ind_u(i).eq.0) then
+                if (shell_id(i).eq.0) then
                     k=k+1
                     do j = 1, pg%nsyms
                     if ((PM(i,j)).ne.0) then
-                        ind_u(PM(i,j)) = k
+                        shell_id(PM(i,j)) = k
                     endif
                     enddo
                 endif
             enddo
             !
-        end function   identify_pairs
+        end function   identify_shells
     end subroutine get_primitive
 
     subroutine     get_irreducible(ip,pp,pg,sg,ic,opts)
@@ -369,6 +359,16 @@ contains
             ip%shell(i) = pp%shell(ip_id_unique(i))
         enddo
         !
+        ! create maps irreducible pair to/from primitive pair
+        allocate(pp%pp_id, source = [1:pp%nshells])
+        allocate(pp%ip_id, source = ip_id)
+        allocate(ip%ip_id, source = [1:ip%nshells])
+        allocate(ip%pp_id(ip%nshells))
+        do i = 1, ip%nshells
+            ip%pp_id(i) = ip_id_unique(i)
+        enddo
+        !
+        ! save multiplicity (for fun)
         allocate(multiplicity(ip%nshells))
         multiplicity=0
         do k = 1, ip%nshells
@@ -379,7 +379,6 @@ contains
         !
         ! write to stdout
         if (opts%verbosity.ge.1) then
-            !
             write(*,'(5x)' ,advance='no')
             write(*,'(a5)' ,advance='no') 'shell'
             write(*,'(a6)' ,advance='no') 'Zi-Zj'
@@ -408,46 +407,23 @@ contains
             write(*,'(a10)',advance='no') ' '//repeat('-',9)
             write(*,'(a30)',advance='no') ' '//repeat('-',29)
             write(*,*)
-            !
-        endif
-        do k = 1, ip%nshells
-            ! print to stdout
-            if (opts%verbosity.ge.1) then
-                i = ip%shell(k)%i
-                j = ip%shell(k)%j
-                ! determine stabilizers of a prototypical bond in shell (vector v)
-                call stab%get_stabilizer_group(pg=pg, v=ip%shell(k)%tau(1:3,1), opts=notalk)
-                ! determine rotations which leaves shell invariant
-                call rotg%get_rotational_group(pg=pg, uc=ip%shell(k), opts=notalk)
-                ! determine reversal group, space symmetries, which interchange the position of atoms at the edges of the bond
-                call revg%get_reversal_group(sg=sg, v=ip%shell(k)%tau(1:3,1), opts=notalk)
+            do k = 1, ip%nshells
                 write(*,'(5x)'    ,advance='no')
                 write(*,'(i5)'    ,advance='no') k ! shell
                 write(*,'(a6)'    ,advance='no') trim(atm_symb(ic%Z( ip%shell(k)%i )))//'-'//trim(atm_symb(ic%Z( ip%shell(k)%j )))
                 write(*,'(a6)'    ,advance='no') trim(int2char(ip%shell(k)%i))//'-'//trim(int2char(ip%shell(k)%j))
                 write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%m))//'-'//trim(int2char(pp%shell(k)%n))
                 write(*,'(i5)'    ,advance='no') multiplicity(k)
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( stab%pg_id ))
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( rotg%pg_id ))
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( revg%pg_id ))
+                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( ip%stab%pg_id ))
+                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( ip%rotg%pg_id ))
+                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( ip%revg%pg_id ))
                 write(*,'(f10.3)' ,advance='no') norm2(matmul(ip%shell(k)%bas,ip%shell(k)%tau(1:3,1)))
                 write(*,'(3f10.3)',advance='no') matmul(ip%shell(k)%bas,ip%shell(k)%tau(1:3,1))
                 write(*,'(f10.3)' ,advance='no') norm2(ip%shell(k)%tau(1:3,1))
                 write(*,'(3f10.3)',advance='no') ip%shell(k)%tau(1:3,1)
                 write(*,*)
-            endif
-        enddo
-        !
-        ! create map
-        allocate(pp%pp_id, source = [1:pp%nshells])
-        allocate(pp%ip_id, source = ip_id)
-        allocate(ip%ip_id, source = [1:ip%nshells])
-        allocate(ip%pp_id(ip%nshells))
-        do i = 1, ip%nshells
-            ip%pp_id(i) = ip_id_unique(i)
-        enddo
-        !
-        if (opts%verbosity.ge.1) then
+            enddo
+            ! write maps
             write(*,'(a5,a)',advance='no') ' ... ', 'pair mapping (from primitive: prim->irr)'
             do i = 1, pp%nshells
                 if (modulo(i,11).eq.1) then
@@ -457,7 +433,6 @@ contains
                 write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(pp%ip_id(i)))
             enddo
             write(*,*)
-            !
             write(*,'(a5,a)',advance='no') ' ... ', 'pair mapping (to primitive: irr->prim)'
             do i = 1, ip%nshells
                 if (modulo(i,11).eq.1) then
@@ -467,10 +442,7 @@ contains
                 write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(ip%pp_id(i)))
             enddo
             write(*,*)
-            !
-        endif
-        !
-        if (opts%verbosity.ge.1) then
+            ! write definitions
             write(*,'(a5,a)') ' ... ', 'Definitions:'
             write(*,'(5x,a)') ' - i, j             : irreducible indicies'
             write(*,'(5x,a)') ' - m, n             : primitive indicies'

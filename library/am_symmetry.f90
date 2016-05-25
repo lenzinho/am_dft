@@ -39,13 +39,19 @@ module am_symmetry
 
     type, public, extends(am_class_seitz_group) :: am_class_point_group
         ! sym(:,:,:) are seitz operators
-        integer   :: pg_id ! integer which identifies the point group
         contains
         procedure :: get_point_group
-        procedure :: get_rotational_group
         procedure :: get_stabilizer_group
         procedure :: get_reversal_group
     end type am_class_point_group
+
+    type, public, extends(am_class_point_group) :: am_class_rotational_group
+        ! sym(:,:,:) are seitz operators
+        integer, allocatable :: map(:,:)    ! map(natoms, nsyms)    shows how atoms are mapped by symmetry operation; "where does symmetry take atom i"
+        integer, allocatable :: invmap(:,:) ! map(natoms, nsyms) shows how atoms are mapped by symmetry operation; "what symmetry is neede to "
+        contains
+        procedure :: get_rotational_group
+    end type am_class_rotational_group
 
     type, public, extends(am_class_seitz_group) :: am_class_space_group
         ! sym(:,:,:) are seitz operators
@@ -215,201 +221,7 @@ contains
         !
     end subroutine get_conjugacy_classes
 
-    subroutine     get_character_table(grp)
-        !
-        implicit none
-        !
-        class(am_class_group), intent(inout) :: grp
-        !
-        ! get character table (ps_id is required for sorting the irreps: proper before improper)
-        grp%ct%chartab = get_chartab(multab=grp%mt%multab, nclasses=grp%cc%nclasses, &
-            class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
-        ! get muliken labels for irreps
-        grp%ct%muliken = get_muliken(chartab=grp%ct%chartab, nclasses=grp%cc%nclasses, &
-            class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
-        !
-    end subroutine get_character_table
-
-    subroutine     print_character_table(grp)
-        !
-        implicit none
-        !
-        class(am_class_group), intent(in) :: grp
-        integer :: i
-        integer :: nreps
-        complex(dp) , allocatable :: rep_chi(:,:)
-        character(7), allocatable :: rep_label(:)
-        !
-        ! start rep counter
-        i=0
-        !
-        select type (grp)
-        class is (am_class_point_group) 
-            nreps = 5
-            allocate(rep_chi(nreps,grp%cc%nclasses))
-            allocate(rep_label(nreps))
-            ! representation based on basis functions
-            i=i+1; rep_label(i) = 'rep'
-            rep_chi(i,:) = get_rep_characters(sym=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
-            ! representation based on s orbitals
-            i=i+1; rep_label(i) = 's D^(0)'
-            rep_chi(i,:) = get_orb_characters(l=0, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
-            ! representation based on p orbitals
-            i=i+1; rep_label(i) = 'p D^(1)'
-            rep_chi(i,:) = get_orb_characters(l=1, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
-            ! representation based on d orbitals
-            i=i+1; rep_label(i) = 'd D^(2)'
-            rep_chi(i,:) = get_orb_characters(l=2, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
-            ! representation based on f orbitals
-            i=i+1; rep_label(i) = 'f D^(3)'
-            rep_chi(i,:) = get_orb_characters(l=3, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
-        class is (am_class_space_group) 
-            ! do nothing.
-        class default
-            nreps = 1
-            allocate(rep_chi(nreps,grp%cc%nclasses))
-            allocate(rep_label(nreps))
-            ! representation based on basis functions
-            i=i+1; rep_label(i) = 'rep'
-            rep_chi(i,:) = get_rep_characters(sym=grp%sym, nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
-        end select
-        !
-        !
-        if (allocated(rep_chi).and.allocated(rep_label)) then
-            call print_chartab(chartab=grp%ct%chartab, nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, &
-                class_member=grp%cc%member, irrep_label=grp%ct%muliken, ps_id=grp%ps_id, rep_chi=rep_chi, rep_label=rep_label)
-        else
-            call print_chartab(chartab=grp%ct%chartab, nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, &
-                class_member=grp%cc%member, irrep_label=grp%ct%muliken, ps_id=grp%ps_id)
-        endif
-        !
-        contains
-        function       get_rep_characters(sym,nclasses,class_representative) result(repchi)
-            !
-            implicit none
-            !
-            real(dp),    intent(in) :: sym(:,:,:)
-            integer,     intent(in) :: nclasses
-            integer,     intent(in) :: class_representative(:)
-            integer, allocatable :: repchi(:)
-            integer :: i
-            !
-            allocate(repchi(nclasses))
-            !
-            do i = 1, nclasses
-                repchi(i) = trace( sym(:,:,class_representative(i)) )
-            enddo
-            !
-        end function   get_rep_characters
-        function       get_orb_characters(l,R,nclasses,class_representative) result(orbchi)
-            !
-            implicit none
-            !
-            integer,  intent(in) :: l
-            real(dp), intent(in) :: R(:,:,:)
-            integer,  intent(in) :: nclasses
-            integer,  intent(in) :: class_representative(:)
-            complex(dp), allocatable :: orbchi(:)
-            integer :: i
-            !
-            allocate(orbchi(nclasses))
-            !
-            do i = 1, nclasses
-                orbchi(i) = get_orbchi(l=l,R=R(:,:,class_representative(i)))
-            enddo
-            !
-        end function   get_orb_characters
-        function       get_orbchi(l,R) result(chi)
-            !
-            ! Character of (2l+1)-dimensional orthogonal group O(3) irrep parameterized by 3x3 rotoinversion matrix R
-            !       
-            ! T. Wolfram and Ş. Ellialtıoğlu, Applications of Group Theory to Atoms, Molecules, 
-            ! and Solids, 1 edition (Cambridge University Press, Cambridge, 2014), p 74, Eq. 3.20.
-            !
-            ! M. Tinkham, Group Theory and Quantum Mechanics (McGraw-Hill, 1964), p 66 Eq 4.6 
-            ! and p 100 bottom.
-            !
-            implicit none
-            !
-            integer,  intent(in) :: l ! dimension of irrep
-            real(dp), intent(in) :: R(3,3) ! rotation angle
-            real(dp) :: aa(4)
-            real(dp) :: d
-            complex(dp) :: chi
-            !
-            ! if R is a rotoinversion, get the angle and axis of the rotational part only (without the inversion)
-            d = R(1,1)*R(2,2)*R(3,3)-R(1,1)*R(2,3)*R(3,2)-R(1,2)*R(2,1)*R(3,3)+R(1,2)*R(2,3)*R(3,1)+R(1,3)*R(2,1)*R(3,2)-R(1,3)*R(2,2)*R(3,1)
-            ! convert to proper rotation
-            aa = rot2axis_angle(d*R)
-            if (abs(aa(4)).lt.tiny) then
-                ! limiting case is obtained by expanding sin( (j+1/2)*x ) / sin( x/2 ) at zero
-                chi = (2*l+1)
-            else
-                ! general case
-                chi = sin( (l+0.5_dp)*aa(4) ) / sin( aa(4)*0.5_dp )
-            endif
-            ! convert back to improper rotation
-            chi = chi * sign(1.0_dp,d)**(l)
-            !
-        end function   get_orbchi
-    end subroutine print_character_table
-
-    subroutine     create(sg,seitz)
-        !
-        implicit none
-        !
-        class(am_class_seitz_group), intent(out) :: sg
-        real(dp)                   , intent(in) :: seitz(:,:,:)
-        real(dp) :: id(4,4)
-        integer  :: i
-        !
-        ! number of "bases functions", doesn't have any real meaning here. Using 3 rather than 4.
-        sg%nbases = 3
-        !
-        ! get number of symmetries
-        sg%nsyms = size(seitz,3)
-        !
-        ! transfer seitz
-        allocate(sg%sym,source=seitz)
-        !
-        ! put identity first
-        id = eye(4)
-        search : do i = 1, sg%nsyms
-            if (all(abs(sg%sym(:,:,i)-id).lt.tiny)) then
-                sg%sym(:,:,i) = sg%sym(:,:,1)
-                sg%sym(:,:,1) = id
-                exit search
-            endif
-        enddo search
-        !
-        ! identify point symmetries
-        allocate(sg%ps_id(sg%nsyms))
-        do i = 1, sg%nsyms
-            sg%ps_id(i) = ps_schoenflies(R=sg%sym(1:3,1:3,i))
-        enddo
-        !
-        ! name point group
-        select type (sg)
-        type is (am_class_point_group)
-            sg%pg_id = point_group_schoenflies(sg%ps_id)
-        end select
-        !
-        ! get multiplication table
-        call sg%get_multiplication_table()
-        ! get conjugacy classes
-        call sg%get_conjugacy_classes()
-        ! sort symmetries based on parameters
-        call sg%sort_symmetries(criterion=sg%sym(1,4,:), flags='ascend')
-        call sg%sort_symmetries(criterion=sg%sym(2,4,:), flags='ascend')
-        call sg%sort_symmetries(criterion=sg%sym(3,4,:), flags='ascend')
-        call sg%sort_symmetries(criterion=real(sg%ps_id,dp), flags='acsend')
-        call sg%sort_symmetries(criterion=real(sg%cc%id,dp), flags='ascend')
-        ! get character table
-        call sg%get_character_table()
-        !
-    end subroutine create
-
-    ! high level routines which operate on sg
+    ! high level routines which operate on sg/pg
 
     subroutine     get_space_group(sg,uc,opts)
         !
@@ -442,8 +254,6 @@ contains
             call am_print('space symmetries',sg%nsyms,' ... ')
             !
             call am_print('classes',sg%cc%nclasses)
-            !
-            call sg%print_character_table()
             !
         endif
         !
@@ -497,13 +307,8 @@ contains
         call pg%create(seitz=unique(seitz))
         !
         if (opts%verbosity.ge.1) then
-            !
-            call am_print('point group',decode_pointgroup(pg%pg_id),' ... ')
-            !
+            call am_print('point group',decode_pointgroup(point_group_schoenflies(pg%ps_id)),' ... ')
             call am_print('point symmetries',pg%nsyms,' ... ')
-            !
-            call pg%print_character_table()
-            !
         endif
         !
         call pg%write_outfile(iopt_uc=uc,iopt_filename='outfile.pointgroup')
@@ -517,7 +322,7 @@ contains
         ! Get point symmetries which are compatible with the atomic basis (essentially keeps
         ! rotational part of space symmetries which are able to map all atoms onto each other)
         !
-        ! This is also useful for determining the point symmetries compatible with kpoint mesh.
+        ! This is also useful for determining the point symmetries compatible with kpoint mesh
         !
         ! Name "point group" - NOTE: not really a point group because translational components of
         ! space symmetries were ignored in the genereation process this would be the name of the
@@ -526,7 +331,7 @@ contains
         !
         implicit none
         ! subroutine i/o
-        class(am_class_point_group),intent(out) :: rg
+        class(am_class_point_group),intent(out):: rg
         class(am_class_unit_cell),  intent(in) :: uc
         type(am_class_point_group), intent(in) :: pg
         type(am_class_options),     intent(in) :: opts
@@ -554,16 +359,43 @@ contains
         ! create group
         call rg%create(seitz=pg%sym(:,:,pack(indicies,mask)))
         !
+        contains
+        function       sort_seitz_based_on_tau(tau,seitz) result(seitz_out)
+            !
+            implicit none
+            !
+            real(dp), intent(in) :: tau(:,:)
+            real(dp), intent(in) :: seitz(:,:,:)
+            real(dp) :: seitz_out(:,:,:)
+            !
+            natoms = size(tau,2)
+            nsyms  = size(seitz,3)
+            !
+            allocate(seitz_out(4,4,natoms))
+            do i = 1, natoms
+                seitz_out(:,:,i) = eye(4)
+            enddo
+            !
+            do i = 1, natoms
+            search : do j = 1, pg%nsyms
+                if (isequal(tau(:,i),matmul(seitz(1:3,1:3,j),tau(:,1)))) then
+                    seitz_out(:,:,i) = seitz(1:3,1:3,j)
+                    exit search
+                endif
+            enddo search
+            enddo
+        end function   sort_seitz_based_on_tau
+        !
     end subroutine get_rotational_group
 
     subroutine     get_stabilizer_group(vg,pg,v,opts)
         !
         implicit none
         !
-        class(am_class_point_group), intent(out) :: vg ! stabilizer group associated with vector v
-        type(am_class_point_group) , intent(in) :: pg
-        real(dp)                   , intent(in) :: v(3) ! vector which is stabilized (should be same units as R, which is fractional)
-        type(am_class_options)     , intent(in) :: opts
+        class(am_class_point_group), intent(out):: vg ! stabilizer group associated with vector v
+        type(am_class_point_group)    , intent(in) :: pg
+        real(dp)                      , intent(in) :: v(3) ! vector which is stabilized (should be same units as R, which is fractional)
+        type(am_class_options)        , intent(in) :: opts
         integer, allocatable :: indicies(:)
         logical, allocatable :: mask(:)
         integer :: i
@@ -590,10 +422,10 @@ contains
         !
         implicit none
         !
-        class(am_class_point_group), intent(inout) :: revg ! reversal group associated with vector v, i.e. the space symmetries with bring v to [0,0,0], essentially flipping the atoms at the corners of the vector
-        type(am_class_space_group) , intent(in) :: sg ! space group
-        real(dp)                   , intent(in) :: v(3)
-        type(am_class_options)     , intent(in) :: opts
+        class(am_class_point_group), intent(out):: revg ! reversal group associated with vector v, i.e. the space symmetries with bring v to [0,0,0], essentially flipping the atoms at the corners of the vector
+        type(am_class_space_group)    , intent(in) :: sg ! space group
+        real(dp)                      , intent(in) :: v(3)
+        type(am_class_options)        , intent(in) :: opts
         integer, allocatable :: indicies(:)
         logical, allocatable :: mask(:)
         real(dp),allocatable :: wrk(:,:,:)
@@ -618,6 +450,48 @@ contains
         call revg%create(seitz=unique(wrk))
         !
     end subroutine get_reversal_group
+
+    subroutine     create(sg,seitz)
+        !
+        implicit none
+        !
+        class(am_class_seitz_group), intent(out):: sg
+        real(dp)                   , intent(in) :: seitz(:,:,:)
+        real(dp) :: id(4,4)
+        integer  :: i
+        !
+        ! number of "bases functions", doesn't have any real meaning here. Using 3 rather than 4.
+        sg%nbases = 3
+        ! get number of symmetries
+        sg%nsyms = size(seitz,3)
+        ! transfer seitz
+        allocate(sg%sym,source=seitz)
+        ! put identity first
+        id = eye(4)
+        search : do i = 1, sg%nsyms
+            if (all(abs(sg%sym(:,:,i)-id).lt.tiny)) then
+                sg%sym(:,:,i) = sg%sym(:,:,1)
+                sg%sym(:,:,1) = id
+                exit search
+            endif
+        enddo search
+        ! identify point symmetries
+        allocate(sg%ps_id(sg%nsyms))
+        do i = 1, sg%nsyms
+            sg%ps_id(i) = ps_schoenflies(R=sg%sym(1:3,1:3,i))
+        enddo
+        ! get multiplication table
+        call sg%get_multiplication_table()
+        ! get conjugacy classes
+        call sg%get_conjugacy_classes()
+        ! sort symmetries based on parameters
+        call sg%sort_symmetries(criterion=sg%sym(1,4,:), flags='ascend')
+        call sg%sort_symmetries(criterion=sg%sym(2,4,:), flags='ascend')
+        call sg%sort_symmetries(criterion=sg%sym(3,4,:), flags='ascend')
+        call sg%sort_symmetries(criterion=real(sg%ps_id,dp), flags='acsend')
+        call sg%sort_symmetries(criterion=real(sg%cc%id,dp), flags='ascend')
+        !
+    end subroutine create
 
     subroutine     write_outfile(sg,iopt_uc,iopt_filename)
         !
@@ -1258,7 +1132,7 @@ contains
             end select
     end function   decode_pointgroup
 
-    function       point_group_schoenflies(ps_id) result(pg_id)
+    function       point_group_schoenflies(ps_id) result(pg_code)
         !>
         !> Refs:
         !>
@@ -1275,7 +1149,7 @@ contains
         !>
         !> Adapted from VASP
         !>
-        !>   pg_id --> point_group_name
+        !>   pg_code --> point_group_name
         !>     1 --> c_1       9 --> c_3      17 --> d_4      25 --> c_6v
         !>     2 --> s_2      10 --> s_6      18 --> c_4v     26 --> d_3h
         !>     3 --> c_2      11 --> d_3      19 --> d_2d     27 --> d_6h
@@ -1290,17 +1164,17 @@ contains
         integer, intent(in) :: ps_id(:)
         integer :: nsyms
         integer :: ni, nc2, nc3, nc4, nc6, ns2, ns6, ns4, ns3, ne
-        integer :: pg_id
+        integer :: pg_code
         !
-        pg_id = 0
+        pg_code = 0
         !
         ! trivial cases first
         !
         nsyms = size(ps_id)
-        if     (nsyms .eq. 1 ) then; pg_id=1;  return
-        elseif (nsyms .eq. 48) then; pg_id=32; return
-        elseif (nsyms .eq. 16) then; pg_id=20; return
-        elseif (nsyms .eq. 3 ) then; pg_id=9;  return
+        if     (nsyms .eq. 1 ) then; pg_code=1;  return
+        elseif (nsyms .eq. 48) then; pg_code=32; return
+        elseif (nsyms .eq. 16) then; pg_code=20; return
+        elseif (nsyms .eq. 3 ) then; pg_code=9;  return
         endif
         !
         ni=0; nc2=0; nc3=0; nc4=0; nc6=0; ns2=0; ns6=0; ns4=0; ns3=0
@@ -1328,44 +1202,44 @@ contains
         endif
         !
         if (nsyms.eq.2)   then
-            if (ni.eq.1)  then; pg_id=2;  return; endif
-            if (nc2.eq.1) then; pg_id=3;  return; endif
-            if (ns2.eq.1) then; pg_id=4;  return; endif
+            if (ni.eq.1)  then; pg_code=2;  return; endif
+            if (nc2.eq.1) then; pg_code=3;  return; endif
+            if (ns2.eq.1) then; pg_code=4;  return; endif
         endif
         if (nsyms.eq.4)   then
-            if (ni.eq.1)  then; pg_id=5;  return; endif
-            if (nc2.eq.3) then; pg_id=6;  return; endif
-            if (ns2.eq.2) then; pg_id=7;  return; endif
-            if (nc4.eq.1) then; pg_id=14; return; endif
-            if (ns4.eq.2) then; pg_id=15; return; endif
+            if (ni.eq.1)  then; pg_code=5;  return; endif
+            if (nc2.eq.3) then; pg_code=6;  return; endif
+            if (ns2.eq.2) then; pg_code=7;  return; endif
+            if (nc4.eq.1) then; pg_code=14; return; endif
+            if (ns4.eq.2) then; pg_code=15; return; endif
         endif
         if (nsyms.eq.6)   then
-            if (ni.eq.1)  then; pg_id=10; return; endif
-            if (nc2.eq.3) then; pg_id=11; return; endif
-            if (ns2.eq.3) then; pg_id=12; return; endif
-            if (nc2.eq.1) then; pg_id=21; return; endif
-            if (ns2.eq.1) then; pg_id=22; return; endif
+            if (ni.eq.1)  then; pg_code=10; return; endif
+            if (nc2.eq.3) then; pg_code=11; return; endif
+            if (ns2.eq.3) then; pg_code=12; return; endif
+            if (nc2.eq.1) then; pg_code=21; return; endif
+            if (ns2.eq.1) then; pg_code=22; return; endif
         endif
         if (nsyms.eq.8)  then
-            if (ns2.eq.3) then; pg_id=8;  return; endif
-            if (ns2.eq.1) then; pg_id=16; return; endif
-            if (ns2.eq.0) then; pg_id=17; return; endif
-            if (ns2.eq.4) then; pg_id=18; return; endif
-            if (ns2.eq.2) then; pg_id=19; return; endif
+            if (ns2.eq.3) then; pg_code=8;  return; endif
+            if (ns2.eq.1) then; pg_code=16; return; endif
+            if (ns2.eq.0) then; pg_code=17; return; endif
+            if (ns2.eq.4) then; pg_code=18; return; endif
+            if (ns2.eq.2) then; pg_code=19; return; endif
         endif
         if (nsyms.eq.12)  then
-            if (ns2.eq.3) then; pg_id=13; return; endif
-            if (ns2.eq.1) then; pg_id=23; return; endif
-            if (nc2.eq.7) then; pg_id=24; return; endif
-            if (ns2.eq.6) then; pg_id=25; return; endif
-            if (ns2.eq.4) then; pg_id=26; return; endif
-            if (nc3.eq.8) then; pg_id=28; return; endif
+            if (ns2.eq.3) then; pg_code=13; return; endif
+            if (ns2.eq.1) then; pg_code=23; return; endif
+            if (nc2.eq.7) then; pg_code=24; return; endif
+            if (ns2.eq.6) then; pg_code=25; return; endif
+            if (ns2.eq.4) then; pg_code=26; return; endif
+            if (nc3.eq.8) then; pg_code=28; return; endif
         endif
         if (nsyms.eq.24)  then
-            if (nc6.eq.2) then; pg_id=27; return; endif
-            if (ni.eq.1)  then; pg_id=29; return; endif
-            if (nc4.eq.6) then; pg_id=30; return; endif
-            if (ns4.eq.6) then; pg_id=31; return; endif
+            if (nc6.eq.2) then; pg_code=27; return; endif
+            if (ni.eq.1)  then; pg_code=29; return; endif
+            if (nc4.eq.6) then; pg_code=30; return; endif
+            if (ns4.eq.6) then; pg_code=31; return; endif
             endif
         ! if it makes it this far, it means nothing matches. return an error immediately. 
         call am_print('ERROR','Unable to identify point group',flags='E')
@@ -1388,7 +1262,9 @@ contains
     function       permutation_rep(seitz,tau,prec,flags) result(rep)
         !
         ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
-        ! also works to find which kpoint are connected by point group operations
+        ! also works to find which kpoint or atoms (in shell) are connected by point group operations
+        !
+        ! flags = relax_pbc
         !
         implicit none
         !

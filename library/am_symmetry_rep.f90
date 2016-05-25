@@ -2,14 +2,13 @@ module am_symmetry_rep
 
     use am_constants
     use am_stdout
-    use am_mkl
     use am_options
     use am_symmetry
     use am_matlab
     use am_atom
     use am_prim_cell
     use am_irre_cell
-    use am_symmetry_tables , only : get_multab
+    use am_symmetry_relations
 
     implicit none
 
@@ -36,6 +35,8 @@ module am_symmetry_rep
     end type am_class_regular_group
 
     type, public, extends(am_class_group) :: am_class_hamiltonian_group
+!         integer, allocatable :: H_start(:) ! number of 
+!         integer, allocatable :: H_end(:)   ! number of 
         contains
         procedure :: get_hamiltonian_point_group
     end type am_class_hamiltonian_group
@@ -155,105 +156,103 @@ module am_symmetry_rep
         allocate(ham_pg%cc%id, source=pg%cc%id)
         ! copy multiplication table
         ham_pg%mt = pg%mt
-        ! copy irrep character table
-        ham_pg%ct = pg%ct
         !
         if (.not.isequal(ham_pg%sym(:,:,1),eye(ham_pg%nbases))) stop 'ham_pg: Identity is not first.'
         !
     end subroutine get_hamiltonian_point_group
 
-    ! operators on tensors
+    ! operators on flat representations
 
-    subroutine     get_flat_intrinsic_group(flag_ig,tens)
+    subroutine     get_flat_intrinsic_group(flat_ig,tens,atom_m,atom_n)
         !
         implicit none
         !
-        class(am_class_flat_group), intent(out) :: flag_ig ! intrinsic symmetry group
+        class(am_class_flat_group), intent(out) :: flat_ig ! intrinsic symmetry group
         class(am_class_tensor)    , intent(in)  :: tens
+        type(am_class_atom)       , intent(in), optional :: atom_m ! only required if property = tb
+        type(am_class_atom)       , intent(in), optional :: atom_n ! only required if property = tb
         real(dp), allocatable :: T(:,:) ! transpositional operator building block
         integer :: ndims
         integer :: k
+        !
+        ! basic checks
+        if (index(tens%property, 'tight').ne.0) then
+        if (index(tens%flags,'symmetric').ne.0) then
+            if (.not.present(atom_m)) stop 'atom_m is required for the creation of tb flat intrinsic symmetry group'
+            if (.not.present(atom_n)) stop 'atom_n is required for the creation of tb flat intrinsic symmetry group'
+        endif
+        endif
         !
         ! number of spatial dimensions
         ndims = 3
         ! get transpositional operator
         T = transp_operator(ndims)
         ! number of bases functions in representation
-        flag_ig%nbases = ndims**tens%rank
+        flat_ig%nbases = product(tens%dims)
         ! generate intrinsic symmetries
         k=0
         if     (index(tens%property,'thermoelectricity').ne.0 &
          & .or. index(tens%property,'tightbinding'     ).ne.0) then
             !
-            flag_ig%nsyms = 1
-            allocate(flag_ig%sym(flag_ig%nbases,flag_ig%nbases,flag_ig%nsyms))
-            k=k+1; flag_ig%sym(:,:,k) = eye(flag_ig%nbases)    ! E
+            flat_ig%nsyms = 1
+            allocate(flat_ig%sym(flat_ig%nbases,flat_ig%nbases,flat_ig%nsyms))
+            k=k+1; flat_ig%sym(:,:,k) = eye(flat_ig%nbases)    ! E
             !
         elseif (index(tens%property,'conductivity'     ).ne.0 &
          & .or. index(tens%property,'resistivity'      ).ne.0 &
          & .or. index(tens%property,'voigt'            ).ne.0) then
             !
-            flag_ig%nsyms = 2
-            allocate(flag_ig%sym(flag_ig%nbases,flag_ig%nbases,flag_ig%nsyms))
-            k=k+1; flag_ig%sym(:,:,k) = eye(flag_ig%nbases)    ! E
-            k=k+1; flag_ig%sym(:,:,k) = T                      ! s_ij = s_ji
+            flat_ig%nsyms = 2
+            allocate(flat_ig%sym(flat_ig%nbases,flat_ig%nbases,flat_ig%nsyms))
+            k=k+1; flat_ig%sym(:,:,k) = eye(flat_ig%nbases)    ! E
+            k=k+1; flat_ig%sym(:,:,k) = T                      ! s_ij = s_ji
             !
         elseif (index(tens%property,'piezoelectricity' ).ne.0) then
             !
-            flag_ig%nsyms = 2
-            allocate(flag_ig%sym(flag_ig%nbases,flag_ig%nbases,flag_ig%nsyms))
-            k=k+1; flag_ig%sym(:,:,k) = eye(flag_ig%nbases)    ! E
-            k=k+1; flag_ig%sym(:,:,k) = kron(T,eye(ndims))     ! d_ijk = d_ikj
+            flat_ig%nsyms = 2
+            allocate(flat_ig%sym(flat_ig%nbases,flat_ig%nbases,flat_ig%nsyms))
+            k=k+1; flat_ig%sym(:,:,k) = eye(flat_ig%nbases)    ! E
+            k=k+1; flat_ig%sym(:,:,k) = kron(T,eye(ndims))     ! d_ijk = d_ikj
             !
         elseif (index(tens%property,'elasticity'       ).ne.0) then
             !
-            flag_ig%nsyms = 4
-            allocate(flag_ig%sym(flag_ig%nbases,flag_ig%nbases,flag_ig%nsyms))
-            k=k+1; flag_ig%sym(:,:,k) = eye(flag_ig%nbases)    ! E
-            k=k+1; flag_ig%sym(:,:,k) = kron(eye(ndims**2),T)  ! cijkl = cjikl
-            k=k+1; flag_ig%sym(:,:,k) = kron(T,eye(ndims**2))  ! cijkl = cjilk
-            k=k+1; flag_ig%sym(:,:,k) = kron(T,T)              ! cijkl = cjilk
+            flat_ig%nsyms = 4
+            allocate(flat_ig%sym(flat_ig%nbases,flat_ig%nbases,flat_ig%nsyms))
+            k=k+1; flat_ig%sym(:,:,k) = eye(flat_ig%nbases)    ! E
+            k=k+1; flat_ig%sym(:,:,k) = kron(eye(ndims**2),T)  ! cijkl = cjikl
+            k=k+1; flat_ig%sym(:,:,k) = kron(T,eye(ndims**2))  ! cijkl = cjilk
+            k=k+1; flat_ig%sym(:,:,k) = kron(T,T)              ! cijkl = cjilk
             !
-        else
+        elseif (index(tens%property,'tight'            ).ne.0) then
+        if     (index(tens%flags   ,'symmetric'        ).ne.0) then
+            ! atoms correspond to the same irreducible atom
+            flat_ig%nsyms = 2
+            allocate(flat_ig%sym(flat_ig%nbases,flat_ig%nbases,flat_ig%nsyms))
+            k=k+1; flat_ig%sym(:,:,k) = eye(flat_ig%nbases)    ! E
+            k=k+1; flat_ig%sym(:,:,k) = orbital_parity(atom_m,atom_n) ! (l,l',m) = (-1)^(l+l') (l',l,m)
+        elseif (index(tens%flags   ,'asymmetric'       ).ne.0) then
+            ! atoms correspond to different irreducible atoms
+            flat_ig%nsyms = 1
+            allocate(flat_ig%sym(flat_ig%nbases,flat_ig%nbases,flat_ig%nsyms))
+            k=k+1; flat_ig%sym(:,:,k) = eye(flat_ig%nbases)    ! E
+        endif
             stop 'Undefined propery encountered.'
         endif
         !
-        allocate(flag_ig%ps_id(flag_ig%nsyms))
-        flag_ig%ps_id    = default_ps_id_value
-        flag_ig%ps_id(1) = 1
+        allocate(flat_ig%ps_id(flat_ig%nsyms))
+        flat_ig%ps_id    = 0
+        flat_ig%ps_id(1) = 1
         !
         ! get multiplication table (determines determine conjugacy classes in the process)
-        call flag_ig%get_multiplication_table()
+        call flat_ig%get_multiplication_table()
+        ! get relations
+        flat_ig%relations = flat_ig%get_relations()
         !
-        call flag_ig%sort_symmetries(criterion=real(flag_ig%ps_id,dp), flags='acsend')
-        call flag_ig%sort_symmetries(criterion=real(flag_ig%cc%id,dp), flags='ascend')
-        !
-        ! get character table
-        call flag_ig%get_character_table()
-        !
-        contains
-        pure function transp_operator(n) result(M)
-            ! transposition operator (c_ij -> c_ji) in the flattened representation
-            implicit none
-            !
-            integer, intent(in) :: n
-            integer, allocatable :: M(:,:)
-            integer  :: i, j
-            !
-            allocate(M(n**2,n**2))
-            M=0
-            !
-            do i = 1, n
-            do j = 1, n
-               M(i+n*(j-1),j+n*(i-1)) = 1
-            enddo
-            enddo
-        end function  transp_operator
     end subroutine get_flat_intrinsic_group
 
-    subroutine     get_flat_point_group(flag_pg,tens,pg,pc,atom_m,atom_n)
+    subroutine     get_flat_point_group(flat_pg,tens,pg,pc,atom_m,atom_n)
         !
-        class(am_class_flat_group), intent(out):: flag_pg  ! flat point group
+        class(am_class_flat_group), intent(out):: flat_pg  ! flat point group
         class(am_class_tensor)    , intent(in) :: tens ! tensor
         class(am_class_group)     , intent(in) :: pg   ! seitz point group (rev stab rot groups as well)
         type(am_class_prim_cell)  , intent(in) :: pc   ! primitive cell
@@ -278,12 +277,12 @@ module am_symmetry_rep
         end select
         !
         ! number of bases functions in representation
-        flag_pg%nbases = product(tens%dims)
+        flat_pg%nbases = product(tens%dims)
         ! number of symmetries
-        flag_pg%nsyms = pg%nsyms
+        flat_pg%nsyms = pg%nsyms
         ! generate intrinsic symmetries
-        allocate(flag_pg%sym(flag_pg%nbases,flag_pg%nbases,flag_pg%nsyms))
-        flag_pg%sym = 0
+        allocate(flat_pg%sym(flat_pg%nbases,flat_pg%nbases,flat_pg%nsyms))
+        flat_pg%sym = 0
         ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
         do i = 1, pg%nsyms
             ! convert to cartesian
@@ -293,24 +292,79 @@ module am_symmetry_rep
                 R_cart = pg%sym(:,:,i)
             endif
             ! determine rotation in the basis
-            if     (index(tens%flags,'axial').ne.0) then; flag_pg%sym(:,:,i) = kron_pow(R_cart, tens%rank) * det(R_cart)
-            elseif (index(tens%flags,'polar').ne.0) then; flag_pg%sym(:,:,i) = kron_pow(R_cart, tens%rank)
-            elseif (index(tens%flags,'tight').ne.0) then; flag_pg%sym(:,:,i) = kron(ps2tb(R_cart,atom_m), ps2tb(R_cart,atom_n))
+            if     (index(tens%flags,'axial').ne.0) then; flat_pg%sym(:,:,i) = kron_pow(R_cart, tens%rank) * det(R_cart)
+            elseif (index(tens%flags,'polar').ne.0) then; flat_pg%sym(:,:,i) = kron_pow(R_cart, tens%rank)
+            elseif (index(tens%flags,'tight').ne.0) then; flat_pg%sym(:,:,i) = kron(ps2tb(R_cart,atom_m), ps2tb(R_cart,atom_n))
             endif
         enddo
         !
         ! copy symmetry ids
-        allocate(flag_pg%ps_id, source=pg%ps_id)
+        allocate(flat_pg%ps_id, source=pg%ps_id)
         ! copy classes
-        allocate(flag_pg%cc%id, source=pg%cc%id)
+        allocate(flat_pg%cc%id, source=pg%cc%id)
         ! copy multiplication table
-        flag_pg%mt = pg%mt
-        ! get irrep character table
-        flag_pg%ct = pg%ct
+        flat_pg%mt = pg%mt
+        ! get relations
+        flat_ig%relations = flat_ig%get_relations()
         !
-        if (.not.isequal(flag_pg%sym(:,:,1),eye(flag_pg%nbases))) stop 'flag_pg: Identity is not first.'
+        if (.not.isequal(flat_pg%sym(:,:,1),eye(flat_pg%nbases))) stop 'flat_pg: Identity is not first.'
         !
     end subroutine get_flat_point_group
+
+    function       get_relations(flat) result(relations)
+        ! 
+        implicit none
+        !
+        class(am_class_flat_group), intent(inout) :: flat
+        real(dp), allocatable :: relations(:,:)     !
+        integer , allocatable :: class_member(:,:)  ! 
+        real(dp), allocatable :: A(:,:)             ! A(2*flat%nbases,2*flat%nbases) - augmented matrix equation
+        real(dp), allocatable :: LHS(:,:)           ! LHS(flat%nbases,flat%nbases)   - left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
+        real(dp), allocatable :: RHS(:,:)           ! RHS(flat%nbases,flat%nbases)   - right hand side of augmented matrix equation
+        integer , allocatable :: indices(:)         ! used for clarity
+        integer :: i, j                             ! loop variables
+        !
+        !
+        ! get conjugacy class members
+        class_member = member(id=flat%cc%id)
+        ! intialize indices
+        allocate(indices,source=[1:flat%nbases])
+        ! initialize augmented workspace matrix A
+        allocate(A(3*flat%nbases,2*flat%nbases))
+        A = 0
+        ! use LU factorization to incorporate, one symmetry at a time, the effect of all symmetries on the flattened basis
+        ! enough to loop over class representatives, which are group generators
+        do j = 1, size(class_member,1) ! loop over classes
+            ! get index of class representative
+            i=class_member(j,1)
+            ! construct slice of A
+            A(2*flat%nbases+indices,0*flat%nbases+indices) = flat%sym(:,:,i)
+            A(2*flat%nbases+indices,1*flat%nbases+indices) = eye(flat%nbases)
+            ! incorporate symmetry via lu factorization (equivalent to applying rref)
+            call lu(A)
+        enddo
+        ! Apply Gram-Schmidt orthogonalization to obtain A in reduced row echelon form
+        call rref(A)
+        ! correct basic rounding error
+        where (abs(nint(A)-A).lt.tiny) A = nint(A)
+        ! At this point, A = [ LHS | RHS ], in which LHS = E, identity matrix; A completely specifies all relationships between variables: LHS = RHS.
+        allocate(LHS(flat%nbases,flat%nbases))
+        allocate(RHS(flat%nbases,flat%nbases))
+        LHS = A(0*flat%nbases+indices,0*flat%nbases+indices)
+        RHS = A(0*flat%nbases+indices,1*flat%nbases+indices)
+        !
+        ! checks
+        if (.not.isequal(LHS,eye(flat%nbases))) then
+            stop 'Failed to reduce matrix to row echlon form.'
+        endif
+        if (count(get_null(RHS))+count(get_independent(RHS))+count(get_depenent(RHS)).ne.flat%nbases) then
+            stop 'Number of null, independent, and dependent terms do not sum to the number of terms.'
+        endif
+        !
+        allocate(relations, source=RHS)
+        !
+    end function   get_relations
+
 
     ! operates on prop
 
@@ -323,8 +377,8 @@ module am_symmetry_rep
         class(am_class_point_group), intent(in) :: pg
         type(am_class_options),      intent(in) :: opts
         character(*),                intent(in) :: property
-        type(am_class_flat_group) :: flag_ig
-        type(am_class_flat_group) :: flag_pg
+        type(am_class_flat_group) :: flat_ig
+        type(am_class_flat_group) :: flat_pg
         integer :: a, b, c, nterms
         integer :: m, n, o
         !
@@ -332,19 +386,12 @@ module am_symmetry_rep
         !
         ! initialize
         call initialize_property(prop=prop, property=property)
-        !
         ! get intrinsic symmetries
-        call flag_ig%get_flat_intrinsic_group(tens=prop)
-        ! get symmetry relations
-        flag_ig%relations = flag_ig%get_relations()
-        !
+        call flat_ig%get_flat_intrinsic_group(tens=prop)
         ! get point symmetries
-        call flag_pg%get_flat_point_group(tens=prop, pg=pg, pc=pc)
-        ! get symmetry relations
-        flag_pg%relations = flag_pg%get_relations()
-        !
+        call flat_pg%get_flat_point_group(tens=prop, pg=pg, pc=pc)
         ! combined relations
-        prop%relations = combine_relations(flag_ig%relations, flag_pg%relations)
+        prop%relations = combine_relations(flat_ig%relations, flat_pg%relations)
         !
         ! print relations
         if (opts%verbosity.ge.1) then
@@ -354,9 +401,9 @@ module am_symmetry_rep
             ! initialize counters
             a=0;b=0;c=0;nterms=0
             ! intrinsic symmetries
-            m = count(get_null(flag_ig%relations))
-            n = count(get_depenent(flag_ig%relations)) 
-            o = count(get_independent(flag_ig%relations))
+            m = count(get_null(flat_ig%relations))
+            n = count(get_depenent(flat_ig%relations)) 
+            o = count(get_independent(flat_ig%relations))
             nterms = m+n+o
             write(*,'(5x,a6)'        ,advance='no') 'intr.'
             write(*,'(i6)'           ,advance='no') nterms
@@ -368,9 +415,9 @@ module am_symmetry_rep
             b = b + n
             c = c + o
             ! point symmetries
-            m = count(get_null(flag_pg%relations))
-            n = count(get_depenent(flag_pg%relations)) 
-            o = count(get_independent(flag_pg%relations))
+            m = count(get_null(flat_pg%relations))
+            n = count(get_depenent(flat_pg%relations)) 
+            o = count(get_independent(flat_pg%relations))
             nterms = m+n+o
             write(*,'(5x,a6)'        ,advance='no') 'pnt.'
             write(*,'(i6)'           ,advance='no') nterms
@@ -502,317 +549,6 @@ module am_symmetry_rep
         !
     end subroutine get_direct_product
 
-    ! operates on relations
-
-    function       get_relations(flat) result(relations)
-        ! 
-        implicit none
-        !
-        class(am_class_flat_group), intent(inout) :: flat
-        real(dp), allocatable :: relations(:,:)     !
-        integer , allocatable :: class_member(:,:)  ! 
-        real(dp), allocatable :: A(:,:)             ! A(2*flat%nbases,2*flat%nbases) - augmented matrix equation
-        real(dp), allocatable :: LHS(:,:)           ! LHS(flat%nbases,flat%nbases)   - left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
-        real(dp), allocatable :: RHS(:,:)           ! RHS(flat%nbases,flat%nbases)   - right hand side of augmented matrix equation
-        integer , allocatable :: indices(:)         ! used for clarity
-        integer :: i, j                             ! loop variables
-        !
-        !
-        ! get conjugacy class members
-        class_member = member(id=flat%cc%id)
-        ! intialize indices
-        allocate(indices,source=[1:flat%nbases])
-        ! initialize augmented workspace matrix A
-        allocate(A(3*flat%nbases,2*flat%nbases))
-        A = 0
-        ! use LU factorization to incorporate, one symmetry at a time, the effect of all symmetries on the flattened basis
-        ! enough to loop over class representatives, which are group generators
-        do j = 1, size(class_member,1) ! loop over classes
-            ! get index of class representative
-            i=class_member(j,1)
-            ! construct slice of A
-            A(2*flat%nbases+indices,0*flat%nbases+indices) = flat%sym(:,:,i)
-            A(2*flat%nbases+indices,1*flat%nbases+indices) = eye(flat%nbases)
-            ! incorporate symmetry via lu factorization (equivalent to applying rref)
-            call lu(A)
-        enddo
-        ! Apply Gram-Schmidt orthogonalization to obtain A in reduced row echelon form
-        call rref(A)
-        ! correct basic rounding error
-        where (abs(nint(A)-A).lt.tiny) A = nint(A)
-        ! At this point, A = [ LHS | RHS ], in which LHS = E, identity matrix; A completely specifies all relationships between variables: LHS = RHS.
-        allocate(LHS(flat%nbases,flat%nbases))
-        allocate(RHS(flat%nbases,flat%nbases))
-        LHS = A(0*flat%nbases+indices,0*flat%nbases+indices)
-        RHS = A(0*flat%nbases+indices,1*flat%nbases+indices)
-        !
-        ! checks
-        if (.not.isequal(LHS,eye(flat%nbases))) then
-            stop 'Failed to reduce matrix to row echlon form.'
-        endif
-        if (count(get_null(RHS))+count(get_independent(RHS))+count(get_depenent(RHS)).ne.flat%nbases) then
-            stop 'Number of null, independent, and dependent terms do not sum to the number of terms.'
-        endif
-        !
-        allocate(relations, source=RHS)
-        !
-    end function   get_relations
-
-    function       combine_relations(relationsA,relationsB,relationsC) result(relations)
-        !
-        ! combins up to three relations
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: relationsA(:,:)
-        real(dp), intent(in) :: relationsB(:,:)
-        real(dp), intent(in), optional :: relationsC(:,:)
-        real(dp), allocatable :: relations(:,:)     !
-        real(dp), allocatable :: A(:,:)             ! A(2*flat%nbases,2*flat%nbases) - augmented matrix equation
-        real(dp), allocatable :: LHS(:,:)           ! LHS(flat%nbases,flat%nbases)   - left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
-        real(dp), allocatable :: RHS(:,:)           ! RHS(flat%nbases,flat%nbases)   - right hand side of augmented matrix equation
-        integer , allocatable :: indices(:)         ! used for clarity
-        integer :: nbases
-        !
-        !
-        if (size(relationsA,1).ne.size(relationsA,2)) stop 'Dimension mismatch: A1 vs A2'
-        if (size(relationsA,1).ne.size(relationsB,1)) stop 'Dimension mismatch: A1 vs B1'
-        if (size(relationsA,1).ne.size(relationsB,2)) stop 'Dimension mismatch: A1 vs B2'
-        if (present(relationsC)) then
-        if (size(relationsA,1).ne.size(relationsC,1)) stop 'Dimension mismatch: A1 vs C1'
-        if (size(relationsA,1).ne.size(relationsC,2)) stop 'Dimension mismatch: A1 vs C2'
-        endif
-        !
-        nbases = size(relationsA,1)
-        !
-        ! get indices
-        allocate(indices,source=[1:nbases])
-        ! initialize augmented workspace matrix A
-        allocate(A(3*nbases,2*nbases))
-        A = 0
-        ! construct slice of A
-        A(0*nbases+indices,1*nbases+indices) = relationsA
-        A(0*nbases+indices,0*nbases+indices) = eye(nbases)
-        A(1*nbases+indices,1*nbases+indices) = relationsB
-        A(1*nbases+indices,0*nbases+indices) = eye(nbases)
-        if (present(relationsC)) then
-        A(2*nbases+indices,1*nbases+indices) = relationsC
-        A(2*nbases+indices,0*nbases+indices) = eye(nbases)
-        endif
-        ! incorporate symmetry via lu factorization (equivalent to applying rref)
-        call lu(A)
-        ! Apply Gram-Schmidt orthogonalization to obtain A in reduced row echelon form
-        call rref(A)
-        ! correct basic rounding error
-        where (abs(nint(A)-A).lt.tiny) A = nint(A)
-        ! At this point, A = [ LHS | RHS ], in which LHS = E, identity matrix; A completely specifies all relationships between variables: LHS = RHS.
-        allocate(LHS(nbases,nbases))
-        allocate(RHS(nbases,nbases))
-        LHS = A(0*nbases+indices,0*nbases+indices)
-        RHS = A(0*nbases+indices,1*nbases+indices)
-        !
-        ! checks
-        if (.not.isequal(LHS,eye(nbases))) then
-            stop 'Failed to reduce matrix to row echlon form.'
-        endif
-        if (count(get_null(RHS))+count(get_independent(RHS))+count(get_depenent(RHS)).ne.nbases) then
-            stop 'Number of null, independent, and dependent terms do not sum to the number of terms.'
-        endif
-        !
-        allocate(relations, source=RHS)
-        !
-    end function   combine_relations
-
-    pure function  get_null(relations) result(is_null)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: relations(:,:)
-        logical , allocatable :: is_null(:)
-        !
-        ! null terms (equal zero)
-        allocate(is_null, source=all(abs(relations).lt.tiny,2))
-        !
-    end function   get_null
-
-    pure function  get_independent(relations) result(is_independent)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: relations(:,:)
-        logical , allocatable :: is_independent(:)
-        !
-        ! independent terms (equal themselves and nothing else)
-        allocate(is_independent, source=all(abs(relations-eye(size(relations,1))).lt.tiny,2))
-        !
-    end function   get_independent
-
-    pure function  get_depenent(relations) result(is_dependent)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: relations(:,:)
-        logical , allocatable :: is_dependent(:)
-        !
-        ! dependent terms (can be written via independent terms)
-        allocate(is_dependent, source=any(abs(relations).gt.tiny,2))
-        is_dependent = (is_dependent.and..not.get_independent(relations))
-        !
-    end function   get_depenent
-
-    subroutine     print_relations(relations,dims,flags)
-        !
-        ! flags - null, dependent, independent, header
-        !       - bra, ket
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: relations(:,:)
-        integer , optional, intent(in) :: dims(:)
-        character(*), intent(in) :: flags
-        integer :: i, j 
-        logical, allocatable :: is_null(:)
-        logical, allocatable :: is_independent(:)
-        logical, allocatable :: is_dependent(:)
-        character(:), allocatable :: str
-        integer :: nterms
-        !
-        ! get terms
-        nterms = size(relations,1)
-        is_null = get_null(relations)
-        is_independent = get_independent(relations)
-        is_dependent = get_depenent(relations)
-        !
-        ! print header
-        if (index(flags,'header').ne.0) then
-            write(*,'(a5,a,a)',advance='no') ' ... ', trim(int2char(nterms)), ' terms = '
-            write(*,'(i4,a,f5.1,a)',advance='no') count(is_null)       , ' null ('       , count(is_null)       /real(nterms,dp)*100.0_dp , '%) '
-            write(*,'(i4,a,f5.1,a)',advance='no') count(is_dependent)  , ' dependent ('  , count(is_dependent)  /real(nterms,dp)*100.0_dp , '%) '
-            write(*,'(i4,a,f5.1,a)',advance='no') count(is_independent), ' independent (', count(is_independent)/real(nterms,dp)*100.0_dp , '%) '
-            writE(*,*)
-        endif
-        !
-        ! print irreducible symmetry relations
-        if ((index(flags,'independent').ne.0).or.(index(flags,'dependent').ne.0).or.(index(flags,'null').ne.0)) then
-            !
-            if (.not.present(dims)) stop 'dims is required for printing relations'
-            !
-            ! write the independent terms (equal only to themselves)
-            if (index(flags,'independent').ne.0) then
-            do i = 1, nterms
-                if (is_independent(i)) then
-                    str = get_basis_label(dims=dims, ind=i ,flags=flags)
-                    write(*,'(5x,a,a,a)',advance='no') trim(str),' = ', trim(str)
-                    write(*,*)
-                endif
-            enddo
-            endif
-            !
-            ! write the dependent terms
-            if (index(flags,'dependent').ne.0) then
-            do i = 1,nterms
-                if (is_dependent(i)) then
-                    str = get_basis_label(dims=dims, ind=i ,flags=flags)
-                    write(*,'(5x,a,a)',advance='no') trim(str), ' = '
-                    do j = 1,nterms
-                        if (abs(relations(i,j)).gt.tiny) then
-                            str = get_basis_label(dims=dims, ind=j ,flags=flags)
-                            write(*,'(a,a,a)',advance='no') trim(dbl2charSP(relations(i,j),7)), '*', trim(str)
-                        endif
-                    enddo
-                    write(*,*)
-                endif
-            enddo
-            endif
-            !
-            ! write null terms
-            if (index(flags,'null').ne.0) then
-            do i = 1, nterms
-                if (is_null(i)) then
-                    str = get_basis_label(dims=dims, ind=i ,flags=flags)
-                    write(*,'(5x,a,a)',advance='no') trim(str),' = 0'
-                    write(*,*)
-                endif
-            enddo
-            endif
-        endif
-        !
-        contains
-            function     get_basis_label(dims,ind,flags) result(str)
-                !
-                implicit none
-                !
-                integer     , intent(in) :: dims(:)
-                integer     , intent(in) :: ind
-                character(*), intent(in) :: flags
-                character(:), allocatable :: str
-                integer     , allocatable :: sub(:)
-                integer :: i, n
-                !
-                allocate(character(100) :: str)
-                !
-                n = size(dims)
-                !
-                sub = ind2sub(dims=dims,ind=ind)
-                !
-                i = 1
-                if     (index(flags,'bra').ne.0) then
-                    str = '<'//trim(int2char(sub(i)))
-                elseif (index(flags,'ket').ne.0) then
-                    str = '|'//trim(int2char(sub(i)))
-                else
-                    str = 'a('//trim(int2char(sub(i)))
-                endif
-                !
-                if (n.ge.2) then
-                do i = 2, n
-                    str = trim(str)//','//trim(int2char(sub(i)))
-                enddo
-                endif
-                !
-                if     (index(flags,'bra').ne.0) then
-                    str = trim(str)//'|'
-                elseif (index(flags,'ket').ne.0) then
-                    str = trim(str)//'>'
-                else
-                    str = trim(str)//')'
-                endif
-                !
-            end function get_basis_label
-    end subroutine print_relations
-
-    subroutine     dump_relations(relations,iopt_filename)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: relations(:,:)
-        character(*), intent(in), optional :: iopt_filename
-        character(100) :: fname
-        integer :: fid
-        integer :: m,n
-        integer :: j,k
-        !
-        ! set default
-        fname = 'dump.relations'
-        if (present(iopt_filename)) fname = iopt_filename
-        !
-        m = size(relations,1)
-        n = size(relations,2)
-        !
-        fid = 1
-        open(unit=fid,file=trim(fname),status="replace",action='write')
-            !
-            do j = 1, m
-            do k = 1, n
-                write(fid,"(f)",advance='no') relations(j,k)
-            enddo
-            write(fid,*)
-            enddo
-            !
-        close(fid)
-        !
-    end subroutine dump_relations
-
     ! write point symmetry operation in tight binding basis ()
 
     ! produces rotation which operates on a subsection of the Hamiltonian (useful for determining symmetry relations)
@@ -861,43 +597,105 @@ module am_symmetry_rep
         real(dp), allocatable :: H(:,:)
         integer , allocatable :: H_start(:), H_end(:)
         integer :: Hdim ! hamiltonian dimensions
-        integer :: maxnazimuthals
-        integer :: i,j,k
+        integer :: i
         !
-        ! get largest azimuthal quantum number
-        maxnazimuthals = 0
-        do i = 1, ic%natoms
-            if (maxnazimuthals.lt.ic%atom(i)%nazimuthals) maxnazimuthals = ic%atom(i)%nazimuthals
-        enddo
-        ! allocate space for defining subsections of the rotation in Hamiltonian basis
-        i = maxnazimuthals * pc%natoms
-        allocate(H_start(i))
-        allocate(H_end(i))
-        ! determine subsections: 1 per primitive atom per azimuthal quantum number per magnetic number per spin
-        ! ignoring spin contributions at this stage
+        ! allocate space for defining subsections of rotation in Hamiltonian basis
+        allocate(H_start(pc%natoms))
+        allocate(H_end(pc%natoms))
+        ! determine subsections of rotations in Hamiltonian basis corresponding to each atom
         Hdim = 0
-        k = 0
         do i = 1, pc%natoms
-        do j = 1, ic%atom(pc%ic_id(i))%nazimuthals
-            k=k+1
-            H_start(k) = Hdim + 1
-            Hdim = Hdim + ic%atom(pc%ic_id(i))%azimuthal(j)*2+1
-            H_end(k) = Hdim
-        enddo
+            H_start(i) = Hdim + 1
+            Hdim = Hdim + ic%atom(pc%ic_id(i))%norbitals
+            H_end(i) = Hdim
         enddo
         ! allocate and initialize space for rotations in Hamiltonin bais
         allocate(H(Hdim,Hdim))
         H = 0.0_dp
         ! construct rotation in the Hamiltonian basis
-        k=0
         do i = 1, pc%natoms
-        do j = 1, ic%atom(pc%ic_id(i))%nazimuthals
-            k=k+1
-            H(H_start(k):H_end(k), H_start(k):H_end(k)) = rot2irrep(l=ic%atom(pc%ic_id(i))%azimuthal(j), R=R)
-        enddo
+            H(H_start(i):H_end(i), H_start(i):H_end(i)) = ps2tb(R=R, atom=ic%atom(pc%ic_id(i)) )
         enddo
         !
     end function   ps2tb_H
+
+    ! super operators
+
+    pure function transp_operator(n) result(M_superop)
+        ! transposition superoperator (c_ij -> c_ji), flat rep
+        implicit none
+        !
+        integer, intent(in) :: n
+        integer, allocatable :: M_superop(:,:)
+        integer  :: i, j
+        !
+        allocate(M_superop(n**2,n**2))
+        M_superop=0
+        !
+        do i = 1, n
+        do j = 1, n
+           M_superop(i+n*(j-1),j+n*(i-1)) = 1
+        enddo
+        enddo
+        !
+    end function  transp_operator
+
+    pure function transp_parity_sign(atom_m,atom_n) result(S)
+        ! sign under : (l,l',m) = (-1)^(l+l') (l',l,m)
+        implicit none
+        !
+        type(am_class_atom), intent(in) :: atom_m
+        type(am_class_atom), intent(in) :: atom_n
+        integer, allocatable :: S(:,:) ! sign
+        integer :: alpha,beta
+        !
+        allocate(S(atom_m%norbitals, atom_n%norbitals))
+        S = 0
+        do alpha = 1, atom_m%norbitals
+        do beta  = 1, atom_n%norbitals
+            S(alpha,beta) = (-1)**( atom_m%orbital(2,alpha) + atom_n%orbital(2,beta) )
+        enddo
+        enddo
+        !
+    end function  transp_parity_sign
+
+    function      orbital_parity(atom_m,atom_n) result(L_superop)
+        ! transpose superoperator: (l,l',m) = (-1)^(l+l') (l',l,m)
+        implicit none
+        !
+        type(am_class_atom), intent(in) :: atom_m
+        type(am_class_atom), intent(in) :: atom_n
+        integer, allocatable :: L_superop(:,:)
+        integer :: alpha,beta
+        integer, allocatable :: A(:,:)
+        integer, allocatable :: A_flat(:)
+        integer, allocatable :: Ap(:,:)
+        integer, allocatable :: Ap_flat(:)
+        !
+        nflats = atom_m%norbitals * atom_n%norbitals
+        !
+        allocate(A_flat(nflats))
+        A_flat=[1:nflats]
+        !
+        allocate(A(atom_m%norbitals, atom_n%norbitals))
+        A = reshape(A_flat,[atom_m%norbitals, atom_n%norbitals])
+        !
+        allocate(A(atom_n%norbitals, atom_m%norbitals))
+        Ap = transpose(A) * transp_parity_sign(atom_m,atom_n)
+        !
+        allocate(Ap_flat(nflats))
+        Ap_flat = reshape(Ap,[nflats,1])
+        !
+        ! construct flat superoperator
+        allocate(L_superop(nflats,nflats))
+        L_superop = 0
+        do i = 1, nflats
+            L_superop( A_flat(i) ,  abs(Ap_flat(i))  ) = sign( 1, Ap_flat(i) )
+        enddo
+        ! check to make sure things are correct
+        if (.not.isequal(Ap_flat,matmul(L,A_flat))) stop 'A /= Ap'
+        !
+    end function  orbital_parity
 
 end module am_symmetry_rep
 

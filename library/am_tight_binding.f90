@@ -135,15 +135,20 @@ contains
             !
             implicit none
             !
-            type(am_class_tens_tb)    , intent(out) :: tbvsk
+            type(am_class_tens_tb)  , intent(out) :: tbvsk
             type(am_class_prim_cell), intent(in)  :: pc
             type(am_class_irre_cell), intent(in)  :: ic
             type(am_shell_cell)     , intent(in)  :: shell
             integer :: i
             !
-            tbvsk%property = 'tightbinding'
+            tbvsk%property = 'tight binding'
             tbvsk%rank  = 2
-            tbvsk%flags = 'tight' 
+            ! detetmine if irreducible atoms are the same
+            if (shell%i.eq.shell%j) then
+                tbvsk%flags = 'symmetric'
+            else
+                tbvsk%flags = 'asymmetric'
+            endif
             ! set dimensions of matrix elements
             allocate(tbvsk%dims(tbvsk%rank))
             tbvsk%dims = 0 
@@ -171,13 +176,8 @@ contains
                 type(am_shell_cell)       , intent(in) :: shell
                 type(am_class_options)    , intent(in) :: opts
                 type(am_class_flat_group)  :: flat_pg
+                type(am_class_flat_group)  :: flat_ig
                 type(am_class_point_group) :: stab
-                type(am_class_options)     :: notalk
-                integer :: i 
-                integer :: j
-                !
-                notalk = opts
-                notalk%verbosity = 0
                 !
                 ! get rank, dims, flags, property
                 call initialize_tbvsk(tbvsk=tbvsk, pc=pc, ic=ic, shell=shell)
@@ -185,42 +185,17 @@ contains
                 ! determine intrinsic symmetries (if both irreducible atoms are of the same irreducible type)
                 ! Interchange of indices: (l,l',m) = (-1)^(l+l') * (l',l,m), due to parity of wavefunction. (s,d are even under inversion, p,f are odd)
                 ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245.
-                if ( shell%i .ne. shell%j ) then
-                    allocate(M(ic%atom(shell%i)%norbitals, ic%atom(shell%j)%norbitals))
-                    M = 0
-                    do i = 1, ic%atom(shell%i)%norbitals
-                    do j = 1, ic%atom(shell%j)%norbitals
-
-
-
-                            !
-                            ! WORK NO STUFF HERE... NEED TO FIGURE OUT HOW TO BUILD THE SYMMTRY CORRSPONDING TO 
-                            ! (l,l',m) = (-1)^(l+l') * (l',l,m)
-                            !
-
-
-
-                        if (ic%atom(shell%i))orbital(i)
-                        M(i,j) = ! quantum numbers [n,l,m,s]
-                    enddo
-                    enddo
-                endif
+                call flat_ig%get_flat_intrinsic_group(tens=tbvsk, atom_m=ic%atom(shell%i), atom_n=ic%atom(shell%j) )
                 ! 
                 ! determine stabilizers relations
-                call stab%get_stabilizer_group(pg=pg, v=shell%tau(1:3,1), opts=notalk)
-                ! get point group in the flattened hamiltonin basis
+                call stab%get_stabilizer_group(pg=pg, v=shell%tau(1:3,1), opts=opts)
+                ! get stabilizer symmetries in the flattened hamiltonin basis
                 call flat_pg%get_flat_point_group(tens=tbvsk, pg=stab, pc=pc, atom_m=ic%atom(shell%i), atom_n=ic%atom(shell%j))
-                ! get relations
-                flat_pg%relations = flat_pg%get_relations()
                 !
-
-
-                ! copy relations to tbvsk
-                allocate(tbvsk%relations, source=tbvsk%flat_pg%relations)
+                ! get combined relations
+                tbvsk%relations = combine_relations(relationsA=flat_pg%relations, relationsB=flat_ig%relations)
                 !
         end subroutine get_shell_relations
-
-
     end subroutine initialize_tb
 
     function       get_Hamiltonian(tb,ip,ic,pp,pc,kpt) result(H)
@@ -263,35 +238,34 @@ contains
             ! primitive atom indicies
             m = pp%shell(k)%m
             n = pp%shell(k)%n
-            ! get irreducible shell index
-            i = pp%ip_id(k)
+            ! irreducible atom indicies
+            i = pp%shell(k)%i
+            j = pp%shell(k)%j
             ! compute bloch sum by loop over atoms in shell
             E = cmplx(0,0,dp)
             do j = 1, pp%shell(k)%natoms
                 ! get vector connecting primitive atom to atom j in shell k
                 R = pp%shell(k)%tau(1:3,j)
-
-
-
-                ! get exponent factor
-                E = exp(-cmplx_i*dot_product(R,kpt))
                 !
-                get_Vsk(tb=tb, i=i)
-
                 ! NEED TO ROTATE V_sk
-
-                ! multiply everything and add to the sum
+                H(H_start(m):H_end(m), H_start(n):H_end(n)) = get_Vsk(tb=tb, i=pp%ip_id(k))
+                !
+                if (pp%shell(k)%ip_id.lt.0) then
+                ! if ip_id < 0 -> the irreducible pair has its indices flipped with respect to the primitive pair
+                ! as a result, the matrix elements need to be transposed and the signed adjusted to reflect oribtal parity
                 H(H_start(m):H_end(m), H_start(n):H_end(n)) = &
-              & H(H_start(m):H_end(m), H_start(n):H_end(n)) + matmul(transpose(T), matmul(ip%shell(pp%ip_id(k))%Vsk, T)) * E
+                H(H_start(m):H_end(m), H_start(n):H_end(n)) * transp_parity_sign(atom_m=ic%atom(i), atom_n=ic%atom(j))
+                endif
+                ! multiply exponential factor from Bloch sum
+                H(H_start(m):H_end(m), H_start(n):H_end(n)) = &
+                H(H_start(m):H_end(m), H_start(n):H_end(n)) * exp(-cmplx_i*dot_product(R,kpt))
                 !
             enddo
-            ! multiply by bloch sum add to the sum
             !
             call am_print('H'//trim(int2char(k)),H)
             !
         enddo
     end function   get_Hamiltonian
-
 
     ! functions which operate on V
 
