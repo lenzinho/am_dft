@@ -72,7 +72,7 @@ contains
             ! show progress bar
             if (index(flags,'prog').ne.0) then
                 k=k+1
-                call show_progress(iteration=k, maximum=kmax)
+                if (modulo(nint(k/(kmax*0.01_dp)),5).eq.0) call show_progress(iteration=k, maximum=kmax)
             endif
             ! multiply the two sym operators
             W = matmul(sym(:,:,i),sym(:,:,j))

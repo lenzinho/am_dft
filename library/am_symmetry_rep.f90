@@ -392,8 +392,7 @@ module am_symmetry_rep
         character(*),                intent(in) :: property
         type(am_class_flat_group) :: flat_ig
         type(am_class_flat_group) :: flat_pg
-        integer :: a, b, c, nterms
-        integer :: m, n, o
+        integer :: m, n, o, nterms
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining group of '//trim(property))
         !
