@@ -35,8 +35,6 @@ module am_symmetry_rep
     end type am_class_regular_group
 
     type, public, extends(am_class_group) :: am_class_hamiltonian_group
-!         integer, allocatable :: H_start(:) ! number of 
-!         integer, allocatable :: H_end(:)   ! number of 
         contains
         procedure :: get_hamiltonian_point_group
     end type am_class_hamiltonian_group
