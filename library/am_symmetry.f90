@@ -32,7 +32,7 @@ module am_symmetry
     type, public, extends(am_class_group)       :: am_class_seitz_group 
         ! sym(:,:,:) are seitz operators
         contains
-        procedure :: create
+        procedure :: create_seitz_group
         procedure :: write_outfile
         procedure :: write_action_table
     end type am_class_seitz_group
@@ -41,17 +41,10 @@ module am_symmetry
         ! sym(:,:,:) are seitz operators
         contains
         procedure :: get_point_group
+        procedure :: get_rotational_group
         procedure :: get_stabilizer_group
         procedure :: get_reversal_group
     end type am_class_point_group
-
-    type, public, extends(am_class_point_group) :: am_class_rotational_group
-        ! sym(:,:,:) are seitz operators
-        integer, allocatable :: map(:,:)    ! map(natoms, nsyms)    shows how atoms are mapped by symmetry operation; "where does symmetry take atom i"
-        integer, allocatable :: invmap(:,:) ! map(natoms, nsyms) shows how atoms are mapped by symmetry operation; "what symmetry is neede to "
-        contains
-        procedure :: get_rotational_group
-    end type am_class_rotational_group
 
     type, public, extends(am_class_seitz_group) :: am_class_space_group
         ! sym(:,:,:) are seitz operators
@@ -82,8 +75,12 @@ contains
         !
         call rank(criterion,inds)
         !
-        if (index(flags,'descend').ne.0) then
+        if     (index(flags,'descend').ne.0) then
             inds = inds(grp%nsyms:1:-1)
+        elseif (index(flags,'ascend' ).ne.0) then
+            ! do nothing
+        else
+            stop 'sort_symmetries: ascend/descend?'
         endif
         !
         ! get reverse indices
@@ -385,7 +382,7 @@ contains
         call put_identity_first(seitz=seitz)
         !
         ! create space group instance (puts identity first)
-        call sg%create(seitz=seitz)
+        call sg%create_seitz_group(seitz=seitz)
         !
         ! stdout
         if (opts%verbosity.ge.1) then
@@ -443,11 +440,12 @@ contains
         allocate(seitz,source=sg%sym)
         seitz(1:3,4,:) = 0
         !
-        call pg%create(seitz=unique(seitz))
+        call pg%create_seitz_group(seitz=unique(seitz))
         !
         if (opts%verbosity.ge.1) then
             call am_print('point group',decode_pointgroup(point_group_schoenflies(pg%ps_id)),' ... ')
             call am_print('point symmetries',pg%nsyms,' ... ')
+            call pg%print_character_table()
         endif
         !
         call pg%write_outfile(iopt_uc=uc,iopt_filename='outfile.pointgroup')
@@ -496,34 +494,7 @@ contains
         indicies=[1:pg%nsyms]
         !
         ! create group
-        call rg%create(seitz=pg%sym(:,:,pack(indicies,mask)))
-        !
-        contains
-        function       sort_seitz_based_on_tau(tau,seitz) result(seitz_out)
-            !
-            implicit none
-            !
-            real(dp), intent(in) :: tau(:,:)
-            real(dp), intent(in) :: seitz(:,:,:)
-            real(dp) :: seitz_out(:,:,:)
-            !
-            natoms = size(tau,2)
-            nsyms  = size(seitz,3)
-            !
-            allocate(seitz_out(4,4,natoms))
-            do i = 1, natoms
-                seitz_out(:,:,i) = eye(4)
-            enddo
-            !
-            do i = 1, natoms
-            search : do j = 1, pg%nsyms
-                if (isequal(tau(:,i),matmul(seitz(1:3,1:3,j),tau(:,1)))) then
-                    seitz_out(:,:,i) = seitz(1:3,1:3,j)
-                    exit search
-                endif
-            enddo search
-            enddo
-        end function   sort_seitz_based_on_tau
+        call rg%create_seitz_group(seitz=pg%sym(:,:,pack(indicies,mask)))
         !
     end subroutine get_rotational_group
 
@@ -553,7 +524,7 @@ contains
         indicies=[1:pg%nsyms]
         !
         ! create group
-        call vg%create(seitz=pg%sym(:,:,pack(indicies,mask)))
+        call vg%create_seitz_group(seitz=pg%sym(:,:,pack(indicies,mask)))
         !
     end subroutine get_stabilizer_group
     
@@ -586,11 +557,11 @@ contains
         wrk(1:3,4,:) = 0 ! set all translations to zero
         !
         ! create group
-        call revg%create(seitz=unique(wrk))
+        call revg%create_seitz_group(seitz=unique(wrk))
         !
     end subroutine get_reversal_group
 
-    subroutine     create(sg,seitz)
+    subroutine     create_seitz_group(sg,seitz)
         !
         implicit none
         !
@@ -631,7 +602,7 @@ contains
         call sg%sort_symmetries(criterion=real(sg%cc%id,dp), flags='ascend')
         !get character table
         call sg%get_character_table()
-    end subroutine create
+    end subroutine create_seitz_group
 
     subroutine     write_outfile(sg,iopt_uc,iopt_filename)
         !
@@ -1192,7 +1163,7 @@ contains
         !
     end function   ps_schoenflies
 
-    function       decode_pointgroup(pg_id) result(point_group_name)
+    function       decode_pointgroup(pg_code) result(point_group_name)
         ! Hermann-Mauguin     Shubnikov[1]        Schoenflies     Orbifold    Coxeter 
         ! 1                   1\                  C1              11          [ ]+    
         ! -1                  \tilde{2}           S2 (=Ci)        ×           [2+,2+] 
@@ -1229,10 +1200,10 @@ contains
         !
         implicit none
         !
-        integer, intent(in) :: pg_id
+        integer, intent(in) :: pg_code
         character(string_length_schoenflies) :: point_group_name
         !
-        select case (pg_id)
+        select case (pg_code)
                 case(1);  point_group_name = 'c_1'
                 case(2);  point_group_name = 's_2'
                 case(3);  point_group_name = 'c_2'
@@ -1267,7 +1238,7 @@ contains
                 case(32); point_group_name = 'o_h'
             case default
                 call am_print('ERROR','Schoenflies code for point-group unknown.',flags='E')
-                call am_print('pg_id',pg_id)
+                call am_print('pg_code',pg_code)
                 stop
             end select
     end function   decode_pointgroup

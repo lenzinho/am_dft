@@ -198,21 +198,20 @@ contains
         end subroutine get_shell_relations
     end subroutine initialize_tb
 
-    function       get_Hamiltonian(tb,ip,ic,pp,pc,kpt) result(H)
+    function       get_Hamiltonian(tb,ic,pp,pc,kpt) result(H)
         ! 
         ! Get tight binding Hamiltonian at kpt.
         ! 
         implicit none
         !
-        class(am_class_tight_binding), intent(out):: tb ! tight binding matrix elements
-        class(am_class_pair_shell)   , intent(in) :: ip ! irreducible pairs
+        class(am_class_tight_binding), intent(in) :: tb ! tight binding matrix elements
         type(am_class_irre_cell)     , intent(in) :: ic ! irreducible cell
         type(am_class_pair_shell)    , intent(in) :: pp ! primitive pairs
         type(am_class_prim_cell)     , intent(in) :: pc ! primitive cell
         real(dp)                     , intent(in) :: kpt(3) ! fractional
         complex(dp), allocatable :: H(:,:)
         integer    , allocatable :: H_start(:), H_end(:)
-        complex(dp) :: E ! exponential factor in bloch sum
+        real(dp) :: R(3)
         integer :: Hdim ! hamiltonian dimensions
         integer :: m ! primitive atom 1 index 
         integer :: n ! primitive atom 2 index
@@ -242,15 +241,14 @@ contains
             i = pp%shell(k)%i
             j = pp%shell(k)%j
             ! compute bloch sum by loop over atoms in shell
-            E = cmplx(0,0,dp)
             do j = 1, pp%shell(k)%natoms
-                ! get vector connecting primitive atom to atom j in shell k
+                ! get vector connecting primitive atom to atom j in shell k (fractional)
                 R = pp%shell(k)%tau(1:3,j)
                 !
                 ! NEED TO ROTATE V_sk
-                H(H_start(m):H_end(m), H_start(n):H_end(n)) = get_Vsk(tb=tb, i=pp%ip_id(k))
+                H(H_start(m):H_end(m), H_start(n):H_end(n)) = get_Vsk(tb=tb, ip_id=pp%ip_id(k))
                 !
-                if (pp%shell(k)%ip_id.lt.0) then
+                if (pp%ip_id(k).lt.0) then
                 ! if ip_id < 0 -> the irreducible pair has its indices flipped with respect to the primitive pair
                 ! as a result, the matrix elements need to be transposed and the signed adjusted to reflect oribtal parity
                 H(H_start(m):H_end(m), H_start(n):H_end(n)) = &
@@ -258,7 +256,7 @@ contains
                 endif
                 ! multiply exponential factor from Bloch sum
                 H(H_start(m):H_end(m), H_start(n):H_end(n)) = &
-                H(H_start(m):H_end(m), H_start(n):H_end(n)) * exp(-cmplx_i*dot_product(R,kpt))
+                H(H_start(m):H_end(m), H_start(n):H_end(n)) * exp(-itwopi*dot_product(R,kpt)) ! kpt is in fractional
                 !
             enddo
             !
@@ -269,27 +267,27 @@ contains
 
     ! functions which operate on V
 
-    function       get_Vsk(tb,i) result(V)
+    function       get_Vsk(tb,ip_id) result(V)
         !
-        ! irreducible pair (i), can be negative (corresponds to pair n-m rathet than m-n, on the
+        ! irreducible pair (ip_id), can be negative (corresponds to pair n-m rathet than m-n, on the
         ! opposite [upper/lower] side of the Hamiltonian), in which case adjoint of V is returned
         !
         implicit none
         !
         class(am_class_tight_binding), intent(in) :: tb
-        integer , intent(in) :: i
+        integer , intent(in) :: ip_id
         real(dp), allocatable :: V(:,:)
         integer :: m,n
         !
-        m = tb%tbvsk(i)%dims(1)
-        n = tb%tbvsk(i)%dims(2)
+        m = tb%tbvsk(ip_id)%dims(1)
+        n = tb%tbvsk(ip_id)%dims(2)
         !
-        if (i.gt.0) then
-            allocate(V(m,n))
-            V =          reshape(tb%tbvsk(i)%V, [m,n])
+        if (ip_id.lt.0) then
+            allocate(V(tb%tbvsk(ip_id)%dims(2), tb%tbvsk(ip_id)%dims(1)))
+            V = adjoint( reshape(tb%tbvsk(ip_id)%V, [m,n]) )
         else
-            allocate(V(tb%tbvsk(i)%dims(2), tb%tbvsk(i)%dims(1)))
-            V = adjoint( reshape(tb%tbvsk(i)%V, [m,n]) )
+            allocate(V(m,n))
+            V =          reshape(tb%tbvsk(ip_id)%V, [m,n])
         endif
         !
     end function   get_Vsk
@@ -310,6 +308,32 @@ contains
         !
     end subroutine set_Vsk
 
+
+!         function       sort_seitz_based_on_tau(tau,seitz) result(seitz_out)
+!             !
+!             implicit none
+!             !
+!             real(dp), intent(in) :: tau(:,:)
+!             real(dp), intent(in) :: seitz(:,:,:)
+!             real(dp) :: seitz_out(:,:,:)
+!             !
+!             natoms = size(tau,2)
+!             nsyms  = size(seitz,3)
+!             !
+!             allocate(seitz_out(4,4,natoms))
+!             do i = 1, natoms
+!                 seitz_out(:,:,i) = eye(4)
+!             enddo
+!             !
+!             do i = 1, natoms
+!             search : do j = 1, pg%nsyms
+!                 if (isequal(tau(:,i),matmul(seitz(1:3,1:3,j),tau(:,1)))) then
+!                     seitz_out(:,:,i) = seitz(1:3,1:3,j)
+!                     exit search
+!                 endif
+!             enddo search
+!             enddo
+!         end function   sort_seitz_based_on_tau
 
 !     subroutine     apply_relations(Vsk,is_independent,relations)
 !         !

@@ -20,6 +20,8 @@ module am_symmetry_rep
 
     public :: get_null, get_independent, get_depenent
 
+    public :: transp_parity_sign
+
     type, public, extends(am_class_group) :: am_class_flat_group
         real(dp), allocatable :: relations(:,:)
         contains
@@ -117,7 +119,7 @@ module am_symmetry_rep
         class(am_class_group)            , intent(in)  :: pg     ! seitz point group (rev stab rot groups as well)
         type(am_class_prim_cell)         , intent(in)  :: pc     ! primitive cell
         type(am_class_irre_cell)         , intent(in)  :: ic     ! irreducible cell
-        real(dp), allocatable :: R_cart(:,:)
+        real(dp) :: R_cart(3,3)
         logical  :: is_seitz
         integer  :: i
         !
@@ -130,7 +132,7 @@ module am_symmetry_rep
         end select
         !
         ! number of bases functions in representation
-        ham_pg%nbases = product(shape( ps2tb_H(R=eye(3), pc=pc, ic=ic) ))
+        ham_pg%nbases = size( ps2tb_H(R=eye(3), pc=pc, ic=ic), 1)
         ! number of symmetries
         ham_pg%nsyms = pg%nsyms
         ! generate intrinsic symmetries
@@ -142,7 +144,7 @@ module am_symmetry_rep
             if (is_seitz) then
                 R_cart = ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=pc%bas)
             else
-                R_cart = pg%sym(:,:,i)
+                R_cart = pg%sym(1:3,1:3,i)
             endif
             ! determine rotation in the hamiltonian basis
             ham_pg%sym(:,:,i) = ps2tb_H(R=R_cart, pc=pc, ic=ic)
@@ -154,8 +156,14 @@ module am_symmetry_rep
         allocate(ham_pg%cc%id, source=pg%cc%id)
         ! copy multiplication table
         ham_pg%mt = pg%mt
+        ! copy character table
+        ham_pg%ct = pg%ct
         !
-        if (.not.isequal(ham_pg%sym(:,:,1),eye(ham_pg%nbases))) stop 'ham_pg: Identity is not first.'
+        if (.not.isequal(ham_pg%sym(:,:,1),eye(ham_pg%nbases))) then
+            call am_print('pg%sym(:,:,1)',pg%sym(:,:,1))
+            call am_print('ham_pg%sym(:,:,1)',ham_pg%sym(:,:,1))
+            stop 'ham_pg: Identity is not first.'
+        endif
         !
     end subroutine get_hamiltonian_point_group
 
@@ -234,15 +242,19 @@ module am_symmetry_rep
             allocate(flat_ig%sym(flat_ig%nbases,flat_ig%nbases,flat_ig%nsyms))
             k=k+1; flat_ig%sym(:,:,k) = eye(flat_ig%nbases)    ! E
         endif
+        else
             stop 'Undefined propery encountered.'
         endif
         !
         allocate(flat_ig%ps_id(flat_ig%nsyms))
-        flat_ig%ps_id    = 0
+        flat_ig%ps_id    = default_ps_id_value
         flat_ig%ps_id(1) = 1
         !
-        ! get multiplication table (determines determine conjugacy classes in the process)
+        ! get multiplication table (determines conjugacy classes in the process)
         call flat_ig%get_multiplication_table()
+        ! get character table
+        call flat_ig%get_character_table()
+        !
         ! get relations
         flat_ig%relations = flat_ig%get_relations()
         !
@@ -302,8 +314,10 @@ module am_symmetry_rep
         allocate(flat_pg%cc%id, source=pg%cc%id)
         ! copy multiplication table
         flat_pg%mt = pg%mt
+        ! copy character table
+        flat_pg%ct = pg%ct
         ! get relations
-        flat_ig%relations = flat_ig%get_relations()
+        flat_pg%relations = flat_pg%get_relations()
         !
         if (.not.isequal(flat_pg%sym(:,:,1),eye(flat_pg%nbases))) stop 'flat_pg: Identity is not first.'
         !
@@ -664,11 +678,12 @@ module am_symmetry_rep
         type(am_class_atom), intent(in) :: atom_m
         type(am_class_atom), intent(in) :: atom_n
         integer, allocatable :: L_superop(:,:)
-        integer :: alpha,beta
         integer, allocatable :: A(:,:)
         integer, allocatable :: A_flat(:)
         integer, allocatable :: Ap(:,:)
         integer, allocatable :: Ap_flat(:)
+        integer :: nflats
+        integer :: i
         !
         nflats = atom_m%norbitals * atom_n%norbitals
         !
@@ -678,11 +693,11 @@ module am_symmetry_rep
         allocate(A(atom_m%norbitals, atom_n%norbitals))
         A = reshape(A_flat,[atom_m%norbitals, atom_n%norbitals])
         !
-        allocate(A(atom_n%norbitals, atom_m%norbitals))
+        allocate(Ap(atom_n%norbitals, atom_m%norbitals))
         Ap = transpose(A) * transp_parity_sign(atom_m,atom_n)
         !
         allocate(Ap_flat(nflats))
-        Ap_flat = reshape(Ap,[nflats,1])
+        Ap_flat = reshape(Ap,[nflats])
         !
         ! construct flat superoperator
         allocate(L_superop(nflats,nflats))
@@ -691,7 +706,7 @@ module am_symmetry_rep
             L_superop( A_flat(i) ,  abs(Ap_flat(i))  ) = sign( 1, Ap_flat(i) )
         enddo
         ! check to make sure things are correct
-        if (.not.isequal(Ap_flat,matmul(L,A_flat))) stop 'A /= Ap'
+        if (.not.isequal(Ap_flat,matmul(L_superop,A_flat))) stop 'A /= Ap'
         !
     end function  orbital_parity
 

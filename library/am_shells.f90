@@ -20,7 +20,7 @@ module am_shells
         integer :: j ! identifies irreducible atoms (shell)
         integer :: m ! identifies primitive atoms (center)
         integer :: n ! identifies primitive atoms (shell)
-        type(am_class_rotational_group) :: rotg ! local point groupas seen by rotating the shell
+        type(am_class_point_group) :: rotg ! local point groupas seen by rotating the shell
         type(am_class_point_group) :: revg ! reversal group of a typical bond in the shell v
         type(am_class_point_group) :: stab ! stabilizer of a typical bond in the shell v
     end type am_shell_cell
@@ -55,7 +55,6 @@ contains
         integer , allocatable :: shell_member(:,:)
         integer , allocatable :: shell_id(:)
         integer , allocatable :: ind(:)
-        integer  :: nshells !  number of pairs
         integer  :: nshells ! number of shells
         real(dp) :: D(3) ! center of sphere in fractional coordinates
         integer  :: k,i,j
@@ -140,51 +139,53 @@ contains
                 D = matmul(matmul(inv(uc%bas),pc%bas),pc%tau(:,i))
                 write(*,'(" ... ",a," atom ",a," at "   ,a,",",a,",",a,  " (frac) has ",a," nearest-neighbor shells")') &
                     & trim(pctype), trim(int2char(i)), (trim(dbl2char(D(j),4)),j=1,3), trim(int2char(nshells))
-            enddo
-            !
-            write(*,'(5x)' ,advance='no')
-            write(*,'(a5)' ,advance='no') 'shell'
-            write(*,'(a6)' ,advance='no') 'Zi-Zj'
-            write(*,'(a6)' ,advance='no') 'i-j'
-            write(*,'(a6)' ,advance='no') 'm-n'
-            write(*,'(a5)' ,advance='no') 'm'
-            write(*,'(a8)' ,advance='no') 'stab.'
-            write(*,'(a8)' ,advance='no') 'rot.'
-            write(*,'(a8)' ,advance='no') 'rev.'
-            write(*,'(a10)',advance='no') '|v(cart)|'
-            write(*,'(a30)',advance='no') centertitle('v(cart)',30)
-            write(*,'(a10)',advance='no') '|v(frac)|'
-            write(*,'(a30)',advance='no') centertitle('v(frac)',30)
-            write(*,*)
-            write(*,'(5x)' ,advance='no')
-            write(*,'(a5)' ,advance='no')      repeat('-',5)
-            write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
-            write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
-            write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
-            write(*,'(a5)' ,advance='no') ' '//repeat('-',4)
-            write(*,'(a8)', advance='no') ' '//repeat('-',7)
-            write(*,'(a8)', advance='no') ' '//repeat('-',7)
-            write(*,'(a8)', advance='no') ' '//repeat('-',7)
-            write(*,'(a10)',advance='no') ' '//repeat('-',9)
-            write(*,'(a30)',advance='no') ' '//repeat('-',29)
-            write(*,'(a10)',advance='no') ' '//repeat('-',9)
-            write(*,'(a30)',advance='no') ' '//repeat('-',29)
-            write(*,*)
-            do j = 1, pp%nshells
-                write(*,'(5x)'    ,advance='no')
-                write(*,'(i5)'    ,advance='no') j
-                write(*,'(a6)'    ,advance='no') trim(atm_symb(pc%Z( pp%shell(k)%i )))//'-'//trim(atm_symb(pc%Z( pp%shell(k)%j )))
-                write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%i))//'-'//trim(int2char(pp%shell(k)%j))
-                write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%m))//'-'//trim(int2char(pp%shell(k)%n))
-                write(*,'(i5)'    ,advance='no') pp%shell(k)%natoms
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( pp%shell(k)%stab%pg_id ))
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( pp%shell(k)%rotg%pg_id ))
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( pp%shell(k)%revg%pg_id ))
-                write(*,'(f10.3)' ,advance='no') norm2(matmul(pp%shell(k)%bas,pp%shell(k)%tau(1:3,1)))
-                write(*,'(3f10.3)',advance='no') matmul(pp%shell(k)%bas,pp%shell(k)%tau(1:3,1))
-                write(*,'(f10.3)' ,advance='no') norm2(pp%shell(k)%tau(1:3,1))
-                write(*,'(3f10.3)',advance='no') pp%shell(k)%tau(1:3,1)
+                !
+                write(*,'(5x)' ,advance='no')
+                write(*,'(a5)' ,advance='no') 'shell'
+                write(*,'(a6)' ,advance='no') 'Zi-Zj'
+                write(*,'(a6)' ,advance='no') 'i-j'
+                write(*,'(a6)' ,advance='no') 'm-n'
+                write(*,'(a5)' ,advance='no') 'm'
+                write(*,'(a8)' ,advance='no') 'stab.'
+                write(*,'(a8)' ,advance='no') 'rot.'
+                write(*,'(a8)' ,advance='no') 'rev.'
+                write(*,'(a10)',advance='no') '|v(cart)|'
+                write(*,'(a30)',advance='no') centertitle('v(cart)',30)
+                write(*,'(a10)',advance='no') '|v(frac)|'
+                write(*,'(a30)',advance='no') centertitle('v(frac)',30)
                 write(*,*)
+                write(*,'(5x)' ,advance='no')
+                write(*,'(a5)' ,advance='no')      repeat('-',5)
+                write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
+                write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
+                write(*,'(a6)' ,advance='no') ' '//repeat('-',5)
+                write(*,'(a5)' ,advance='no') ' '//repeat('-',4)
+                write(*,'(a8)', advance='no') ' '//repeat('-',7)
+                write(*,'(a8)', advance='no') ' '//repeat('-',7)
+                write(*,'(a8)', advance='no') ' '//repeat('-',7)
+                write(*,'(a10)',advance='no') ' '//repeat('-',9)
+                write(*,'(a30)',advance='no') ' '//repeat('-',29)
+                write(*,'(a10)',advance='no') ' '//repeat('-',9)
+                write(*,'(a30)',advance='no') ' '//repeat('-',29)
+                write(*,*)
+                do k = 1, pp%nshells
+                if (i.eq.pp%shell(k)%m) then
+                    write(*,'(5x)'    ,advance='no')
+                    write(*,'(i5)'    ,advance='no') k
+                    write(*,'(a6)'    ,advance='no') trim(atm_symb(pc%Z( pp%shell(k)%i )))//'-'//trim(atm_symb(pc%Z( pp%shell(k)%j )))
+                    write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%i))//'-'//trim(int2char(pp%shell(k)%j))
+                    write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%m))//'-'//trim(int2char(pp%shell(k)%n))
+                    write(*,'(i5)'    ,advance='no') pp%shell(k)%natoms
+                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( pp%shell(k)%stab%ps_id )))
+                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( pp%shell(k)%rotg%ps_id )))
+                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( pp%shell(k)%revg%ps_id )))
+                    write(*,'(f10.3)' ,advance='no') norm2(matmul(pp%shell(k)%bas,pp%shell(k)%tau(1:3,1)))
+                    write(*,'(3f10.3)',advance='no') matmul(pp%shell(k)%bas,pp%shell(k)%tau(1:3,1))
+                    write(*,'(f10.3)' ,advance='no') norm2(pp%shell(k)%tau(1:3,1))
+                    write(*,'(3f10.3)',advance='no') pp%shell(k)%tau(1:3,1)
+                    write(*,*)
+                endif
+                enddo
             enddo
             write(*,'(a5,a)') ' ... ', 'Definitions:'
             write(*,'(5x,a)') ' - i, j             : irreducible indicies'
@@ -315,30 +316,21 @@ contains
         end function   identify_shells
     end subroutine get_primitive
 
-    subroutine     get_irreducible(ip,pp,pg,sg,ic,opts)
+    subroutine     get_irreducible(ip,pp,pg,ic,opts)
         !
         implicit none
         !
         class(am_class_pair_shell), intent(out) :: ip
         class(am_class_pair_shell), intent(inout) :: pp
-        type(am_class_space_group), intent(in) :: sg ! space group
         type(am_class_point_group), intent(in) :: pg ! point group
         class(am_class_unit_cell) , intent(in) :: ic
         type(am_class_options)    , intent(in) :: opts
-        type(am_class_point_group) :: stab
-        type(am_class_point_group) :: revg
-        type(am_class_point_group) :: rotg
-        type(am_class_options)     :: notalk
         integer , allocatable :: ip_id(:) ! can have negative, it means bond was flipped!
         integer , allocatable :: ip_id_unique(:) ! strictly positive
         integer , allocatable :: multiplicity(:)
         integer :: i,j,k
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining irreducible nearest-neighbor pairs')
-        !
-        ! supress output from some subroutines
-        notalk = opts
-        notalk%verbosity = 0
         !
         ! output shells
         if (opts%verbosity.ge.1) call am_print('pair shells',pp%nshells)
@@ -414,9 +406,9 @@ contains
                 write(*,'(a6)'    ,advance='no') trim(int2char(ip%shell(k)%i))//'-'//trim(int2char(ip%shell(k)%j))
                 write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%m))//'-'//trim(int2char(pp%shell(k)%n))
                 write(*,'(i5)'    ,advance='no') multiplicity(k)
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( ip%stab%pg_id ))
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( ip%rotg%pg_id ))
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup( ip%revg%pg_id ))
+                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%stab%ps_id )))
+                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%rotg%ps_id )))
+                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%revg%ps_id )))
                 write(*,'(f10.3)' ,advance='no') norm2(matmul(ip%shell(k)%bas,ip%shell(k)%tau(1:3,1)))
                 write(*,'(3f10.3)',advance='no') matmul(ip%shell(k)%bas,ip%shell(k)%tau(1:3,1))
                 write(*,'(f10.3)' ,advance='no') norm2(ip%shell(k)%tau(1:3,1))
@@ -465,7 +457,6 @@ contains
             class(am_class_unit_cell) , intent(in) :: ic ! irreducible cell
             type(am_class_options)    , intent(in) :: opts
             type(am_class_point_group) :: stab ! stabilizer of vector v
-            type(am_class_options) :: notalk
             integer , allocatable :: Z(:,:) ! Z of each atom in pair
             integer , allocatable :: s(:) ! stabilizer point group id
             real(dp), allocatable :: d(:) ! distances of atoms
@@ -473,10 +464,6 @@ contains
             logical , allocatable :: isflipped(:)
             real(dp) :: v(3)
             integer :: i,j,k
-            !
-            ! supress output from some subroutines
-            notalk = opts
-            notalk%verbosity = 0
             !
             ! set total number of pairs as the sum of the number of shells on each atom 
             ! note that totalshells is not the absolute number of pairs, it is the number of shells on all atoms; i.e. the number of unique pairs all atoms have by themselves without referencing other atoms.
@@ -500,8 +487,8 @@ contains
                     Z([1,2],k) = Z([2,1],k)
                 endif
                 ! record stabilzier group
-                call stab%get_stabilizer_group(pg=pg, v=v, opts=notalk)
-                s(k) = stab%pg_id
+                call stab%get_stabilizer_group(pg=pg, v=v, opts=opts)
+                s(k) = point_group_schoenflies( stab%ps_id )
                 ! possible write shell for debuging
                 ! call pair%shell(i,j)%write_poscar(file_output_poscar='shell_'//trim(int2char(i))//'_'//trim(int2char(j)))
             enddo
