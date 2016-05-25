@@ -18,10 +18,11 @@ module am_symmetry_tables
 		contains
 	end type am_class_conjugacy_class
 
-    type, public :: am_class_character_table
-        complex(dp), allocatable :: chartab(:,:)    ! character table ( irreps * classes )
-        character(:),allocatable :: irrep_label(:)  ! irrep label
-    end type am_class_character_table
+	type, public :: am_class_character_table
+		complex(dp), allocatable :: chartab(:,:)	! character table ( irreps * classes )
+		character(:),allocatable :: muliken(:)  	! irrep label
+		contains
+	end type am_class_character_table
 
 	type, public :: am_class_multiplication_table
 		integer, allocatable :: multab(:,:)
@@ -29,6 +30,7 @@ module am_symmetry_tables
 		integer, allocatable :: order(:)
 		contains
 	end type am_class_multiplication_table
+
 
 contains
 
@@ -323,19 +325,19 @@ contains
         end subroutine relabel_based_on_ps_id
     end function   get_class_id
 
-    ! character table
+	! character table
 
     function       get_chartab(multab,nclasses,class_nelements,class_member,ps_id) result(chartab)
         !
-        use am_rank_and_sort
+	    use am_rank_and_sort
         !
         implicit none
         !
         integer, intent(in) :: multab(:,:)
         integer, intent(in) :: ps_id(:)
         integer, intent(in) :: nclasses
-        integer, intent(in) :: class_nelements(:) ! number of elements in each class
-        integer, intent(in) :: class_member(:,:) ! members(nclass,maxval(class_nelements))
+		integer, intent(in) :: class_nelements(:) ! number of elements in each class
+		integer, intent(in) :: class_member(:,:) ! members(nclass,maxval(class_nelements))
         complex(dp), allocatable :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
         integer :: i, j, k
         integer :: nsyms
@@ -359,7 +361,7 @@ contains
         enddo
         !
         ! chartab(nirreps,nclasses) determine eigenvector which simultaneously diagonalizes i Hjk(:,:) matrices
-        chartab = eigenanalysis(cmplx(H,0,dp))
+        chartab = eigen_analysis(cmplx(H,0,dp))
         !
         ! get dimensions of representations using Eq. 4.53, p 91 of Wooten
         ! Note: The absolute square is the result of the conjugate multiplication
@@ -426,7 +428,7 @@ contains
         enddo
         !
         contains
-        function       eigenanalysis(A) result(D)
+        function       eigen_analysis(A) result(D)
             !
             ! determines characters which simultaneously diagonalizes i square matrices A(:,:,i)
             ! only possible if A(:,:,i) commute with each other. Assumes all dimensions of A are the same.
@@ -441,8 +443,6 @@ contains
             integer :: n, i
             !
             n = size(A,3)
-            !
-            if (n.eq.0) stop 'eigenanalysis: n = 0'
             !
             ! matrix pencil approach to lift the degeneracy of eigenvalues
             allocate(M(n,n))
@@ -481,7 +481,7 @@ contains
             ! at this point V and D should be identical. The elements are to within +/- sign.
             ! D is more robust 
             !
-        end function   eigenanalysis
+        end function   eigen_analysis
     end function   get_chartab
 
     function       get_muliken(chartab,nclasses,class_nelements,class_member,ps_id) result(irrep_label)
@@ -490,8 +490,8 @@ contains
         !
         complex(dp), intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
         integer, intent(in) :: nclasses
-        integer, intent(in) :: class_nelements(:)
-        integer, intent(in) :: class_member(:,:)
+		integer, intent(in) :: class_nelements(:)
+		integer, intent(in) :: class_member(:,:)
         integer, intent(in) :: ps_id(:)
         character(:), allocatable :: irrep_label(:)
         integer :: i, j, k
@@ -511,8 +511,8 @@ contains
         class_containing_inversion = find_class_containing_ps(nclasses=nclasses, id=6, ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
         allocate(highsymlist, source=[5,10,4,9,3,8,2,7,1,6])
         do i = 1,10
-            class_containing_highsym = find_class_containing_ps(nclasses=nclasses, id=highsymlist(i), ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
-            if (class_containing_highsym.ne.0) exit
+	        class_containing_highsym = find_class_containing_ps(nclasses=nclasses, id=highsymlist(i), ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
+	        if (class_containing_highsym.ne.0) exit
         enddo
         !
         do j = 1, nirreps
@@ -522,12 +522,12 @@ contains
             i = class_containing_identity
             select case (nint(real(chartab(j,i))))
                 case (1)
-                    k = class_containing_highsym
-                    if (real(chartab(j,k)).ge.0) then 
-                        irrep_label(j) = trim(irrep_label(j))//'A'
-                    else
-                        irrep_label(j) = trim(irrep_label(j))//'B'
-                    endif
+                	k = class_containing_highsym
+                	if (real(chartab(j,k)).ge.0) then 
+                	 	irrep_label(j) = trim(irrep_label(j))//'A'
+                	else
+                		irrep_label(j) = trim(irrep_label(j))//'B'
+                	endif
                 case (2); irrep_label(j) = trim(irrep_label(j))//'E'
                 case (3); irrep_label(j) = trim(irrep_label(j))//'T'
             end select
@@ -571,11 +571,11 @@ contains
         implicit none
         !
         complex(dp) , intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
-        integer     , intent(in) :: nclasses
-        integer     , intent(in) :: class_nelements(:)
-        integer     , intent(in) :: class_member(:,:)
+        integer		, intent(in) :: nclasses
+		integer		, intent(in) :: class_nelements(:)
+		integer		, intent(in) :: class_member(:,:)
         character(*), intent(in) :: irrep_label(:)
-        integer     , intent(in) :: ps_id(:)
+        integer		, intent(in) :: ps_id(:)
         complex(dp) , intent(in), optional :: rep_chi(:,:)
         character(*), intent(in), optional :: rep_label(:)
         integer :: i, j, k
@@ -620,61 +620,61 @@ contains
         enddo
         ! 
         if (present(rep_chi).and.present(rep_label)) then
-            if (size(rep_chi,2).ne.nclasses) stop 'dimensions of rep character does not match number of classes'
-            !
-            ! rep characters
-            call print_bar(fmts=fmts, nclasses=nclasses)
-            nreps = size(rep_chi,1)
-            do i = 1, nreps
-                !
-                write(*,'(5x,i2,a8)',advance='no') i, rep_label(i)
-                do j = 1, nclasses
-                    call print_chartab_symb(Z=rep_chi(i,j),char_start=char_start,s=s,k=k,fmts=fmts,str=str)
-                    write(*,fmts(3),advance='no') str
-                enddo
-                write(*,*)
-            enddo
-        endif
-        !
+        	if (size(rep_chi,2).ne.nclasses) stop 'dimensions of rep character does not match number of classes'
+        	!
+	        ! rep characters
+	        call print_bar(fmts=fmts, nclasses=nclasses)
+    		nreps = size(rep_chi,1)
+	        do i = 1, nreps
+	            !
+	            write(*,'(5x,i2,a8)',advance='no') i, rep_label(i)
+	            do j = 1, nclasses
+	                call print_chartab_symb(Z=rep_chi(i,j),char_start=char_start,s=s,k=k,fmts=fmts,str=str)
+	                write(*,fmts(3),advance='no') str
+	            enddo
+	            write(*,*)
+	        enddo
+	    endif
+	    !
         ! rep decompositions
-        if (present(rep_chi).and.present(rep_label)) then
-            call print_bar(fmts=fmts, nclasses=nclasses)
-            !
-            write(*,'(5x,a)') 'Decompositions:'
-            ! initialize
-            allocate(beta(nreps,nirreps))
-            beta = 0
-            nsyms = sum(class_nelements)
-            ! calculate
-            do i = 1, nreps
-            do j = 1, nirreps
-                try = dot(rep_chi(i,:),chartab(j,:)*class_nelements)/real(nsyms,dp)
-                if (abs(aimag(try)).gt.tiny) then
-                    stop 'irrep decomposition coefficient is not real'
-                endif
-                if (abs(nint(real(try))-real(try)).gt.tiny) then
-                    stop 'irrep decomposition coefficient is not an integer'
-                endif
-                beta(i,j) = nint(real(try))
-            enddo
-            enddo
-            ! print
-            do i = 1, nreps
-            if (any(beta(i,:).ne.0)) then
-                write(*,'(5x,a9,a)',advance='no') trim(rep_label(i)), ' = '
-                do j = 1, nirreps
-                if (beta(i,j).ne.0) then
-                    write(*,'(a)',advance='no') trim(int2char(beta(i,j),'SP'))//'*'//trim(irrep_label(j))//'('//trim(int2char(j))//') '
-                endif
-                enddo
-                write(*,*)
-            endif
-            enddo
-        endif
-        !
-        !
-        !
-        !
+	    if (present(rep_chi).and.present(rep_label)) then
+	        call print_bar(fmts=fmts, nclasses=nclasses)
+	        !
+	        write(*,'(5x,a)') 'Decompositions:'
+	        ! initialize
+	        allocate(beta(nreps,nirreps))
+	        beta = 0
+	        nsyms = sum(class_nelements)
+	        ! calculate
+	        do i = 1, nreps
+        	do j = 1, nirreps
+        		try = dot(rep_chi(i,:),chartab(j,:)*class_nelements)/real(nsyms,dp)
+        		if (abs(aimag(try)).gt.tiny) then
+        			stop 'irrep decomposition coefficient is not real'
+        		endif
+        		if (abs(nint(real(try))-real(try)).gt.tiny) then
+        			stop 'irrep decomposition coefficient is not an integer'
+        		endif
+	        	beta(i,j) = nint(real(try))
+        	enddo
+        	enddo
+        	! print
+	        do i = 1, nreps
+	        if (any(beta(i,:).ne.0)) then
+	        	write(*,'(5x,a9,a)',advance='no') trim(rep_label(i)), ' = '
+	        	do j = 1, nirreps
+        		if (beta(i,j).ne.0) then
+	        		write(*,'(a)',advance='no') trim(int2char(beta(i,j),'SP'))//'*'//trim(irrep_label(j))//'('//trim(int2char(j))//') '
+	        	endif
+	        	enddo
+	        	write(*,*)
+	        endif
+        	enddo
+	    endif
+	    !
+	    !
+	    !
+	    !
         !
         !
         if (k.ne.0) then
@@ -688,141 +688,141 @@ contains
             !
         endif
         !
-        contains
-        subroutine     print_chartab_header(nclasses,class_nelements,class_member,ps_id,fmts)
-            !
-            implicit none
-            !
-            integer     , intent(in) :: nclasses
-            integer     , intent(in) :: class_nelements(:)
-            integer     , intent(in) :: class_member(:,:)
-            integer     , intent(in) :: ps_id(:)
-            character(*), intent(in) :: fmts(:)
-            integer :: i
-            !
-            ! start printing
-            write(*,fmts(2),advance='no') 'class'
-            do i = 1, nclasses
-                write(*,fmts(1),advance='no') i
-            enddo
-            write(*,*)
-            !
-            write(*,fmts(2),advance='no') 'elements'
-            do i = 1, nclasses
-                write(*,fmts(1),advance='no') class_nelements(i)
-            enddo
-            write(*,*)
-            !
-            write(*,fmts(2),advance='no') 'repr.'
-            do i = 1, nclasses
-                write(*,fmts(3),advance='no') trim(decode_pointsymmetry(ps_id(class_member(i,1))))
-            enddo
-            write(*,*)
-            !
-            call print_bar(fmts=fmts, nclasses=nclasses)
-            !
-        end subroutine print_chartab_header
-        subroutine     print_chartab_symb(Z,char_start,s,k,fmts,str)
-            !
-            implicit none
-            !
-            complex(dp), intent(in) :: Z
-            integer    , intent(in) :: char_start
-            complex(dp), intent(inout) :: s(:)
-            integer    , intent(inout) :: k
-            character(*), intent(in) :: fmts(:)
-            character(:), allocatable, intent(out) :: str
-            !
-            integer :: kk, k_exp
-            complex(dp) :: s_exp
-            real(dp) :: Zr,Zi
-            logical :: strmatch
-            !
-            strmatch = .false.
-            !
-            Zr= real(Z)
-            Zi= aimag(Z)
-            !
-            if ( isint(Zr) .and. iszero(Zi) ) then
-                ! no imaginary, integer real
-                strmatch = .true.
-                str = trim(int2char(nint(Zr)))
-                !
-            elseif ( iszero(Zr) .and. isint(Zi) ) then
-                ! no real, imaginary integer
-                strmatch = .true.
-                str = trim(int2char(nint(Zi)))//'i'
-                !
-            elseif ( (.not. isint(Zr)) .and. (.not. isint(Zi)) ) then
-                ! complex number
-                !
-                if (k.ge.1) then
-                search : do kk = 1, k
-                    !
-                    s_exp = cmplx(0.0_dp,0.0_dp)
-                    k_exp = 0 
-                    do while ( .not. isequal(s_exp,cmplx(1,0,dp)) )
-                        ! do a full loop. complex numbers form a cyclic abelian group.
-                        ! exponentiate it until it loops back to one, the identity
-                        k_exp = k_exp+1
-                        s_exp = s(k)**k_exp
-                        ! check positive
-                        if ( isequal(Z,s_exp) ) then
-                            !
-                            strmatch = .true.
-                            if (k_exp.eq.1) then
-                                str = char(char_start+k)
-                            else
-                                str = char(char_start+k)//trim(int2char(k_exp))
-                            endif
-                            exit search
-                            !
-                        endif
-                        ! check negative
-                        if ( isequal(Z,-s_exp) ) then
-                            !
-                            strmatch = .true.
-                            if (k_exp.eq.1) then
-                                str = '-'//char(char_start+k)
-                            else
-                                str = '-'//char(char_start+k)//trim(int2char(k_exp))
-                            endif
-                            exit search
-                            !
-                        endif
-                    enddo
-                enddo search
-                endif
-                !
-                ! if match is not found assign a new character to variable
-                if (.not.strmatch) then
-                    !
-                    strmatch = .true.
-                    k = k + 1
-                    s(k) = Z
-                    str = char(char_start+k)
-                    !
-                endif
-            endif
-            !
-            if (.not.strmatch) then
-                write(str,fmts(5)) real(Z)
-            endif
-            !
-        end subroutine print_chartab_symb
-        subroutine     print_bar(fmts,nclasses)
-            !
-            implicit none
-            !
-            integer     , intent(in) :: nclasses
-            character(*), intent(in) :: fmts(:)
-            integer :: i
-            !
-            write(*,fmts(2),advance='no') repeat('-',10)
-            do i = 1, nclasses
-                write(*,fmts(3),advance='no') repeat('-',6)
-            enddo
-            write(*,*)
+	    contains
+	    subroutine     print_chartab_header(nclasses,class_nelements,class_member,ps_id,fmts)
+	    	!
+	    	implicit none
+	    	!
+	        integer		, intent(in) :: nclasses
+			integer		, intent(in) :: class_nelements(:)
+			integer		, intent(in) :: class_member(:,:)
+	        integer		, intent(in) :: ps_id(:)
+	        character(*), intent(in) :: fmts(:)
+	        integer :: i
+	    	!
+	        ! start printing
+	        write(*,fmts(2),advance='no') 'class'
+	        do i = 1, nclasses
+	            write(*,fmts(1),advance='no') i
+	        enddo
+	        write(*,*)
+	        !
+	        write(*,fmts(2),advance='no') 'elements'
+	        do i = 1, nclasses
+	            write(*,fmts(1),advance='no') class_nelements(i)
+	        enddo
+	        write(*,*)
+	        !
+	        write(*,fmts(2),advance='no') 'repr.'
+	        do i = 1, nclasses
+	            write(*,fmts(3),advance='no') trim(decode_pointsymmetry(ps_id(class_member(i,1))))
+	        enddo
+	        write(*,*)
+	        !
+	        call print_bar(fmts=fmts, nclasses=nclasses)
+	        !
+	    end subroutine print_chartab_header
+	    subroutine     print_chartab_symb(Z,char_start,s,k,fmts,str)
+	    	!
+	    	implicit none
+	    	!
+	        complex(dp), intent(in) :: Z
+	        integer    , intent(in) :: char_start
+	        complex(dp), intent(inout) :: s(:)
+	        integer    , intent(inout) :: k
+	        character(*), intent(in) :: fmts(:)
+	        character(:), allocatable, intent(out) :: str
+	        !
+	        integer :: kk, k_exp
+	        complex(dp) :: s_exp
+	        real(dp) :: Zr,Zi
+	        logical :: strmatch
+	        !
+		    strmatch = .false.
+		    !
+		    Zr= real(Z)
+		    Zi= aimag(Z)
+		    !
+		    if ( isint(Zr) .and. iszero(Zi) ) then
+		        ! no imaginary, integer real
+		        strmatch = .true.
+		        str = trim(int2char(nint(Zr)))
+		        !
+		    elseif ( iszero(Zr) .and. isint(Zi) ) then
+		        ! no real, imaginary integer
+		        strmatch = .true.
+		        str = trim(int2char(nint(Zi)))//'i'
+		        !
+		    elseif ( (.not. isint(Zr)) .and. (.not. isint(Zi)) ) then
+		        ! complex number
+		        !
+		        if (k.ge.1) then
+		        search : do kk = 1, k
+		            !
+		            s_exp = cmplx(0.0_dp,0.0_dp)
+		            k_exp = 0 
+		            do while ( .not. isequal(s_exp,cmplx(1,0,dp)) )
+		                ! do a full loop. complex numbers form a cyclic abelian group.
+		                ! exponentiate it until it loops back to one, the identity
+		                k_exp = k_exp+1
+		                s_exp = s(k)**k_exp
+		                ! check positive
+		                if ( isequal(Z,s_exp) ) then
+		                    !
+		                    strmatch = .true.
+		                    if (k_exp.eq.1) then
+		                        str = char(char_start+k)
+		                    else
+		                        str = char(char_start+k)//trim(int2char(k_exp))
+		                    endif
+		                    exit search
+		                    !
+		                endif
+		                ! check negative
+		                if ( isequal(Z,-s_exp) ) then
+		                    !
+		                    strmatch = .true.
+		                    if (k_exp.eq.1) then
+		                        str = '-'//char(char_start+k)
+		                    else
+		                        str = '-'//char(char_start+k)//trim(int2char(k_exp))
+		                    endif
+		                    exit search
+		                    !
+		                endif
+		            enddo
+		        enddo search
+		        endif
+		        !
+		        ! if match is not found assign a new character to variable
+		        if (.not.strmatch) then
+		            !
+		            strmatch = .true.
+		            k = k + 1
+		            s(k) = Z
+		            str = char(char_start+k)
+		            !
+		        endif
+		    endif
+		    !
+		    if (.not.strmatch) then
+		        write(str,fmts(5)) real(Z)
+		    endif
+		    !
+	    end subroutine print_chartab_symb
+	    subroutine     print_bar(fmts,nclasses)
+	    	!
+	    	implicit none
+	    	!
+	        integer		, intent(in) :: nclasses
+	        character(*), intent(in) :: fmts(:)
+	        integer :: i
+	    	!
+	        write(*,fmts(2),advance='no') repeat('-',10)
+	        do i = 1, nclasses
+	            write(*,fmts(3),advance='no') repeat('-',6)
+	        enddo
+	        write(*,*)
         end subroutine print_bar
     end subroutine print_chartab
 

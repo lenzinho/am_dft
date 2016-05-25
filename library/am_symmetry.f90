@@ -205,6 +205,8 @@ contains
         !
         class(am_class_group), intent(inout) :: grp
         !
+        ! check
+        if (.not.allocated(grp%mt%multab)) stop 'get_conjugacy_classes: multiplication table is required.'
         ! get conjugacy classes (ps_id is required for sorting the classes: proper before improper)
         grp%cc%id = get_class_id(multab=grp%mt%multab, inv_id=grp%mt%inv_id, ps_id=grp%ps_id)
         ! number of classes
@@ -224,6 +226,9 @@ contains
         !
         class(am_class_group), intent(inout) :: grp
         !
+        ! check
+        if (.not.allocated(grp%mt%multab)) stop 'get_character_table: multiplication table is required.'
+        if (.not.allocated(grp%cc%member)) stop 'get_character_table: conjugacy class analyses is required.'
         ! get character table (ps_id is required for sorting the irreps: proper before improper)
         grp%ct%chartab = get_chartab(multab=grp%mt%multab, nclasses=grp%cc%nclasses, &
             class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)

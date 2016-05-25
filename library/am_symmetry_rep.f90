@@ -252,6 +252,8 @@ module am_symmetry_rep
         !
         ! get multiplication table (determines conjugacy classes in the process)
         call flat_ig%get_multiplication_table()
+        ! get conjugacy classes
+        call flat_ig%get_conjugacy_classes()
         ! get character table
         call flat_ig%get_character_table()
         !
@@ -377,7 +379,6 @@ module am_symmetry_rep
         !
     end function   get_relations
 
-
     ! operates on prop
 
     subroutine     get_property(prop,pc,pg,opts,property)
@@ -410,8 +411,6 @@ module am_symmetry_rep
             ! print statistics about parameters
             write(*,'(a5,2a6,3a14)') ' ... ', 'shell', 'terms', 'null', 'dependent', 'independent'
             write(*,'(5x,a)') repeat(' '//repeat('-',5),2)//repeat(' '//repeat('-',13),3)
-            ! initialize counters
-            a=0;b=0;c=0;nterms=0
             ! intrinsic symmetries
             m = count(get_null(flat_ig%relations))
             n = count(get_depenent(flat_ig%relations)) 
@@ -423,9 +422,6 @@ module am_symmetry_rep
             write(*,'(i5,a2,f5.1,a2)',advance='no') n, '(', (n*100_dp)/real(nterms,dp) , '%)'
             write(*,'(i5,a2,f5.1,a2)',advance='no') o, '(', (o*100_dp)/real(nterms,dp) , '%)'
             write(*,*)
-            a = a + m
-            b = b + n
-            c = c + o
             ! point symmetries
             m = count(get_null(flat_pg%relations))
             n = count(get_depenent(flat_pg%relations)) 
@@ -437,19 +433,22 @@ module am_symmetry_rep
             write(*,'(i5,a2,f5.1,a2)',advance='no') n, '(', (n*100_dp)/real(nterms,dp) , '%)'
             write(*,'(i5,a2,f5.1,a2)',advance='no') o, '(', (o*100_dp)/real(nterms,dp) , '%)'
             write(*,*)
-            a = a + m
-            b = b + n
-            c = c + o
             ! total
+            m = count(get_null(prop%relations))
+            n = count(get_depenent(prop%relations)) 
+            o = count(get_independent(prop%relations))
+            nterms = m+n+o
             write(*,'(5x,a6)'        ,advance='no') 'total'
-            write(*,'(i6)'           ,advance='no') (a+b+c)
-            write(*,'(i5,a2,f5.1,a2)',advance='no') a, '(', (a*100_dp)/real(a+b+c,dp) , '%)'
-            write(*,'(i5,a2,f5.1,a2)',advance='no') b, '(', (b*100_dp)/real(a+b+c,dp) , '%)'
-            write(*,'(i5,a2,f5.1,a2)',advance='no') c, '(', (c*100_dp)/real(a+b+c,dp) , '%)'
+            write(*,'(i6)'           ,advance='no') nterms
+            write(*,'(i5,a2,f5.1,a2)',advance='no') m, '(', (m*100_dp)/real(nterms,dp) , '%)'
+            write(*,'(i5,a2,f5.1,a2)',advance='no') n, '(', (n*100_dp)/real(nterms,dp) , '%)'
+            write(*,'(i5,a2,f5.1,a2)',advance='no') o, '(', (o*100_dp)/real(nterms,dp) , '%)'
             write(*,*)
             ! print symmetry relations
-            write(*,'(a5,a)') ' ... ', 'irreducible symmetry relations:'
-            call print_relations(relations=prop%relations, dims=prop%dims, flags='print:dependent,independent')
+            if (m.ne.nterms) then
+                write(*,'(a5,a)') ' ... ', 'irreducible symmetry relations:'
+                call print_relations(relations=prop%relations, dims=prop%dims, flags='print:dependent,independent')
+            endif
         endif
         !
         contains
