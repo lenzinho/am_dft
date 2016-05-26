@@ -297,17 +297,14 @@ contains
             ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
             P  = permutation_rep(seitz=pg%sym, tau=sphere%tau, flags='relax_pbc', prec=opts%prec)
             PM = permutation_map( P )
-            !
             ! get distance of atoms
             allocate(d(sphere%natoms))
             do i = 1, sphere%natoms
                 d(i) = norm2(matmul(sphere%bas,sphere%tau(:,i)))
             enddo
-            !
             ! rank atoms according to their distances
             allocate(indices(sphere%natoms))
             call rank(d,indices)
-            !
             ! get pairs starting with closest atoms first
             allocate(shell_id(sphere%natoms))
             shell_id=0
@@ -338,8 +335,7 @@ contains
         type(am_class_options)    , intent(in) :: opts
         integer , allocatable :: ip_id(:) ! can have negative, it means bond was flipped!
         integer , allocatable :: ip_id_unique(:) ! strictly positive
-        integer , allocatable :: multiplicity(:)
-        integer :: i,j,k
+        integer :: i,k
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining irreducible nearest-neighbor pairs')
         !
@@ -348,7 +344,6 @@ contains
         !
         ! determine irreducible pair shells
         ip_id = identify_irreducible(pp=pp,pg=pg,ic=ic,opts=opts)
-        ! call am_print('ip_id',ip_id)
         !
         ! allocate space
         ip_id_unique = unique(abs(ip_id))
@@ -356,28 +351,22 @@ contains
         ip%nshells = size(ip_id_unique)
         if (opts%verbosity.ge.1) call am_print('irreducible pair shells',ip%nshells)
         !
-        ! create ip instance
-        allocate(ip%shell(ip%nshells))
-        do i = 1,ip%nshells
-            ip%shell(i) = pp%shell(ip_id_unique(i))
-        enddo
-        !
         ! create maps irreducible pair to/from primitive pair
         allocate(pp%pp_id, source = [1:pp%nshells])
         allocate(pp%ip_id, source = ip_id)
         allocate(ip%ip_id, source = [1:ip%nshells])
         allocate(ip%pp_id(ip%nshells))
-        do i = 1, ip%nshells
-            ip%pp_id(i) = ip_id_unique(i)
+        ip%pp_id = 0
+        do i = 1, pp%nshells
+        if (ip%pp_id(abs(ip_id(i))).eq.0) then
+            ip%pp_id(abs(ip_id(i))) = i
+        endif
         enddo
         !
-        ! save multiplicity (for fun)
-        allocate(multiplicity(ip%nshells))
-        multiplicity=0
-        do k = 1, ip%nshells
-        do j = 1, pp%nshells
-            if (ip_id_unique(k).eq.abs(ip_id(j))) multiplicity(k) = multiplicity(k) + ip%shell(k)%natoms
-        enddo
+        ! create ip instance
+        allocate(ip%shell(ip%nshells))
+        do i = 1,ip%nshells
+            ip%shell(i) = pp%shell( ip%pp_id(i) )
         enddo
         !
         ! write to stdout
@@ -416,7 +405,7 @@ contains
                 write(*,'(a6)'    ,advance='no') trim(atm_symb(ic%Z( ip%shell(k)%i )))//'-'//trim(atm_symb(ic%Z( ip%shell(k)%j )))
                 write(*,'(a6)'    ,advance='no') trim(int2char(ip%shell(k)%i))//'-'//trim(int2char(ip%shell(k)%j))
                 write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%m))//'-'//trim(int2char(pp%shell(k)%n))
-                write(*,'(i5)'    ,advance='no') multiplicity(k)
+                write(*,'(i5)'    ,advance='no') pp%shell(k)%natoms
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%stab%ps_id )))
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%rotg%ps_id )))
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%revg%ps_id )))
@@ -473,6 +462,7 @@ contains
             real(dp), allocatable :: d(:) ! distances of atoms
             integer , allocatable :: ip_id(:) ! can have negative, it means bond was flipped!
             logical , allocatable :: isflipped(:)
+            logical :: isfound
             real(dp) :: v(3)
             integer :: i,j,k
             !
@@ -506,9 +496,13 @@ contains
             !
             ! compare all the prerequisists listed above (distances, atom types, and bond stabilizer) to figure out which pairs are irreducible
             allocate(ip_id(pp%nshells))
+            k = 1
             ip_id = 0
             do i = 1, pp%nshells
+                ! check that shell has not already been assigned
                 if (ip_id(i).eq.0) then
+                    ! isfound is used to count the number of irreducible shells
+                    isfound = .false.
                     do j = 1, pp%nshells
                         ! check that bond length is the same
                         if ( abs(d(i)-d(j)).lt.opts%prec) then
@@ -516,11 +510,18 @@ contains
                         if ( all(Z(1:2,i).eq.Z(1:2,j)) ) then
                         ! check that stabilizers are the same
                         if ( s(i).eq.s(j) ) then
-                            ip_id(j) = i
+                        ! if everything matches, the shells are the same
+                        ! mark all shells that are the same before augmenting irrep shell counter
+                            isfound = .true.
+                            ip_id(j) = k
                         endif
                         endif
                         endif
                     enddo
+                    ! augment irrep shell counter
+                    if (isfound) then
+                        k = k+1
+                    endif
                 endif
             enddo
             !

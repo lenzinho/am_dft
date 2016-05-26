@@ -15,17 +15,12 @@ module am_tight_binding
 
 	private
 
+    public :: test_hamiltonian, set_Vsk_dummies ! for testing
+
     type, public, extends(am_class_group) :: am_class_tb_pg
     end type am_class_tb_pg
 
     type, public, extends(am_class_tensor) :: am_class_tens_tb
-        ! <INHERITED: am_class_tensor>
-        ! character(100)        :: property       ! name of propertty
-        ! character(100)        :: flags          ! axial/polar
-        ! integer               :: rank           ! tensor rank
-        ! integer , allocatable :: dims(:)        ! tensor dimensions
-        ! real(dp), allocatable :: relations(:,:) ! relations connecting tensor elements
-        ! </INHERITED: am_class_tensor>
     end type am_class_tens_tb
 
     type, public :: am_class_tight_binding
@@ -38,6 +33,7 @@ module am_tight_binding
         !
         contains
             procedure :: initialize_tb
+            procedure :: get_hamiltonian
     end type am_class_tight_binding
 
 contains
@@ -192,17 +188,20 @@ contains
         end subroutine get_shell_relations
     end subroutine initialize_tb
 
-    function       get_Hamiltonian(tb,tbpg,ic,pp,kpt) result(H)
+    function       get_hamiltonian(tb,tbpg,ic,ip,pp,kpt,iopt_mask) result(H)
         ! 
         ! Get tight binding Hamiltonian at kpt.
         ! 
         implicit none
         !
-        class(am_class_tight_binding), intent(in) :: tb   ! tight binding matrix elements
-        type(am_class_tb_group)      , intent(in) :: tbpg ! point group in tight binding representation
-        type(am_class_irre_cell)     , intent(in) :: ic   ! irreducible cell
-        type(am_class_pair_shell)    , intent(in) :: pp   ! primitive pairs
+        class(am_class_tight_binding), intent(in) :: tb     ! tight binding matrix elements
+        type(am_class_tb_group)      , intent(in) :: tbpg   ! point group in tight binding representation
+        type(am_class_irre_cell)     , intent(in) :: ic     ! irreducible cell
+        type(am_class_pair_shell)    , intent(in) :: pp     ! primitive pairs
+        type(am_class_pair_shell)    , intent(in) :: ip     ! irreducible pairs
         real(dp)                     , intent(in) :: kpt(3) ! fractional
+        logical, optional            , intent(in) :: iopt_mask(:)
+        logical, allocatable :: mask(:)
         integer    , allocatable :: S(:),E(:)
         complex(dp), allocatable :: Hsub(:,:)
         complex(dp), allocatable :: H(:,:)
@@ -211,18 +210,29 @@ contains
         integer :: i ! irreducible atom 1 index 
         integer :: j ! irreducible atom 2 index
         integer :: k ! shell
+        integer :: p ! atoms
         !
+        ! mask irreducible pair shells 
+        !      -----------
+        if (present(iopt_mask)) then
+            allocate(mask,source=iopt_mask)
+        else
+            allocate(mask(ip%nshells))
+            mask = .true.
+        endif
+        !
+        ! allocate space for vectors demarking start and end of Hamiltonian subsection
         allocate(S, source=tbpg%H_start)
         allocate(E, source=tbpg%H_end)
-        !
         ! allocate workspace for H subsection (initialized later)
         allocate(Hsub(tbpg%nbases,tbpg%nbases))
         ! allocate and initialize
         allocate(H(tbpg%nbases,tbpg%nbases))
         H = cmplx(0,0,dp)
-        !
         ! construct Hamiltonian
+        call am_print('pp%ip_id',pp%ip_id)
         do k = 1, pp%nshells
+        if ( mask(abs(pp%ip_id(k))) ) then
             ! primitive atom indicies
             m = pp%shell(k)%m
             n = pp%shell(k)%n
@@ -232,12 +242,12 @@ contains
             ! reset workspace
             Hsub = cmplx(0,0,dp)
             ! compute bloch sum by loop over atoms in shell
-            do j = 1, pp%shell(k)%natoms
+            do p = 1, pp%shell(k)%natoms
                 ! get matrix elements
                 Hsub(S(m):E(m), S(n):E(n)) = get_Vsk(tb=tb, ip_id=pp%ip_id(k))
-                ! rotate matrix elements as needed to get from the tau(:,1) => tau(:,i)
-                Hsub(S(m):E(m), S(n):E(n)) = matmul(Hsub(S(m):E(m), S(n):E(n)), tbpg%get_slice(pg_id=pp%shell(k)%pg_id(j), pc_id=n))
-                Hsub(S(m):E(m), S(n):E(n)) = matmul(transpose(tbpg%get_slice(pg_id=pp%shell(k)%pg_id(j), pc_id=m)), Hsub(S(m):E(m), S(n):E(n)))
+                ! rotate matrix elements as needed to get from the tau(:,1) => tau(:,x)
+                Hsub(S(m):E(m), S(n):E(n)) = matmul(Hsub(S(m):E(m), S(n):E(n)), tbpg%get_slice(pg_id=pp%shell(k)%pg_id(p), pc_id=n))
+                Hsub(S(m):E(m), S(n):E(n)) = matmul(transpose(tbpg%get_slice(pg_id=pp%shell(k)%pg_id(p), pc_id=m)), Hsub(S(m):E(m), S(n):E(n)))
                 ! if ip_id < 0 -> the irreducible pair has its indices flipped with respect to the primitive pair
                 ! as a result, the matrix elements need to be transposed and the signed adjusted to reflect oribtal parity
                 if (pp%ip_id(k).lt.0) then
@@ -246,14 +256,40 @@ contains
                 endif
                 ! multiply exponential factor from Bloch sum
                 Hsub(S(m):E(m), S(n):E(n)) = &
-                Hsub(S(m):E(m), S(n):E(n)) * exp(-itwopi*dot_product(pp%shell(k)%tau(1:3,j), kpt)) ! kpt is in fractional
+                Hsub(S(m):E(m), S(n):E(n)) * exp(-itwopi*dot_product(pp%shell(k)%tau(1:3,p), kpt)) ! kpt is in fractional
                 !
             enddo
             ! this pair's contribution to the Hamiltonian
             H(S(m):E(m), S(n):E(n)) = H(S(m):E(m), S(n):E(n)) + Hsub(S(m):E(m), S(n):E(n))
-            !
+        endif
         enddo
-    end function   get_Hamiltonian
+    end function   get_hamiltonian
+
+    subroutine     test_hamiltonian(tb,tbpg,ic,ip,pp)
+        ! makes sure Hamiltonian at Gamma commutes with all point symmetry operations
+        implicit none
+        !
+        type(am_class_tight_binding) , intent(in) :: tb   ! tight binding matrix elements
+        type(am_class_tb_group)      , intent(in) :: tbpg ! point group in tight binding representation
+        type(am_class_irre_cell)     , intent(in) :: ic   ! irreducible cell
+        type(am_class_pair_shell)    , intent(in) :: pp   ! primitive pairs
+        type(am_class_pair_shell)    , intent(in) :: ip   ! irreducible pairs
+        complex(dp), allocatable :: H(:,:)
+        integer :: i
+        !
+        H = tb%get_hamiltonian(tbpg=tbpg, ic=ic, ip=ip, pp=pp, kpt=real([0,0,0],dp))
+        !
+        do i = 1, tbpg%nsyms
+            call am_print('Re(H)',real(H))
+            call am_print('Im(H)',aimag(H))
+            if (.not.isequal(matmul(H,tbpg%sym(:,:,i)),matmul(tbpg%sym(:,:,i),H))) then
+                call am_print('Re(H)',real(H))
+                call am_print('Im(H)',aimag(H))
+                call am_print('sym',tbpg%sym(:,:,i))
+                stop 'H does not commute with symmetry.'
+            endif
+        enddo
+    end subroutine test_hamiltonian
 
     ! functions which operate on V
 
@@ -267,36 +303,56 @@ contains
         class(am_class_tight_binding), intent(in) :: tb
         integer , intent(in) :: ip_id
         real(dp), allocatable :: V(:,:)
+        integer :: id
         integer :: m,n
         !
-        m = tb%tbvsk(ip_id)%dims(1)
-        n = tb%tbvsk(ip_id)%dims(2)
+        id = abs(ip_id)
         !
-        if (ip_id.lt.0) then
-            allocate(V(tb%tbvsk(ip_id)%dims(2), tb%tbvsk(ip_id)%dims(1)))
-            V = adjoint( reshape(tb%tbvsk(ip_id)%V, [m,n]) )
+        m = tb%tbvsk(id)%dims(1)
+        n = tb%tbvsk(id)%dims(2)
+        !
+        if (id.lt.0) then
+            allocate(V(tb%tbvsk(id)%dims(2), tb%tbvsk(id)%dims(1)))
+            V = adjoint( reshape(tb%tbvsk(id)%V, [m,n]) )
         else
             allocate(V(m,n))
-            V =          reshape(tb%tbvsk(ip_id)%V, [m,n])
+            V =          reshape(tb%tbvsk(id)%V, [m,n])
         endif
         !
     end function   get_Vsk
 
-!     subroutine     set_Vsk(tb,i,alpha,beta,V)
-!         !
-!         implicit none
-!         !
-!         class(am_class_tight_binding), intent(inout) :: tb
-!         integer, intent(in) :: i           ! irreducible pair (i)
-!         integer, intent(in) :: alpha, beta ! orbitals on atoms alpha,beta (matrix coordinates)
-!         real(dp),intent(in) :: V           ! matrix element
-!         integer :: ind
-!         !
-!         ind = sub2ind(dims=tb%tbvsk(i)%dims,sub=[alpha,beta])
-!         !
-!         tb%tbvsk(i)%V(ind) = V
-!         !
-!     end subroutine set_Vsk
+    subroutine     set_Vsk_dummies(tb,flags)
+        ! flags = seq/rand
+        implicit none
+        !
+        class(am_class_tight_binding), intent(inout) :: tb
+        character(*), intent(in) :: flags
+        integer :: i, j, k, alpha, beta
+        !
+        ! set irreducible matrix elements
+        do i = 1, tb%nVs
+            if      (index(flags, 'seq').ne.0) then; tb%V(i) = i
+            elseif  (index(flags,'rand').ne.0) then; tb%V(i) = rand()
+            else
+                stop 'Unknown flag set_Vsk_dummies'
+            endif
+        enddo
+        !
+        ! transfer irreducible matrix elements to each shell
+        do i = 1, tb%nVs
+            k     = tb%V_ind(1,i)
+            alpha = tb%V_ind(2,i)
+            beta  = tb%V_ind(3,i)
+            j     = sub2ind(dims=tb%tbvsk(k)%dims, sub=[alpha,beta])
+            !
+            tb%tbvsk(k)%V(j) = tb%V(i)
+        enddo
+        !
+        ! once the irreducible matrix elements have been copied, symmetrize
+        do k = 1, tb%nshells
+            tb%tbvsk(k)%V(:) = matmul(tb%tbvsk(k)%relations,tb%tbvsk(k)%V(:))
+        enddo
+    end subroutine set_Vsk_dummies
 
     subroutine     write_irreducible_Vsk(tb)
         !
