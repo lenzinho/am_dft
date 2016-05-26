@@ -251,6 +251,22 @@ contains
                 ! if ip_id < 0 -> the irreducible pair has its indices flipped with respect to the primitive pair
                 ! as a result, the matrix elements need to be transposed and the signed adjusted to reflect oribtal parity
                 if (pp%ip_id(k).lt.0) then
+                    ! PROBLEM IS THAT 1) 
+                    ! The hamiltonian top right section should look like this, as obtained from the symmetry relations
+                    !      1     2     2     2
+                    !     -2     4     3     3
+                    !     -2     3     4     3
+                    !     -2     3     3     4
+                    ! Instead, what is obtained looks like this:
+                    !      3    -4     4    -4
+                    !      4     6    -5     5
+                    !     -4    -5     6    -5
+                    !      4     5    -5     6
+                    ! clearly the units have been messed up somwhere....
+                    !
+                    ! PROBLEM NUMBER 2 IS THAT
+                    ! not sure how to apply sign change for the bottom right part of hamiltonian... thought it had to do with pp%ip_id but that' can't be because that cannot distinguish between primitive cell sites, it only distinguishes atoms basd on Z.
+
                 Hsub(S(m):E(m), S(n):E(n)) = &
                 Hsub(S(m):E(m), S(n):E(n)) * transp_parity_sign(atom_m=ic%atom(i), atom_n=ic%atom(j))
                 endif
