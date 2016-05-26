@@ -111,11 +111,11 @@ contains
         !
         implicit none
         !
-        class(am_class_fbz), intent(out) :: fbz
+        class(am_class_fbz)     ,intent(out) :: fbz
         type(am_class_prim_cell), intent(in) :: pc
-        integer , intent(in) :: n(3)
-        real(dp), intent(in) :: s(3)
-        type(am_class_options), intent(in) :: opts
+        integer                 , intent(in) :: n(3)
+        real(dp)                , intent(in) :: s(3)
+        type(am_class_options)  , intent(in) :: opts
         real(dp) :: grid_points(3,27) !> voronoi points (27=3^3)
         integer , allocatable :: sorted_indices(:)
         real(dp), allocatable :: sort_parameter(:)
@@ -288,11 +288,11 @@ contains
         !
         implicit none
         !
-        class(am_class_ibz), intent(inout) :: ibz
-        class(am_class_bz) , intent(inout) :: bz
-        type(am_class_seitz_group) , intent(in) :: pg
-        type(am_class_prim_cell), intent(in) :: pc
-        type(am_class_options)  , intent(in) :: opts
+        class(am_class_ibz)    , intent(inout) :: ibz
+        class(am_class_bz)     , intent(inout) :: bz
+        type(am_class_point_group), intent(in) :: pg
+        type(am_class_prim_cell)  , intent(in) :: pc
+        type(am_class_options)    , intent(in) :: opts
         real(dp), allocatable :: grid_points(:,:)
         integer :: i, j
         !

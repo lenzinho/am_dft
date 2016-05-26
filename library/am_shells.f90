@@ -122,7 +122,7 @@ contains
                 allocate(pp%shell(k)%pg_id(pp%shell(k)%natoms))
                 do m = 1, pp%shell(k)%natoms
                     search : do n = 1, pg%nsyms
-                        if (isequal(pp%shell(k)%tau(:,m), matmul(pg%sym(1:3,1:3,n),pp%shell(k)%tau(:,1))) then
+                        if (isequal(pp%shell(k)%tau(:,m), matmul(pg%sym(1:3,1:3,n),pp%shell(k)%tau(:,1)))) then
                             pp%shell(k)%pg_id(m) = n
                             exit search
                         endif

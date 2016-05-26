@@ -32,9 +32,9 @@ module am_tight_binding
         integer :: nshells ! how many shells irreducible atoms
         type(am_class_tens_tb), allocatable :: tbvsk(:)  ! tbvsk(nshells)
         !
-        integer, allocatable :: niVs            ! number of irreducible matrix element values
-        integer, allocatable :: iV(:)           ! their values
-        integer, allocatable :: iV_ind(:,:)     ! their indices iV_ind( [i,j], niVs); j = compound [alpha x beta index, see initialize_tb subroutine]
+        integer, allocatable :: nVs            ! number of irreducible matrix element values
+        integer, allocatable :: V(:)           ! their values
+        integer, allocatable :: V_ind(:,:)     ! their indices V_ind( [i,j], nVs); j = compound [alpha x beta index, see initialize_tb subroutine]
         !
         contains
             procedure :: initialize_tb
@@ -69,27 +69,27 @@ contains
             call get_shell_relations(tbvsk=tb%tbvsk(k), pg=pg, pc=pc, ic=ic, shell=ip%shell(k), opts=opts)
         enddo
         ! get number of independent (irreducible) matrix elements
-        tb%niVs = 0
+        tb%nVs = 0
         do i = 1, tb%nshells
-            tb%niVs = tb%niVs + count(get_independent(tb%tbvsk(i)%relations)) 
+            tb%nVs = tb%nVs + count(get_independent(tb%tbvsk(i)%relations)) 
         enddo
-        ! allocate space for independent (irreducible) matrix elements iV
-        allocate(tb%iV(tb%niVs))
-        tb%iV = 0
-        ! indices : iV_ind( [i, subd2ind(dims=tb%tbvsk(i)%dims,sub=[alpha,beta])], niVs)
-        allocate(tb%iV_ind(3,tb%niVs))
-        tb%iV_ind = 0
+        ! allocate space for independent (irreducible) matrix elements V
+        allocate(tb%V(tb%nVs))
+        tb%V = 0
+        ! indices : V_ind( [i, subd2ind(dims=tb%tbvsk(i)%dims,sub=[alpha,beta])], nVs)
+        allocate(tb%V_ind(3,tb%nVs))
+        tb%V_ind = 0
         k=0
         do i = 1, tb%nshells
             is_independent = get_independent(tb%tbvsk(i)%relations)
             do j = 1, product(tb%tbvsk(i)%dims)
+            if (is_independent(j)) then
                 k=k+1
-                if (is_independent(j)) then
-                    sub = ind2sub(dims=tb%tbvsk(i)%dims, ind=j)
-                    tb%iV_ind(1,k) = i      ! shell
-                    tb%iV_ind(2,k) = sub(1) ! alpha
-                    tb%iV_ind(3,k) = sub(2) ! beta
-                endif
+                sub = ind2sub(dims=tb%tbvsk(i)%dims, ind=j)
+                tb%V_ind(1,k) = i      ! shell
+                tb%V_ind(2,k) = sub(1) ! alpha
+                tb%V_ind(3,k) = sub(2) ! beta
+            endif
             enddo
         enddo
         !
@@ -162,7 +162,7 @@ contains
             allocate(tbvsk%V(tbvsk%dims(1)*tbvsk%dims(2)))
             !
         end subroutine initialize_tbvsk
-        subroutine     get_shell_relations(tbvsk,sg,pg,pc,ic,shell,opts)
+        subroutine     get_shell_relations(tbvsk,pg,pc,ic,shell,opts)
                 !
                 implicit none
                 !
@@ -188,11 +188,11 @@ contains
                 call flat_pg%get_flat_point_group(tens=tbvsk, pg=stab, pc=pc, atom_m=ic%atom(shell%i), atom_n=ic%atom(shell%j))
                 ! get combined relations
                 tbvsk%relations = combine_relations(relationsA=flat_pg%relations, relationsB=flat_ig%relations)
-                !
+                ! 
         end subroutine get_shell_relations
     end subroutine initialize_tb
 
-    function       get_Hamiltonian(tb,tbpg,ic,pp,pc,kpt) result(H)
+    function       get_Hamiltonian(tb,tbpg,ic,pp,kpt) result(H)
         ! 
         ! Get tight binding Hamiltonian at kpt.
         ! 
@@ -202,9 +202,10 @@ contains
         type(am_class_tb_group)      , intent(in) :: tbpg ! point group in tight binding representation
         type(am_class_irre_cell)     , intent(in) :: ic   ! irreducible cell
         type(am_class_pair_shell)    , intent(in) :: pp   ! primitive pairs
-        type(am_class_prim_cell)     , intent(in) :: pc   ! primitive cell
         real(dp)                     , intent(in) :: kpt(3) ! fractional
+        integer    , allocatable :: S(:),E(:)
         complex(dp), allocatable :: Hsub(:,:)
+        complex(dp), allocatable :: H(:,:)
         integer :: m ! primitive atom 1 index 
         integer :: n ! primitive atom 2 index
         integer :: i ! irreducible atom 1 index 
@@ -214,7 +215,7 @@ contains
         allocate(S, source=tbpg%H_start)
         allocate(E, source=tbpg%H_end)
         !
-        ! allocate workspace for H subsection
+        ! allocate workspace for H subsection (initialized later)
         allocate(Hsub(tbpg%nbases,tbpg%nbases))
         ! allocate and initialize
         allocate(H(tbpg%nbases,tbpg%nbases))
@@ -248,10 +249,8 @@ contains
                 Hsub(S(m):E(m), S(n):E(n)) * exp(-itwopi*dot_product(pp%shell(k)%tau(1:3,j), kpt)) ! kpt is in fractional
                 !
             enddo
-            !
+            ! this pair's contribution to the Hamiltonian
             H(S(m):E(m), S(n):E(n)) = H(S(m):E(m), S(n):E(n)) + Hsub(S(m):E(m), S(n):E(n))
-            !
-            call am_print('H'//trim(int2char(k)),H)
             !
         enddo
     end function   get_Hamiltonian
@@ -303,22 +302,20 @@ contains
         !
         implicit none
         !
+        class(am_class_tight_binding), intent(in) :: tb
         integer :: k ! shell index
         integer :: alpha
         integer :: beta
+        integer :: i
         !
-        ! indices : iV_ind( [i, subd2ind(dims=tb%tbvsk(i)%dims,sub=[alpha,beta])], niVs)
-        !
-        do i = 1, tb%niVs
-            !
+        do i = 1, tb%nVs
             ! get shell index
-            k = iV_ind(1,i)
+            k     = tb%V_ind(1,i)
             ! get orbital indices
-            alpha = iV_ind(2,i)
-            beta  = iV_ind(3,i)
-            !
+            alpha = tb%V_ind(2,i)
+            beta  = tb%V_ind(3,i)
+            ! write 
             write(*,*) k, alpha, beta, tb%V(i)
-            !
         enddo
 
     end subroutine write_irreducible_Vsk

@@ -214,11 +214,11 @@ module am_symmetry_rep
         ! get slice of rotation pg_id corresponding to atom pc_id
         implicit none
         !
-        class(am_class_tb_group), intent(out) :: tbpg ! point symmetries in tight binding basis
-        integer                 , intent(in)  :: pg_id, pc_id
+        class(am_class_tb_group), intent(in) :: tbpg ! point symmetries in tight binding basis
+        integer                 , intent(in) :: pg_id, pc_id
         real(dp), allocatable :: slice(:,:)
         !
-        allocate(slice, source = tbpg%sym(tbpg%H_start(pc_id):tbpg%H_end(pc_id), tbpg%H_start(pc_id):tbpg%H_end(pc_id), i) )
+        allocate(slice, source = tbpg%sym(tbpg%H_start(pc_id):tbpg%H_end(pc_id), tbpg%H_start(pc_id):tbpg%H_end(pc_id), pg_id) )
         !
     end function   get_slice
 
@@ -319,10 +319,10 @@ module am_symmetry_rep
 
     subroutine     get_flat_point_group(flat_pg,tens,pg,pc,atom_m,atom_n)
         !
-        class(am_class_flat_group), intent(out):: flat_pg  ! flat point group
-        class(am_class_tensor)    , intent(in) :: tens ! tensor
-        class(am_class_group)     , intent(in) :: pg   ! seitz point group (rev stab rot groups as well)
-        type(am_class_prim_cell)  , intent(in) :: pc   ! primitive cell
+        class(am_class_flat_group), intent(out):: flat_pg ! flat point group
+        class(am_class_tensor)    , intent(in) :: tens    ! tensor
+        class(am_class_group)     , intent(in) :: pg      ! seitz point group (rev stab rot groups as well)
+        type(am_class_prim_cell)  , intent(in) :: pc      ! primitive cell
         type(am_class_atom)       , intent(in), optional :: atom_m ! only required if property = tb
         type(am_class_atom)       , intent(in), optional :: atom_n ! only required if property = tb
         real(dp), allocatable :: R_cart(:,:)
@@ -330,7 +330,7 @@ module am_symmetry_rep
         logical  :: is_seitz
         !
         ! basic checks
-        if (index(tens%flags,'tight').ne.0) then
+        if (index(tens%property,'tight').ne.0) then
             if (.not.present(atom_m)) stop 'atom_m is required for the creation of tb flat pg'
             if (.not.present(atom_n)) stop 'atom_n is required for the creation of tb flat pg'
         endif
@@ -359,9 +359,11 @@ module am_symmetry_rep
                 R_cart = pg%sym(:,:,i)
             endif
             ! determine rotation in the basis
-            if     (index(tens%flags,'axial').ne.0) then; flat_pg%sym(:,:,i) = kron_pow(R_cart, tens%rank) * det(R_cart)
-            elseif (index(tens%flags,'polar').ne.0) then; flat_pg%sym(:,:,i) = kron_pow(R_cart, tens%rank)
-            elseif (index(tens%flags,'tight').ne.0) then; flat_pg%sym(:,:,i) = kron(ps2tb(R_cart,atom_m), ps2tb(R_cart,atom_n))
+            if     (index(tens%flags   ,'axial').ne.0) then; flat_pg%sym(:,:,i) = kron_pow(R_cart, tens%rank) * det(R_cart)
+            elseif (index(tens%flags   ,'polar').ne.0) then; flat_pg%sym(:,:,i) = kron_pow(R_cart, tens%rank)
+            elseif (index(tens%property,'tight').ne.0) then; flat_pg%sym(:,:,i) = kron(ps2tb(R_cart,atom_m), ps2tb(R_cart,atom_n))
+            else;
+                stop 'tens%flags unknown'
             endif
         enddo
         !
@@ -376,7 +378,10 @@ module am_symmetry_rep
         ! get relations
         flat_pg%relations = flat_pg%get_relations()
         !
-        if (.not.isequal(flat_pg%sym(:,:,1),eye(flat_pg%nbases))) stop 'flat_pg: Identity is not first.'
+        if (.not.isequal(flat_pg%sym(:,:,1),eye(flat_pg%nbases))) then
+            call am_print('flat_pg%sym(:,:,1)',flat_pg%sym(:,:,1))
+            stop 'flat_pg: Identity is not first.'
+        endif
         !
     end subroutine get_flat_point_group
 
