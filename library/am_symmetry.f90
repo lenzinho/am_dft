@@ -555,6 +555,17 @@ contains
     
     subroutine     get_reversal_group(revg,sg,v,opts)
         !
+        ! there is a bug in the reversal group. Si-Si first naerest neighbor shells on different primitive cell atoms does not match.
+        !
+        !  shell Zi-Zj   i-j   m-n    m   stab.    rot.    rev. |v(cart)|           v(cart)             |v(frac)|           v(frac)
+        !  ----- ----- ----- ----- ---- ------- ------- ------- --------- ----------------------------- --------- -----------------------------
+        !      1 Si-Si   1-1   1-1    1     o_h     o_h     t_d     0.000    -0.000    -0.000    -0.000     0.000    -0.000    -0.000    -0.000
+        !      2 Si-Si   1-1   1-2    4    c_3v     o_h    d_3d     2.351     1.357     1.357     1.357     0.217     0.125     0.125     0.125
+        !  primitive atom 2 at 0.12,0.12,0.12 (frac) has 2 nearest-neighbor shells
+        !  shell Zi-Zj   i-j   m-n    m   stab.    rot.    rev. |v(cart)|           v(cart)             |v(frac)|           v(frac)
+        !  ----- ----- ----- ----- ---- ------- ------- ------- --------- ----------------------------- --------- -----------------------------
+        !      3 Si-Si   1-1   2-2    1     o_h     o_h     t_d     0.000     0.000     0.000     0.000     0.000     0.000     0.000     0.000
+        !      4 Si-Si   1-1   2-1    4    c_3v     o_h    c_3v     2.351    -1.357    -1.357    -1.357     0.217    -0.125    -0.125    -0.125
         implicit none
         !
         class(am_class_point_group), intent(out):: revg ! reversal group associated with vector v, i.e. the space symmetries with bring v to [0,0,0], essentially flipping the atoms at the corners of the vector

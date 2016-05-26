@@ -470,9 +470,9 @@ contains
             ! note that totalshells is not the absolute number of pairs, it is the number of shells on all atoms; i.e. the number of unique pairs all atoms have by themselves without referencing other atoms.
             !
             ! allocate space 
-            allocate(d(pp%nshells))   ! distance between pair of atoms (having atoms the same distance apart is a prerequesit for the bond to be the same)
-            allocate(s(pp%nshells))   ! stabilizer group id (having the same stabilier group is a prerequesit for the bond to be the same)
-            allocate(Z(2,pp%nshells)) ! atomic number of elements in pair (having the same types of atoms is a prerequesit for the bond to be the same)
+            allocate(d(pp%nshells))         ! distance between pair of atoms (having atoms the same distance apart is a prerequesit for the bond to be the same)
+            allocate(s(pp%nshells))         ! stabilizer group id (having the same stabilier group is a prerequesit for the bond to be the same)
+            allocate(Z(2,pp%nshells))       ! atomic number of elements in pair (having the same types of atoms is a prerequesit for the bond to be the same)
             allocate(isflipped(pp%nshells)) ! indicates which pairs were flipped in the comparison, returns negative ip_id if the corresponding bond was flipped
             !
             isflipped = .false.
@@ -486,6 +486,13 @@ contains
                 if (Z(1,k).gt.Z(2,k)) then
                     isflipped(k) = .true.
                     Z([1,2],k) = Z([2,1],k)
+                endif
+                ! flip again based on primitive cell index
+                if (pp%shell(k)%m.gt.pp%shell(k)%n) then
+                    ! action of .not.:
+                    ! if true  -> false
+                    ! if false -> tru
+                    isflipped(k) = .not.isflipped(k)
                 endif
                 ! record stabilzier group
                 call stab%get_stabilizer_group(pg=pg, v=v, opts=opts)

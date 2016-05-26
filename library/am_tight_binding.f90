@@ -248,6 +248,9 @@ contains
                 ! rotate matrix elements as needed to get from the tau(:,1) => tau(:,x)
                 Hsub(S(m):E(m), S(n):E(n)) = matmul(Hsub(S(m):E(m), S(n):E(n)), tbpg%get_slice(pg_id=pp%shell(k)%pg_id(p), pc_id=n))
                 Hsub(S(m):E(m), S(n):E(n)) = matmul(transpose(tbpg%get_slice(pg_id=pp%shell(k)%pg_id(p), pc_id=m)), Hsub(S(m):E(m), S(n):E(n)))
+                if (m.eq.2 .and. n.eq.1) then
+                call am_print('Hsub(S(m):E(m), S(n):E(n))',Hsub(S(m):E(m), S(n):E(n)))
+                endif
                 ! if ip_id < 0 -> the irreducible pair has its indices flipped with respect to the primitive pair
                 ! as a result, the matrix elements need to be transposed and the signed adjusted to reflect oribtal parity
                 if (pp%ip_id(k).lt.0) then
@@ -328,7 +331,7 @@ contains
         n = tb%tbvsk(id)%dims(2)
         !
         if (id.lt.0) then
-            allocate(V(tb%tbvsk(id)%dims(2), tb%tbvsk(id)%dims(1)))
+            allocate(V(n,m))
             V = adjoint( reshape(tb%tbvsk(id)%V, [m,n]) )
         else
             allocate(V(m,n))
@@ -354,6 +357,11 @@ contains
             endif
         enddo
         !
+        ! clear irreducible matrix elements in each shell
+        do k = 1, tb%nshells
+            tb%tbvsk(k)%V = 0
+        enddo
+        !
         ! transfer irreducible matrix elements to each shell
         do i = 1, tb%nVs
             k     = tb%V_ind(1,i)
@@ -368,6 +376,17 @@ contains
         do k = 1, tb%nshells
             tb%tbvsk(k)%V(:) = matmul(tb%tbvsk(k)%relations,tb%tbvsk(k)%V(:))
         enddo
+        ! things are looking good up to this point.
+        !  ... tb%tbvsk(k)%V(:) =
+        !              1.00000        0.00000        0.00000        0.00000
+        !              0.00000        2.00000        0.00000        0.00000
+        !              0.00000        0.00000        2.00000        0.00000
+        !              0.00000        0.00000        0.00000        2.00000
+        !  ... tb%tbvsk(k)%V(:) =
+        !              3.00000        4.00000        4.00000        4.00000
+        !             -4.00000        6.00000        5.00000        5.00000
+        !             -4.00000        5.00000        6.00000        5.00000
+        !             -4.00000        5.00000        5.00000        6.00000
     end subroutine set_Vsk_dummies
 
     subroutine     write_irreducible_Vsk(tb)
