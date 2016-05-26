@@ -243,34 +243,54 @@ contains
         implicit none
         !
         class(am_class_group), intent(in) :: grp
-        integer :: i
         integer :: nreps
         complex(dp) , allocatable :: rep_chi(:,:)
         character(7), allocatable :: rep_label(:)
         !
-        ! start rep counter
-        i=0
-        !
         select type (grp)
         class is (am_class_point_group) 
-            nreps = 5
+            nreps = 15
             allocate(rep_chi(nreps,grp%cc%nclasses))
             allocate(rep_label(nreps))
             ! representation based on basis functions
-            i=i+1; rep_label(i) = 'rep'
-            rep_chi(i,:) = get_rep_characters(sym=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_label(1) = 'rep'
+            rep_chi(1,:) = get_rep_characters(   sym=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
             ! representation based on s orbitals
-            i=i+1; rep_label(i) = 's D^(0)'
-            rep_chi(i,:) = get_orb_characters(l=0, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_label(2) = 's D^(0)'
+            rep_chi(2,:) = get_orb_characters(l=0, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
             ! representation based on p orbitals
-            i=i+1; rep_label(i) = 'p D^(1)'
-            rep_chi(i,:) = get_orb_characters(l=1, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_label(3) = 'p D^(1)'
+            rep_chi(3,:) = get_orb_characters(l=1, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
             ! representation based on d orbitals
-            i=i+1; rep_label(i) = 'd D^(2)'
-            rep_chi(i,:) = get_orb_characters(l=2, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_label(4) = 'd D^(2)'
+            rep_chi(4,:) = get_orb_characters(l=2, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
             ! representation based on f orbitals
-            i=i+1; rep_label(i) = 'f D^(3)'
-            rep_chi(i,:) = get_orb_characters(l=3, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_label(5) = 'f D^(3)'
+            rep_chi(5,:) = get_orb_characters(l=3, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            ! orbital products involving s orbitals
+            rep_label(6) = 's * s'
+            rep_chi(6,:) = rep_chi(2,:) * rep_chi(2,:)
+            rep_label(7) = 's * p'
+            rep_chi(7,:) = rep_chi(2,:) * rep_chi(3,:)
+            rep_label(8) = 's * d'
+            rep_chi(8,:) = rep_chi(2,:) * rep_chi(4,:)
+            rep_label(9) = 's * f'
+            rep_chi(9,:) = rep_chi(2,:) * rep_chi(5,:)
+            ! orbital products involving p orbitals
+            rep_label(10)= 'p * p'
+            rep_chi(10,:)= rep_chi(3,:) * rep_chi(3,:)
+            rep_label(11)= 'p * d'
+            rep_chi(11,:)= rep_chi(3,:) * rep_chi(4,:)
+            rep_label(12)= 'p * f'
+            rep_chi(12,:)= rep_chi(3,:) * rep_chi(5,:)
+            ! orbital products involving d orbitals
+            rep_label(13)= 'd * d'
+            rep_chi(13,:)= rep_chi(4,:) * rep_chi(4,:)
+            rep_label(14)= 'd * f'
+            rep_chi(14,:)= rep_chi(4,:) * rep_chi(5,:)
+            ! orbital products involving f orbitals
+            rep_label(15)= 'f * f'
+            rep_chi(15,:)= rep_chi(5,:) * rep_chi(5,:)
         class is (am_class_space_group) 
             ! do nothing.
         class default
@@ -278,8 +298,8 @@ contains
             allocate(rep_chi(nreps,grp%cc%nclasses))
             allocate(rep_label(nreps))
             ! representation based on basis functions
-            i=i+1; rep_label(i) = 'rep'
-            rep_chi(i,:) = get_rep_characters(sym=grp%sym, nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_label(1) = 'rep'
+            rep_chi(1,:) = get_rep_characters(sym=grp%sym, nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
         end select
         !
         !

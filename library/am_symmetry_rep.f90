@@ -36,10 +36,13 @@ module am_symmetry_rep
         procedure :: get_regular_group
     end type am_class_regular_group
 
-    type, public, extends(am_class_group) :: am_class_hamiltonian_group
+    type, public, extends(am_class_group) :: am_class_tb_group
+        integer, allocatable :: H_start(:) ! Hstart(m) start of hamiltonian section corresponding to atom m
+        integer, allocatable :: H_end(:)   ! Hend(m)   end of hamiltonian section corresponding to atom m
         contains
-        procedure :: get_hamiltonian_point_group
-    end type am_class_hamiltonian_group
+        procedure :: get_tight_binding_point_group
+        procedure :: get_slice
+    end type am_class_tb_group
 
     type, public :: am_class_tensor
         character(100)        :: property       ! name of propertty
@@ -109,16 +112,16 @@ module am_symmetry_rep
         end function   rep_regular
 	end subroutine get_regular_group
 
-    ! get hamilonian point group
+    ! get point group in the hamilonian tight binding basis 
 
-    subroutine     get_hamiltonian_point_group(ham_pg,pg,pc,ic)
+    subroutine     get_tight_binding_point_group(tbpg,pg,pc,ic)
         !
         implicit none
         !
-        class(am_class_hamiltonian_group), intent(out) :: ham_pg ! 
-        class(am_class_group)            , intent(in)  :: pg     ! seitz point group (rev stab rot groups as well)
-        type(am_class_prim_cell)         , intent(in)  :: pc     ! primitive cell
-        type(am_class_irre_cell)         , intent(in)  :: ic     ! irreducible cell
+        class(am_class_tb_group), intent(out) :: tbpg ! point symmetries in tight binding basis
+        class(am_class_group)   , intent(in)  :: pg   ! seitz point group (rev stab rot groups as well)
+        type(am_class_prim_cell), intent(in)  :: pc   ! primitive cell
+        type(am_class_irre_cell), intent(in)  :: ic   ! irreducible cell
         real(dp) :: R_cart(3,3)
         logical  :: is_seitz
         integer  :: i
@@ -131,13 +134,21 @@ module am_symmetry_rep
             is_seitz = .false.
         end select
         !
-        ! number of bases functions in representation
-        ham_pg%nbases = size( ps2tb_H(R=eye(3), pc=pc, ic=ic), 1)
+        ! get number of bases functions in representation (see below) ...
+        tbpg%nbases = 0
+        ! ... and also determine subsections of rotations in Hamiltonian basis corresponding to each atom
+        allocate(tbpg%H_start(pc%natoms))
+        allocate(tbpg%H_end(pc%natoms))
+        do i = 1, pc%natoms
+            tbpg%H_start(i) = tbpg%nbases + 1
+            tbpg%nbases     = tbpg%nbases + ic%atom(pc%ic_id(i))%norbitals
+            tbpg%H_end(i)   = tbpg%nbases
+        enddo
         ! number of symmetries
-        ham_pg%nsyms = pg%nsyms
+        tbpg%nsyms = pg%nsyms
         ! generate intrinsic symmetries
-        allocate(ham_pg%sym(ham_pg%nbases,ham_pg%nbases,ham_pg%nsyms))
-        ham_pg%sym = 0
+        allocate(tbpg%sym(tbpg%nbases,tbpg%nbases,tbpg%nsyms))
+        tbpg%sym = 0
         ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
         do i = 1, pg%nsyms
             ! convert to cartesian
@@ -147,25 +158,69 @@ module am_symmetry_rep
                 R_cart = pg%sym(1:3,1:3,i)
             endif
             ! determine rotation in the hamiltonian basis
-            ham_pg%sym(:,:,i) = ps2tb_H(R=R_cart, pc=pc, ic=ic)
+            tbpg%sym(:,:,i) = ps2tb_H(R=R_cart, pc=pc, ic=ic)
         enddo
         !
         ! copy symmetry ids
-        allocate(ham_pg%ps_id, source=pg%ps_id)
+        allocate(tbpg%ps_id, source=pg%ps_id)
         ! copy classes
-        allocate(ham_pg%cc%id, source=pg%cc%id)
+        allocate(tbpg%cc%id, source=pg%cc%id)
         ! copy multiplication table
-        ham_pg%mt = pg%mt
+        tbpg%mt = pg%mt
         ! copy character table
-        ham_pg%ct = pg%ct
+        tbpg%ct = pg%ct
         !
-        if (.not.isequal(ham_pg%sym(:,:,1),eye(ham_pg%nbases))) then
+        if (.not.isequal(tbpg%sym(:,:,1),eye(tbpg%nbases))) then
             call am_print('pg%sym(:,:,1)',pg%sym(:,:,1))
-            call am_print('ham_pg%sym(:,:,1)',ham_pg%sym(:,:,1))
-            stop 'ham_pg: Identity is not first.'
+            call am_print('tbpg%sym(:,:,1)',tbpg%sym(:,:,1))
+            stop 'tbpg: Identity is not first.'
         endif
         !
-    end subroutine get_hamiltonian_point_group
+        contains
+        function       ps2tb_H(R,pc,ic) result(H)
+            ! produces rotation which commutes with the entire Hamiltonian (useful building Hamiltonian and probably later for kpoints stuff too)
+            implicit none
+            !
+            real(dp), intent(in) :: R(3,3)
+            type(am_class_prim_cell), intent(in) :: pc ! primitive cell
+            type(am_class_irre_cell), intent(in) :: ic ! irreducible cell
+            real(dp), allocatable :: H(:,:)
+            integer , allocatable :: H_start(:), H_end(:)
+            integer :: Hdim ! hamiltonian dimensions
+            integer :: i
+            !
+            ! allocate space for defining subsections of rotation in Hamiltonian basis
+            allocate(H_start(pc%natoms))
+            allocate(H_end(pc%natoms))
+            ! determine subsections of rotations in Hamiltonian basis corresponding to each atom
+            Hdim = 0
+            do i = 1, pc%natoms
+                H_start(i) = Hdim + 1
+                Hdim = Hdim + ic%atom(pc%ic_id(i))%norbitals
+                H_end(i) = Hdim
+            enddo
+            ! allocate and initialize space for rotations in Hamiltonin bais
+            allocate(H(Hdim,Hdim))
+            H = 0.0_dp
+            ! construct rotation in the Hamiltonian basis
+            do i = 1, pc%natoms
+                H(H_start(i):H_end(i), H_start(i):H_end(i)) = ps2tb(R=R, atom=ic%atom(pc%ic_id(i)) )
+            enddo
+            !
+        end function   ps2tb_H
+    end subroutine get_tight_binding_point_group
+
+    function       get_slice(tbpg,pg_id,pc_id) result(slice)
+        ! get slice of rotation pg_id corresponding to atom pc_id
+        implicit none
+        !
+        class(am_class_tb_group), intent(out) :: tbpg ! point symmetries in tight binding basis
+        integer                 , intent(in)  :: pg_id, pc_id
+        real(dp), allocatable :: slice(:,:)
+        !
+        allocate(slice, source = tbpg%sym(tbpg%H_start(pc_id):tbpg%H_end(pc_id), tbpg%H_start(pc_id):tbpg%H_end(pc_id), i) )
+        !
+    end function   get_slice
 
     ! operators on flat representations
 
@@ -594,40 +649,6 @@ module am_symmetry_rep
         enddo
         !
     end function   ps2tb
-
-    ! produces rotation which commutes with the entire Hamiltonian (useful building Hamiltonian and probably later for kpoints stuff too)
-
-    function       ps2tb_H(R,pc,ic) result(H)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: R(3,3)
-        type(am_class_prim_cell), intent(in) :: pc ! primitive cell
-        type(am_class_irre_cell), intent(in) :: ic ! irreducible cell
-        real(dp), allocatable :: H(:,:)
-        integer , allocatable :: H_start(:), H_end(:)
-        integer :: Hdim ! hamiltonian dimensions
-        integer :: i
-        !
-        ! allocate space for defining subsections of rotation in Hamiltonian basis
-        allocate(H_start(pc%natoms))
-        allocate(H_end(pc%natoms))
-        ! determine subsections of rotations in Hamiltonian basis corresponding to each atom
-        Hdim = 0
-        do i = 1, pc%natoms
-            H_start(i) = Hdim + 1
-            Hdim = Hdim + ic%atom(pc%ic_id(i))%norbitals
-            H_end(i) = Hdim
-        enddo
-        ! allocate and initialize space for rotations in Hamiltonin bais
-        allocate(H(Hdim,Hdim))
-        H = 0.0_dp
-        ! construct rotation in the Hamiltonian basis
-        do i = 1, pc%natoms
-            H(H_start(i):H_end(i), H_start(i):H_end(i)) = ps2tb(R=R, atom=ic%atom(pc%ic_id(i)) )
-        enddo
-        !
-    end function   ps2tb_H
 
     ! super operators
 

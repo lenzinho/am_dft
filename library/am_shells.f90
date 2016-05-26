@@ -20,7 +20,8 @@ module am_shells
         integer :: j ! identifies irreducible atoms (shell)
         integer :: m ! identifies primitive atoms (center)
         integer :: n ! identifies primitive atoms (shell)
-        type(am_class_point_group) :: rotg ! local point groupas seen by rotating the shell
+        integer, allocatable :: pg_id(:)   ! identifies the symmetry in the point group which takes atom tau(:,1) to atom(:,i)
+        type(am_class_point_group) :: rotg ! local point group as seen by rotating the shell
         type(am_class_point_group) :: revg ! reversal group of a typical bond in the shell v
         type(am_class_point_group) :: stab ! stabilizer of a typical bond in the shell v
     end type am_shell_cell
@@ -58,6 +59,7 @@ contains
         integer  :: nshells ! number of shells
         real(dp) :: D(3) ! center of sphere in fractional coordinates
         integer  :: k,i,j
+        integer  :: m,n
         !
         select type (pc)
         type is (am_class_prim_cell); pctype = 'primitive'
@@ -108,15 +110,24 @@ contains
             ! get number of pair elements (essentially the oribital weights)
             shell_nelements = nelements(shell_id)
             do j = 1, nshells
-                !
                 if (allocated(ind)) deallocate(ind)
                 allocate(ind,source=shell_member(j,1:shell_nelements(j)))
                 ! create the jth shell centered on primitive atom i
                 k=k+1
                 call pp%shell(k)%copy(uc=sphere)
                 call pp%shell(k)%filter(indices=ind)
-                ! take not of shell center
+                ! take note of shell center
                 pp%shell(k)%center = D
+                ! take note of point symmetry which takes atom tau(:,1) to atom tau(:,i)
+                allocate(pp%shell(k)%pg_id(pp%shell(k)%natoms))
+                do m = 1, pp%shell(k)%natoms
+                    search : do n = 1, pg%nsyms
+                        if (isequal(pp%shell(k)%tau(:,m), matmul(pg%sym(1:3,1:3,n),pp%shell(k)%tau(:,1))) then
+                            pp%shell(k)%pg_id(m) = n
+                            exit search
+                        endif
+                    enddo search
+                enddo
                 ! get irreducible atom indices
                 pp%shell(k)%i = pc%ic_id(i)
                 pp%shell(k)%j = pp%shell(k)%ic_id(1)

@@ -34,9 +34,7 @@ module am_tight_binding
         !
         integer, allocatable :: niVs            ! number of irreducible matrix element values
         integer, allocatable :: iV(:)           ! their values
-        integer, allocatable :: iV_indices(:,:) ! their indices iV_indices( [i,j], niVs); j = compound [alpha x beta index, see set Vsk subroutine]
-        !
-        type(am_class_hamiltonian_group) :: ham_pg
+        integer, allocatable :: iV_ind(:,:)     ! their indices iV_ind( [i,j], niVs); j = compound [alpha x beta index, see initialize_tb subroutine]
         !
         contains
             procedure :: initialize_tb
@@ -44,18 +42,18 @@ module am_tight_binding
 
 contains
 
-    subroutine     initialize_tb(tb,sg,pg,ip,ic,pc,opts)
+    subroutine     initialize_tb(tb,pg,ip,ic,pc,opts)
         !
         implicit none
         !
         class(am_class_tight_binding), intent(out) :: tb   ! tight binding parameters
-        type(am_class_space_group)   , intent(in)  :: sg   ! seitz space group
         type(am_class_point_group)   , intent(in)  :: pg   ! seitz point group
         type(am_class_prim_cell)     , intent(in)  :: pc   ! primitive cell
         type(am_class_irre_cell)     , intent(in)  :: ic ! irreducible cell
         type(am_class_pair_shell)    , intent(in)  :: ip   ! irreducible pairs
         type(am_class_options)       , intent(in)  :: opts
         logical, allocatable :: is_independent(:)
+        integer :: sub(2)
         integer :: nterms
         integer :: i,j,k
         integer :: a,b,c
@@ -64,33 +62,33 @@ contains
         !
         if (opts%verbosity.ge.1) call am_print_title('Imposing symmetry constraints on tight-binding model')
         !
-        call tb%ham_pg%get_hamiltonian_point_group(pg=pg, pc=pc, ic=ic)
-        !
         tb%nshells = ip%nshells
         allocate(tb%tbvsk(tb%nshells))
         !
         do k = 1, tb%nshells
-            call get_shell_relations(tbvsk=tb%tbvsk(k), sg=sg, pg=pg, pc=pc, ic=ic, shell=ip%shell(k), opts=opts)
+            call get_shell_relations(tbvsk=tb%tbvsk(k), pg=pg, pc=pc, ic=ic, shell=ip%shell(k), opts=opts)
         enddo
         ! get number of independent (irreducible) matrix elements
         tb%niVs = 0
         do i = 1, tb%nshells
             tb%niVs = tb%niVs + count(get_independent(tb%tbvsk(i)%relations)) 
         enddo
-        ! allocate space for iV independent (irreducible) matrix elements
+        ! allocate space for independent (irreducible) matrix elements iV
         allocate(tb%iV(tb%niVs))
         tb%iV = 0
-        ! indices : iV_indices( [i, subd2ind(dims=tb%tbvsk(i)%dims,sub=[alpha,beta])], niVs)
-        allocate(tb%iV_indices(2,tb%niVs))
-        tb%iV_indices = 0
+        ! indices : iV_ind( [i, subd2ind(dims=tb%tbvsk(i)%dims,sub=[alpha,beta])], niVs)
+        allocate(tb%iV_ind(3,tb%niVs))
+        tb%iV_ind = 0
         k=0
         do i = 1, tb%nshells
             is_independent = get_independent(tb%tbvsk(i)%relations)
             do j = 1, product(tb%tbvsk(i)%dims)
                 k=k+1
                 if (is_independent(j)) then
-                    tb%iV_indices(1,k) = i
-                    tb%iV_indices(2,k) = j
+                    sub = ind2sub(dims=tb%tbvsk(i)%dims, ind=j)
+                    tb%iV_ind(1,k) = i      ! shell
+                    tb%iV_ind(2,k) = sub(1) ! alpha
+                    tb%iV_ind(3,k) = sub(2) ! beta
                 endif
             enddo
         enddo
@@ -162,14 +160,13 @@ contains
             enddo
             ! allocate space for matrix elements
             allocate(tbvsk%V(tbvsk%dims(1)*tbvsk%dims(2)))
-            ! allocate space for matrix descriptors
+            !
         end subroutine initialize_tbvsk
         subroutine     get_shell_relations(tbvsk,sg,pg,pc,ic,shell,opts)
                 !
                 implicit none
                 !
-                type(am_class_tens_tb)      , intent(inout) :: tbvsk
-                type(am_class_space_group), intent(in) :: sg   ! seitz space group
+                type(am_class_tens_tb)    , intent(inout) :: tbvsk
                 type(am_class_point_group), intent(in) :: pg   ! seitz point group
                 type(am_class_prim_cell)  , intent(in) :: pc
                 type(am_class_irre_cell)  , intent(in) :: ic
@@ -181,55 +178,46 @@ contains
                 !
                 ! get rank, dims, flags, property
                 call initialize_tbvsk(tbvsk=tbvsk, pc=pc, ic=ic, shell=shell)
-                !
                 ! determine intrinsic symmetries (if both irreducible atoms are of the same irreducible type)
                 ! Interchange of indices: (l,l',m) = (-1)^(l+l') * (l',l,m), due to parity of wavefunction. (s,d are even under inversion, p,f are odd)
-                ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245.
+                ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245. Also see R. Martin.
                 call flat_ig%get_flat_intrinsic_group(tens=tbvsk, atom_m=ic%atom(shell%i), atom_n=ic%atom(shell%j) )
-                ! 
                 ! determine stabilizers relations
                 call stab%get_stabilizer_group(pg=pg, v=shell%tau(1:3,1), opts=opts)
                 ! get stabilizer symmetries in the flattened hamiltonin basis
                 call flat_pg%get_flat_point_group(tens=tbvsk, pg=stab, pc=pc, atom_m=ic%atom(shell%i), atom_n=ic%atom(shell%j))
-                !
                 ! get combined relations
                 tbvsk%relations = combine_relations(relationsA=flat_pg%relations, relationsB=flat_ig%relations)
                 !
         end subroutine get_shell_relations
     end subroutine initialize_tb
 
-    function       get_Hamiltonian(tb,ic,pp,pc,kpt) result(H)
+    function       get_Hamiltonian(tb,tbpg,ic,pp,pc,kpt) result(H)
         ! 
         ! Get tight binding Hamiltonian at kpt.
         ! 
         implicit none
         !
-        class(am_class_tight_binding), intent(in) :: tb ! tight binding matrix elements
-        type(am_class_irre_cell)     , intent(in) :: ic ! irreducible cell
-        type(am_class_pair_shell)    , intent(in) :: pp ! primitive pairs
-        type(am_class_prim_cell)     , intent(in) :: pc ! primitive cell
+        class(am_class_tight_binding), intent(in) :: tb   ! tight binding matrix elements
+        type(am_class_tb_group)      , intent(in) :: tbpg ! point group in tight binding representation
+        type(am_class_irre_cell)     , intent(in) :: ic   ! irreducible cell
+        type(am_class_pair_shell)    , intent(in) :: pp   ! primitive pairs
+        type(am_class_prim_cell)     , intent(in) :: pc   ! primitive cell
         real(dp)                     , intent(in) :: kpt(3) ! fractional
-        complex(dp), allocatable :: H(:,:)
-        integer    , allocatable :: H_start(:), H_end(:)
-        real(dp) :: R(3)
-        integer :: Hdim ! hamiltonian dimensions
+        complex(dp), allocatable :: Hsub(:,:)
         integer :: m ! primitive atom 1 index 
         integer :: n ! primitive atom 2 index
-        integer :: i,j,k
+        integer :: i ! irreducible atom 1 index 
+        integer :: j ! irreducible atom 2 index
+        integer :: k ! shell
         !
-        ! allocate space for Hamiltonian
-        ! determine Hamiltonian subsections corresponding to primitive atoms
-        Hdim = 0
-        allocate(H_start(pc%natoms))
-        allocate(H_end(pc%natoms))
-        do i = 1, pc%natoms
-            H_start(i) = Hdim + 1
-            Hdim = Hdim + ic%atom( pc%ic_id(i) )%norbitals
-            H_end(i) = Hdim
-        enddo
+        allocate(S, source=tbpg%H_start)
+        allocate(E, source=tbpg%H_end)
         !
+        ! allocate workspace for H subsection
+        allocate(Hsub(tbpg%nbases,tbpg%nbases))
         ! allocate and initialize
-        allocate(H(Hdim,Hdim))
+        allocate(H(tbpg%nbases,tbpg%nbases))
         H = cmplx(0,0,dp)
         !
         ! construct Hamiltonian
@@ -240,25 +228,28 @@ contains
             ! irreducible atom indicies
             i = pp%shell(k)%i
             j = pp%shell(k)%j
+            ! reset workspace
+            Hsub = cmplx(0,0,dp)
             ! compute bloch sum by loop over atoms in shell
             do j = 1, pp%shell(k)%natoms
-                ! get vector connecting primitive atom to atom j in shell k (fractional)
-                R = pp%shell(k)%tau(1:3,j)
-                !
-                ! NEED TO ROTATE V_sk
-                H(H_start(m):H_end(m), H_start(n):H_end(n)) = get_Vsk(tb=tb, ip_id=pp%ip_id(k))
-                !
-                if (pp%ip_id(k).lt.0) then
+                ! get matrix elements
+                Hsub(S(m):E(m), S(n):E(n)) = get_Vsk(tb=tb, ip_id=pp%ip_id(k))
+                ! rotate matrix elements as needed to get from the tau(:,1) => tau(:,i)
+                Hsub(S(m):E(m), S(n):E(n)) = matmul(Hsub(S(m):E(m), S(n):E(n)), tbpg%get_slice(pg_id=pp%shell(k)%pg_id(j), pc_id=n))
+                Hsub(S(m):E(m), S(n):E(n)) = matmul(transpose(tbpg%get_slice(pg_id=pp%shell(k)%pg_id(j), pc_id=m)), Hsub(S(m):E(m), S(n):E(n)))
                 ! if ip_id < 0 -> the irreducible pair has its indices flipped with respect to the primitive pair
                 ! as a result, the matrix elements need to be transposed and the signed adjusted to reflect oribtal parity
-                H(H_start(m):H_end(m), H_start(n):H_end(n)) = &
-                H(H_start(m):H_end(m), H_start(n):H_end(n)) * transp_parity_sign(atom_m=ic%atom(i), atom_n=ic%atom(j))
+                if (pp%ip_id(k).lt.0) then
+                Hsub(S(m):E(m), S(n):E(n)) = &
+                Hsub(S(m):E(m), S(n):E(n)) * transp_parity_sign(atom_m=ic%atom(i), atom_n=ic%atom(j))
                 endif
                 ! multiply exponential factor from Bloch sum
-                H(H_start(m):H_end(m), H_start(n):H_end(n)) = &
-                H(H_start(m):H_end(m), H_start(n):H_end(n)) * exp(-itwopi*dot_product(R,kpt)) ! kpt is in fractional
+                Hsub(S(m):E(m), S(n):E(n)) = &
+                Hsub(S(m):E(m), S(n):E(n)) * exp(-itwopi*dot_product(pp%shell(k)%tau(1:3,j), kpt)) ! kpt is in fractional
                 !
             enddo
+            !
+            H(S(m):E(m), S(n):E(n)) = H(S(m):E(m), S(n):E(n)) + Hsub(S(m):E(m), S(n):E(n))
             !
             call am_print('H'//trim(int2char(k)),H)
             !
@@ -292,21 +283,45 @@ contains
         !
     end function   get_Vsk
 
-    subroutine     set_Vsk(tb,i,alpha,beta,V)
+!     subroutine     set_Vsk(tb,i,alpha,beta,V)
+!         !
+!         implicit none
+!         !
+!         class(am_class_tight_binding), intent(inout) :: tb
+!         integer, intent(in) :: i           ! irreducible pair (i)
+!         integer, intent(in) :: alpha, beta ! orbitals on atoms alpha,beta (matrix coordinates)
+!         real(dp),intent(in) :: V           ! matrix element
+!         integer :: ind
+!         !
+!         ind = sub2ind(dims=tb%tbvsk(i)%dims,sub=[alpha,beta])
+!         !
+!         tb%tbvsk(i)%V(ind) = V
+!         !
+!     end subroutine set_Vsk
+
+    subroutine     write_irreducible_Vsk(tb)
         !
         implicit none
         !
-        class(am_class_tight_binding), intent(inout) :: tb
-        integer, intent(in) :: i           ! irreducible pair (i)
-        integer, intent(in) :: alpha, beta ! orbitals on atoms alpha,beta (matrix coordinates)
-        real(dp),intent(in) :: V           ! matrix element
-        integer :: ind
+        integer :: k ! shell index
+        integer :: alpha
+        integer :: beta
         !
-        ind = sub2ind(dims=tb%tbvsk(i)%dims,sub=[alpha,beta])
+        ! indices : iV_ind( [i, subd2ind(dims=tb%tbvsk(i)%dims,sub=[alpha,beta])], niVs)
         !
-        tb%tbvsk(i)%V(ind) = V
-        !
-    end subroutine set_Vsk
+        do i = 1, tb%niVs
+            !
+            ! get shell index
+            k = iV_ind(1,i)
+            ! get orbital indices
+            alpha = iV_ind(2,i)
+            beta  = iV_ind(3,i)
+            !
+            write(*,*) k, alpha, beta, tb%V(i)
+            !
+        enddo
+
+    end subroutine write_irreducible_Vsk
 
 
 !         function       sort_seitz_based_on_tau(tau,seitz) result(seitz_out)
