@@ -644,7 +644,7 @@ module am_vasp_io
         !
     end subroutine read_eigenval
 
-    subroutine     read_poscar(bas,natoms,nspecies,symb,tau,atype,iopt_filename,iopt_verbosity)
+    subroutine     read_poscar(bas,natoms,nspecies,symb,tau_frac,atype,iopt_filename,iopt_verbosity)
         ! Reads poscar into variables performing basic checks on the way. Call it like this:
         !
         !    bas(3,3) column vectors a(1:3,i), a(1:3,j), a(1:3,kpt)
@@ -652,10 +652,10 @@ module am_vasp_io
         !    nspecies number of unique atomic species
         !    symb(nspecies) list of atomic symbols
         !    natoms_per_species(natoms) number of atoms per species
-        !    tau(3,natoms) fractional atomic coordinates
+        !    tau_frac(3,natoms) fractional atomic coordinates
         !    atype(natoms) type atom
         !
-        !    call read_poscar( bas,natoms,nspecies,natoms_per_species,symb,tau,atype )
+        !    call read_poscar( bas,natoms,nspecies,natoms_per_species,symb,tau_frac,atype )
         !
         implicit none
         ! subroutine i/o
@@ -664,12 +664,12 @@ module am_vasp_io
         integer,intent(out) :: nspecies
         character(len=:), allocatable, intent(out) :: symb(:) ! 1 symb per species
         integer , allocatable :: natoms_per_species(:) ! number of atoms per species
-        real(dp), allocatable, intent(out) :: tau(:,:) ! atomic coordinates tau_read(3,natoms) in fractional
-        integer , allocatable, intent(out) :: atype(:) ! type of atom tau_read(natoms)
+        real(dp), allocatable, intent(out) :: tau_frac(:,:) ! atomic coordinates tau_frac_read(3,natoms) in fractional
+        integer , allocatable, intent(out) :: atype(:) ! type of atom tau_frac_read(natoms)
         ! subroutine internal parameters
         real(dp) :: recbas(3,3)
         real(dp) :: vol
-        real(dp), allocatable :: tau_read(:,:) ! atomic coordinates tau_read(3,natoms) read in
+        real(dp), allocatable :: tau_frac_read(:,:) ! atomic coordinates tau_frac_read(3,natoms) read in
         logical :: direct
         logical :: cartesian
         logical :: selective_dynamics
@@ -784,8 +784,8 @@ module am_vasp_io
             endif
             ! (LINE 9-10)   0.1250000000000000  0.1250000000000000  0.1250000000000000
             ! read atomic positions
-            allocate(tau_read(3,natoms))      ! coordinates of atoms read in
-            allocate(tau(3,natoms)) ! coordinates of atoms in cartesian  coordinates
+            allocate(tau_frac_read(3,natoms))      ! coordinates of atoms read in
+            allocate(tau_frac(3,natoms)) ! coordinates of atoms in cartesian  coordinates
             allocate(atype(natoms)) ! type of atom, integer 
             m = 0
             do i = 1, nspecies
@@ -797,16 +797,16 @@ module am_vasp_io
                     read(unit=fid,fmt='(a)') buffer
                     word = strsplit(buffer,delimiter=' ')
                     do n = 1,3
-                        read(word(n),*) tau_read(n,m)
+                        read(word(n),*) tau_frac_read(n,m)
                     enddo
                     ! make sure everything is in fractional
                     if ( direct ) then
-                        ! tau(1:3,m) = matmul( bas,tau_read(1:3,m) ) ! cartesian
-                        tau(1:3,m) = tau_read(1:3,m)
+                        ! tau_frac(1:3,m) = matmul( bas,tau_frac_read(1:3,m) ) ! cartesian
+                        tau_frac(1:3,m) = tau_frac_read(1:3,m)
                     endif
                     if ( cartesian ) then
-                        ! tau(1:3,m) = scale * tau_read(1:3,m) ! cartesian
-                        tau(1:3,m) = matmul( recbas, scale * tau_read(1:3,m) )
+                        ! tau_frac(1:3,m) = scale * tau_frac_read(1:3,m) ! cartesian
+                        tau_frac(1:3,m) = matmul( recbas, scale * tau_frac_read(1:3,m) )
                     endif
                 enddo
             enddo
@@ -820,7 +820,7 @@ module am_vasp_io
                         m = m + 1
                         !
                         if (m.lt.11) then
-                            write(*,'(5x,a5,a3,3f13.8,5x,3f13.8)') int2char(m), symb(atype(m)), tau(1:3,m), matmul(bas,tau(1:3,m))
+                            write(*,'(5x,a5,a3,3f13.8,5x,3f13.8)') int2char(m), symb(atype(m)), tau_frac(1:3,m), matmul(bas,tau_frac(1:3,m))
                         elseif (m.eq.11) then
                             write(*,'(5x,a)') repeat(" ... ",15)
                         endif
@@ -832,7 +832,7 @@ module am_vasp_io
         close(fid)
     end subroutine read_poscar
 
-    subroutine     write_poscar(bas,natoms,nspecies,symb,tau,atype,iopt_filename,iopt_header)
+    subroutine     write_poscar(bas,natoms,nspecies,symb,tau_frac,atype,iopt_filename,iopt_header)
         !>
         !> Write poscar based on structure data.
         !>
@@ -842,8 +842,8 @@ module am_vasp_io
         integer , intent(in) :: natoms
         integer , intent(in) :: nspecies
         character(len=*), intent(in) :: symb(:) ! 1 symb per species
-        real(dp), intent(in) :: tau(:,:) ! atomic coordinates tau_read(3,natoms) in fractional
-        integer , intent(in) :: atype(:) ! type of atom tau_read(natoms)
+        real(dp), intent(in) :: tau_frac(:,:) ! atomic coordinates tau_frac_read(3,natoms) in fractional
+        integer , intent(in) :: atype(:) ! type of atom tau_frac_read(natoms)
         ! file i/o
         integer :: fid
         ! loop variables
@@ -895,7 +895,7 @@ module am_vasp_io
             if (atype(j).eq.i) then
                 !
                 do n = 1,3
-                    write(unit=fid,fmt='(f20.12)',advance='no') tau(n,j)
+                    write(unit=fid,fmt='(f20.12)',advance='no') tau_frac(n,j)
                 enddo
                 write(unit=fid,fmt=*)
                 !

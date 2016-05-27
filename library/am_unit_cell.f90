@@ -17,10 +17,12 @@ module am_unit_cell
     public :: deform
 
     type, public :: am_class_unit_cell
-        real(dp) :: bas(3,3) !> column vectors a(1:3,i), a(1:3,j), a(1:3,k)
-        integer  :: natoms   !> number of atoms
-        real(dp), allocatable :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates
-        integer , allocatable :: Z(:) !> identifies type of element
+        real(dp) :: bas(3,3)    ! basis vectors a(1:3,i), a(1:3,j), a(1:3,k)
+        real(dp) :: recbas(3,3) ! reciprocal basis vectors a(1:3,i), a(1:3,j), a(1:3,k)
+        integer  :: natoms      ! number of atoms
+        real(dp), allocatable :: tau_frac(:,:) ! tau_frac(3,natoms) fractional atomic coordinates
+        real(dp), allocatable :: tau_cart(:,:) ! tau_frac(3,natoms) cartesean  atomic coordinates
+        integer , allocatable :: Z(:)     ! identifies type of element
         integer , allocatable :: uc_id(:) ! identifies corresponding atom in unit cell
         integer , allocatable :: pc_id(:) ! identifies corresponding atom in primitive cell
         integer , allocatable :: ic_id(:) ! identifies corresponding atom in irreducible cell
@@ -128,7 +130,7 @@ contains
         !
     end function   lattice_symmetries
 
-    pure function  translations_from_basis(tau,Z,prec,flags) result(T)
+    pure function  translations_from_basis(tau_frac,Z,prec,flags) result(T)
         !
         !> flags string can contain 'prim', 'zero', 'relax' and any combination of each
         !> if it has 'zero'  : add [0,0,0] to the T vectors returned
@@ -140,7 +142,7 @@ contains
         implicit none
         ! subroutine i/o
         integer , intent(in) :: Z(:)     !> Z(natoms) list identifing type of atom
-        real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates
+        real(dp), intent(in) :: tau_frac(:,:) !> tau_frac(3,natoms) fractional atomic coordinates
         real(dp), intent(in) :: prec
         character(len=*), intent(in), optional :: flags 
         real(dp), allocatable :: T(:,:)   !> T(3,nTs) translation which leaves basis invariant
@@ -158,7 +160,7 @@ contains
             if (index(flags,'relax').ne.0) relax_symmetry = .true.
         endif 
         !
-        natoms = size(tau,2)
+        natoms = size(tau_frac,2)
         allocate(wrk(3,natoms-1+3)) 
         wrk = 0.0_dp
         ! choose reference atom (ideally choose an atom corresponding to the species with the fewest number of atoms in unit cell)
@@ -169,7 +171,7 @@ contains
             if ( i .ne. j) then
             if ( Z(i) .eq. Z(j) ) then
                 ! shift to put reference atom at zero.
-                wrkr(1:3) = tau(1:3,j) - tau(1:3,i)
+                wrkr(1:3) = tau_frac(1:3,j) - tau_frac(1:3,i)
                 ! wrkr = modulo(wrkr+prec,1.0_dp)-prec ! added this in for testing.
                 !
                 if (relax_symmetry) then
@@ -180,7 +182,7 @@ contains
                     seitz = eye(4)
                     seitz(1:3,4) = wrkr
                     !
-                    if ( is_symmetry_valid(seitz=seitz, Z=Z, tau=tau, prec=prec) ) then
+                    if ( is_symmetry_valid(seitz=seitz, Z=Z, tau_frac=tau_frac, prec=prec) ) then
                         nTs = nTs + 1
                         wrk(1:3,nTs) = wrkr
                     endif
@@ -206,29 +208,29 @@ contains
         !
     end function   translations_from_basis
 
-    pure function  is_symmetry_valid(tau,Z,seitz,prec,flags)
+    pure function  is_symmetry_valid(tau_frac,Z,seitz,prec,flags)
         !
         ! check whether symmetry operation is valid
         !
         implicit none
         ! function i/o
-        real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic basis
+        real(dp), intent(in) :: tau_frac(:,:) !> tau_frac(3,natoms) fractional atomic basis
         integer , intent(in) :: Z(:)     !> Z(natoms) list identify type of atom
         real(dp), intent(in) :: seitz(4,4)
         real(dp), intent(in) :: prec
         character(*), intent(in), optional :: flags
         !
-        real(dp), allocatable :: tau_internal(:,:)
-        real(dp), allocatable :: tau_ref(:,:) ! what to compare to
+        real(dp), allocatable :: tau_frac_internal(:,:)
+        real(dp), allocatable :: tau_frac_ref(:,:) ! what to compare to
         logical  :: isexact    ! if present, do not apply mod. ; useful for determining stabilizers
-        logical  :: iszero     ! if present, returns that the symmetry is valid if it reduces the tau to [0,0,0]. useful for determing which symmetries flip bonds
-        real(dp) :: tau_rot(3) ! rotated 
+        logical  :: iszero     ! if present, returns that the symmetry is valid if it reduces the tau_frac to [0,0,0]. useful for determing which symmetries flip bonds
+        real(dp) :: tau_frac_rot(3) ! rotated 
         logical  :: is_symmetry_valid
         integer  :: natoms
         integer  :: i, j, m
         logical  :: overlap_found
         !
-        natoms = size(tau,2)
+        natoms = size(tau_frac,2)
         !
         !
         ! load flag options
@@ -240,32 +242,32 @@ contains
         endif
         !
         ! start main part of function here
-        allocate(tau_internal, source=tau)
+        allocate(tau_frac_internal, source=tau_frac)
         if (.not.isexact) then
         do i = 1, natoms
-            tau_internal(:,i) = modulo(tau_internal(:,i)+prec,1.0_dp)-prec
+            tau_frac_internal(:,i) = modulo(tau_frac_internal(:,i)+prec,1.0_dp)-prec
         enddo
         endif
         !
-        ! tau ref is what the rotated vector is compared to
+        ! tau_frac ref is what the rotated vector is compared to
         if (iszero) then
-            tau_ref(:,i) = 0.0_dp
+            tau_frac_ref(:,i) = 0.0_dp
         else
             ! default behavior: just compare it to what it was originally before it was rotated
-            allocate(tau_ref,source=tau_internal)
+            allocate(tau_frac_ref,source=tau_frac_internal)
         endif
         !
         m = 0
         do i = 1, natoms
             ! apply symmetry operation
-            tau_rot(1:3) = matmul(seitz(1:3,1:3),tau_internal(1:3,i)) + seitz(1:3,4)
+            tau_frac_rot(1:3) = matmul(seitz(1:3,1:3),tau_frac_internal(1:3,i)) + seitz(1:3,4)
             ! reduce rotated+translated point to unit cell
-            if (.not.isexact) tau_rot(1:3) = modulo(tau_rot(1:3)+prec,1.0_dp)-prec
+            if (.not.isexact) tau_frac_rot(1:3) = modulo(tau_frac_rot(1:3)+prec,1.0_dp)-prec
             ! check that newly created point matches something already present
             overlap_found = .false.
             check_overlap : do j = 1,natoms
                 if (Z(i) .eq. Z(j)) then
-                    if (all(abs(tau_rot(1:3)-tau_internal(1:3,j)).lt.prec)) then
+                    if (all(abs(tau_frac_rot(1:3)-tau_frac_internal(1:3,j)).lt.prec)) then
                         m = m + 1
                         overlap_found = .true.
                         exit check_overlap
@@ -325,7 +327,7 @@ contains
         !
         if (opts%verbosity.ge.1) call am_print('possible (im-)proper rotations',nRs,' ... ')
         !
-        T = translations_from_basis(tau=uc%tau, Z=uc%Z, prec=opts%prec, flags='zero,relax')
+        T = translations_from_basis(tau_frac=uc%tau_frac, Z=uc%Z, prec=opts%prec, flags='zero,relax')
         nTs = size(T,2)
         !
         if (opts%verbosity.ge.1) call am_print('possible translations',nTs,' ... ')
@@ -342,15 +344,15 @@ contains
         m=0
         do i = 1, nRs
         do j = 1, nTs
-            ! Shift tau to put the first atom at the origin. This is important because the
+            ! Shift tau_frac to put the first atom at the origin. This is important because the
             ! rotational part of the symmetry operation must leave at least one atom in it's
             ! original location. If the atom already has a displacement, then it will be rotated
             ! to another position.
-            if (.not.any(all(abs(uc%tau).lt.opts%prec,2))) then
-                shift = uc%tau(:,1)
-                ! tau' = R*tau + T
-                ! tau' - s = R*(tau-s) + T
-                ! tau' = R*tau + (R*S+T-s) = R*tau + T_shifted ! sign is wrong here for some reason.
+            if (.not.any(all(abs(uc%tau_frac).lt.opts%prec,2))) then
+                shift = uc%tau_frac(:,1)
+                ! tau_frac' = R*tau_frac + T
+                ! tau_frac' - s = R*(tau_frac-s) + T
+                ! tau_frac' = R*tau_frac + (R*S+T-s) = R*tau_frac + T_shifted ! sign is wrong here for some reason.
                 ! thus, T_shifted = T - R*s + s
                 T_shifted = T(:,j) - matmul(R(:,:,i),shift) + shift
                 ! reduce to primitive
@@ -363,7 +365,7 @@ contains
             seitz_probe(1:3,1:3) = R(1:3,1:3,i)
             seitz_probe(1:3,4) = T_shifted
             !
-            if ( is_symmetry_valid(tau=uc%tau, Z=uc%Z, seitz=seitz_probe, prec=opts%prec)) then
+            if ( is_symmetry_valid(tau_frac=uc%tau_frac, Z=uc%Z, seitz=seitz_probe, prec=opts%prec)) then
                 m = m + 1
                 wrkspace(:,:,m)=seitz_probe
             endif
@@ -400,7 +402,7 @@ contains
             natoms=uc%natoms,&
             nspecies=nspecies,&
             symb=symb,&
-            tau=uc%tau,&
+            tau_frac=uc%tau_frac,&
             atype=atype,&
             iopt_filename=opts%poscar,&
             iopt_verbosity=opts%verbosity)
@@ -409,6 +411,11 @@ contains
         do i = 1, uc%natoms
             uc%Z(i) = atm_Z(trim(symb(atype(i))))
         enddo
+        !
+        allocate(uc%tau_cart(3,uc%natoms))
+        uc%tau_cart = matmul(uc%bas,uc%tau_frac)
+        !
+        uc%recbas=inv(uc%recbas)
         !
     end subroutine  load_poscar
 
@@ -459,7 +466,7 @@ contains
             natoms=uc%natoms,&
             nspecies=nspecies,&
             symb=symb,&
-            tau=uc%tau,&
+            tau_frac=uc%tau_frac,&
             atype=atype,&
             iopt_filename=file_output_poscar)
         !
@@ -476,7 +483,7 @@ contains
         class(am_class_unit_cell), intent(in)  :: uc
         real(dp), intent(in) :: bscfp(3,3)
         real(dp) :: inv_bscfp(3,3)
-        real(dp) :: tau_wrk(3)
+        real(dp) :: tau_frac_wrk(3)
         integer :: i1, i2, i3, j, m, i
         type(am_class_options), intent(in) :: opts
         !
@@ -484,7 +491,8 @@ contains
         !
         inv_bscfp = inv(bscfp)
         !
-        sc%bas = matmul(uc%bas,bscfp)
+        sc%bas    = matmul(uc%bas,bscfp)
+        sc%recbas = inv(sc%recbas)
         !
         if (opts%verbosity.ge.1) then
             call am_print_two_matrices_side_by_side(name='primitive basis',&
@@ -517,33 +525,33 @@ contains
         !
         if (opts%verbosity.ge.1) then
             call am_print_two_matrices_side_by_side(name='primitive atomic basis',&
-                Atitle='fractional (primitive)',A=transpose(uc%tau),&
-                Btitle='cartesian'             ,B=transpose(matmul(uc%bas,uc%tau)),&
+                Atitle='fractional (primitive)',A=transpose(uc%tau_frac),&
+                Btitle='cartesian'             ,B=transpose(matmul(uc%bas,uc%tau_frac)),&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
         !
-        allocate(sc%tau(3,sc%natoms))
+        allocate(sc%tau_frac(3,sc%natoms))
         allocate(sc%Z(sc%natoms))
         allocate(sc%uc_id(sc%natoms)) ! map
         !
-        sc%tau = 1.0D5
+        sc%tau_frac = 1.0D5
         m=0
         map : do i1 = 0, nint(sum(abs(bscfp(:,1)))) ! sc%natoms
               do i2 = 0, nint(sum(abs(bscfp(:,2)))) ! sc%natoms
               do i3 = 0, nint(sum(abs(bscfp(:,3)))) ! sc%natoms
                   do j = 1, uc%natoms
                       !
-                      tau_wrk = uc%tau(1:3,j)
+                      tau_frac_wrk = uc%tau_frac(1:3,j)
                       ! atomic basis in primitive fractional
-                      tau_wrk = tau_wrk+real([i1,i2,i3],dp)
+                      tau_frac_wrk = tau_frac_wrk+real([i1,i2,i3],dp)
                       ! convert to supercell fractional
-                      tau_wrk = matmul(inv_bscfp,tau_wrk)
+                      tau_frac_wrk = matmul(inv_bscfp,tau_frac_wrk)
                       ! reduce to primitive supercell
-                      tau_wrk = modulo(tau_wrk+opts%prec,1.0_dp) - opts%prec
+                      tau_frac_wrk = modulo(tau_frac_wrk+opts%prec,1.0_dp) - opts%prec
                       !
-                      if (.not.issubset(sc%tau,tau_wrk,opts%prec)) then
+                      if (.not.issubset(sc%tau_frac,tau_frac_wrk,opts%prec)) then
                           m = m+1 
-                          sc%tau(1:3,m) = tau_wrk
+                          sc%tau_frac(1:3,m) = tau_frac_wrk
                           sc%Z(m) = uc%Z(j)
                           sc%uc_id(m) = j
                       endif
@@ -555,12 +563,15 @@ contains
               enddo
         enddo map
         ! correct basic rounding error
-        where(abs(sc%tau).lt.opts%prec) sc%tau=0.0_dp 
-        !
+        where(abs(sc%tau_frac).lt.opts%prec) sc%tau_frac=0.0_dp 
+        ! get cartesaian atomic basis
+        allocate(sc%tau_cart(3,uc%natoms))
+        sc%tau_cart = matmul(sc%bas,sc%tau_frac)
+        ! print stdout
         if (opts%verbosity.ge.1) then
             call am_print_two_matrices_side_by_side(name='supercell atomic basis',&
-                Atitle='fractional (supercell)',A=transpose(sc%tau),&
-                Btitle='cartesian'             ,B=transpose(matmul(sc%bas,sc%tau)),&
+                Atitle='fractional (supercell)',A=transpose(sc%tau_frac),&
+                Btitle='cartesian'             ,B=transpose(sc%tau_cart),&
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif
         !
@@ -615,10 +626,14 @@ contains
         type(am_class_unit_cell) , intent(in) :: uc
         !
         cp%natoms=uc%natoms
-        cp%bas=uc%bas
+        cp%bas   =uc%bas
+        cp%recbas=uc%recbas
         !
-        if (allocated(cp%tau)) deallocate(cp%tau)
-        allocate(cp%tau,source=uc%tau)
+        if (allocated(cp%tau_frac)) deallocate(cp%tau_frac)
+        allocate(cp%tau_frac,source=uc%tau_frac)
+        !
+        if (allocated(cp%tau_cart)) deallocate(cp%tau_cart)
+        allocate(cp%tau_frac,source=uc%tau_cart)
         !
         if (allocated(cp%Z)) deallocate(cp%Z)
         allocate(cp%Z,source=uc%Z)
@@ -656,17 +671,32 @@ contains
         !
         ! transfer stuff
         !
-        ! tau
-        if (allocated(uc%tau)) then
+        ! tau_frac
+        if (allocated(uc%tau_frac)) then
             ! setup temporary variable
-            allocate(tau,source=uc%tau)
+            allocate(tau,source=uc%tau_frac)
             ! clear original variable
-            deallocate(uc%tau)
+            deallocate(uc%tau_frac)
             ! reallocate space
-            allocate(uc%tau(3,uc%natoms))
+            allocate(uc%tau_frac(3,uc%natoms))
             ! transfer content through filter
             do i = 1, uc%natoms
-                uc%tau(:,i) = tau(:,indices(i))
+                uc%tau_frac(:,i) = tau(:,indices(i))
+            enddo
+            ! deallocate
+            deallocate(tau)
+        endif
+        ! tau_cart
+        if (allocated(uc%tau_cart)) then
+            ! setup temporary variable
+            allocate(tau,source=uc%tau_cart)
+            ! clear original variable
+            deallocate(uc%tau_cart)
+            ! reallocate space
+            allocate(uc%tau_cart(3,uc%natoms))
+            ! transfer content through filter
+            do i = 1, uc%natoms
+                uc%tau_cart(:,i) = tau(:,indices(i))
             enddo
             ! deallocate
             deallocate(tau)
@@ -735,23 +765,25 @@ contains
         !
     end subroutine  filter
 
-    subroutine      initialize(uc,bas,tau,Z,uc_id,pc_id,ic_id)
+    subroutine      initialize(uc,bas,tau_frac,Z,uc_id,pc_id,ic_id)
         !
         implicit none
         !
         class(am_class_unit_cell) , intent(out) :: uc
         real(dp), intent(in) :: bas(3,3)
-        real(dp), intent(in) :: tau(:,:)
+        real(dp), intent(in) :: tau_frac(:,:)
         integer , intent(in) :: Z(:)
         integer , intent(in), optional :: uc_id(:)
         integer , intent(in), optional :: pc_id(:)
         integer , intent(in), optional :: ic_id(:)
         !
-        uc%bas = bas
+        uc%bas    = bas
+        uc%recbas = inv(bas)
         !
-        uc%natoms = size(tau,2)
+        uc%natoms = size(tau_frac,2)
         !
-        allocate(uc%tau,source=tau)
+        allocate(uc%tau_frac,source=tau_frac)
+        allocate(uc%tau_cart,source=matmul(bas,tau_frac))
         !
         allocate(uc%Z,source=Z)
         !
@@ -770,8 +802,8 @@ contains
         implicit none
         !
         type(am_class_unit_cell), allocatable, intent(out) :: def(:)
-        type(am_class_unit_cell) , intent(in) :: uc
-        type(am_class_options), intent(in) :: opts
+        type(am_class_unit_cell), intent(in) :: uc
+        type(am_class_options)  , intent(in) :: opts
         real(dp), allocatable :: bas_def(:,:,:)
         integer :: i
         !

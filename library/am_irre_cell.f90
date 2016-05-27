@@ -48,7 +48,7 @@ contains
         if (opts%verbosity.ge.1) call am_print('primitive cell atoms',pc%natoms,' ... ')
         !
         ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-        PM = permutation_map( permutation_rep(seitz=sg%sym, tau=pc%tau, flags='', prec=opts%prec) )
+        PM = permutation_map( permutation_rep(seitz=sg%sym, tau_frac=pc%tau_frac, flags='', prec=opts%prec) )
         !
         allocate(mask(pc%natoms))
         allocate(ind(pc%natoms))
@@ -70,14 +70,14 @@ contains
         ic%bas = pc%bas
         ic%natoms = k
         !
-        allocate(ic%tau,source=pc%tau(:,ind(1:k)))
+        allocate(ic%tau_frac,source=pc%tau_frac(:,ind(1:k)))
         allocate(ic%Z,source=pc%Z(ind(1:k)))
         !
         if (opts%verbosity.ge.1) call am_print('irreducible cell atoms',ic%natoms,' ... ')
         if (opts%verbosity.ge.1) then
             call am_print_two_matrices_side_by_side(name='irreducible atomic basis',&
-                Atitle='fractional',A=transpose(ic%tau),&
-                Btitle='cartesian' ,B=transpose(matmul(ic%bas,ic%tau)),&
+                Atitle='fractional',A=transpose(ic%tau_frac),&
+                Btitle='cartesian' ,B=transpose(matmul(ic%bas,ic%tau_frac)),&
             iopt_emph=' ... ',iopt_teaser=.true.)
         endif
         !

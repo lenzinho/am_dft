@@ -179,7 +179,7 @@ contains
                 ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245. Also see R. Martin.
                 call flat_ig%get_flat_intrinsic_group(tens=tbvsk, atom_m=ic%atom(shell%i), atom_n=ic%atom(shell%j) )
                 ! determine stabilizers relations
-                call stab%get_stabilizer_group(pg=pg, v=shell%tau(1:3,1), opts=opts)
+                call stab%get_stabilizer_group(pg=pg, v=shell%tau_frac(1:3,1), opts=opts)
                 ! get stabilizer symmetries in the flattened hamiltonin basis
                 call flat_pg%get_flat_point_group(tens=tbvsk, pg=stab, pc=pc, atom_m=ic%atom(shell%i), atom_n=ic%atom(shell%j))
                 ! get combined relations
@@ -253,13 +253,13 @@ contains
                 Dn   => wrktbpg(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
                 ! get matrix elements (initialize Hsub)
                 Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))
-                ! rotate matrix elements as needed to get from the tau(:,1) => tau(:,x)
+                ! rotate matrix elements as needed to get from the tau_frac(:,1) => tau_frac(:,x)
                 call am_print('Dn'//trim(int2char(pp%shell(k)%pg_id(p))),Dn)
                 call am_print('Dm'//trim(int2char(pp%shell(k)%pg_id(p))),Dm)
                 Hsub = matmul(Hsub, Dn)
                 Hsub = matmul(transpose(Dm), Hsub)
                 ! multiply exponential factor from Bloch sum
-                Hsub = Hsub * exp(-itwopi*dot_product(pp%shell(k)%tau(1:3,p), kpt)) ! kpt is in fractional
+                Hsub = Hsub * exp(-itwopi*dot_product(pp%shell(k)%tau_frac(1:3,p), kpt)) ! kpt is in fractional
                 ! this pair's contribution to the Hamiltonian
                 H(S(m):E(m), S(n):E(n)) = H(S(m):E(m), S(n):E(n)) + Hsub
             enddo
@@ -404,15 +404,15 @@ contains
     end subroutine write_irreducible_Vsk
 
 
-!         function       sort_seitz_based_on_tau(tau,seitz) result(seitz_out)
+!         function       sort_seitz_based_on_tau_frac(tau_frac,seitz) result(seitz_out)
 !             !
 !             implicit none
 !             !
-!             real(dp), intent(in) :: tau(:,:)
+!             real(dp), intent(in) :: tau_frac(:,:)
 !             real(dp), intent(in) :: seitz(:,:,:)
 !             real(dp) :: seitz_out(:,:,:)
 !             !
-!             natoms = size(tau,2)
+!             natoms = size(tau_frac,2)
 !             nsyms  = size(seitz,3)
 !             !
 !             allocate(seitz_out(4,4,natoms))
@@ -422,13 +422,13 @@ contains
 !             !
 !             do i = 1, natoms
 !             search : do j = 1, pg%nsyms
-!                 if (isequal(tau(:,i),matmul(seitz(1:3,1:3,j),tau(:,1)))) then
+!                 if (isequal(tau_frac(:,i),matmul(seitz(1:3,1:3,j),tau_frac(:,1)))) then
 !                     seitz_out(:,:,i) = seitz(1:3,1:3,j)
 !                     exit search
 !                 endif
 !             enddo search
 !             enddo
-!         end function   sort_seitz_based_on_tau
+!         end function   sort_seitz_based_on_tau_frac
 
 !     subroutine     apply_relations(Vsk,is_independent,relations)
 !         !

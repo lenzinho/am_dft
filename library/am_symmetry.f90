@@ -509,7 +509,7 @@ contains
         allocate(mask(pg%nsyms))
         !
         do i = 1, pg%nsyms
-            if ( is_symmetry_valid(tau=uc%tau, Z=uc%Z, seitz=pg%sym, prec=opts%prec)) then
+            if ( is_symmetry_valid(tau_frac=uc%tau_frac, Z=uc%Z, seitz=pg%sym, prec=opts%prec)) then
                 mask(i) = .true.
             else 
                 mask(i) = .false.
@@ -541,7 +541,7 @@ contains
         !
         do i = 1, pg%nsyms
             ! mark symmetries which leaves vector strictly invariant (not even modulo a lattice vector)
-            if (is_symmetry_valid(tau=reshape(v,[3,1]), Z=[1], seitz=pg%sym(:,:,i), prec=opts%prec, flags='exact')) then
+            if (is_symmetry_valid(tau_frac=reshape(v,[3,1]), Z=[1], seitz=pg%sym(:,:,i), prec=opts%prec, flags='exact')) then
                 mask(i) = .true.
             endif
         enddo
@@ -582,7 +582,7 @@ contains
         mask = .false.
         !
         do i = 1, sg%nsyms
-            if (is_symmetry_valid(tau=reshape(v,[3,1]), Z=[1], seitz=sg%sym(:,:,i), prec=opts%prec, flags='zero')) then
+            if (is_symmetry_valid(tau_frac=reshape(v,[3,1]), Z=[1], seitz=sg%sym(:,:,i), prec=opts%prec, flags='zero')) then
                 mask(i) = .true.
             endif
         enddo
@@ -1041,7 +1041,7 @@ contains
             select type (sg)
             type is (am_class_space_group)
                 !
-                P  = permutation_rep(seitz=sg%sym,tau=uc%tau,flags='',prec=opts%prec)
+                P  = permutation_rep(seitz=sg%sym,tau_frac=uc%tau_frac,flags='',prec=opts%prec)
                 PM = permutation_map(P)
                 !
                 write(fid,'(5x)',advance='no')
@@ -1407,7 +1407,7 @@ contains
 
     ! permutation rep
 
-    function       permutation_rep(seitz,tau,prec,flags) result(rep)
+    function       permutation_rep(seitz,tau_frac,prec,flags) result(rep)
         !
         ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
         ! also works to find which kpoint or atoms (in shell) are connected by point group operations
@@ -1417,38 +1417,38 @@ contains
         implicit none
         !
         real(dp), intent(in) :: seitz(:,:,:)
-        real(dp), intent(in) :: tau(:,:)
+        real(dp), intent(in) :: tau_frac(:,:)
         real(dp), intent(in) :: prec
         character(*), intent(in) :: flags
         integer, allocatable :: rep(:,:,:)
-        real(dp) :: tau_rot(3)
+        real(dp) :: tau_frac_rot(3)
         integer :: i,j,k
         logical :: found
-        integer :: ntaus ! number of tau points tau(1:3,ntaus)
+        integer :: ntau_fracs ! number of tau_frac points tau_frac(1:3,ntau_fracs)
         integer :: nsyms
         !
         nsyms = size(seitz,3)
         !
-        ntaus = size(tau,2)
+        ntau_fracs = size(tau_frac,2)
         !
-        allocate(rep(ntaus,ntaus,nsyms))
+        allocate(rep(ntau_fracs,ntau_fracs,nsyms))
         rep = 0
         !
         do i = 1, nsyms
             ! determine the permutations of atomic indicies which results from each space symmetry operation
-            do j = 1,ntaus
+            do j = 1,ntau_fracs
                 found = .false.
                 ! apply rotational component
-                tau_rot = matmul(seitz(1:3,1:3,i),tau(:,j))
+                tau_frac_rot = matmul(seitz(1:3,1:3,i),tau_frac(:,j))
                 ! apply translational component
-                tau_rot = tau_rot + seitz(1:3,4,i)
+                tau_frac_rot = tau_frac_rot + seitz(1:3,4,i)
                 ! reduce rotated+translated point to unit cell
                 if (index(flags,'relax_pbc').eq.0) then
-                    tau_rot = modulo(tau_rot+prec,1.0_dp)-prec
+                    tau_frac_rot = modulo(tau_frac_rot+prec,1.0_dp)-prec
                 endif
                 ! find matching atom
-                search : do k = 1, ntaus
-                    if (isequal(tau_rot,tau(:,k))) then
+                search : do k = 1, ntau_fracs
+                    if (isequal(tau_frac_rot,tau_frac(:,k))) then
                     rep(j,k,i) = 1
                     found = .true.
                     exit search ! break loop
@@ -1459,11 +1459,11 @@ contains
                 if (index(flags,'relax_pbc').eq.0) then
                 if (.not.found) then
                     call am_print('ERROR','Unable to find matching atom.',flags='E')
-                    call am_print('tau (all atoms)',transpose(tau))
-                    call am_print('tau',tau(:,j))
+                    call am_print('tau_frac (all atoms)',transpose(tau_frac))
+                    call am_print('tau_frac',tau_frac(:,j))
                     call am_print('R',seitz(1:3,1:3,i))
                     call am_print('T',seitz(1:3,4,i))
-                    call am_print('tau_rot',tau_rot)
+                    call am_print('tau_frac_rot',tau_frac_rot)
                     stop
                 endif
                 endif
@@ -1476,7 +1476,7 @@ contains
         ! to ensure atoms must permute onto each other
         if (index(flags,'relax_pbc').eq.0) then
         do i = 1, nsyms
-        do j = 1, ntaus
+        do j = 1, ntau_fracs
             !
             if (sum(rep(:,j,i)).ne.1) then
                call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')

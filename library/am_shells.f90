@@ -20,7 +20,7 @@ module am_shells
         integer :: j ! identifies irreducible atoms (shell)
         integer :: m ! identifies primitive atoms (center)
         integer :: n ! identifies primitive atoms (shell)
-        integer, allocatable :: pg_id(:)   ! identifies the symmetry in the point group which takes atom tau(:,1) to atom(:,i)
+        integer, allocatable :: pg_id(:)   ! identifies the symmetry in the point group which takes atom tau_frac(:,1) to atom(:,i)
         type(am_class_point_group) :: rotg ! local point group as seen by rotating the shell
         type(am_class_point_group) :: revg ! reversal group of a typical bond in the shell v
         type(am_class_point_group) :: stab ! stabilizer of a typical bond in the shell v
@@ -78,7 +78,7 @@ contains
         nshells=0
         do i = 1, pc%natoms
             ! get center of sphere in fractional supercell coordinates
-            D = matmul(matmul(inv(uc%bas),pc%bas),pc%tau(:,i))
+            D = matmul(matmul(inv(uc%bas),pc%bas),pc%tau_frac(:,i))
             ! create sphere
             sphere = create_sphere(uc=uc, sphere_center=D, pair_cutoff=pair_cutoff, opts=opts )
             ! get number of pairs
@@ -97,7 +97,7 @@ contains
             ! its value cannot exceed half the smallest dimension of the supercell
             !
             ! get center of sphere in fractional supercell coordinates
-            D = matmul(matmul(inv(uc%bas),pc%bas),pc%tau(:,i))
+            D = matmul(matmul(inv(uc%bas),pc%bas),pc%tau_frac(:,i))
             ! create sphere
             sphere = create_sphere(uc=uc, sphere_center=D, pair_cutoff=pair_cutoff, opts=opts )
             ! identify atoms in the whole sphere that can be mapped onto each other by point symmetry operations and return the id of the pair for each atom (including the center atom)
@@ -117,7 +117,7 @@ contains
                 call pp%shell(k)%filter(indices=ind)
                 ! take note of shell center
                 pp%shell(k)%center = D
-                ! take note of point symmetry which takes atom tau(:,1) to atom tau(:,i)
+                ! take note of point symmetry which takes atom tau_frac(:,1) to atom tau_frac(:,i)
                 ! allocate(pp%shell(k)%pg_id(pp%shell(k)%natoms))
                 ! do m = 1, pp%shell(k)%natoms
                 !     !
@@ -125,7 +125,7 @@ contains
                 !     search : do n = 1, pg%nsyms
                 !         ! NOT WORKING
                 !         ! TO DO: ADD CHECK HERE.
-                !         if (isequal(matmul(pp%shell(k)%bas,pp%shell(k)%tau(:,m)), matmul( matmul(pc%bas,matmul(pg%sym(1:3,1:3,n),inv(pc%bas))), pp%shell(k)%tau(:,1)))) then
+                !         if (isequal(matmul(pp%shell(k)%bas,pp%shell(k)%tau_frac(:,m)), matmul( matmul(pc%bas,matmul(pg%sym(1:3,1:3,n),inv(pc%bas))), pp%shell(k)%tau_frac(:,1)))) then
                 !             pp%shell(k)%pg_id(m) = n
                 !             found = .true.
                 !             exit search
@@ -133,9 +133,9 @@ contains
                 !     enddo search
                 !     !
                 !     if (.not.found) then
-                !         call am_print('tau(:,m)',pp%shell(k)%tau(:,m))
-                !         call am_print('tau(:,1)',pp%shell(k)%tau(:,1))
-                !         stop 'unable to symmetry operation which mpes tau(:,1) to tau(:,i)'
+                !         call am_print('tau_frac(:,m)',pp%shell(k)%tau_frac(:,m))
+                !         call am_print('tau_frac(:,1)',pp%shell(k)%tau_frac(:,1))
+                !         stop 'unable to symmetry operation which mpes tau_frac(:,1) to tau_frac(:,i)'
                 !     endif
                 ! enddo
                 ! get irreducible atom indices
@@ -145,11 +145,11 @@ contains
                 pp%shell(k)%m = pc%pc_id(i)
                 pp%shell(k)%n = pp%shell(k)%pc_id(1)
                 ! determine stabilizers of a prototypical bond in shell (vector v)
-                call pp%shell(k)%stab%get_stabilizer_group(pg=pg, v=pp%shell(k)%tau(1:3,1), opts=opts)
+                call pp%shell(k)%stab%get_stabilizer_group(pg=pg, v=pp%shell(k)%tau_frac(1:3,1), opts=opts)
                 ! determine rotations which leaves shell invariant
                 call pp%shell(k)%rotg%get_rotational_group(pg=pg, uc=pp%shell(k), opts=opts)
                 ! determine reversal group, space symmetries, which interchange the position of atoms at the edges of the bond
-                call pp%shell(k)%revg%get_reversal_group(sg=sg, v=pp%shell(k)%tau(1:3,1), opts=opts)
+                call pp%shell(k)%revg%get_reversal_group(sg=sg, v=pp%shell(k)%tau_frac(1:3,1), opts=opts)
             enddo
         enddo
         !
@@ -157,7 +157,7 @@ contains
         if (opts%verbosity.ge.1) then
             ! write the number of shells each primitive cell atom hsa
             do i = 1, pc%natoms
-                D = matmul(matmul(inv(uc%bas),pc%bas),pc%tau(:,i))
+                D = matmul(matmul(inv(uc%bas),pc%bas),pc%tau_frac(:,i))
                 write(*,'(" ... ",a," atom ",a," at "   ,a,",",a,",",a,  " (frac) has ",a," nearest-neighbor shells")') &
                     & 'primitive', trim(int2char(i)), (trim(dbl2char(D(j),4)),j=1,3), trim(int2char(nshells))
                 !
@@ -200,10 +200,10 @@ contains
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( pp%shell(k)%stab%ps_id )))
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( pp%shell(k)%rotg%ps_id )))
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( pp%shell(k)%revg%ps_id )))
-                    write(*,'(f10.3)' ,advance='no') norm2(matmul(pp%shell(k)%bas,pp%shell(k)%tau(1:3,1)))
-                    write(*,'(3f10.3)',advance='no') matmul(pp%shell(k)%bas,pp%shell(k)%tau(1:3,1))
-                    write(*,'(f10.3)' ,advance='no') norm2(pp%shell(k)%tau(1:3,1))
-                    write(*,'(3f10.3)',advance='no') pp%shell(k)%tau(1:3,1)
+                    write(*,'(f10.3)' ,advance='no') norm2(matmul(pp%shell(k)%bas,pp%shell(k)%tau_frac(1:3,1)))
+                    write(*,'(3f10.3)',advance='no') matmul(pp%shell(k)%bas,pp%shell(k)%tau_frac(1:3,1))
+                    write(*,'(f10.3)' ,advance='no') norm2(pp%shell(k)%tau_frac(1:3,1))
+                    write(*,'(3f10.3)',advance='no') pp%shell(k)%tau_frac(1:3,1)
                     write(*,*)
                 endif
                 enddo
@@ -250,11 +250,11 @@ contains
             j=0
             do i = 1, sphere%natoms
                 ! turn sphere into a block with select atom at the origin
-                sphere%tau(:,i) = sphere%tau(:,i) - D
+                sphere%tau_frac(:,i) = sphere%tau_frac(:,i) - D
                 ! translate atoms to be as close to the origin as possible
-                sphere%tau(:,i) = modulo(sphere%tau(:,i) + 0.5_dp + opts%prec, 1.0_dp) - 0.5_dp - opts%prec
+                sphere%tau_frac(:,i) = modulo(sphere%tau_frac(:,i) + 0.5_dp + opts%prec, 1.0_dp) - 0.5_dp - opts%prec
                 ! take note of points within the predetermined pair cutoff radius [cartesian coordinates]
-                if (norm2(matmul(sphere%bas,sphere%tau(:,i))).le.pair_cutoff + opts%prec) then
+                if (norm2(matmul(sphere%bas,sphere%tau_frac(:,i))).le.pair_cutoff + opts%prec) then
                     j=j+1
                     atoms_inside(j) = i
                 endif
@@ -262,13 +262,13 @@ contains
             call sphere%filter(indices=atoms_inside(1:j))
             !
             ! sphere is in fractional. which means, if a supercell was created by expanding the basis by a factor of 2, the fractional distance between atoms shrunk by half.
-            sphere%tau = matmul(bas,sphere%tau)
+            sphere%tau_frac = matmul(bas,sphere%tau_frac)
             sphere%bas = matmul(inv(bas),sphere%bas)
             !
             ! check that there is one atom at the origin
             check_center = .false.
             do i = 1,sphere%natoms
-                if (all(abs(sphere%tau(:,i)).lt.tiny)) then
+                if (all(abs(sphere%tau_frac(:,i)).lt.tiny)) then
                     check_center = .true.
                     exit
                 endif
@@ -276,7 +276,7 @@ contains
             if (check_center.eq..false.) then
                 call am_print('ERROR','No atom at the origin.',flags='E')
                 call am_print('sphere_center',sphere_center)
-                call am_print('sphere%tau',transpose(sphere%tau))
+                call am_print('sphere%tau_frac',transpose(sphere%tau_frac))
                 stop
             endif
             !
@@ -297,7 +297,7 @@ contains
             integer , allocatable :: shell_id(:)
             integer  :: i, jj, j, k
             !
-            ! to convert to cart (to get pg and tau in consisten bases):
+            ! to convert to cart (to get pg and tau_frac in consisten bases):
             real(dp) :: op(4,4), inv_op(4,4)
             real(dp), allocatable :: sym_cart(:,:,:)
             !
@@ -315,7 +315,7 @@ contains
             enddo
             !
             ! <Antonio Mei: May 26, 2016>
-            ! there is some incosistency here... tau appears to be in fractional, but sym needs to
+            ! there is some incosistency here... tau_frac appears to be in fractional, but sym needs to
             ! be converted to cartesian? problem is that point group was defined for pc, but is
             ! being used for sphere which is based on the uc... the primitive cell basis is
             ! (ones(3)-eye(3))/2 the fcc basis, but the uc basis is the conventional cell basis...
@@ -325,11 +325,11 @@ contains
             !
             ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
             ! Things absolutely need to be be in cartesian coordinates here. The rotation operation needs to be strictly unitary.
-            PM = permutation_map( permutation_rep(seitz=sym_cart, tau=matmul(sphere%bas,sphere%tau), flags='relax_pbc', prec=opts%prec) )
+            PM = permutation_map( permutation_rep(seitz=sym_cart, tau_frac=matmul(sphere%bas,sphere%tau_frac), flags='relax_pbc', prec=opts%prec) )
             ! get distance of atoms
             allocate(d(sphere%natoms))
             do i = 1, sphere%natoms
-                d(i) = norm2(matmul(sphere%bas,sphere%tau(:,i)))
+                d(i) = norm2(matmul(sphere%bas,sphere%tau_frac(:,i)))
             enddo
             ! rank atoms according to their distances
             allocate(indices(sphere%natoms))
@@ -438,10 +438,10 @@ contains
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%stab%ps_id )))
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%rotg%ps_id )))
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%revg%ps_id )))
-                write(*,'(f10.3)' ,advance='no') norm2(matmul(ip%shell(k)%bas,ip%shell(k)%tau(1:3,1)))
-                write(*,'(3f10.3)',advance='no') matmul(ip%shell(k)%bas,ip%shell(k)%tau(1:3,1))
-                write(*,'(f10.3)' ,advance='no') norm2(ip%shell(k)%tau(1:3,1))
-                write(*,'(3f10.3)',advance='no') ip%shell(k)%tau(1:3,1)
+                write(*,'(f10.3)' ,advance='no') norm2(matmul(ip%shell(k)%bas,ip%shell(k)%tau_frac(1:3,1)))
+                write(*,'(3f10.3)',advance='no') matmul(ip%shell(k)%bas,ip%shell(k)%tau_frac(1:3,1))
+                write(*,'(f10.3)' ,advance='no') norm2(ip%shell(k)%tau_frac(1:3,1))
+                write(*,'(3f10.3)',advance='no') ip%shell(k)%tau_frac(1:3,1)
                 write(*,*)
             enddo
             ! write maps
@@ -509,7 +509,7 @@ contains
             isflipped = .false.
             do k = 1, pp%nshells
                 ! get bond vector
-                v = pp%shell(k)%tau(:,1)
+                v = pp%shell(k)%tau_frac(:,1)
                 ! record distances
                 d(k) = norm2(matmul(pp%shell(k)%bas,v))
                 ! record sorted pair atomic number
