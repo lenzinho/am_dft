@@ -43,14 +43,13 @@ contains
         implicit none
         !
         class(am_class_pair_shell), intent(inout) :: pp ! primitive pairs
-        class(am_class_unit_cell) , intent(in) :: pc ! primitive cell
+        type(am_class_prim_cell)  , intent(in) :: pc ! primitive cell
         type(am_class_space_group), intent(in) :: sg ! space group
         type(am_class_point_group), intent(in) :: pg ! point group
         type(am_class_unit_cell)  , intent(in) :: uc ! unit cell
         type(am_class_options)    , intent(in) :: opts
         real(dp), intent(inout) :: pair_cutoff
         !
-        character(11) :: pctype
         type(am_class_unit_cell) :: sphere ! sphere containing atoms up to a cutoff
         integer , allocatable :: shell_nelements(:)
         integer , allocatable :: shell_member(:,:)
@@ -60,16 +59,16 @@ contains
         real(dp) :: D(3) ! center of sphere in fractional coordinates
         integer  :: k,i,j
         integer  :: m,n
-        !
-        select type (pc)
-        type is (am_class_prim_cell); pctype = 'primitive'
-        type is (am_class_irre_cell); pctype = 'irreducible'
-        class default
-            stop 'pc type is not valid.'
-        end select
+        logical  :: found
         !
         ! print title
-        if (opts%verbosity.ge.1) call am_print_title('Determining '//trim(pctype)//' nearest-neighbor pairs')
+        if (opts%verbosity.ge.1) call am_print_title('Determining primitive neighbor pairs')
+        !
+        ! get converters for converting point symmetries (fractional pc) to cartesian coordinates
+        op(1:4,1:4) = 0
+        op(1:3,1:3) = pc%bas(1:3,1:3)
+        op(4:4,4:4) = 1
+        inv_op = inv(op)
         !
         ! set pair cutoff radius (smaller than half the smallest cell dimension, larger than the smallest distance between atoms)
         pair_cutoff = minval([norm2(uc%bas(:,:),1)/real(2,dp), pair_cutoff])
@@ -83,7 +82,7 @@ contains
             ! create sphere
             sphere = create_sphere(uc=uc, sphere_center=D, pair_cutoff=pair_cutoff, opts=opts )
             ! get number of pairs
-            nshells = nshells + maxval(identify_shells(sphere=sphere,pg=pg))
+            nshells = nshells + maxval(identify_shells(sphere=sphere,pc=pc,pg=pg))
         enddo
         !
         ! allocate pair space, pair centered on atom pc%natoms 
@@ -102,7 +101,7 @@ contains
             ! create sphere
             sphere = create_sphere(uc=uc, sphere_center=D, pair_cutoff=pair_cutoff, opts=opts )
             ! identify atoms in the whole sphere that can be mapped onto each other by point symmetry operations and return the id of the pair for each atom (including the center atom)
-            shell_id = identify_shells(sphere=sphere,pg=pg)
+            shell_id = identify_shells(sphere=sphere,pc=pc,pg=pg)
             ! get number of pairs
             nshells = maxval(shell_id)
             ! get pair members [pair representative is given by shell_member(:,1)]
@@ -119,15 +118,26 @@ contains
                 ! take note of shell center
                 pp%shell(k)%center = D
                 ! take note of point symmetry which takes atom tau(:,1) to atom tau(:,i)
-                allocate(pp%shell(k)%pg_id(pp%shell(k)%natoms))
-                do m = 1, pp%shell(k)%natoms
-                    search : do n = 1, pg%nsyms
-                        if (isequal(pp%shell(k)%tau(:,m), matmul(pg%sym(1:3,1:3,n),pp%shell(k)%tau(:,1)))) then
-                            pp%shell(k)%pg_id(m) = n
-                            exit search
-                        endif
-                    enddo search
-                enddo
+                ! allocate(pp%shell(k)%pg_id(pp%shell(k)%natoms))
+                ! do m = 1, pp%shell(k)%natoms
+                !     !
+                !     found= .false.
+                !     search : do n = 1, pg%nsyms
+                !         ! NOT WORKING
+                !         ! TO DO: ADD CHECK HERE.
+                !         if (isequal(matmul(pp%shell(k)%bas,pp%shell(k)%tau(:,m)), matmul( matmul(pc%bas,matmul(pg%sym(1:3,1:3,n),inv(pc%bas))), pp%shell(k)%tau(:,1)))) then
+                !             pp%shell(k)%pg_id(m) = n
+                !             found = .true.
+                !             exit search
+                !         endif
+                !     enddo search
+                !     !
+                !     if (.not.found) then
+                !         call am_print('tau(:,m)',pp%shell(k)%tau(:,m))
+                !         call am_print('tau(:,1)',pp%shell(k)%tau(:,1))
+                !         stop 'unable to symmetry operation which mpes tau(:,1) to tau(:,i)'
+                !     endif
+                ! enddo
                 ! get irreducible atom indices
                 pp%shell(k)%i = pc%ic_id(i)
                 pp%shell(k)%j = pp%shell(k)%ic_id(1)
@@ -149,7 +159,7 @@ contains
             do i = 1, pc%natoms
                 D = matmul(matmul(inv(uc%bas),pc%bas),pc%tau(:,i))
                 write(*,'(" ... ",a," atom ",a," at "   ,a,",",a,",",a,  " (frac) has ",a," nearest-neighbor shells")') &
-                    & trim(pctype), trim(int2char(i)), (trim(dbl2char(D(j),4)),j=1,3), trim(int2char(nshells))
+                    & 'primitive', trim(int2char(i)), (trim(dbl2char(D(j),4)),j=1,3), trim(int2char(nshells))
                 !
                 write(*,'(5x)' ,advance='no')
                 write(*,'(a5)' ,advance='no') 'shell'
@@ -218,7 +228,6 @@ contains
             real(dp), intent(in)  :: sphere_center(3)
             real(dp), intent(in)  :: pair_cutoff
             integer , allocatable :: atoms_inside(:)
-            real(dp), allocatable :: grid_points(:,:) ! used for wigner-seitz reduction
             type(am_class_options) :: notalk ! supress verbosity
             real(dp) :: bas(3,3), D(3)
             logical :: check_center
@@ -228,12 +237,7 @@ contains
             notalk = opts 
             notalk%verbosity = 0
             !
-            ! generate grid points for wigner_seitz reduction
-            D = real([-1:1],dp)
-            grid_points = meshgrid(D,D,D)
-            grid_points = matmul(uc%bas,grid_points)
-            !
-            ! create sphere instance
+            ! create sphere instance based on a 2x2x2 supercell
             bas = 2.0_dp*eye(3)
             call sphere%get_supercell(uc=uc, bscfp=bas, opts=notalk)
             D = matmul(inv(bas),sphere_center)
@@ -248,10 +252,8 @@ contains
                 ! turn sphere into a block with select atom at the origin
                 sphere%tau(:,i) = sphere%tau(:,i) - D
                 ! translate atoms to be as close to the origin as possible
-                ! sphere%tau(:,i) = reduce_to_wigner_seitz(pnt=sphere%tau(:,i),grid_points=grid_points,bas=uc%bas,prec=opts%prec)
                 sphere%tau(:,i) = modulo(sphere%tau(:,i) + 0.5_dp + opts%prec, 1.0_dp) - 0.5_dp - opts%prec
-                ! take note of points within the predetermied pair cutoff radius
-                ! right now, pair cutoff is in fractional. should use cartesian coordinats.
+                ! take note of points within the predetermined pair cutoff radius [cartesian coordinates]
                 if (norm2(matmul(sphere%bas,sphere%tau(:,i))).le.pair_cutoff + opts%prec) then
                     j=j+1
                     atoms_inside(j) = i
@@ -279,24 +281,51 @@ contains
             endif
             !
         end function   create_sphere
-        function       identify_shells(sphere,pg) result(shell_id)
-            !
+        function       identify_shells(sphere,pc,pg) result(shell_id)
+            ! note: pg is obtained with respect to pc. if the basis is mismatched (between pg and pc), there will be problems (see note below)...
+            ! atoms are determined to be in the same shell if there exists a point symmetry operation which connects the atoms
             use am_rank_and_sort
             !
             implicit none
             !
             type(am_class_unit_cell)  , intent(in) :: sphere
+            type(am_class_prim_cell)  , intent(in) :: pc ! primitive cell
             type(am_class_point_group), intent(in) :: pg ! rotational group (space symmetries which have translational part set to zero and are still compatbile with the atomic basis)
-            integer , allocatable :: P(:,:,:)
             integer , allocatable :: PM(:,:) ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
             real(dp), allocatable :: d(:)    ! d(nshells) array containing distances between atoms
             integer , allocatable :: indices(:)
             integer , allocatable :: shell_id(:)
-            integer :: i, jj, j, k
+            integer  :: i, jj, j, k
+            !
+            ! to convert to cart (to get pg and tau in consisten bases):
+            real(dp) :: op(4,4), inv_op(4,4)
+            real(dp), allocatable :: sym_cart(:,:,:)
+            !
+            ! get converters for converting point symmetries (fractional pc) to cartesian coordinates
+            op(1:4,1:4) = 0
+            op(1:3,1:3) = pc%bas(1:3,1:3)
+            op(4:4,4:4) = 1
+            inv_op = inv(op)
+            !
+            ! convert point symmetries (fractional pc) to cartesian coordinates
+            allocate(sym_cart(4,4,pg%nsyms))
+            do i = 1, pg%nsyms
+                sym_cart(:,:,i) = matmul(op,matmul(pg%sym(:,:,i),inv_op))
+                if (.not.isequal(transpose(sym_cart(:,:,i)),inv(sym_cart(:,:,i)))) stop 'sym_cart(:,:,i) is not unitary.'
+            enddo
+            !
+            ! <Antonio Mei: May 26, 2016>
+            ! there is some incosistency here... tau appears to be in fractional, but sym needs to
+            ! be converted to cartesian? problem is that point group was defined for pc, but is
+            ! being used for sphere which is based on the uc... the primitive cell basis is
+            ! (ones(3)-eye(3))/2 the fcc basis, but the uc basis is the conventional cell basis...
+            ! AS LONG AS THE SYMMETRIES AND THE ATOMIC BASIS ARE IN CARTESIAN COORDINATES
+            ! (CONSISTENT AMONG THEMSELVES) WHEN permutation_rep IS CALLED, IT WORKS.
+            ! </Antonio Mei: May 26, 2016>
             !
             ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-            P  = permutation_rep(seitz=pg%sym, tau=sphere%tau, flags='relax_pbc', prec=opts%prec)
-            PM = permutation_map( P )
+            ! Things absolutely need to be be in cartesian coordinates here. The rotation operation needs to be strictly unitary.
+            PM = permutation_map( permutation_rep(seitz=sym_cart, tau=matmul(sphere%bas,sphere%tau), flags='relax_pbc', prec=opts%prec) )
             ! get distance of atoms
             allocate(d(sphere%natoms))
             do i = 1, sphere%natoms
@@ -458,6 +487,7 @@ contains
             type(am_class_options)    , intent(in) :: opts
             type(am_class_point_group) :: stab ! stabilizer of vector v
             integer , allocatable :: Z(:,:) ! Z of each atom in pair
+            integer , allocatable :: M(:,:) ! M&N primitive atom indices
             integer , allocatable :: s(:) ! stabilizer point group id
             real(dp), allocatable :: d(:) ! distances of atoms
             integer , allocatable :: ip_id(:) ! can have negative, it means bond was flipped!
@@ -473,6 +503,7 @@ contains
             allocate(d(pp%nshells))         ! distance between pair of atoms (having atoms the same distance apart is a prerequesit for the bond to be the same)
             allocate(s(pp%nshells))         ! stabilizer group id (having the same stabilier group is a prerequesit for the bond to be the same)
             allocate(Z(2,pp%nshells))       ! atomic number of elements in pair (having the same types of atoms is a prerequesit for the bond to be the same)
+            allocate(M(2,pp%nshells))       ! primitive atom indices
             allocate(isflipped(pp%nshells)) ! indicates which pairs were flipped in the comparison, returns negative ip_id if the corresponding bond was flipped
             !
             isflipped = .false.
@@ -481,18 +512,17 @@ contains
                 v = pp%shell(k)%tau(:,1)
                 ! record distances
                 d(k) = norm2(matmul(pp%shell(k)%bas,v))
-                ! record sorted pair
+                ! record sorted pair atomic number
                 Z(1:2,k) = [ic%Z(pp%shell(k)%i), pp%shell(k)%Z(1)]
                 if (Z(1,k).gt.Z(2,k)) then
-                    isflipped(k) = .true.
                     Z([1,2],k) = Z([2,1],k)
                 endif
-                ! flip again based on primitive cell index
-                if (pp%shell(k)%m.gt.pp%shell(k)%n) then
-                    ! action of .not.:
-                    ! if true  -> false
-                    ! if false -> tru
-                    isflipped(k) = .not.isflipped(k)
+                ! record primitive pair indices 
+                M(1:2,k) = [pp%shell(k)%m, pp%shell(k)%n]
+                ! flip pairs based on primitive cell index
+                if (M(1,k).gt.M(2,k)) then
+                    isflipped(k) = .true.
+                    M([1,2],k) = M([2,1],k)
                 endif
                 ! record stabilzier group
                 call stab%get_stabilizer_group(pg=pg, v=v, opts=opts)

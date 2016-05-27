@@ -6,19 +6,20 @@ module am_symmetry
     use am_options
     use am_mkl
     use am_symmetry_tables
+    use am_matlab
 
     implicit none
 
     public
 
     type, public :: am_class_group
-        integer :: nsyms                          ! number of symmetries
-        integer :: nbases                         ! number of bases functions (dimensions of rep)
-        real(dp), allocatable :: sym(:,:,:)       ! symmetry elements (operate on fractional atomic basis)
-        integer , allocatable :: ps_id(:)         ! integer which identifies point symmetries (see decode_pointsymmetry)
-        type(am_class_conjugacy_class)      :: cc ! conjugacy classes
-        type(am_class_character_table)      :: ct ! character table
-        type(am_class_multiplication_table) :: mt ! multiplication table
+        integer :: nsyms                            ! number of symmetries
+        integer :: nbases                           ! number of bases functions (dimensions of rep)
+        real(dp), allocatable :: sym(:,:,:)         ! symmetry elements (operate on fractional atomic basis), target is used in hamiltonian tb basis
+        integer , allocatable :: ps_id(:)           ! integer which identifies point symmetries (see decode_pointsymmetry)
+        type(am_class_conjugacy_class)      :: cc   ! conjugacy classes
+        type(am_class_character_table)      :: ct   ! character table
+        type(am_class_multiplication_table) :: mt   ! multiplication table
         contains
         procedure :: sort_symmetries
         procedure :: copy
@@ -384,12 +385,12 @@ contains
 
     ! high level routines which operate on sg/pg
 
-    subroutine     get_space_group(sg,uc,opts)
+    subroutine     get_space_group(sg,pc,opts)
         !
         implicit none
         !
         class(am_class_space_group), intent(inout) :: sg
-        class(am_class_unit_cell)  , intent(in) :: uc ! space groups are tabulated in the litearture for conventional cells, but primitive or arbitrary cell works just as well.
+        class(am_class_unit_cell)  , intent(in) :: pc ! space groups are tabulated in the litearture for conventional cells, but primitive or arbitrary cell works just as well.
         type(am_class_options)     , intent(in) :: opts
         type(am_class_options) :: notalk
         real(dp), allocatable  :: seitz(:,:,:)
@@ -400,7 +401,7 @@ contains
         if (opts%verbosity.ge.1) call am_print_title('Determining space group symmetries')
         !
         ! determine space symmetries from atomic basis
-        seitz = space_symmetries_from_basis(uc=uc,opts=opts)
+        seitz = space_symmetries_from_basis(uc=pc,opts=opts)
         if (opts%verbosity.ge.1) call am_print('number of space group symmetries found',size(seitz,3),' ... ') 
         !
         ! put identity first
@@ -419,9 +420,9 @@ contains
         endif
         !
         ! write to write_outfile and to file
-        call sg%write_outfile(iopt_uc=uc,iopt_filename=trim('outfile.spacegroup'))
+        call sg%write_outfile(iopt_uc=pc,iopt_filename=trim('outfile.spacegroup'))
         !
-        call sg%write_action_table(uc=uc,fname='outfile.space_group_action',opts=opts)
+        call sg%write_action_table(uc=pc,fname='outfile.space_group_action',opts=opts)
         !
         contains
             subroutine     put_identity_first(seitz)
@@ -444,13 +445,13 @@ contains
             end subroutine put_identity_first
     end subroutine get_space_group
 
-    subroutine     get_point_group(pg,uc,sg,opts)
+    subroutine     get_point_group(pg,pc,sg,opts)
         !
         implicit none
         !
         class(am_class_point_group), intent(inout) :: pg
         type(am_class_space_group) , intent(in) :: sg
-        class(am_class_unit_cell)  , intent(in) :: uc ! accepts unit cell, primitive cell, conventional cell.
+        class(am_class_unit_cell)  , intent(in) :: pc  ! accepts unit cell, primitive cell, conventional cell.
         type(am_class_options)     , intent(in) :: opts
         real(dp), allocatable  :: seitz(:,:,:)
         type(am_class_options) :: notalk
@@ -473,9 +474,9 @@ contains
             call pg%print_character_table()
         endif
         !
-        call pg%write_outfile(iopt_uc=uc,iopt_filename='outfile.pointgroup')
+        call pg%write_outfile(iopt_uc=pc,iopt_filename='outfile.pointgroup')
         !
-        call pg%write_action_table(uc=uc,fname='outfile.point_group_action',opts=opts)
+        call pg%write_action_table(uc=pc,fname='outfile.point_group_action',opts=opts)
         !
     end subroutine get_point_group
 
@@ -1447,7 +1448,7 @@ contains
                 endif
                 ! find matching atom
                 search : do k = 1, ntaus
-                    if (all(abs(tau_rot-tau(:,k)).lt.prec)) then
+                    if (isequal(tau_rot,tau(:,k))) then
                     rep(j,k,i) = 1
                     found = .true.
                     exit search ! break loop
@@ -1456,7 +1457,7 @@ contains
                 ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
                 ! to ensure atoms must permute onto each other
                 if (index(flags,'relax_pbc').eq.0) then
-                if (found.eq..false.) then
+                if (.not.found) then
                     call am_print('ERROR','Unable to find matching atom.',flags='E')
                     call am_print('tau (all atoms)',transpose(tau))
                     call am_print('tau',tau(:,j))

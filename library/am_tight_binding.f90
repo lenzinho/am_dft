@@ -139,9 +139,9 @@ contains
             tbvsk%rank  = 2
             ! detetmine if irreducible atoms are the same
             if (shell%i.eq.shell%j) then
-                tbvsk%flags = 'symmetric'
+                tbvsk%flags = 'i==j'
             else
-                tbvsk%flags = 'asymmetric'
+                tbvsk%flags = 'i/=j'
             endif
             ! set dimensions of matrix elements
             allocate(tbvsk%dims(tbvsk%rank))
@@ -201,10 +201,13 @@ contains
         type(am_class_pair_shell)    , intent(in) :: ip     ! irreducible pairs
         real(dp)                     , intent(in) :: kpt(3) ! fractional
         logical, optional            , intent(in) :: iopt_mask(:)
-        logical, allocatable :: mask(:)
+        logical    , allocatable :: mask(:)
         integer    , allocatable :: S(:),E(:)
-        complex(dp), allocatable :: Hsub(:,:)
+        complex(dp), allocatable, target :: wrkHsub(:,:)
+        real(dp)   , allocatable, target :: wrktbpg(:,:,:)
         complex(dp), allocatable :: H(:,:)
+        complex(dp), pointer :: Hsub(:,:)
+        real(dp), pointer :: Dm(:,:), Dn(:,:)
         integer :: m ! primitive atom 1 index 
         integer :: n ! primitive atom 2 index
         integer :: i ! irreducible atom 1 index 
@@ -225,7 +228,9 @@ contains
         allocate(S, source=tbpg%H_start)
         allocate(E, source=tbpg%H_end)
         ! allocate workspace for H subsection (initialized later)
-        allocate(Hsub(tbpg%nbases,tbpg%nbases))
+        allocate(wrkHsub(tbpg%nbases,tbpg%nbases))
+        ! allocate workspace for H subsection (initialized later)
+        allocate(wrktbpg, source=tbpg%sym)
         ! allocate and initialize
         allocate(H(tbpg%nbases,tbpg%nbases))
         H = cmplx(0,0,dp)
@@ -239,47 +244,25 @@ contains
             ! irreducible atom indicies
             i = pp%shell(k)%i
             j = pp%shell(k)%j
-            ! reset workspace
-            Hsub = cmplx(0,0,dp)
+            ! tbpg%sym(tbpg%H_start(pc_id):tbpg%H_end(pc_id), tbpg%H_start(pc_id):tbpg%H_end(pc_id), pg_id)
             ! compute bloch sum by loop over atoms in shell
             do p = 1, pp%shell(k)%natoms
-                ! get matrix elements
-                Hsub(S(m):E(m), S(n):E(n)) = get_Vsk(tb=tb, ip_id=pp%ip_id(k))
+                ! set pointers
+                Hsub => wrkHsub(S(m):E(m), S(n):E(n))
+                Dm   => wrktbpg(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p) )
+                Dn   => wrktbpg(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
+                ! get matrix elements (initialize Hsub)
+                Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))
                 ! rotate matrix elements as needed to get from the tau(:,1) => tau(:,x)
-                Hsub(S(m):E(m), S(n):E(n)) = matmul(Hsub(S(m):E(m), S(n):E(n)), tbpg%get_slice(pg_id=pp%shell(k)%pg_id(p), pc_id=n))
-                Hsub(S(m):E(m), S(n):E(n)) = matmul(transpose(tbpg%get_slice(pg_id=pp%shell(k)%pg_id(p), pc_id=m)), Hsub(S(m):E(m), S(n):E(n)))
-                if (m.eq.2 .and. n.eq.1) then
-                call am_print('Hsub(S(m):E(m), S(n):E(n))',Hsub(S(m):E(m), S(n):E(n)))
-                endif
-                ! if ip_id < 0 -> the irreducible pair has its indices flipped with respect to the primitive pair
-                ! as a result, the matrix elements need to be transposed and the signed adjusted to reflect oribtal parity
-                if (pp%ip_id(k).lt.0) then
-                    ! PROBLEM IS THAT 1) 
-                    ! The hamiltonian top right section should look like this, as obtained from the symmetry relations
-                    !      1     2     2     2
-                    !     -2     4     3     3
-                    !     -2     3     4     3
-                    !     -2     3     3     4
-                    ! Instead, what is obtained looks like this:
-                    !      3    -4     4    -4
-                    !      4     6    -5     5
-                    !     -4    -5     6    -5
-                    !      4     5    -5     6
-                    ! clearly the units have been messed up somwhere....
-                    !
-                    ! PROBLEM NUMBER 2 IS THAT
-                    ! not sure how to apply sign change for the bottom right part of hamiltonian... thought it had to do with pp%ip_id but that' can't be because that cannot distinguish between primitive cell sites, it only distinguishes atoms basd on Z.
-
-                Hsub(S(m):E(m), S(n):E(n)) = &
-                Hsub(S(m):E(m), S(n):E(n)) * transp_parity_sign(atom_m=ic%atom(i), atom_n=ic%atom(j))
-                endif
+                call am_print('Dn'//trim(int2char(pp%shell(k)%pg_id(p))),Dn)
+                call am_print('Dm'//trim(int2char(pp%shell(k)%pg_id(p))),Dm)
+                Hsub = matmul(Hsub, Dn)
+                Hsub = matmul(transpose(Dm), Hsub)
                 ! multiply exponential factor from Bloch sum
-                Hsub(S(m):E(m), S(n):E(n)) = &
-                Hsub(S(m):E(m), S(n):E(n)) * exp(-itwopi*dot_product(pp%shell(k)%tau(1:3,p), kpt)) ! kpt is in fractional
-                !
+                Hsub = Hsub * exp(-itwopi*dot_product(pp%shell(k)%tau(1:3,p), kpt)) ! kpt is in fractional
+                ! this pair's contribution to the Hamiltonian
+                H(S(m):E(m), S(n):E(n)) = H(S(m):E(m), S(n):E(n)) + Hsub
             enddo
-            ! this pair's contribution to the Hamiltonian
-            H(S(m):E(m), S(n):E(n)) = H(S(m):E(m), S(n):E(n)) + Hsub(S(m):E(m), S(n):E(n))
         endif
         enddo
     end function   get_hamiltonian
@@ -294,17 +277,22 @@ contains
         type(am_class_pair_shell)    , intent(in) :: pp   ! primitive pairs
         type(am_class_pair_shell)    , intent(in) :: ip   ! irreducible pairs
         complex(dp), allocatable :: H(:,:)
+        real(dp)   , allocatable :: R(:,:)
         integer :: i
         !
         H = tb%get_hamiltonian(tbpg=tbpg, ic=ic, ip=ip, pp=pp, kpt=real([0,0,0],dp))
         !
+        ! check that H is hermitian
+        if ( .not. isequal(H,adjoint(H)) ) stop 'H is not Hermitian.'
+        !
+        allocate(R(tbpg%nbases,tbpg%nbases))
         do i = 1, tbpg%nsyms
-            call am_print('Re(H)',real(H))
-            call am_print('Im(H)',aimag(H))
-            if (.not.isequal(matmul(H,tbpg%sym(:,:,i)),matmul(tbpg%sym(:,:,i),H))) then
+            R = tbpg%sym(:,:,i)
+            if (.not.isequal(matmul(H,R),matmul(R,H))) then
                 call am_print('Re(H)',real(H))
                 call am_print('Im(H)',aimag(H))
-                call am_print('sym',tbpg%sym(:,:,i))
+                call am_print('sym',R)
+                call am_print('[H,R]', real(matmul(H,R) - matmul(R,H),dp) )
                 stop 'H does not commute with symmetry.'
             endif
         enddo
@@ -312,14 +300,18 @@ contains
 
     ! functions which operate on V
 
-    function       get_Vsk(tb,ip_id) result(V)
+    function       get_Vsk(tb,atom_m,atom_n,ip_id) result(V)
         !
         ! irreducible pair (ip_id), can be negative (corresponds to pair n-m rathet than m-n, on the
         ! opposite [upper/lower] side of the Hamiltonian), in which case adjoint of V is returned
         !
+        use am_atom
+        !
         implicit none
         !
         class(am_class_tight_binding), intent(in) :: tb
+        type(am_class_atom), intent(in) :: atom_m
+        type(am_class_atom), intent(in) :: atom_n
         integer , intent(in) :: ip_id
         real(dp), allocatable :: V(:,:)
         integer :: id
@@ -332,7 +324,7 @@ contains
         !
         if (id.lt.0) then
             allocate(V(n,m))
-            V = adjoint( reshape(tb%tbvsk(id)%V, [m,n]) )
+            V = adjoint( reshape(tb%tbvsk(id)%V, [m,n]) ) * transp_parity_sign(atom_m=atom_m, atom_n=atom_n)
         else
             allocate(V(m,n))
             V =          reshape(tb%tbvsk(id)%V, [m,n])

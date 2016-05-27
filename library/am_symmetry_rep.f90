@@ -41,7 +41,6 @@ module am_symmetry_rep
         integer, allocatable :: H_end(:)   ! Hend(m)   end of hamiltonian section corresponding to atom m
         contains
         procedure :: get_tight_binding_point_group
-        procedure :: get_slice
     end type am_class_tb_group
 
     type, public :: am_class_tensor
@@ -210,20 +209,6 @@ module am_symmetry_rep
         end function   ps2tb_H
     end subroutine get_tight_binding_point_group
 
-    function       get_slice(tbpg,pg_id,pc_id) result(slice)
-        ! get slice of rotation pg_id corresponding to atom pc_id
-        implicit none
-        !
-        class(am_class_tb_group), intent(in) :: tbpg ! point symmetries in tight binding basis
-        integer                 , intent(in) :: pg_id, pc_id
-        real(dp), allocatable :: slice(:,:)
-        !
-        allocate(slice, source = tbpg%sym(tbpg%H_start(pc_id):tbpg%H_end(pc_id), tbpg%H_start(pc_id):tbpg%H_end(pc_id), pg_id) )
-        !
-    end function   get_slice
-
-    ! operators on flat representations
-
     subroutine     get_flat_intrinsic_group(flat_ig,tens,atom_m,atom_n)
         !
         implicit none
@@ -238,7 +223,7 @@ module am_symmetry_rep
         !
         ! basic checks
         if (index(tens%property, 'tight').ne.0) then
-        if (index(tens%flags,'symmetric').ne.0) then
+        if (index(tens%flags,'i==j'     ).ne.0) then
             if (.not.present(atom_m)) stop 'atom_m is required for the creation of tb flat intrinsic symmetry group'
             if (.not.present(atom_n)) stop 'atom_n is required for the creation of tb flat intrinsic symmetry group'
         endif
@@ -285,13 +270,13 @@ module am_symmetry_rep
             k=k+1; flat_ig%sym(:,:,k) = kron(T,T)              ! cijkl = cjilk
             !
         elseif (index(tens%property,'tight'            ).ne.0) then
-        if     (index(tens%flags   ,'symmetric'        ).ne.0) then
+        if     (index(tens%flags   ,'i==j'             ).ne.0) then
             ! atoms correspond to the same irreducible atom
             flat_ig%nsyms = 2
             allocate(flat_ig%sym(flat_ig%nbases,flat_ig%nbases,flat_ig%nsyms))
             k=k+1; flat_ig%sym(:,:,k) = eye(flat_ig%nbases)    ! E
             k=k+1; flat_ig%sym(:,:,k) = orbital_parity(atom_m,atom_n) ! (l,l',m) = (-1)^(l+l') (l',l,m)
-        elseif (index(tens%flags   ,'asymmetric'       ).ne.0) then
+        elseif (index(tens%flags   ,'i/=j'             ).ne.0) then
             ! atoms correspond to different irreducible atoms
             flat_ig%nsyms = 1
             allocate(flat_ig%sym(flat_ig%nbases,flat_ig%nbases,flat_ig%nsyms))
@@ -311,7 +296,6 @@ module am_symmetry_rep
         call flat_ig%get_conjugacy_classes()
         ! get character table
         call flat_ig%get_character_table()
-        !
         ! get relations
         flat_ig%relations = flat_ig%get_relations()
         !
