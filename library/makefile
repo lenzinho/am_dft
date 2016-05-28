@@ -20,12 +20,13 @@ OBJS  = am_constants.o                 \
 		am_symmetry_relations.o 	   \
 		am_symmetry_rep.o 			   \
 		am_tight_binding.o             \
-		am_tet_mesh.o                  \
-		am_brillouin_zone.o            \
-		am_tetrahedra.o                \
-		am_dispersion.o                \
-		am_dos.o                       \
-		am_wannier.o                   \
+		am_tet_mesh.o                  
+
+		# am_brillouin_zone.o            \
+		# am_tetrahedra.o                \
+		# am_dispersion.o                \
+		# am_dos.o                       \
+		# am_wannier.o                   \
 
 MODS  = OBJS
 

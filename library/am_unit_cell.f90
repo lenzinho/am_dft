@@ -413,7 +413,7 @@ contains
         allocate(uc%tau_cart(3,uc%natoms))
         uc%tau_cart = matmul(uc%bas,uc%tau_frac)
         !
-        uc%recbas=inv(uc%recbas)
+        uc%recbas=inv(uc%bas)
         !
     end subroutine  load_poscar
 

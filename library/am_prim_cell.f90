@@ -109,6 +109,7 @@ contains
             ! get basis translations which could serve as primitive cell vectors
             T = translations_from_basis(tau_frac=tau_frac, Z=Z, prec=prec, flags='prim')
             T = matmul(bas,T)
+            nTs = size(T,2)
             ! sort primitive vectors based on magnitude (smallest last)
             allocate(indices(nTs))
             call rank(norm2(T,1),indices)

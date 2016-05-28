@@ -1,0 +1,32 @@
+
+% CONVERSION TO CARTESIAN UNITS, PROGRESS:
+
+OBJS  = am_constants.o                 \ Nothing to do here
+		am_mkl.o                       \ Nothing to do here
+		am_matlab.o                    \ Nothing to do here
+		am_stdout.o                    \ Nothing to do here
+		am_histogram.o                 \ Nothing to do here
+		am_rank_and_sort.o             \ Nothing to do here
+		am_options.o                   \ Nothing to do here
+		am_vasp_io.o                   \ Converted: read_poscar, write_poscar 
+		am_atom.o                      \ Nothing to do here
+		am_unit_cell.o                 \
+		am_prim_cell.o                 \
+		am_conv_cell.o                 \
+		am_symmetry_tables.o  		   \
+		am_symmetry.o                  \
+		am_irre_cell.o                 \
+		am_shells.o                    \
+		am_symmetry_relations.o 	   \
+		am_symmetry_rep.o 			   \
+		am_tight_binding.o             \
+		am_tet_mesh.o                  \
+		am_brillouin_zone.o            \
+		am_tetrahedra.o                \
+		am_dispersion.o                \
+		am_dos.o                       \
+		am_wannier.o                   \
+
+
+
+	<Antonio, May 26, 2016: converted to cartesian>

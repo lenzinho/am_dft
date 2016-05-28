@@ -34,11 +34,11 @@ module am_symmetry
     end type am_class_symrep_group
 
     type, public, extends(am_class_group)       :: am_class_seitz_group
-        real(dp) :: bas(3,3)                       ! basis in which [frac.] are defined
-        real(dp) :: recbas(3,3)                    ! basis in which [rfrac] are defined
-        real(dp), allocatable :: seitz_cart(:,:,:) ! symmetry elements [cart.]
-        real(dp), allocatable :: seitz_frac(:,:,:) ! symmetry elements [frac, direct]; acts on atoms
-        real(dp), allocatable :: seitz_rfrac(:,:,:)! symmetry elements [frac, reciprocal]; acts on kpoints
+        real(dp) :: bas(3,3)                          ! basis in which [frac.] are defined
+        real(dp) :: recbas(3,3)                       ! basis in which [recfrac] are defined
+        real(dp), allocatable :: seitz_cart(:,:,:)    ! symmetry elements [cart.]
+        real(dp), allocatable :: seitz_frac(:,:,:)    ! symmetry elements [frac, direct]; acts on atoms
+        real(dp), allocatable :: seitz_recfrac(:,:,:) ! symmetry elements [frac, reciprocal]; acts on kpoints
         ! sym(:,:,:) are seitz operators
         contains
         procedure :: create_seitz_group
@@ -103,8 +103,8 @@ contains
             grp%seitz_frac = grp%seitz_frac(:,:,inds)
             ! symmerties [cart.]
             grp%seitz_cart = grp%seitz_cart(:,:,inds)
-            ! symmetries [rfrac]
-            grp%seitz_rfrac= grp%seitz_rfrac(:,:,inds)
+            ! symmetries [recfrac]
+            grp%seitz_recfrac= grp%seitz_recfrac(:,:,inds)
         class default
             stop 'Class unknown!'
         end select
@@ -167,7 +167,7 @@ contains
                 ! symmerties [frac.]
                 call dump_sym_to_file(fid=fid, sym=grp%seitz_frac,  header='[frac.]')
                 call dump_sym_to_file(fid=fid, sym=grp%seitz_cart,  header='[cart.]')
-                call dump_sym_to_file(fid=fid, sym=grp%seitz_rfrac, header='[rec. frac]')
+                call dump_sym_to_file(fid=fid, sym=grp%seitz_recfrac, header='[rec. frac]')
             class default
                 stop 'Class unknown!'
             end select
@@ -286,7 +286,7 @@ contains
             allocate(rep_label(nreps))
             ! representation based on basis functions
             rep_label(1) = 'rep'
-            rep_chi(1,:) = get_rep_characters(   sym=grp%seitz_cart(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_chi(1,:) = get_rep_characters(   sym=grp%seitz_frac(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
             ! representation based on s orbitals
             rep_label(2) = 's D^(0)'
             rep_chi(2,:) = get_orb_characters(l=0, R=grp%seitz_cart(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
@@ -429,7 +429,7 @@ contains
         !
         ! basis in which [frac.] are defined
         sg%bas = bas
-        ! get reciprocal basis in which [rfrac] are defined
+        ! get reciprocal basis in which [recfrac] are defined
         sg%recbas = inv(bas)
         ! number of "bases functions", doesn't have any real meaning here. Using 3 rather than 4.
         sg%nbases = 3
@@ -444,10 +444,10 @@ contains
         do i = 1, sg%nsyms
             sg%seitz_cart(:,:,i) = seitz_frac2cart(seitz_frac=sg%seitz_frac(:,:,i), bas=sg%bas, recbas=sg%recbas)
         enddo
-        ! get symmetries [rfrac]
-        allocate(sg%seitz_cart(4,4,sg%nsyms))
+        ! get symmetries [recfrac]
+        allocate(sg%seitz_recfrac(4,4,sg%nsyms))
         do i = 1, sg%nsyms
-            sg%seitz_rfrac(:,:,i) = seitz_cart2rfrac(seitz_cart=sg%seitz_frac(:,:,i), bas=sg%bas, recbas=sg%recbas)
+            sg%seitz_recfrac(:,:,i) = seitz_cart2recfrac(seitz_cart=sg%seitz_frac(:,:,i), bas=sg%bas, recbas=sg%recbas)
         enddo
         ! identify point symmetries
         allocate(sg%ps_id(sg%nsyms))
@@ -483,21 +483,21 @@ contains
             seitz_cart(4,1:3)   = 0.0_dp
             !
         end function   seitz_frac2cart
-        function       seitz_cart2rfrac(seitz_cart,bas,recbas) result(seitz_rfrac)
+        function       seitz_cart2recfrac(seitz_cart,bas,recbas) result(seitz_recfrac)
             !
             implicit none
             !
             real(dp), intent(in) :: seitz_cart(4,4)
             real(dp), intent(in) :: bas(3,3)
             real(dp), intent(in) :: recbas(3,3)
-            real(dp) :: seitz_rfrac(4,4)
+            real(dp) :: seitz_recfrac(4,4)
             !
-            seitz_rfrac(1:3,1:3) = matmul(bas,matmul(seitz_cart(1:3,1:3),recbas))
-            seitz_rfrac(1:3,4)   = matmul(bas,seitz_cart(1:3,4))
-            seitz_rfrac(4,4)     = 1.0_dp
-            seitz_rfrac(4,1:3)   = 0.0_dp
+            seitz_recfrac(1:3,1:3) = matmul(bas,matmul(seitz_cart(1:3,1:3),recbas))
+            seitz_recfrac(1:3,4)   = matmul(bas,seitz_cart(1:3,4))
+            seitz_recfrac(4,4)     = 1.0_dp
+            seitz_recfrac(4,1:3)   = 0.0_dp
             !
-        end function   seitz_cart2rfrac
+        end function   seitz_cart2recfrac
     end subroutine create_seitz_group
 
     subroutine     get_space_group(sg,pc,opts)
@@ -753,7 +753,7 @@ contains
                 write(fid,*)
             enddo
             !
-            ! rfrac
+            ! recfrac
             write(fid,fmt3) centertitle('seitz [rec. frac.]',width)
             write(fid,fmt3) repeat('-',width)
             write(fid,fmt2,advance='no') '#', 'R11', 'R21', 'R31', 'R12', 'R22', 'R32', 'R13', 'R23', 'R33'
