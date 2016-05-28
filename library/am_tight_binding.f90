@@ -181,7 +181,7 @@ contains
                 ! determine stabilizers relations
                 call stab%get_stabilizer_group(pg=pg, v=shell%tau_frac(1:3,1), opts=opts)
                 ! get stabilizer symmetries in the flattened hamiltonin basis
-                call flat_pg%get_flat_point_group(tens=tbvsk, pg=stab, pc=pc, atom_m=ic%atom(shell%i), atom_n=ic%atom(shell%j))
+                call flat_pg%get_flat_point_group(tens=tbvsk, pg=stab, atom_m=ic%atom(shell%i), atom_n=ic%atom(shell%j))
                 ! get combined relations
                 tbvsk%relations = combine_relations(relationsA=flat_pg%relations, relationsB=flat_ig%relations)
                 ! 

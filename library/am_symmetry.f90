@@ -104,7 +104,7 @@ contains
             ! symmerties [cart.]
             grp%seitz_cart = grp%seitz_cart(:,:,inds)
             ! symmetries [recfrac]
-            grp%seitz_recfrac= grp%seitz_recfrac(:,:,inds)
+            grp%seitz_recfrac = grp%seitz_recfrac(:,:,inds)
         class default
             stop 'Class unknown!'
         end select
@@ -444,10 +444,10 @@ contains
         do i = 1, sg%nsyms
             sg%seitz_cart(:,:,i) = seitz_frac2cart(seitz_frac=sg%seitz_frac(:,:,i), bas=sg%bas, recbas=sg%recbas)
         enddo
-        ! get symmetries [recfrac]
+        ! get symmetries [rec. frac.]
         allocate(sg%seitz_recfrac(4,4,sg%nsyms))
         do i = 1, sg%nsyms
-            sg%seitz_recfrac(:,:,i) = seitz_cart2recfrac(seitz_cart=sg%seitz_frac(:,:,i), bas=sg%bas, recbas=sg%recbas)
+            sg%seitz_recfrac(:,:,i) = seitz_cart2recfrac(seitz_cart=sg%seitz_cart(:,:,i), bas=sg%bas, recbas=sg%recbas)
         enddo
         ! identify point symmetries
         allocate(sg%ps_id(sg%nsyms))
@@ -1091,6 +1091,36 @@ contains
         close(fid)
     end subroutine write_action_table
 
+!     subroutine     print_tensor(seitz)
+!         !
+!         implicit none
+!         !
+!         real(dp), target, intent(in) :: seitz(:,:,:)
+!         integer :: i,j,k
+!         integer :: m,n,o
+!         integer :: t
+!         integer :: matrix_per_line
+!         real(dp), pointer :: p(:,:,:)
+!         !
+!         m=size(seitz,1)
+!         n=size(seitz,2)
+!         o=size(seitz,3)
+!         !
+!         t = 0
+!         do i = 1, m
+!             do k = 1, o ! get three tensors per line
+!                 do j = 1, n
+!                     write(*,'(f8.2)') seitz(i,j,k)
+!                 enddo
+!                     write(*,'(5x)')
+!                 enddo
+
+!             enddo
+
+!         enddo
+!         !
+!     end subroutine print_tensor
+
     ! decoding/naming functions 
 
     function       ps_schoenflies(R) result(ps_id)
@@ -1345,7 +1375,7 @@ contains
         ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
         ! also works to find which kpoint or atoms (in shell) are connected by point group operations
         !
-        ! flags = relax_pbc
+        ! flags = relax_pbc / skip_check
         !
         implicit none
         !
@@ -1369,10 +1399,8 @@ contains
             ! determine the permutations of atomic indicies which results from each space symmetry operation
             do j = 1,ntaus
                 found = .false.
-                ! apply rotational component
-                tau_rot = matmul(seitz(1:3,1:3,i),tau(:,j))
-                ! apply translational component
-                tau_rot = tau_rot + seitz(1:3,4,i)
+                ! apply symmetry
+                tau_rot = matmul(seitz(1:3,1:3,i),tau(:,j)) + seitz(1:3,4,i)
                 ! reduce rotated+translated point to unit cell
                 if (index(flags,'relax_pbc').eq.0) then
                     tau_rot = modulo(tau_rot+prec,1.0_dp)-prec
@@ -1387,7 +1415,7 @@ contains
                 enddo search
                 ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
                 ! to ensure atoms must permute onto each other
-                if (index(flags,'relax_pbc').eq.0) then
+                if (index(flags,'skip_check').eq.0) then
                 if (.not.found) then
                     call am_print('ERROR','Unable to find matching atom.',flags='E')
                     call am_print('tau (all atoms)',transpose(tau))
@@ -1405,7 +1433,7 @@ contains
         !
         ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
         ! to ensure atoms must permute onto each other
-        if (index(flags,'relax_pbc').eq.0) then
+        if (index(flags,'skip_check').eq.0) then
         do i = 1, nsyms
         do j = 1, ntaus
             !

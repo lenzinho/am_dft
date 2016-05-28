@@ -490,21 +490,7 @@ contains
         inv_bscfp = inv(bscfp)
         !
         sc%bas    = matmul(uc%bas,bscfp)
-        sc%recbas = inv(sc%recbas)
-        !
-        if (opts%verbosity.ge.1) then
-            call am_print_two_matrices_side_by_side(name='primitive basis',&
-                Atitle='fractional (supercell)',A=inv(bscfp),&
-                Btitle='cartesian'             ,B=uc%bas,&
-                iopt_emph=' ... ',iopt_teaser=.true.)
-        endif
-        !
-        if (opts%verbosity.ge.1) then
-            call am_print_two_matrices_side_by_side(name='supercell basis',&
-                Atitle='fractional (primitive)',A=bscfp,&
-                Btitle='cartesian'             ,B=sc%bas,&
-                iopt_emph=' ... ',iopt_teaser=.true.)
-        endif
+        sc%recbas = inv(sc%bas)
         !
         if ((mod(det(bscfp)+opts%prec,1.0_dp)-opts%prec).gt.opts%prec) then
             call am_print('ERROR','The determinant of the supercell basis in primitive fractional coordinates must be an integer.',flags='E')
@@ -518,15 +504,6 @@ contains
         endif
         !
         sc%natoms = nint(det(bscfp)*uc%natoms)
-        if (opts%verbosity.ge.1) call am_print('number of atoms (supercell)',sc%natoms,' ... ')
-        if (opts%verbosity.ge.1) call am_print('number of atoms (primitive)',uc%natoms,' ... ')
-        !
-        if (opts%verbosity.ge.1) then
-            call am_print_two_matrices_side_by_side(name='primitive atomic basis',&
-                Atitle='fractional (primitive)',A=transpose(uc%tau_frac),&
-                Btitle='cartesian'             ,B=transpose(matmul(uc%bas,uc%tau_frac)),&
-                iopt_emph=' ... ',iopt_teaser=.true.)
-        endif
         !
         allocate(sc%tau_frac(3,sc%natoms))
         allocate(sc%Z(sc%natoms))
@@ -566,7 +543,28 @@ contains
         allocate(sc%tau_cart(3,uc%natoms))
         sc%tau_cart = matmul(sc%bas,sc%tau_frac)
         ! print stdout
+        !
         if (opts%verbosity.ge.1) then
+            !
+            call am_print_two_matrices_side_by_side(name='primitive basis',&
+                Atitle='fractional (supercell)',A=inv_bscfp,&
+                Btitle='cartesian'             ,B=uc%bas,&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+            !
+            call am_print_two_matrices_side_by_side(name='supercell basis',&
+                Atitle='fractional (primitive)',A=bscfp,&
+                Btitle='cartesian'             ,B=sc%bas,&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+            !
+            call am_print('number of atoms (supercell)',sc%natoms,' ... ')
+            !
+            call am_print('number of atoms (primitive)',uc%natoms,' ... ')
+            !
+            call am_print_two_matrices_side_by_side(name='primitive atomic basis',&
+                Atitle='fractional (primitive)',A=transpose(uc%tau_frac),&
+                Btitle='cartesian'             ,B=transpose(uc%tau_cart),&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+            !
             call am_print_two_matrices_side_by_side(name='supercell atomic basis',&
                 Atitle='fractional (supercell)',A=transpose(sc%tau_frac),&
                 Btitle='cartesian'             ,B=transpose(sc%tau_cart),&
@@ -623,144 +621,83 @@ contains
         class(am_class_unit_cell), intent(inout) :: cp
         type(am_class_unit_cell) , intent(in) :: uc
         !
-        cp%natoms=uc%natoms
-        cp%bas   =uc%bas
-        cp%recbas=uc%recbas
-        !
-        if (allocated(cp%tau_frac)) deallocate(cp%tau_frac)
-        allocate(cp%tau_frac,source=uc%tau_frac)
-        !
-        if (allocated(cp%tau_cart)) deallocate(cp%tau_cart)
-        allocate(cp%tau_frac,source=uc%tau_cart)
-        !
-        if (allocated(cp%Z)) deallocate(cp%Z)
-        allocate(cp%Z,source=uc%Z)
-        !
-        if (allocated(uc%uc_id)) then
-        if (allocated(cp%uc_id)) deallocate(cp%uc_id)
-        allocate(cp%uc_id,source=uc%uc_id)
-        endif
-        !
-        if (allocated(uc%pc_id)) then
-        if (allocated(cp%pc_id)) deallocate(cp%pc_id)
-        allocate(cp%pc_id,source=uc%pc_id)
-        endif
-        !
-        if (allocated(uc%ic_id)) then
-        if (allocated(cp%ic_id)) deallocate(cp%ic_id)
-        allocate(cp%ic_id,source=uc%ic_id)
-        endif
+        cp%natoms = uc%natoms
+        cp%bas    = uc%bas
+        cp%recbas = uc%recbas
+        allocate(cp%tau_frac, source=uc%tau_frac)
+        allocate(cp%tau_cart, source=uc%tau_cart)
+        allocate(cp%Z       , source=uc%Z)
+        if (allocated(uc%uc_id)) allocate(cp%uc_id, source=uc%uc_id)
+        if (allocated(uc%pc_id)) allocate(cp%pc_id, source=uc%pc_id)
+        if (allocated(uc%ic_id)) allocate(cp%ic_id, source=uc%ic_id)
         !
     end subroutine  copy
    
-    pure subroutine filter(uc,indices)
+    subroutine      filter(uc,ind)
         !
         implicit none
         !
         class(am_class_unit_cell), intent(inout) :: uc
-        integer , intent(in)  :: indices(:)
-        real(dp), allocatable :: tau(:,:)
-        integer , allocatable :: Z(:) ! multipurpose
-        integer :: i
-        !
+        integer , intent(in)  :: ind(:)
         !
         ! count how many atoms should be passed
-        uc%natoms = count(indices.ne.0)
+        uc%natoms = size(ind)
+        ! filter stuff
+        if (allocated(uc%tau_frac)) call dvfilter(values=uc%tau_frac, ind=ind)
+        if (allocated(uc%tau_cart)) call dvfilter(values=uc%tau_cart, ind=ind)
+        if (allocated(uc%Z))        call  ifilter(values=uc%Z       , ind=ind)
+        if (allocated(uc%uc_id))    call  ifilter(values=uc%uc_id   , ind=ind)
+        if (allocated(uc%pc_id))    call  ifilter(values=uc%pc_id   , ind=ind)
+        if (allocated(uc%ic_id))    call  ifilter(values=uc%ic_id   , ind=ind)
         !
-        ! transfer stuff
-        !
-        ! tau_frac
-        if (allocated(uc%tau_frac)) then
+        contains
+        subroutine     ifilter(values,ind)
+            !
+            implicit none
+            !
+            integer , allocatable, intent(inout) :: values(:)
+            integer , intent(in)    :: ind(:)
+            integer , allocatable   :: Z(:) ! temporary variable
+            integer :: i, ninds
+            !
+            ninds = size(ind)
             ! setup temporary variable
-            allocate(tau,source=uc%tau_frac)
+            allocate(Z,source=values)
             ! clear original variable
-            deallocate(uc%tau_frac)
+            deallocate(values)
             ! reallocate space
-            allocate(uc%tau_frac(3,uc%natoms))
+            allocate(values(ninds))
             ! transfer content through filter
-            do i = 1, uc%natoms
-                uc%tau_frac(:,i) = tau(:,indices(i))
-            enddo
-            ! deallocate
-            deallocate(tau)
-        endif
-        ! tau_cart
-        if (allocated(uc%tau_cart)) then
-            ! setup temporary variable
-            allocate(tau,source=uc%tau_cart)
-            ! clear original variable
-            deallocate(uc%tau_cart)
-            ! reallocate space
-            allocate(uc%tau_cart(3,uc%natoms))
-            ! transfer content through filter
-            do i = 1, uc%natoms
-                uc%tau_cart(:,i) = tau(:,indices(i))
-            enddo
-            ! deallocate
-            deallocate(tau)
-        endif
-        ! Z
-        if (allocated(uc%Z)) then
-            ! setup temporary variable
-            allocate(Z,source=uc%Z)
-            ! clear original variable
-            deallocate(uc%Z)
-            ! reallocate space
-            allocate(uc%Z(uc%natoms))
-            ! transfer content through filter
-            do i = 1, uc%natoms
-                uc%Z(i) = Z(indices(i))
+            do i = 1, ninds
+                values(i) = Z(ind(i))
             enddo
             ! deallocate
             deallocate(Z)
-        endif
-        ! uc_id
-        if (allocated(uc%uc_id)) then
+        end subroutine ifilter
+        subroutine     dvfilter(values,ind)
+            !
+            implicit none
+            !
+            real(dp), allocatable, intent(inout) :: values(:,:)
+            integer , intent(in)    :: ind(:)
+            real(dp), allocatable   :: Z(:,:) ! temporary variable
+            integer :: i, ninds, d1
+            !
+            ninds = size(ind)
+            d1    = size(values,1)
             ! setup temporary variable
-            allocate(Z,source=uc%uc_id)
+            allocate(Z,source=values)
             ! clear original variable
-            deallocate(uc%uc_id)
+            deallocate(values)
             ! reallocate space
-            allocate(uc%uc_id(uc%natoms))
+            allocate(values(d1,ninds))
             ! transfer content through filter
-            do i = 1, uc%natoms
-                uc%uc_id(i) = Z(indices(i))
+            do i = 1, ninds
+                values(:,i) = Z(:,ind(i))
             enddo
             ! deallocate
             deallocate(Z)
-        endif
-        ! pc_id
-        if (allocated(uc%pc_id)) then
-            ! setup temporary variable
-            allocate(Z,source=uc%pc_id)
-            ! clear original variable
-            deallocate(uc%pc_id)
-            ! reallocate space
-            allocate(uc%pc_id(uc%natoms))
-            ! transfer content through filter
-            do i = 1, uc%natoms
-                uc%pc_id(i) = Z(indices(i))
-            enddo
-            ! deallocate
-            deallocate(Z)
-        endif
-        ! ic_id
-        if (allocated(uc%ic_id)) then
-            ! setup temporary variable
-            allocate(Z,source=uc%ic_id)
-            ! clear original variable
-            deallocate(uc%ic_id)
-            ! reallocate space
-            allocate(uc%ic_id(uc%natoms))
-            ! transfer content through filter
-            do i = 1, uc%natoms
-                uc%ic_id(i) = Z(indices(i))
-            enddo
-            ! deallocate
-            deallocate(Z)
-        endif
-        ! 
-        !
+        end subroutine dvfilter
     end subroutine  filter
 
     subroutine      initialize(uc,bas,tau_frac,Z,uc_id,pc_id,ic_id)

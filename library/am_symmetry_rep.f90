@@ -280,12 +280,11 @@ module am_symmetry_rep
         !
     end subroutine get_flat_intrinsic_group
 
-    subroutine     get_flat_point_group(flat_pg,tens,pg,pc,atom_m,atom_n)
+    subroutine     get_flat_point_group(flat_pg,tens,pg,atom_m,atom_n)
         !
         class(am_class_flat_group), intent(out):: flat_pg ! flat point group
         class(am_class_tensor)    , intent(in) :: tens    ! tensor
         class(am_class_point_group),intent(in) :: pg      ! seitz point group (rev stab rot groups as well)
-        type(am_class_prim_cell)  , intent(in) :: pc      ! primitive cell
         type(am_class_atom)       , intent(in), optional :: atom_m ! only required if property = tb
         type(am_class_atom)       , intent(in), optional :: atom_n ! only required if property = tb
         real(dp), allocatable :: R_cart(:,:)
@@ -392,12 +391,11 @@ module am_symmetry_rep
 
     ! operates on prop
 
-    subroutine     get_property(prop,pc,pg,opts,property)
+    subroutine     get_property(prop,pg,opts,property)
         !
         implicit none
         !
         class(am_class_property),    intent(out):: prop
-        class(am_class_prim_cell),   intent(in) :: pc
         class(am_class_point_group), intent(in) :: pg
         type(am_class_options),      intent(in) :: opts
         character(*),                intent(in) :: property
@@ -412,7 +410,7 @@ module am_symmetry_rep
         ! get intrinsic symmetries
         call flat_ig%get_flat_intrinsic_group(tens=prop)
         ! get point symmetries
-        call flat_pg%get_flat_point_group(tens=prop, pg=pg, pc=pc)
+        call flat_pg%get_flat_point_group(tens=prop, pg=pg)
         ! combined relations
         prop%relations = combine_relations(flat_ig%relations, flat_pg%relations)
         !
