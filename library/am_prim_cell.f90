@@ -11,6 +11,8 @@ module am_prim_cell
 
     private
 
+    public :: print_map_id
+
     type, public, extends(am_class_unit_cell) :: am_class_prim_cell
     contains
         procedure :: get_primitive
@@ -82,10 +84,10 @@ contains
                 iopt_emph=' ... ',iopt_teaser=.true.)
             !
             write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to primitive cell)'
-            call print_map(uc%pc_id)
+            call print_map_id(uc%pc_id)
             !
             write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (from primitive cell)'
-            call print_map(pc%uc_id)
+            call print_map_id(pc%uc_id)
             !
         endif
         !
@@ -177,22 +179,23 @@ contains
             if (any(uc_pc_id.eq.0)) stop 'Unit cell -> primitive cell map failed.'
             !
         end function   get_uc2pc_map
-        subroutine     print_map(id)
-            !
-            implicit none
-            !
-            integer, intent(in) :: id(:)
-            integer :: i
-            !
-            do i = 1, size(id)
-                if (modulo(i,11).eq.1) then
-                    write(*,*)
-                    write(*,'(5x)',advance='no')
-                endif
-                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(id(i)))
-            enddo
-            write(*,*)
-        end subroutine print_map
     end subroutine get_primitive
+
+    subroutine     print_map_id(id)
+        !
+        implicit none
+        !
+        integer, intent(in) :: id(:)
+        integer :: i
+        !
+        do i = 1, size(id)
+            if (modulo(i,11).eq.1) then
+                write(*,*)
+                write(*,'(5x)',advance='no')
+            endif
+            write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(id(i)))
+        enddo
+        write(*,*)
+    end subroutine print_map_id
 
 end module am_prim_cell

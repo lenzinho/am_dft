@@ -13,16 +13,14 @@ module am_symmetry
     public
 
     type, public :: am_class_group
-        integer :: nsyms                            ! number of symmetries
-        integer :: nbases                           ! number of bases functions (dimensions of rep)
-        real(dp), allocatable :: sym(:,:,:)         ! symmetry elements (operate on fractional atomic basis), target is used in hamiltonian tb basis
-        integer , allocatable :: ps_id(:)           ! integer which identifies point symmetries (see decode_pointsymmetry)
-        type(am_class_conjugacy_class)      :: cc   ! conjugacy classes
-        type(am_class_character_table)      :: ct   ! character table
-        type(am_class_multiplication_table) :: mt   ! multiplication table
-        contains
+        integer :: nsyms                          ! number of symmetries
+        integer :: nbases                         ! number of bases functions (dimensions of rep)
+        integer , allocatable :: ps_id(:)         ! integer which identifies point symmetries (see decode_pointsymmetry)
+        type(am_class_conjugacy_class)      :: cc ! conjugacy classes
+        type(am_class_character_table)      :: ct ! character table
+        type(am_class_multiplication_table) :: mt ! multiplication table
+    contains
         procedure :: sort_symmetries
-        procedure :: copy
         procedure :: dump
         procedure :: get_multiplication_table
         procedure :: get_conjugacy_classes
@@ -30,7 +28,17 @@ module am_symmetry
         procedure :: print_character_table
     end type am_class_group
 
-    type, public, extends(am_class_group)       :: am_class_seitz_group 
+    type, public, extends(am_class_group)       :: am_class_symrep_group
+        ! generic symmetry group
+        real(dp), allocatable :: sym(:,:,:)        ! symmetry elements [unitless rep]
+    end type am_class_symrep_group
+
+    type, public, extends(am_class_group)       :: am_class_seitz_group
+        real(dp) :: bas(3,3)                       ! basis in which [frac.] are defined
+        real(dp) :: recbas(3,3)                    ! basis in which [rfrac] are defined
+        real(dp), allocatable :: seitz_cart(:,:,:) ! symmetry elements [cart.]
+        real(dp), allocatable :: seitz_frac(:,:,:) ! symmetry elements [frac, direct]; acts on atoms
+        real(dp), allocatable :: seitz_rfrac(:,:,:)! symmetry elements [frac, reciprocal]; acts on kpoints
         ! sym(:,:,:) are seitz operators
         contains
         procedure :: create_seitz_group
@@ -58,9 +66,7 @@ contains
     ! operate on group representation
 
     subroutine     sort_symmetries(grp,criterion,flags)
-        !
         ! flags = 'ascend'/'descend'
-        !
         use am_rank_and_sort
         !
         implicit none
@@ -73,7 +79,6 @@ contains
         integer :: i, j
         !
         allocate(inds(grp%nsyms))
-        !
         call rank(criterion,inds)
         !
         if     (index(flags,'descend').ne.0) then
@@ -88,10 +93,22 @@ contains
         allocate(rinds(grp%nsyms))
         rinds(inds) = [1:grp%nsyms]
         !
-        ! symmerties
-        if (allocated(grp%sym)) then
+        ! sort symmetries
+        select type (grp)
+        class is (am_class_symrep_group)
+            ! [undefined units]  
             grp%sym = grp%sym(:,:,inds)
-        endif
+        class is (am_class_seitz_group)
+            ! symmerties [frac.]
+            grp%seitz_frac = grp%seitz_frac(:,:,inds)
+            ! symmerties [cart.]
+            grp%seitz_cart = grp%seitz_cart(:,:,inds)
+            ! symmetries [rfrac]
+            grp%seitz_rfrac= grp%seitz_rfrac(:,:,inds)
+        class default
+            stop 'Class unknown!'
+        end select
+        !
         ! symmetry id
         if (allocated(grp%ps_id)) then
             grp%ps_id = grp%ps_id(inds)
@@ -127,23 +144,6 @@ contains
         !
     end subroutine sort_symmetries
 
-    subroutine     copy(cp,grp)
-        !
-        implicit none
-        !
-        class(am_class_group), intent(out) :: cp
-        class(am_class_group), intent(in)  :: grp
-        !
-        cp%nsyms  = grp%nsyms
-        cp%nbases = grp%nbases
-        cp%mt     = grp%mt
-        cp%ct     = grp%ct
-        !
-        if (allocated(grp%sym))      allocate(cp%sym,      source=grp%sym)
-        if (allocated(grp%ps_id))    allocate(cp%ps_id,    source=grp%ps_id)
-        !
-    end subroutine copy
-
     subroutine     dump(grp,iopt_filename)
         !
         implicit none
@@ -152,7 +152,6 @@ contains
         character(*), intent(in), optional :: iopt_filename
         character(100) :: fname
         integer :: fid
-        integer :: i,j,k
         !
         ! set default
         fname = 'dump.symmetries'
@@ -160,21 +159,44 @@ contains
         !
         fid = 1
         open(unit=fid,file=trim(iopt_filename),status="replace",action='write')
+            select type (grp)
+            class is (am_class_symrep_group)
+                ! [unitless]  
+                call dump_sym_to_file(fid=fid, sym=grp%sym, header='')
+            class is (am_class_seitz_group)
+                ! symmerties [frac.]
+                call dump_sym_to_file(fid=fid, sym=grp%seitz_frac,  header='[frac.]')
+                call dump_sym_to_file(fid=fid, sym=grp%seitz_cart,  header='[cart.]')
+                call dump_sym_to_file(fid=fid, sym=grp%seitz_rfrac, header='[rec. frac]')
+            class default
+                stop 'Class unknown!'
+            end select
+        close(fid)
+        !
+        contains
+        subroutine     dump_sym_to_file(fid,sym,header)
             !
+            implicit none
             !
+            integer, intent(in) :: fid
+            real(dp), intent(in) :: sym(:,:,:)
+            character(*), intent(in) :: header
+            integer :: nbases, nsyms
+            integer :: i,j,k
             !
-            do i = 1, grp%nsyms 
-                write(fid,*) 'symmetry', i
-                do j = 1, grp%nbases
-                    do k = 1, grp%nbases
-                        write(fid,"(f)",advance='no') grp%sym(j,k,i)
+            nsyms  = size(sym,3)
+            nbases = size(sym,1)
+            !
+            do i = 1, nsyms
+                write(fid,*) 'symmetry', i, header
+                do j = 1, nbases
+                    do k = 1, nbases
+                        write(fid,"(f)",advance='no') sym(j,k,i)
                     enddo
                     write(fid,*)
                 enddo
             enddo
-            !
-        close(fid)
-        !
+        end subroutine dump_sym_to_file
     end subroutine dump
 
     subroutine     get_multiplication_table(grp)
@@ -192,7 +214,16 @@ contains
         end select
         !
         ! get multiplication table
-        grp%mt%multab = get_multab(sym=grp%sym, flags=flags//'prog')
+        select type (grp)
+        class is (am_class_symrep_group)
+            ! [unitless]  
+            grp%mt%multab = get_multab(sym=grp%sym, flags=flags//'prog')
+        class is (am_class_seitz_group)
+            ! symmerties [frac.]
+            grp%mt%multab = get_multab(sym=grp%seitz_frac, flags=flags//'prog')
+        class default
+            stop 'unkown class'
+        end select
         ! get inverse indices
         grp%mt%inv_id = get_inverse_indices(multab=grp%mt%multab)
         ! get cyclic order
@@ -255,19 +286,19 @@ contains
             allocate(rep_label(nreps))
             ! representation based on basis functions
             rep_label(1) = 'rep'
-            rep_chi(1,:) = get_rep_characters(   sym=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_chi(1,:) = get_rep_characters(   sym=grp%seitz_cart(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
             ! representation based on s orbitals
             rep_label(2) = 's D^(0)'
-            rep_chi(2,:) = get_orb_characters(l=0, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_chi(2,:) = get_orb_characters(l=0, R=grp%seitz_cart(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
             ! representation based on p orbitals
             rep_label(3) = 'p D^(1)'
-            rep_chi(3,:) = get_orb_characters(l=1, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_chi(3,:) = get_orb_characters(l=1, R=grp%seitz_cart(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
             ! representation based on d orbitals
             rep_label(4) = 'd D^(2)'
-            rep_chi(4,:) = get_orb_characters(l=2, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_chi(4,:) = get_orb_characters(l=2, R=grp%seitz_cart(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
             ! representation based on f orbitals
             rep_label(5) = 'f D^(3)'
-            rep_chi(5,:) = get_orb_characters(l=3, R=grp%sym(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_chi(5,:) = get_orb_characters(l=3, R=grp%seitz_cart(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
             ! orbital products involving s orbitals
             rep_label(6) = 's * s'
             rep_chi(6,:) = rep_chi(2,:) * rep_chi(2,:)
@@ -294,13 +325,15 @@ contains
             rep_chi(15,:)= rep_chi(5,:) * rep_chi(5,:)
         class is (am_class_space_group) 
             ! do nothing.
-        class default
+        class is (am_class_symrep_group)
             nreps = 1
             allocate(rep_chi(nreps,grp%cc%nclasses))
             allocate(rep_label(nreps))
             ! representation based on basis functions
             rep_label(1) = 'rep'
             rep_chi(1,:) = get_rep_characters(sym=grp%sym, nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+        class default
+            stop 'unkown class'
         end select
         !
         !
@@ -385,6 +418,88 @@ contains
 
     ! high level routines which operate on sg/pg
 
+    subroutine     create_seitz_group(sg,bas,seitz_frac)
+        !
+        implicit none
+        !
+        class(am_class_seitz_group), intent(out):: sg
+        real(dp), intent(in) :: bas(3,3)
+        real(dp), intent(in) :: seitz_frac(:,:,:)
+        integer  :: i
+        !
+        ! basis in which [frac.] are defined
+        sg%bas = bas
+        ! get reciprocal basis in which [rfrac] are defined
+        sg%recbas = inv(bas)
+        ! number of "bases functions", doesn't have any real meaning here. Using 3 rather than 4.
+        sg%nbases = 3
+        ! get number of symmetries
+        sg%nsyms = size(seitz_frac,3)
+        ! get symmetries [frac.]
+        allocate(sg%seitz_frac,source=seitz_frac)
+        ! put identity first
+        call put_identity_first(sg%seitz_frac)
+        ! get symmetries [cart.]
+        allocate(sg%seitz_cart(4,4,sg%nsyms))
+        do i = 1, sg%nsyms
+            sg%seitz_cart(:,:,i) = seitz_frac2cart(seitz_frac=sg%seitz_frac(:,:,i), bas=sg%bas, recbas=sg%recbas)
+        enddo
+        ! get symmetries [rfrac]
+        allocate(sg%seitz_cart(4,4,sg%nsyms))
+        do i = 1, sg%nsyms
+            sg%seitz_rfrac(:,:,i) = seitz_cart2rfrac(seitz_cart=sg%seitz_frac(:,:,i), bas=sg%bas, recbas=sg%recbas)
+        enddo
+        ! identify point symmetries
+        allocate(sg%ps_id(sg%nsyms))
+        do i = 1, sg%nsyms
+            sg%ps_id(i) = ps_schoenflies(R=sg%seitz_frac(1:3,1:3,i))
+        enddo
+        ! get multiplication table
+        call sg%get_multiplication_table()
+        ! get conjugacy classes
+        call sg%get_conjugacy_classes()
+        ! sort symmetries based on parameters
+        call sg%sort_symmetries(criterion=sg%seitz_frac(1,4,:), flags='ascend')
+        call sg%sort_symmetries(criterion=sg%seitz_frac(2,4,:), flags='ascend')
+        call sg%sort_symmetries(criterion=sg%seitz_frac(3,4,:), flags='ascend')
+        call sg%sort_symmetries(criterion=real(sg%ps_id,dp)   , flags='ascend')
+        call sg%sort_symmetries(criterion=real(sg%cc%id,dp)   , flags='ascend')
+        !get character table
+        call sg%get_character_table()
+        !
+        contains
+        function       seitz_frac2cart(seitz_frac,bas,recbas) result(seitz_cart)
+            !
+            implicit none
+            !
+            real(dp), intent(in) :: seitz_frac(4,4)
+            real(dp), intent(in) :: bas(3,3)
+            real(dp), intent(in) :: recbas(3,3)
+            real(dp) :: seitz_cart(4,4)
+            !
+            seitz_cart(1:3,1:3) = matmul(bas,matmul(seitz_frac(1:3,1:3),recbas))
+            seitz_cart(1:3,4)   = matmul(bas,seitz_frac(1:3,4))
+            seitz_cart(4,4)     = 1.0_dp
+            seitz_cart(4,1:3)   = 0.0_dp
+            !
+        end function   seitz_frac2cart
+        function       seitz_cart2rfrac(seitz_cart,bas,recbas) result(seitz_rfrac)
+            !
+            implicit none
+            !
+            real(dp), intent(in) :: seitz_cart(4,4)
+            real(dp), intent(in) :: bas(3,3)
+            real(dp), intent(in) :: recbas(3,3)
+            real(dp) :: seitz_rfrac(4,4)
+            !
+            seitz_rfrac(1:3,1:3) = matmul(bas,matmul(seitz_cart(1:3,1:3),recbas))
+            seitz_rfrac(1:3,4)   = matmul(bas,seitz_cart(1:3,4))
+            seitz_rfrac(4,4)     = 1.0_dp
+            seitz_rfrac(4,1:3)   = 0.0_dp
+            !
+        end function   seitz_cart2rfrac
+    end subroutine create_seitz_group
+
     subroutine     get_space_group(sg,pc,opts)
         !
         implicit none
@@ -392,23 +507,19 @@ contains
         class(am_class_space_group), intent(inout) :: sg
         class(am_class_unit_cell)  , intent(in) :: pc ! space groups are tabulated in the litearture for conventional cells, but primitive or arbitrary cell works just as well.
         type(am_class_options)     , intent(in) :: opts
-        type(am_class_options) :: notalk
-        real(dp), allocatable  :: seitz(:,:,:)
-        !
-        notalk=opts
-        notalk%verbosity = 0
+        real(dp), allocatable  :: seitz_frac(:,:,:)
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining space group symmetries')
         !
-        ! determine space symmetries from atomic basis
-        seitz = space_symmetries_from_basis(uc=pc,opts=opts)
-        if (opts%verbosity.ge.1) call am_print('number of space group symmetries found',size(seitz,3),' ... ') 
+        ! determine space symmetries from atomic basis [frac.]
+        seitz_frac = space_symmetries_from_basis(uc=pc,opts=opts)
+        if (opts%verbosity.ge.1) call am_print('number of space group symmetries found',size(seitz_frac,3),' ... ') 
         !
         ! put identity first
-        call put_identity_first(seitz=seitz)
+        call put_identity_first(seitz=seitz_frac)
         !
         ! create space group instance (puts identity first)
-        call sg%create_seitz_group(seitz=seitz)
+        call sg%create_seitz_group(seitz_frac=seitz_frac, bas=pc%bas)
         !
         ! stdout
         if (opts%verbosity.ge.1) then
@@ -420,29 +531,10 @@ contains
         endif
         !
         ! write to write_outfile and to file
-        call sg%write_outfile(iopt_uc=pc,iopt_filename=trim('outfile.spacegroup'))
+        call sg%write_outfile(iopt_filename=trim('outfile.spacegroup'))
         !
         call sg%write_action_table(uc=pc,fname='outfile.space_group_action',opts=opts)
         !
-        contains
-            subroutine     put_identity_first(seitz)
-                !
-                implicit none
-                !
-                real(dp), intent(inout) :: seitz(:,:,:)
-                real(dp), allocatable :: id(:,:)
-                integer :: i, nsyms
-                !
-                nsyms = size(seitz,3)
-                id = eye(size(seitz,1))
-                do i = 1, nsyms
-                    if (all((abs(seitz(:,:,i)-id)).lt.tiny)) then
-                        seitz(:,:,i) = seitz(:,:,1)
-                        seitz(:,:,1) = id
-                    endif
-                enddo
-                ! 
-            end subroutine put_identity_first
     end subroutine get_space_group
 
     subroutine     get_point_group(pg,pc,sg,opts)
@@ -453,20 +545,14 @@ contains
         type(am_class_space_group) , intent(in) :: sg
         class(am_class_unit_cell)  , intent(in) :: pc  ! accepts unit cell, primitive cell, conventional cell.
         type(am_class_options)     , intent(in) :: opts
-        real(dp), allocatable  :: seitz(:,:,:)
-        type(am_class_options) :: notalk
-        !
-        notalk=opts
-        notalk%verbosity = 0
+        real(dp), allocatable  :: wrk_frac(:,:,:)
         !
         if (opts%verbosity.ge.1) call am_print_title('Determining point group symmetries')
         !
-        ! create point group instance (puts identity first, inversion second)
-        !
-        allocate(seitz,source=sg%sym)
-        seitz(1:3,4,:) = 0
-        !
-        call pg%create_seitz_group(seitz=unique(seitz))
+        ! create point group instance
+        allocate(wrk_frac,source=sg%seitz_frac)
+        wrk_frac(1:3,4,:) = 0
+        call pg%create_seitz_group(seitz_frac=unique(wrk_frac), bas=pc%bas)
         !
         if (opts%verbosity.ge.1) then
             call am_print('point group',decode_pointgroup(point_group_schoenflies(pg%ps_id)),' ... ')
@@ -474,7 +560,7 @@ contains
             call pg%print_character_table()
         endif
         !
-        call pg%write_outfile(iopt_uc=pc,iopt_filename='outfile.pointgroup')
+        call pg%write_outfile(iopt_filename='outfile.pointgroup')
         !
         call pg%write_action_table(uc=pc,fname='outfile.point_group_action',opts=opts)
         !
@@ -498,18 +584,14 @@ contains
         class(am_class_unit_cell),  intent(in) :: uc
         type(am_class_point_group), intent(in) :: pg
         type(am_class_options),     intent(in) :: opts
-        type(am_class_options) :: notalk
         integer, allocatable   :: indicies(:)
         logical, allocatable   :: mask(:)
         integer :: i
         !
-        notalk=opts
-        notalk%verbosity = 0
-        !
         allocate(mask(pg%nsyms))
         !
         do i = 1, pg%nsyms
-            if ( is_symmetry_valid(tau_frac=uc%tau_frac, Z=uc%Z, seitz=pg%sym, prec=opts%prec)) then
+            if ( is_symmetry_valid(tau_frac=uc%tau_frac, Z=uc%Z, seitz_frac=pg%seitz_frac, prec=opts%prec)) then
                 mask(i) = .true.
             else 
                 mask(i) = .false.
@@ -520,7 +602,7 @@ contains
         indicies=[1:pg%nsyms]
         !
         ! create group
-        call rg%create_seitz_group(seitz=pg%sym(:,:,pack(indicies,mask)))
+        call rg%create_seitz_group(seitz_frac=pg%seitz_frac(:,:,pack(indicies,mask)), bas=pg%bas)
         !
     end subroutine get_rotational_group
 
@@ -529,9 +611,9 @@ contains
         implicit none
         !
         class(am_class_point_group), intent(out):: vg ! stabilizer group associated with vector v
-        type(am_class_point_group)    , intent(in) :: pg
-        real(dp)                      , intent(in) :: v(3) ! vector which is stabilized (should be same units as R, which is fractional)
-        type(am_class_options)        , intent(in) :: opts
+        type(am_class_point_group) , intent(in) :: pg
+        real(dp)                   , intent(in) :: v(3) ! vector which is stabilized (should be same units as R, which is fractional)
+        type(am_class_options)     , intent(in) :: opts
         integer, allocatable :: indicies(:)
         logical, allocatable :: mask(:)
         integer :: i
@@ -541,7 +623,7 @@ contains
         !
         do i = 1, pg%nsyms
             ! mark symmetries which leaves vector strictly invariant (not even modulo a lattice vector)
-            if (is_symmetry_valid(tau_frac=reshape(v,[3,1]), Z=[1], seitz=pg%sym(:,:,i), prec=opts%prec, flags='exact')) then
+            if (is_symmetry_valid(tau_frac=reshape(v,[3,1]), Z=[1], seitz_frac=pg%seitz_frac(:,:,i), prec=opts%prec, flags='exact')) then
                 mask(i) = .true.
             endif
         enddo
@@ -550,7 +632,7 @@ contains
         indicies=[1:pg%nsyms]
         !
         ! create group
-        call vg%create_seitz_group(seitz=pg%sym(:,:,pack(indicies,mask)))
+        call vg%create_seitz_group(seitz_frac=pg%seitz_frac(:,:,pack(indicies,mask)), bas=pg%bas)
         !
     end subroutine get_stabilizer_group
     
@@ -567,22 +649,23 @@ contains
         !  ----- ----- ----- ----- ---- ------- ------- ------- --------- ----------------------------- --------- -----------------------------
         !      3 Si-Si   1-1   2-2    1     o_h     o_h     t_d     0.000     0.000     0.000     0.000     0.000     0.000     0.000     0.000
         !      4 Si-Si   1-1   2-1    4    c_3v     o_h    c_3v     2.351    -1.357    -1.357    -1.357     0.217    -0.125    -0.125    -0.125
+        !
         implicit none
         !
         class(am_class_point_group), intent(out):: revg ! reversal group associated with vector v, i.e. the space symmetries with bring v to [0,0,0], essentially flipping the atoms at the corners of the vector
-        type(am_class_space_group)    , intent(in) :: sg ! space group
-        real(dp)                      , intent(in) :: v(3)
-        type(am_class_options)        , intent(in) :: opts
+        type(am_class_space_group) , intent(in) :: sg ! space group
+        real(dp)                   , intent(in) :: v(3)
+        type(am_class_options)     , intent(in) :: opts
         integer, allocatable :: indicies(:)
         logical, allocatable :: mask(:)
-        real(dp),allocatable :: wrk(:,:,:)
+        real(dp),allocatable :: seitz_frac(:,:,:)
         integer :: i
         !
         allocate(mask(sg%nsyms))
         mask = .false.
         !
         do i = 1, sg%nsyms
-            if (is_symmetry_valid(tau_frac=reshape(v,[3,1]), Z=[1], seitz=sg%sym(:,:,i), prec=opts%prec, flags='zero')) then
+            if (is_symmetry_valid(tau_frac=reshape(v,[3,1]), Z=[1], seitz_frac=sg%seitz_frac(:,:,i), prec=opts%prec, flags='zero')) then
                 mask(i) = .true.
             endif
         enddo
@@ -590,65 +673,19 @@ contains
         allocate(indicies(sg%nsyms))
         indicies=[1:sg%nsyms]
         !
-        allocate(wrk, source=sg%sym(:,:,pack(indicies,mask)))
-        wrk(1:3,4,:) = 0 ! set all translations to zero
+        allocate(seitz_frac, source=sg%seitz_frac(:,:,pack(indicies,mask)))
+        seitz_frac(1:3,4,:) = 0 ! set all translations to zero
         !
         ! create group
-        call revg%create_seitz_group(seitz=unique(wrk))
+        call revg%create_seitz_group(seitz_frac=unique(seitz_frac), bas=sg%bas)
         !
     end subroutine get_reversal_group
 
-    subroutine     create_seitz_group(sg,seitz)
-        !
-        implicit none
-        !
-        class(am_class_seitz_group), intent(out):: sg
-        real(dp)                   , intent(in) :: seitz(:,:,:)
-        real(dp) :: id(4,4)
-        integer  :: i
-        !
-        ! number of "bases functions", doesn't have any real meaning here. Using 3 rather than 4.
-        sg%nbases = 3
-        ! get number of symmetries
-        sg%nsyms = size(seitz,3)
-        ! transfer seitz
-        allocate(sg%sym,source=seitz)
-        ! put identity first
-        id = eye(4)
-        search : do i = 1, sg%nsyms
-            if (all(abs(sg%sym(:,:,i)-id).lt.tiny)) then
-                sg%sym(:,:,i) = sg%sym(:,:,1)
-                sg%sym(:,:,1) = id
-                exit search
-            endif
-        enddo search
-        ! identify point symmetries
-        allocate(sg%ps_id(sg%nsyms))
-        do i = 1, sg%nsyms
-            sg%ps_id(i) = ps_schoenflies(R=sg%sym(1:3,1:3,i))
-        enddo
-        ! get multiplication table
-        call sg%get_multiplication_table()
-        ! get conjugacy classes
-        call sg%get_conjugacy_classes()
-        ! sort symmetries based on parameters
-        call sg%sort_symmetries(criterion=sg%sym(1,4,:), flags='ascend')
-        call sg%sort_symmetries(criterion=sg%sym(2,4,:), flags='ascend')
-        call sg%sort_symmetries(criterion=sg%sym(3,4,:), flags='ascend')
-        call sg%sort_symmetries(criterion=real(sg%ps_id,dp), flags='ascend')
-        call sg%sort_symmetries(criterion=real(sg%cc%id,dp), flags='ascend')
-        !get character table
-        call sg%get_character_table()
-    end subroutine create_seitz_group
-
-    subroutine     write_outfile(sg,iopt_uc,iopt_filename)
-        !
-        ! if iopt_uc is present -> also print symmetries in cartesian coordinates.
+    subroutine     write_outfile(sg,iopt_filename)
         !
         implicit none
         !
         class(am_class_seitz_group), intent(in) ::  sg
-        type(am_class_unit_cell), intent(in), optional :: iopt_uc
         character(*), intent(in), optional :: iopt_filename
         integer :: width
         real(dp) :: R(3,3), T(3)
@@ -664,76 +701,78 @@ contains
             ! write_outfile
             fid = 6
         endif
-        !
-        ! write standard out to file
-        !
-        fmt5=   "(a4)"
-        fmt4=   "(a4,3a7)"
-        fmt6=       "(a7)"
-        fmt1="(5x,i3,9a7)"
-        fmt2="(5x,a3,9a7)"
-        fmt3="(5x,a)"
-        width = 9*7+3
-        width = width + 3*7+4
-        !
-        !
-        ! fractional
-        !
-        write(fid,fmt3,advance='no') centertitle('fractional',width)
-        write(fid,*)
-        write(fid,fmt3,advance='no') repeat('-',width)
-        write(fid,*)
-        !
-        write(fid,fmt2,advance='no') '#', 'R11', 'R21', 'R31', 'R12', 'R22', 'R32', 'R13', 'R23', 'R33'
-        write(fid,fmt4,advance='no') '  | ', 'T1', 'T2', 'T3'
-        write(fid,*)
-        !
-        do i = 1, sg%nsyms
             !
-            R = sg%sym(1:3,1:3,i)
-            write(fid,fmt1,advance='no') i, (( trim(print_pretty(R(j,k))), j = 1,3) , k = 1,3)
+            ! write standard out to file
+            fmt5=   "(a4)"
+            fmt4=   "(a4,3a7)"
+            fmt6=       "(a7)"
+            fmt1="(5x,i3,9a7)"
+            fmt2="(5x,a3,9a7)"
+            fmt3="(5x,a)"
+            width = 9*7+3
+            width = width + 3*7+4
             !
-            T = sg%sym(1:3,4,i)
-            write(fid,fmt5,advance='no') '  | '
-            do j = 1,3
-                write(fid,fmt6,advance='no') trim(print_pretty(T(j)))
+            !
+            ! fractional
+            write(fid,fmt3) centertitle('seitz [frac.]',width)
+            write(fid,fmt3) repeat('-',width)
+            write(fid,fmt2,advance='no') '#', 'R11', 'R21', 'R31', 'R12', 'R22', 'R32', 'R13', 'R23', 'R33'
+            write(fid,fmt4,advance='no') '  | ', 'T1', 'T2', 'T3'
+            write(fid,*)
+            do i = 1, sg%nsyms
+                !
+                R = sg%seitz_frac(1:3,1:3,i)
+                write(fid,fmt1,advance='no') i, (( trim(print_pretty(R(j,k))), j = 1,3) , k = 1,3)
+                !
+                T = sg%seitz_frac(1:3,4,i)
+                write(fid,fmt5,advance='no') '  | '
+                do j = 1,3
+                    write(fid,fmt6,advance='no') trim(print_pretty(T(j)))
+                enddo
+                write(fid,*)
+                !
             enddo
             !
+            ! cartesian
+            write(fid,fmt3) centertitle('seitz [cart.]',width)
+            write(fid,fmt3) repeat('-',width)
+            write(fid,fmt2,advance='no') '#', 'R11', 'R21', 'R31', 'R12', 'R22', 'R32', 'R13', 'R23', 'R33'
+            write(fid,fmt4,advance='no') '  | ', 'T1', 'T2', 'T3'
             write(fid,*)
             !
-        enddo
-        !
-        ! cartesian
-        !
-        if (present(iopt_uc)) then
-        !
-        write(fid,fmt3,advance='no') centertitle('cartesian',width)
-        write(fid,*)
-        write(fid,fmt3,advance='no') repeat('-',width)
-        write(fid,*)
-        !
-        write(fid,fmt2,advance='no') '#', 'R11', 'R21', 'R31', 'R12', 'R22', 'R32', 'R13', 'R23', 'R33'
-        write(fid,fmt4,advance='no') '  | ', 'T1', 'T2', 'T3'
-        write(fid,*)
-        !
-        do i = 1, sg%nsyms
-            !
-            R = ps_frac2cart(R_frac=sg%sym(1:3,1:3,i),bas=iopt_uc%bas)
-            write(fid,fmt1,advance='no') i, (( trim(print_pretty(R(j,k))), j = 1,3) , k = 1,3)
-            !
-            T = matmul(iopt_uc%bas,sg%sym(1:3,4,i))
-            write(fid,fmt5,advance='no') '  | '
-            do j = 1,3
-                write(fid,fmt6,advance='no') trim(print_pretty(T(j)))
+            do i = 1, sg%nsyms
+                !
+                R = sg%seitz_cart(1:3,1:3,i)
+                write(fid,fmt1,advance='no') i, (( trim(print_pretty(R(j,k))), j = 1,3) , k = 1,3)
+                !
+                T = sg%seitz_cart(1:3,4,i)
+                write(fid,fmt5,advance='no') '  | '
+                do j = 1,3
+                    write(fid,fmt6,advance='no') trim(print_pretty(T(j)))
+                enddo
+                write(fid,*)
             enddo
             !
+            ! rfrac
+            write(fid,fmt3) centertitle('seitz [rec. frac.]',width)
+            write(fid,fmt3) repeat('-',width)
+            write(fid,fmt2,advance='no') '#', 'R11', 'R21', 'R31', 'R12', 'R22', 'R32', 'R13', 'R23', 'R33'
+            write(fid,fmt4,advance='no') '  | ', 'T1', 'T2', 'T3'
             write(fid,*)
-        enddo
-        !
-        endif
-        !
+            !
+            do i = 1, sg%nsyms
+                !
+                R = sg%seitz_cart(1:3,1:3,i)
+                write(fid,fmt1,advance='no') i, (( trim(print_pretty(R(j,k))), j = 1,3) , k = 1,3)
+                !
+                T = sg%seitz_cart(1:3,4,i)
+                write(fid,fmt5,advance='no') '  | '
+                do j = 1,3
+                    write(fid,fmt6,advance='no') trim(print_pretty(T(j)))
+                enddo
+                write(fid,*)
+            enddo
         ! close file
-        !
         if ( present(iopt_filename) ) close(fid)
         !
     end subroutine write_outfile
@@ -743,10 +782,9 @@ contains
         implicit none
         !
         class(am_class_seitz_group), intent(in) :: sg
-        class(am_class_unit_cell),intent(in) :: uc
-        character(*),             intent(in) :: fname
-        type(am_class_options),   intent(in) :: opts
-        real(dp), allocatable :: seitz_cart(:,:,:)
+        class(am_class_unit_cell),   intent(in) :: uc
+        character(*),                intent(in) :: fname
+        type(am_class_options),      intent(in) :: opts
         real(dp), allocatable :: R(:,:)   ! used for basis functions output
         character(:), allocatable :: xyz(:) ! basis functions output
         integer, allocatable :: PM(:,:)
@@ -769,12 +807,6 @@ contains
         fmt4 = '(f10.2)'
         fmt5 = '(i10)'
         fmt6 = '(l10)'
-        !
-        allocate(seitz_cart(4,4,sg%nsyms))
-        do i = 1, sg%nsyms
-            seitz_cart(:,:,i) = seitz_frac2cart(seitz_frac=sg%sym(:,:,i),bas=uc%bas)
-        enddo
-        !
         !
         fid = 1
         open(unit=fid,file=trim(fname),status="replace",action='write')
@@ -813,7 +845,7 @@ contains
                 write(fid,'(5x)',advance='no')
                 write(fid,fmt1,advance='no') adjustr('R'//trim(int2char(i))//trim(int2char(j)))
                 do k = 1, sg%nsyms
-                    write(fid,fmt4,advance='no') seitz_cart(i,j,k)
+                    write(fid,fmt4,advance='no') sg%seitz_cart(i,j,k)
                 enddo
                 write(fid,*)
             enddo
@@ -835,7 +867,7 @@ contains
             write(fid,'(5x)',advance='no')
             write(fid,fmt1,advance='no') 'ax_'//trim(xyz(j))
             do i = 1, sg%nsyms
-                aa = rot2axis_angle(R=seitz_cart(1:3,1:3,i))
+                aa = rot2axis_angle(R=sg%seitz_cart(1:3,1:3,i))
                 write(fid,fmt4,advance='no') aa(j)
             enddo
             write(fid,*)
@@ -845,7 +877,7 @@ contains
             write(fid,'(5x)',advance='no')
             write(fid,fmt1,advance='no') 'R_th'
             do i = 1, sg%nsyms
-                aa = rot2axis_angle(R=seitz_cart(1:3,1:3,i))
+                aa = rot2axis_angle(R=sg%seitz_cart(1:3,1:3,i))
                 write(fid,fmt4,advance='no') aa(4)*180.0_dp/pi
             enddo
             write(fid,*)
@@ -853,7 +885,7 @@ contains
             write(fid,'(5x)',advance='no')
             write(fid,fmt1,advance='no') 'inv'
             do i = 1, sg%nsyms
-                write(fid,fmt6,advance='no') (abs(det(seitz_cart(1:3,1:3,i))+1).lt.tiny)
+                write(fid,fmt6,advance='no') (abs(det(sg%seitz_cart(1:3,1:3,i))+1).lt.tiny)
             enddo
             write(fid,*)
             ! HEADER / SEPERATOR
@@ -868,7 +900,7 @@ contains
                 write(fid,'(5x)',advance='no')
                 write(fid,fmt1,advance='no') adjustr('T'//trim(int2char(j)))
                 do i = 1, sg%nsyms
-                    write(fid,fmt4,advance='no') seitz_cart(j,4,i)
+                    write(fid,fmt4,advance='no') sg%seitz_cart(j,4,i)
                 enddo
                 write(fid,*)
             enddo
@@ -890,7 +922,7 @@ contains
                 do i = 1, sg%nsyms
                     ! inverse here because f(Rr) = R^-1 * f(r)
                     ! for fractional R; its elements will always be an integer...
-                    R=inv(seitz_cart(1:3,1:3,i))
+                    R=inv(sg%seitz_cart(1:3,1:3,i))
                     ! if statement are for the cases in which output needs to be trimmed
                     if (count(abs(R(j,:)).gt.tiny).gt.3) then
                         buffer=' ... ' 
@@ -900,7 +932,6 @@ contains
                         if (abs(R(j,k)).gt.tiny) then
                             ! s is only the sign
                             s = trim(int2char(nint(R(j,k)),'SP'))
-                            !
                             buffer = trim(buffer)//trim(s)//trim(xyz(k))
                             !
                         endif
@@ -928,13 +959,7 @@ contains
                 write(fid,fmt1,advance='no') trim(xyz(j))
                 do i = 1, sg%nsyms
                     !
-                    R = rot2O3(l=1,R=seitz_cart(1:3,1:3,i))
-                    !
-                    if (any(abs(R-seitz_cart(1:3,1:3,i)).gt.tiny)) then
-                        call am_print('seitz_cart(1:3,1:3,i)',seitz_cart(1:3,1:3,i))
-                        call am_print('R',R)
-                        call am_print('R',R-seitz_cart(1:3,1:3,i))
-                    endif
+                    R = rot2O3(l=1,R=sg%seitz_cart(1:3,1:3,i))
                     ! if statement are for the cases in which output needs to be trimmed
                     if (count(abs(R(j,:)).gt.tiny).gt.3) then
                         buffer=' ... ' 
@@ -944,7 +969,6 @@ contains
                             if (abs(R(j,k)).gt.tiny) then
                                 ! s is only the sign
                                 s = trim(int2char(nint(R(j,k)),'SP'))
-                                !
                                 buffer = trim(buffer)//trim(s)//trim(xyz(k))
                                 !
                             endif
@@ -974,7 +998,7 @@ contains
                 write(fid,fmt1,advance='no') trim(xyz(j))
                 do i = 1, sg%nsyms
                     !
-                    R = rot2O3(l=2,R=seitz_cart(1:3,1:3,i))
+                    R = rot2O3(l=2,R=sg%seitz_cart(1:3,1:3,i))
                     !
                     if (count(abs(R(j,:)).gt.tiny).gt.3) then
                         buffer=' ... ' 
@@ -984,7 +1008,6 @@ contains
                             if (abs(R(j,k)).gt.tiny) then
                                 ! s is only the sign
                                 s = trim(int2char(nint(R(j,k)),'SP'))
-                                !
                                 buffer = trim(buffer)//trim(s)//trim(xyz(k))
                                 !
                             endif
@@ -1016,7 +1039,7 @@ contains
                 write(fid,fmt1,advance='no') trim(xyz(j))
                 do i = 1, sg%nsyms
                     !
-                    R = rot2O3(l=3,R=seitz_cart(1:3,1:3,i))
+                    R = rot2O3(l=3,R=sg%seitz_cart(1:3,1:3,i))
                     !
                     if (count(abs(R(j,:)).gt.tiny).gt.3) then
                         buffer=' ... ' 
@@ -1026,7 +1049,6 @@ contains
                             if (abs(R(j,k)).gt.tiny) then
                                 ! s is only the sign
                                 s = trim(int2char(nint(R(j,k)),'SP'))
-                                !
                                 buffer = trim(buffer)//trim(s)//trim(xyz(k))
                                 !
                             endif
@@ -1041,7 +1063,7 @@ contains
             select type (sg)
             type is (am_class_space_group)
                 !
-                P  = permutation_rep(seitz=sg%sym,tau_frac=uc%tau_frac,flags='',prec=opts%prec)
+                P  = permutation_rep(seitz=sg%seitz_frac,tau=uc%tau_frac,flags='',prec=opts%prec)
                 PM = permutation_map(P)
                 !
                 write(fid,'(5x)',advance='no')
@@ -1065,98 +1087,9 @@ contains
             write(fid,'(a)') 'p,d,f orbital expansion coefficients are omited for clarity. Also omitted are orbitals which decompose into more than three terms.'
             write(fid,'(a)') 'Cartesian coordinates are used throughout this output.'
             !
+        ! close file
         close(fid)
     end subroutine write_action_table
-
-    ! functions which operate on R(3,3) in fractional coordinates
-
-    function       seitz_frac2cart(seitz_frac,bas) result(seitz_cart)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: seitz_frac(4,4)
-        real(dp), intent(in) :: bas(3,3)
-        real(dp) :: seitz_cart(4,4)
-        !
-        seitz_cart(1:3,1:3) = matmul(bas,matmul(seitz_frac(1:3,1:3),inv(bas)))
-        seitz_cart(1:3,4)   = matmul(bas,seitz_frac(1:3,4))
-        seitz_cart(4,4)     = 1.0_dp
-        seitz_cart(4,1:3)   = 0.0_dp
-        !
-    end function   seitz_frac2cart
-
-    function       seitz_cart2frac(seitz_cart,bas) result(seitz_frac)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: seitz_cart(4,4)
-        real(dp), intent(in) :: bas(3,3)
-        real(dp) :: seitz_frac(4,4)
-        real(dp) :: recbas(3,3)
-        !
-        recbas = inv(bas)
-        !
-        seitz_frac(1:3,1:3) = matmul(recbas,matmul(seitz_cart(1:3,1:3),bas))
-        seitz_frac(1:3,4)   = matmul(recbas,seitz_cart(1:3,4))
-        seitz_frac(4,4)     = 1.0_dp
-        seitz_frac(4,1:3)   = 0.0_dp
-        !
-    end function   seitz_cart2frac
-
-    function       ps_frac2cart(R_frac,bas) result(R)
-        !
-        ! The values which are possible are: cos(pi/n), sin(pi/n) for n = 1, 2, 3, 6 Symmetry and
-        ! Condensed Matter Physics: A Computational Approach. 1 edition. Cambridge, UK ; New York:
-        ! Cambridge University Press, 2008. page 275.
-        !
-        !           n  =      1         2         3         6
-        !    sin(pi/n) =   0.0000    1.0000    0.8660    0.5000
-        !    cos(pi/n) =  -1.0000    0.0000    0.5000    0.8660
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: R_frac(3,3)
-        real(dp), intent(in) :: bas(3,3)
-        real(dp) :: R(3,3)
-        ! real(dp) :: wdv(7) ! used to correct rouding errors
-        ! integer :: i, j, k
-        ! !
-        ! wdv(1)=+0.0_dp
-        ! wdv(2)=+1.0_dp
-        ! wdv(3)=-1.0_dp
-        ! wdv(4)=+0.86602540378443862 !  sqrt(3.0_dp)/2.0_dp
-        ! wdv(5)=-0.86602540378443862 ! -sqrt(3.0_dp)/2.0_dp
-        ! wdv(6)=+0.5_dp
-        ! wdv(7)=-0.5_dp
-        !
-        R = matmul(bas,matmul(R_frac,inv(bas)))
-        !
-        ! do i = 1,3
-        ! do j = 1,3
-        !     do k = 1,7
-        !     if (abs(wdv(k)-R(i,j)).lt.tiny) then
-        !         R(i,j) = wdv(k)
-        !         exit
-        !     endif
-        !     enddo
-        ! enddo
-        ! enddo
-    end function   ps_frac2cart
-
-    function       ps_cart2frac(R,bas) result(R_frac)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: R(3,3)
-        real(dp), intent(in) :: bas(3,3)
-        real(dp) :: R_frac(3,3)
-        !
-        R_frac = matmul(inv(bas),matmul(R,bas))
-        !
-        ! correct rounding errors
-        ! R_frac = real(nint(R_frac),dp)
-        !
-    end function   ps_cart2frac
 
     ! decoding/naming functions 
 
@@ -1407,7 +1340,7 @@ contains
 
     ! permutation rep
 
-    function       permutation_rep(seitz,tau_frac,prec,flags) result(rep)
+    function       permutation_rep(seitz,tau,prec,flags) result(rep)
         !
         ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
         ! also works to find which kpoint or atoms (in shell) are connected by point group operations
@@ -1417,38 +1350,36 @@ contains
         implicit none
         !
         real(dp), intent(in) :: seitz(:,:,:)
-        real(dp), intent(in) :: tau_frac(:,:)
+        real(dp), intent(in) :: tau(:,:)
         real(dp), intent(in) :: prec
         character(*), intent(in) :: flags
         integer, allocatable :: rep(:,:,:)
-        real(dp) :: tau_frac_rot(3)
+        real(dp) :: tau_rot(3)
         integer :: i,j,k
         logical :: found
-        integer :: ntau_fracs ! number of tau_frac points tau_frac(1:3,ntau_fracs)
+        integer :: ntaus ! number of tau points tau(1:3,ntaus)
         integer :: nsyms
         !
         nsyms = size(seitz,3)
-        !
-        ntau_fracs = size(tau_frac,2)
-        !
-        allocate(rep(ntau_fracs,ntau_fracs,nsyms))
+        ntaus = size(tau,2)
+        allocate(rep(ntaus,ntaus,nsyms))
         rep = 0
         !
         do i = 1, nsyms
             ! determine the permutations of atomic indicies which results from each space symmetry operation
-            do j = 1,ntau_fracs
+            do j = 1,ntaus
                 found = .false.
                 ! apply rotational component
-                tau_frac_rot = matmul(seitz(1:3,1:3,i),tau_frac(:,j))
+                tau_rot = matmul(seitz(1:3,1:3,i),tau(:,j))
                 ! apply translational component
-                tau_frac_rot = tau_frac_rot + seitz(1:3,4,i)
+                tau_rot = tau_rot + seitz(1:3,4,i)
                 ! reduce rotated+translated point to unit cell
                 if (index(flags,'relax_pbc').eq.0) then
-                    tau_frac_rot = modulo(tau_frac_rot+prec,1.0_dp)-prec
+                    tau_rot = modulo(tau_rot+prec,1.0_dp)-prec
                 endif
                 ! find matching atom
-                search : do k = 1, ntau_fracs
-                    if (isequal(tau_frac_rot,tau_frac(:,k))) then
+                search : do k = 1, ntaus
+                    if (isequal(tau_rot,tau(:,k))) then
                     rep(j,k,i) = 1
                     found = .true.
                     exit search ! break loop
@@ -1459,11 +1390,11 @@ contains
                 if (index(flags,'relax_pbc').eq.0) then
                 if (.not.found) then
                     call am_print('ERROR','Unable to find matching atom.',flags='E')
-                    call am_print('tau_frac (all atoms)',transpose(tau_frac))
-                    call am_print('tau_frac',tau_frac(:,j))
+                    call am_print('tau (all atoms)',transpose(tau))
+                    call am_print('tau',tau(:,j))
                     call am_print('R',seitz(1:3,1:3,i))
                     call am_print('T',seitz(1:3,4,i))
-                    call am_print('tau_frac_rot',tau_frac_rot)
+                    call am_print('tau_rot',tau_rot)
                     stop
                 endif
                 endif
@@ -1476,7 +1407,7 @@ contains
         ! to ensure atoms must permute onto each other
         if (index(flags,'relax_pbc').eq.0) then
         do i = 1, nsyms
-        do j = 1, ntau_fracs
+        do j = 1, ntaus
             !
             if (sum(rep(:,j,i)).ne.1) then
                call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
@@ -1525,6 +1456,30 @@ contains
         enddo
         !
     end function   permutation_map
+
+    ! needed
+
+    subroutine     put_identity_first(seitz)
+        !
+        implicit none
+        !
+        real(dp), intent(inout) :: seitz(:,:,:)
+        real(dp) :: id(4,4)
+        integer  :: nsyms
+        integer  :: i
+        !
+        id = eye(4)
+        nsyms = size(seitz,3)
+        !
+        search : do i = 1, nsyms
+            if (isequal(seitz(:,:,i),id)) then
+                seitz(:,:,i) = seitz(:,:,1)
+                seitz(:,:,1) = id
+                exit search
+            endif
+        enddo search
+        ! 
+    end subroutine put_identity_first
 
 end module am_symmetry
 

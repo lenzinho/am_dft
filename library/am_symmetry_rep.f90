@@ -22,7 +22,7 @@ module am_symmetry_rep
 
     public :: transp_parity_sign
 
-    type, public, extends(am_class_group) :: am_class_flat_group
+    type, public, extends(am_class_symrep_group) :: am_class_flat_group
         real(dp), allocatable :: relations(:,:)
         contains
         procedure :: get_flat_intrinsic_group
@@ -31,12 +31,12 @@ module am_symmetry_rep
         procedure :: get_relations
     end type am_class_flat_group
 
-    type, public, extends(am_class_group) :: am_class_regular_group
+    type, public, extends(am_class_symrep_group) :: am_class_regular_group
 	    contains
         procedure :: get_regular_group
     end type am_class_regular_group
 
-    type, public, extends(am_class_group) :: am_class_tb_group
+    type, public, extends(am_class_symrep_group) :: am_class_tb_group
         integer, allocatable :: H_start(:) ! Hstart(m) start of hamiltonian section corresponding to atom m
         integer, allocatable :: H_end(:)   ! Hend(m)   end of hamiltonian section corresponding to atom m
         contains
@@ -63,21 +63,21 @@ module am_symmetry_rep
 
 	! procedures which create representations
 
-	subroutine     get_regular_group(rr,seitz)
+	subroutine     get_regular_group(rr,sg)
 		!
 		implicit none
 		!
 		class(am_class_regular_group), intent(out) :: rr
-        real(dp), intent(in) :: seitz(:,:,:)
+        class(am_class_seitz_group)  , intent(in) :: sg
 		!
-		rr%sym   = rep_regular(seitz=seitz)
+		rr%sym   = rep_regular(seitz_frac=sg%seitz_frac)
 		!
 		rr%nbases= size(rr%sym,1)
         !
 		rr%nsyms = size(rr%sym,3)
 		!
         contains
-        function       rep_regular(seitz) result(reg_rep)
+        function       rep_regular(seitz_frac) result(reg_rep)
             !
             ! Generates regular representation for each operator
             !
@@ -91,17 +91,17 @@ module am_symmetry_rep
             !
             implicit none
             !
-            real(dp), intent(in) :: seitz(:,:,:)
+            real(dp), intent(in) :: seitz_frac(:,:,:)
             integer, allocatable :: reg_rep(:,:,:)
             integer, allocatable :: multab(:,:)
             integer :: n
             integer :: i
             !
             ! obtain multiplication table
-            multab = get_multab(sym=seitz,flags='seitz,sort')
+            multab = get_multab(sym=seitz_frac,flags='seitz,sort')
             !
             ! construct regular representation from multiplication table
-            n = size(seitz,3)
+            n = size(seitz_frac,3)
             allocate(reg_rep(n,n,n))
             reg_rep = 0
             do i = 1, n
@@ -117,21 +117,11 @@ module am_symmetry_rep
         !
         implicit none
         !
-        class(am_class_tb_group), intent(out) :: tbpg ! point symmetries in tight binding basis
-        class(am_class_group)   , intent(in)  :: pg   ! seitz point group (rev stab rot groups as well)
-        type(am_class_prim_cell), intent(in)  :: pc   ! primitive cell
-        type(am_class_irre_cell), intent(in)  :: ic   ! irreducible cell
-        real(dp) :: R_cart(3,3)
-        logical  :: is_seitz
+        class(am_class_tb_group)   , intent(out) :: tbpg ! point symmetries in tight binding basis
+        class(am_class_point_group), intent(in)  :: pg   ! seitz point group (rev stab rot groups as well)
+        type(am_class_prim_cell)   , intent(in)  :: pc   ! primitive cell
+        type(am_class_irre_cell)   , intent(in)  :: ic   ! irreducible cell
         integer  :: i
-        !
-        ! set type
-        select type (pg)
-        class is (am_class_seitz_group)
-            is_seitz = .true.
-        class default
-            is_seitz = .false.
-        end select
         !
         ! get number of bases functions in representation (see below) ...
         tbpg%nbases = 0
@@ -148,18 +138,11 @@ module am_symmetry_rep
         ! generate intrinsic symmetries
         allocate(tbpg%sym(tbpg%nbases,tbpg%nbases,tbpg%nsyms))
         tbpg%sym = 0
+        ! determine rotation in the hamiltonian basis
         ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
         do i = 1, pg%nsyms
-            ! convert to cartesian
-            if (is_seitz) then
-                R_cart = ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=pc%bas)
-            else
-                R_cart = pg%sym(1:3,1:3,i)
-            endif
-            ! determine rotation in the hamiltonian basis
-            tbpg%sym(:,:,i) = ps2tb_H(R=R_cart, pc=pc, ic=ic)
+            tbpg%sym(:,:,i) = ps2tb_H(R_cart=pg%seitz_cart(1:3,1:3,:), pc=pc, ic=ic)
         enddo
-        !
         ! copy symmetry ids
         allocate(tbpg%ps_id, source=pg%ps_id)
         ! copy classes
@@ -168,19 +151,15 @@ module am_symmetry_rep
         tbpg%mt = pg%mt
         ! copy character table
         tbpg%ct = pg%ct
-        !
-        if (.not.isequal(tbpg%sym(:,:,1),eye(tbpg%nbases))) then
-            call am_print('pg%sym(:,:,1)',pg%sym(:,:,1))
-            call am_print('tbpg%sym(:,:,1)',tbpg%sym(:,:,1))
-            stop 'tbpg: Identity is not first.'
-        endif
+        ! check that identity is first
+        if (.not.isequal(tbpg%sym(:,:,1),eye(tbpg%nbases))) stop 'tbpg: Identity is not first.'
         !
         contains
-        function       ps2tb_H(R,pc,ic) result(H)
+        function       ps2tb_H(R_cart,pc,ic) result(H)
             ! produces rotation which commutes with the entire Hamiltonian (useful building Hamiltonian and probably later for kpoints stuff too)
             implicit none
             !
-            real(dp), intent(in) :: R(3,3)
+            real(dp), intent(in) :: R_cart(3,3)
             type(am_class_prim_cell), intent(in) :: pc ! primitive cell
             type(am_class_irre_cell), intent(in) :: ic ! irreducible cell
             real(dp), allocatable :: H(:,:)
@@ -203,7 +182,7 @@ module am_symmetry_rep
             H = 0.0_dp
             ! construct rotation in the Hamiltonian basis
             do i = 1, pc%natoms
-                H(H_start(i):H_end(i), H_start(i):H_end(i)) = ps2tb(R=R, atom=ic%atom(pc%ic_id(i)) )
+                H(H_start(i):H_end(i), H_start(i):H_end(i)) = ps2tb(R_cart=R_cart, atom=ic%atom(pc%ic_id(i)) )
             enddo
             !
         end function   ps2tb_H
@@ -305,13 +284,12 @@ module am_symmetry_rep
         !
         class(am_class_flat_group), intent(out):: flat_pg ! flat point group
         class(am_class_tensor)    , intent(in) :: tens    ! tensor
-        class(am_class_group)     , intent(in) :: pg      ! seitz point group (rev stab rot groups as well)
+        class(am_class_point_group),intent(in) :: pg      ! seitz point group (rev stab rot groups as well)
         type(am_class_prim_cell)  , intent(in) :: pc      ! primitive cell
         type(am_class_atom)       , intent(in), optional :: atom_m ! only required if property = tb
         type(am_class_atom)       , intent(in), optional :: atom_n ! only required if property = tb
         real(dp), allocatable :: R_cart(:,:)
         integer  :: i
-        logical  :: is_seitz
         !
         ! basic checks
         if (index(tens%property,'tight').ne.0) then
@@ -319,29 +297,18 @@ module am_symmetry_rep
             if (.not.present(atom_n)) stop 'atom_n is required for the creation of tb flat pg'
         endif
         !
-        ! set type
-        select type (pg)
-        class is (am_class_seitz_group)
-            is_seitz = .true.
-        class default
-            is_seitz = .false.
-        end select
-        !
         ! number of bases functions in representation
         flat_pg%nbases = product(tens%dims)
         ! number of symmetries
         flat_pg%nsyms = pg%nsyms
+        ! allocate space for R_cart
+        allocate(R_cart(pg%nbases,pg%nbases))
         ! generate intrinsic symmetries
         allocate(flat_pg%sym(flat_pg%nbases,flat_pg%nbases,flat_pg%nsyms))
         flat_pg%sym = 0
         ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
         do i = 1, pg%nsyms
-            ! convert to cartesian
-            if (is_seitz) then
-                R_cart = ps_frac2cart(R_frac=pg%sym(1:3,1:3,i),bas=pc%bas)
-            else
-                R_cart = pg%sym(:,:,i)
-            endif
+            R_cart = pg%seitz_frac(1:3,1:3,i)
             ! determine rotation in the basis
             if     (index(tens%flags   ,'axial').ne.0) then; flat_pg%sym(:,:,i) = kron_pow(R_cart, tens%rank) * det(R_cart)
             elseif (index(tens%flags   ,'polar').ne.0) then; flat_pg%sym(:,:,i) = kron_pow(R_cart, tens%rank)
@@ -607,11 +574,11 @@ module am_symmetry_rep
 
     ! produces rotation which operates on a subsection of the Hamiltonian (useful for determining symmetry relations)
 
-    function       ps2tb(R,atom) result(H)
+    function       ps2tb(R_cart,atom) result(H)
         ! construct rotation representation which transforms all orbitals on input atom
         implicit none
         !
-        real(dp), intent(in) :: R(3,3)
+        real(dp), intent(in) :: R_cart(3,3)
         type(am_class_atom), intent(in) :: atom
         real(dp), allocatable :: H(:,:)
         integer , allocatable :: H_start(:), H_end(:)
@@ -634,7 +601,7 @@ module am_symmetry_rep
         H = 0.0_dp
         ! construct rotation in the Hamiltonian basis
         do i = 1, atom%nazimuthals
-            H(H_start(i):H_end(i), H_start(i):H_end(i)) = rot2irrep(l=atom%azimuthal(i), R=R)
+            H(H_start(i):H_end(i), H_start(i):H_end(i)) = rot2irrep(l=atom%azimuthal(i), R=R_cart)
         enddo
         !
     end function   ps2tb

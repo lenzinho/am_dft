@@ -42,7 +42,7 @@ contains
     ! symmetry related functions for creating space and point groups
     !
 
-    function       lattice_symmetries(bas,prec) result(R)
+    function       lattice_symmetries(bas,prec) result(R_frac)
         !>
         !> Given a metric tensor, this function returns the (arthimetic) a-holohodry:
         !> the group of point symmetries R (fractional) that are compatible with the
@@ -72,7 +72,7 @@ contains
         ! subroutine i/o
         real(dp), intent(in) :: bas(3,3)
         real(dp), intent(in) :: prec
-        real(dp), allocatable :: R(:,:,:) !> point symmetries (fractional)
+        real(dp), allocatable :: R_frac(:,:,:) !> point symmetries (fractional)
         !
         real(dp) :: id(3,3)
         real(dp) :: recbas(3,3)
@@ -110,8 +110,6 @@ contains
                     ! i.e. that metric tensor commutes with point symmetry.
                     if ( all( abs(matmul(transpose(o),matmul(metric,o))-metric) .lt. prec ) ) then
                         k = k + 1
-                        ! store point symmetry in cartesian coordinates
-                        ! buffer(1:3,1:3,k) = matmul(bas,matmul(o,recbas))
                         ! store point symmetry in fractional coordinates
                         buffer(:,:,k) = o
                     endif
@@ -126,11 +124,11 @@ contains
         enddo
         enddo
         !
-        allocate(R,source=buffer(:,:,1:k))
+        allocate(R_frac,source=buffer(:,:,1:k))
         !
     end function   lattice_symmetries
 
-    pure function  translations_from_basis(tau_frac,Z,prec,flags) result(T)
+    pure function  translations_from_basis(tau_frac,Z,prec,flags) result(T_frac)
         !
         !> flags string can contain 'prim', 'zero', 'relax' and any combination of each
         !> if it has 'zero'  : add [0,0,0] to the T vectors returned
@@ -145,8 +143,8 @@ contains
         real(dp), intent(in) :: tau_frac(:,:) !> tau_frac(3,natoms) fractional atomic coordinates
         real(dp), intent(in) :: prec
         character(len=*), intent(in), optional :: flags 
-        real(dp), allocatable :: T(:,:)   !> T(3,nTs) translation which leaves basis invariant
-        real(dp), allocatable :: wrk(:,:) ! wrk(1:3,nTs) list of possible lattice vectors that are symmetry-compatible volume
+        real(dp), allocatable :: T_frac(:,:)   !> T(3,nTs) translation which leaves basis invariant
+        real(dp), allocatable :: wrk(:,:)    ! wrk(1:3,nTs) list of possible lattice vectors that are symmetry-compatible volume
         real(dp) :: seitz(4,4)
         real(dp) :: wrkr(3)
         integer  :: natoms ! natoms number of atoms
@@ -182,7 +180,7 @@ contains
                     seitz = eye(4)
                     seitz(1:3,4) = wrkr
                     !
-                    if ( is_symmetry_valid(seitz=seitz, Z=Z, tau_frac=tau_frac, prec=prec) ) then
+                    if ( is_symmetry_valid(seitz_frac=seitz, Z=Z, tau_frac=tau_frac, prec=prec) ) then
                         nTs = nTs + 1
                         wrk(1:3,nTs) = wrkr
                     endif
@@ -203,12 +201,12 @@ contains
             endif
         endif
         ! allocate output
-        allocate(T(3,nTs))
-        T = wrk(1:3,1:nTs)
+        allocate(T_frac(3,nTs))
+        T_frac = wrk(1:3,1:nTs)
         !
     end function   translations_from_basis
 
-    pure function  is_symmetry_valid(tau_frac,Z,seitz,prec,flags)
+    pure function  is_symmetry_valid(tau_frac,Z,seitz_frac,prec,flags)
         !
         ! check whether symmetry operation is valid
         !
@@ -216,7 +214,7 @@ contains
         ! function i/o
         real(dp), intent(in) :: tau_frac(:,:) !> tau_frac(3,natoms) fractional atomic basis
         integer , intent(in) :: Z(:)     !> Z(natoms) list identify type of atom
-        real(dp), intent(in) :: seitz(4,4)
+        real(dp), intent(in) :: seitz_frac(4,4)
         real(dp), intent(in) :: prec
         character(*), intent(in), optional :: flags
         !
@@ -260,7 +258,7 @@ contains
         m = 0
         do i = 1, natoms
             ! apply symmetry operation
-            tau_frac_rot(1:3) = matmul(seitz(1:3,1:3),tau_frac_internal(1:3,i)) + seitz(1:3,4)
+            tau_frac_rot(1:3) = matmul(seitz_frac(1:3,1:3),tau_frac_internal(1:3,i)) + seitz_frac(1:3,4)
             ! reduce rotated+translated point to unit cell
             if (.not.isexact) tau_frac_rot(1:3) = modulo(tau_frac_rot(1:3)+prec,1.0_dp)-prec
             ! check that newly created point matches something already present
@@ -288,7 +286,7 @@ contains
         endif
     end function   is_symmetry_valid
 
-    function       space_symmetries_from_basis(uc,opts) result(seitz)
+    function       space_symmetries_from_basis(uc,opts) result(seitz_frac)
         !
         !The program first finds the primitive unit cell by looking for
         !additional lattice vectors within the unit cell given in the input.
@@ -311,11 +309,11 @@ contains
         ! subroutine i/o
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
-        real(dp), allocatable :: seitz(:,:,:)
+        real(dp), allocatable :: seitz_frac(:,:,:)
         real(dp), allocatable :: seitz_probe(:,:)
         real(dp), allocatable :: T(:,:)
         real(dp), allocatable :: R(:,:,:)
-        real(dp), allocatable :: wrkspace(:,:,:)
+        real(dp), allocatable :: wrk_frac(:,:,:)
         real(dp) :: shift(3)
         real(dp) :: T_shifted(3)
         integer :: nTs
@@ -339,8 +337,8 @@ contains
                 iopt_emph=' ... ',iopt_teaser=.true.)
         endif 
         !
-        allocate(wrkspace(4,4,nTs*nRs))
-        wrkspace = 0.0_dp
+        allocate(wrk_frac(4,4,nTs*nRs))
+        wrk_frac = 0.0_dp
         m=0
         do i = 1, nRs
         do j = 1, nTs
@@ -365,15 +363,15 @@ contains
             seitz_probe(1:3,1:3) = R(1:3,1:3,i)
             seitz_probe(1:3,4) = T_shifted
             !
-            if ( is_symmetry_valid(tau_frac=uc%tau_frac, Z=uc%Z, seitz=seitz_probe, prec=opts%prec)) then
+            if ( is_symmetry_valid(tau_frac=uc%tau_frac, Z=uc%Z, seitz_frac=seitz_probe, prec=opts%prec)) then
                 m = m + 1
-                wrkspace(:,:,m)=seitz_probe
+                wrk_frac(:,:,m)=seitz_probe
             endif
         enddo
         enddo
         !
-        allocate(seitz(4,4,m))
-        seitz = wrkspace(1:4,1:4,1:m)
+        allocate(seitz_frac(4,4,m))
+        seitz_frac = wrk_frac(1:4,1:4,1:m)
         !
     end function   space_symmetries_from_basis
 

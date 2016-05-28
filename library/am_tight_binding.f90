@@ -45,7 +45,7 @@ contains
         class(am_class_tight_binding), intent(out) :: tb   ! tight binding parameters
         type(am_class_point_group)   , intent(in)  :: pg   ! seitz point group
         type(am_class_prim_cell)     , intent(in)  :: pc   ! primitive cell
-        type(am_class_irre_cell)     , intent(in)  :: ic ! irreducible cell
+        type(am_class_irre_cell)     , intent(in)  :: ic   ! irreducible cell
         type(am_class_pair_shell)    , intent(in)  :: ip   ! irreducible pairs
         type(am_class_options)       , intent(in)  :: opts
         logical, allocatable :: is_independent(:)

@@ -64,12 +64,6 @@ contains
         ! print title
         if (opts%verbosity.ge.1) call am_print_title('Determining primitive neighbor pairs')
         !
-        ! get converters for converting point symmetries (fractional pc) to cartesian coordinates
-        op(1:4,1:4) = 0
-        op(1:3,1:3) = pc%bas(1:3,1:3)
-        op(4:4,4:4) = 1
-        inv_op = inv(op)
-        !
         ! set pair cutoff radius (smaller than half the smallest cell dimension, larger than the smallest distance between atoms)
         pair_cutoff = minval([norm2(uc%bas(:,:),1)/real(2,dp), pair_cutoff])
         call am_print('pair cutoff radius',pair_cutoff,' ... ')
@@ -297,22 +291,6 @@ contains
             integer , allocatable :: shell_id(:)
             integer  :: i, jj, j, k
             !
-            ! to convert to cart (to get pg and tau_frac in consisten bases):
-            real(dp) :: op(4,4), inv_op(4,4)
-            real(dp), allocatable :: sym_cart(:,:,:)
-            !
-            ! get converters for converting point symmetries (fractional pc) to cartesian coordinates
-            op(1:4,1:4) = 0
-            op(1:3,1:3) = pc%bas(1:3,1:3)
-            op(4:4,4:4) = 1
-            inv_op = inv(op)
-            !
-            ! convert point symmetries (fractional pc) to cartesian coordinates
-            allocate(sym_cart(4,4,pg%nsyms))
-            do i = 1, pg%nsyms
-                sym_cart(:,:,i) = matmul(op,matmul(pg%sym(:,:,i),inv_op))
-                if (.not.isequal(transpose(sym_cart(:,:,i)),inv(sym_cart(:,:,i)))) stop 'sym_cart(:,:,i) is not unitary.'
-            enddo
             !
             ! <Antonio Mei: May 26, 2016>
             ! there is some incosistency here... tau_frac appears to be in fractional, but sym needs to
@@ -325,13 +303,13 @@ contains
             !
             ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
             ! Things absolutely need to be be in cartesian coordinates here. The rotation operation needs to be strictly unitary.
-            PM = permutation_map( permutation_rep(seitz=sym_cart, tau_frac=matmul(sphere%bas,sphere%tau_frac), flags='relax_pbc', prec=opts%prec) )
+            PM = permutation_map( permutation_rep(seitz=pg%seitz_cart, tau=sphere%tau_cart, flags='relax_pbc', prec=opts%prec) )
             ! get distance of atoms
             allocate(d(sphere%natoms))
             do i = 1, sphere%natoms
-                d(i) = norm2(matmul(sphere%bas,sphere%tau_frac(:,i)))
+                d(i) = norm2(sphere%tau_cart(:,i))
             enddo
-            ! rank atoms according to their distances
+            ! rank (but do not sort) atoms according to their distances
             allocate(indices(sphere%natoms))
             call rank(d,indices)
             ! get pairs starting with closest atoms first
