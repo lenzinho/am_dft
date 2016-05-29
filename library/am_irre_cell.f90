@@ -94,7 +94,7 @@ contains
                 enddo search
             enddo
         enddo
-        if (any(pc%ic_id.eq.0)) stop 'ERROR: prim->ic mapping failed.'
+        if (any(pc%ic_id.eq.0)) stop 'ERROR: pc->ic mapping failed.'
         ! maps (input) unit cell atom onto -> irreducible cell
         if (present(uc)) then
             allocate(uc%ic_id(uc%natoms))
@@ -115,18 +115,18 @@ contains
                 Btitle='cartesian' ,B=transpose(matmul(ic%bas,ic%tau_frac)),&
             iopt_emph=' ... ',iopt_teaser=.true.)
             !
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to input: irr->input)'
-            call print_map_id(ic%uc_id)
+            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to input:       ic->uc)'
+            call id_print_map(ic%uc_id)
             !
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to primitive: irr->prim)'
-            call print_map_id(ic%pc_id)
+            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to primitive:   ic->pc)'
+            call id_print_map(ic%pc_id)
             !
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (from primitive: prim->irr)'
-            call print_map_id(pc%ic_id)
+            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (from primitive: pc->ic)'
+            call id_print_map(pc%ic_id)
             !
             if (present(uc)) then
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (from input: input->irr)'
-            call print_map_id(uc%ic_id)
+            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (from input:     uc->ic)'
+            call id_print_map(uc%ic_id)
             endif
             !
         endif

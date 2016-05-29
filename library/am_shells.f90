@@ -93,6 +93,21 @@ contains
             shell_nelements = id_nelements(shell_id)
             ! get pair members [pair representative is given by shell_member(:,1)]
             shell_member = id_member(shell_id)
+
+            call am_print('shells_id',shell_id)
+            call am_print('nshells',nshells)
+            call am_print('shell_nelements',shell_nelements)
+            call am_print('shell_member',shell_member)
+            call am_print('sphere%uc_id',sphere%uc_id)
+            call am_print('sphere%pc_id',sphere%pc_id)
+            call am_print('sphere%ic_id',sphere%ic_id)
+            call am_print('uc%uc_id',uc%uc_id)
+            call am_print('uc%pc_id',uc%pc_id)
+            call am_print('uc%ic_id',uc%ic_id)
+
+            stop
+
+
             do j = 1, nshells
                 if (allocated(ind)) deallocate(ind)
                 allocate(ind,source=shell_member(j,1:shell_nelements(j)))
@@ -213,11 +228,14 @@ contains
             !
             ! set notalk option
             notalk = opts 
-            notalk%verbosity = 0
+            notalk%verbosity = 1
             ! create sphere instance based on a 2x2x2 supercell
             bscfp     = 2.0_dp*eye(3)
             inv_bscfp = inv(bscfp)
             call sphere%get_supercell(uc=uc, bscfp=bscfp, opts=notalk)
+
+
+            stop
             ! generate voronoi points [cart]
             grid_points = meshgrid([-1:1],[-1:1],[-1:1])
             grid_points = matmul(sphere%bas,grid_points)
@@ -441,24 +459,12 @@ contains
                 write(*,*)
             enddo
             ! write maps
-            write(*,'(a5,a)',advance='no') ' ... ', 'pair mapping (from primitive: prim->irr)'
-            do i = 1, pp%nshells
-                if (modulo(i,11).eq.1) then
-                    write(*,*)
-                    write(*,'(5x)',advance='no')
-                endif
-                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(pp%ip_id(i)))
-            enddo
-            write(*,*)
-            write(*,'(a5,a)',advance='no') ' ... ', 'pair mapping (to primitive: irr->prim)'
-            do i = 1, ip%nshells
-                if (modulo(i,11).eq.1) then
-                    write(*,*)
-                    write(*,'(5x)',advance='no')
-                endif
-                write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(ip%pp_id(i)))
-            enddo
-            write(*,*)
+            write(*,'(a5,a)',advance='no') ' ... ', 'pair mapping (to irreducible: pp->ip)'
+            call id_print_map(pp%ip_id)
+            !
+            write(*,'(a5,a)',advance='no') ' ... ', 'pair mapping (to primitive: ip->pp)'
+            call id_print_map(ip%pp_id)
+            !
             ! write definitions
             write(*,'(a5,a)') ' ... ', 'Definitions:'
             write(*,'(5x,a)') ' - i, j             : irreducible indicies'

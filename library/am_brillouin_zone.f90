@@ -373,10 +373,10 @@ contains
             iopt_emph=' ... ',iopt_teaser=.true.)
             !
             write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to IBZ: full->irr)'
-            call print_map_id(fbz%ibz_id)
+            call id_print_map(fbz%ibz_id)
             !
             write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (from IBZ: irr->full)'
-            call print_map_id(ibz%fbz_id)
+            call id_print_map(ibz%fbz_id)
             !
         endif
         !

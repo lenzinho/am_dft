@@ -8,15 +8,7 @@ module am_unit_cell
 
     implicit none
 
-    private
-
-    public :: lattice_symmetries
-    public :: space_symmetries_from_basis
-    public :: translations_from_basis
-    public :: is_symmetry_valid
-    public :: deform
-
-    public :: permutation_rep, permutation_map
+    public
 
     type, public :: am_class_unit_cell
         real(dp) :: bas(3,3)    ! basis vectors a(1:3,i), a(1:3,j), a(1:3,k)
@@ -43,7 +35,7 @@ contains
 
     ! symmetry related functions for creating space and point groups
 
-    function       lattice_symmetries(bas,prec) result(R_frac)
+    function        lattice_symmetries(bas,prec) result(R_frac)
         !>
         !> Given a metric tensor, this function returns the (arthimetic) a-holohodry:
         !> the group of point symmetries R (fractional) that are compatible with the
@@ -127,9 +119,9 @@ contains
         !
         allocate(R_frac,source=buffer(:,:,1:k))
         !
-    end function   lattice_symmetries
+    end function    lattice_symmetries
 
-    pure function  translations_from_basis(tau_frac,Z,prec,flags) result(T_frac)
+    pure function   translations_from_basis(tau_frac,Z,prec,flags) result(T_frac)
         !
         !> flags string can contain 'prim', 'zero', 'relax' and any combination of each
         !> if it has 'zero'  : add [0,0,0] to the T vectors returned
@@ -205,9 +197,9 @@ contains
         allocate(T_frac(3,nTs))
         T_frac = wrk(1:3,1:nTs)
         !
-    end function   translations_from_basis
+    end function    translations_from_basis
 
-    pure function  is_symmetry_valid(seitz,tau,Z,prec,flags)
+    pure function   is_symmetry_valid(seitz,tau,Z,prec,flags)
         !
         ! check whether symmetry operation is valid
         !
@@ -296,9 +288,9 @@ contains
             return
         endif
         !
-    end function   is_symmetry_valid
+    end function    is_symmetry_valid
 
-    function       space_symmetries_from_basis(uc,opts) result(seitz_frac)
+    function        space_symmetries_from_basis(uc,opts) result(seitz_frac)
         !
         !The program first finds the primitive unit cell by looking for
         !additional lattice vectors within the unit cell given in the input.
@@ -385,9 +377,9 @@ contains
         allocate(seitz_frac(4,4,m))
         seitz_frac = wrk_frac(1:4,1:4,1:m)
         !
-    end function   space_symmetries_from_basis
+    end function    space_symmetries_from_basis
 
-    function       permutation_rep(seitz,tau,prec,flags) result(rep)
+    function        permutation_rep(seitz,tau,prec,flags) result(rep)
         !
         ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
         ! also works to find which kpoint or atoms (in shell) are connected by point group operations
@@ -474,9 +466,9 @@ contains
         enddo
         endif
        !
-    end function   permutation_rep
+    end function    permutation_rep
     
-    function       permutation_map(P) result(PM)
+    function        permutation_map(P) result(PM)
         !
         ! PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
         !
@@ -500,7 +492,7 @@ contains
             PM(:,i) = matmul(P(:,:,i),ind)
         enddo
         !
-    end function   permutation_map
+    end function    permutation_map
 
     ! functions which operate on uc or similar derived types
 
@@ -539,6 +531,8 @@ contains
         uc%tau_cart = matmul(uc%bas,uc%tau_frac)
         !
         uc%recbas=inv(uc%bas)
+        !
+        allocate(uc%uc_id, source=[1:uc%natoms])
         !
     end subroutine  load_poscar
 
@@ -631,7 +625,7 @@ contains
         !
         allocate(sc%tau_frac(3,sc%natoms))
         allocate(sc%Z(sc%natoms))
-        allocate(sc%uc_id(sc%natoms)) ! map
+        allocate(sc%uc_id(sc%natoms))
         !
         sc%tau_frac = 1.0D5
         m=0
@@ -668,8 +662,22 @@ contains
         sc%tau_cart = matmul(sc%bas,sc%tau_frac)
         ! correct basic rounding error
         where(abs(sc%tau_cart).lt.opts%prec) sc%tau_cart=0.0_dp
+        ! mapping of each atom in the sphere to the corresponding unit cell atom was already performed in the creation of the supercell
+        ! now map each supercell atom the corresponding primitive atom if the mapping from uc->pc was already established
+        if (allocated(uc%pc_id)) then
+            allocate(sc%pc_id(sc%natoms))
+            do i = 1, sc%natoms
+                sc%pc_id(i) = uc%pc_id( sc%uc_id(i) )
+            enddo
+        endif
+        ! now map each supercell atom the corresponding irreducible cell atom if the mapping from uc->ic was already established
+        if (allocated(uc%ic_id)) then
+            allocate(sc%ic_id(sc%natoms))
+            do i = 1, sc%natoms
+                sc%ic_id(i) = uc%ic_id( sc%uc_id(i) )
+            enddo
+        endif
         ! print stdout
-        !
         if (opts%verbosity.ge.1) then
             !
             call am_print_two_matrices_side_by_side(name='primitive basis',&
@@ -695,49 +703,21 @@ contains
                 Atitle='fractional (supercell)',A=transpose(sc%tau_frac),&
                 Btitle='cartesian'             ,B=transpose(sc%tau_cart),&
                 iopt_emph=' ... ',iopt_teaser=.true.)
+            !
+            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to intput: sc->uc)'
+            call id_print_map(sc%uc_id)
+            !
+            if (allocated(uc%pc_id)) then
+            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to primitive: sc->pc)'
+            call id_print_map(sc%ic_id)
+            endif
+            !
+            if (allocated(uc%ic_id)) then
+            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to irreducible: sc->ic)'
+            call id_print_map(sc%ic_id)
+            endif
         endif
         !
-        ! <MAP>
-        ! mapping of each atom in the sphere to the corresponding unit cell atom was already performed in the creation of the supercell
-        ! now map each supercell atom the corresponding primitive atom if the mapping from uc->pc was already established
-        if (allocated(uc%pc_id)) then
-            allocate(sc%pc_id(sc%natoms))
-            do i = 1, sc%natoms
-                sc%pc_id(i) = uc%pc_id( sc%uc_id(i) )
-            enddo
-            !
-            if (opts%verbosity.ge.1) then
-                write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to primitive cell: sc->pc)'
-                do i = 1, sc%natoms
-                    if (modulo(i,10).eq.1) then
-                        write(*,*)
-                        write(*,'(5x)',advance='no')
-                    endif
-                    write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(sc%pc_id(i)))
-                enddo
-                write(*,*)
-            endif
-        endif
-        ! now map each supercell atom the corresponding irreducible cell atom if the mapping from uc->ic was already established
-        if (allocated(uc%ic_id)) then
-            allocate(sc%ic_id(sc%natoms))
-            do i = 1, sc%natoms
-                sc%ic_id(i) = uc%ic_id( sc%uc_id(i) )
-            enddo
-            !
-            if (opts%verbosity.ge.1) then
-                write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to irreducible cell: sc->ic)'
-                do i = 1, sc%natoms
-                    if (modulo(i,10).eq.1) then
-                        write(*,*)
-                        write(*,'(5x)',advance='no')
-                    endif
-                    write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(sc%ic_id(i)))
-                enddo
-                write(*,*)
-            endif
-        endif
-        ! </MAP>
     end subroutine  get_supercell
 
     pure subroutine copy(cp,uc)
@@ -890,6 +870,23 @@ contains
         if (present(ic_id)) allocate(uc%ic_id,source=ic_id)
         !
     end subroutine  initialize
+
+    subroutine      id_print_map(id)
+        !
+        implicit none
+        !
+        integer, intent(in) :: id(:)
+        integer :: i
+        !
+        do i = 1, size(id)
+            if (modulo(i,10).eq.1) then
+                write(*,*)
+                write(*,'(5x)',advance='no')
+            endif
+            write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(id(i)))
+        enddo
+        write(*,*)
+    end subroutine  id_print_map
 
     ! deform (strain related stuff)
 

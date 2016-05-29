@@ -11,8 +11,6 @@ module am_prim_cell
 
     private
 
-    public :: print_map_id
-
     type, public, extends(am_class_unit_cell) :: am_class_prim_cell
     contains
         procedure :: get_primitive
@@ -49,13 +47,14 @@ contains
         ! get map: pc -> pc
         allocate(pc%pc_id(pc%natoms),source=[1:pc%natoms])
         ! get map: uc -> uc
-        allocate(uc%uc_id(uc%natoms),source=[1:uc%natoms])
+        if (.not.allocated(uc%uc_id)) stop 'uc%uc_id is not allocated'
+        ! allocate(uc%uc_id(uc%natoms),source=[1:uc%natoms])
         ! get map: uc -> pc
         uc%pc_id = get_uc2pc_map(uc2prim=uc2prim, pc_natoms=pc%natoms, pc_tau_frac=pc%tau_frac, uc_natoms=uc%natoms, uc_tau_frac=uc%tau_frac, prec=opts%prec)
         ! get map: pc -> uc (same algorithm as used in irreducible pair shell)
         allocate(pc%uc_id(pc%natoms))
         pc%uc_id = 0
-        do i = 1, pc%natoms
+        do i = 1, uc%natoms
         if (pc%uc_id(uc%pc_id(i)).eq.0) then
             pc%uc_id(uc%pc_id(i)) = i
         endif
@@ -72,7 +71,7 @@ contains
                 Btitle='cartesian'             ,B=uc%bas,&
                 iopt_emph=' ... ',iopt_teaser=.true.)
             call am_print_two_matrices_side_by_side(name='primitive basis',&
-                Atitle='fractional (original)' ,A=matmul(uc%recbas,pc%bas),&
+                Atitle='fractional (input)'    ,A=matmul(uc%recbas,pc%bas),&
                 Btitle='cartesian'             ,B=pc%bas,&
                 iopt_emph=' ... ',iopt_teaser=.true.)
             !
@@ -83,11 +82,11 @@ contains
                 Btitle='cartesian'             ,B=transpose(matmul(pc%bas,pc%tau_frac)),&
                 iopt_emph=' ... ',iopt_teaser=.true.)
             !
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to primitive cell)'
-            call print_map_id(uc%pc_id)
+            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to primitive: uc->pc)'
+            call id_print_map(uc%pc_id)
             !
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (from primitive cell)'
-            call print_map_id(pc%uc_id)
+            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to input: pc->uc)'
+            call id_print_map(pc%uc_id)
             !
         endif
         !
@@ -181,22 +180,5 @@ contains
             !
         end function   get_uc2pc_map
     end subroutine get_primitive
-
-    subroutine     print_map_id(id)
-        !
-        implicit none
-        !
-        integer, intent(in) :: id(:)
-        integer :: i
-        !
-        do i = 1, size(id)
-            if (modulo(i,11).eq.1) then
-                write(*,*)
-                write(*,'(5x)',advance='no')
-            endif
-            write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(id(i)))
-        enddo
-        write(*,*)
-    end subroutine print_map_id
 
 end module am_prim_cell
