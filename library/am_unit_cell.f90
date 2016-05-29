@@ -121,7 +121,7 @@ contains
         !
     end function    lattice_symmetries
 
-    pure function   translations_from_basis(tau_frac,Z,prec,flags) result(T_frac)
+    pure function   translations_from_basis(tau,Z,prec,flags) result(T)
         !
         !> flags string can contain 'prim', 'zero', 'relax' and any combination of each
         !> if it has 'zero'  : add [0,0,0] to the T vectors returned
@@ -133,11 +133,11 @@ contains
         implicit none
         ! subroutine i/o
         integer , intent(in) :: Z(:)     !> Z(natoms) list identifing type of atom
-        real(dp), intent(in) :: tau_frac(:,:) !> tau_frac(3,natoms) fractional atomic coordinates
+        real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates
         real(dp), intent(in) :: prec
         character(len=*), intent(in), optional :: flags 
-        real(dp), allocatable :: T_frac(:,:)   !> T(3,nTs) translation which leaves basis invariant
-        real(dp), allocatable :: wrk(:,:)    ! wrk(1:3,nTs) list of possible lattice vectors that are symmetry-compatible volume
+        real(dp), allocatable :: T(:,:)   !> T(3,nTs) translation which leaves basis invariant
+        real(dp), allocatable :: wrk(:,:) ! wrk(1:3,nTs) list of possible lattice vectors that are symmetry-compatible volume
         real(dp) :: seitz(4,4)
         real(dp) :: wrkr(3)
         integer  :: natoms ! natoms number of atoms
@@ -151,7 +151,7 @@ contains
             if (index(flags,'relax').ne.0) relax_symmetry = .true.
         endif 
         !
-        natoms = size(tau_frac,2)
+        natoms = size(tau,2)
         allocate(wrk(3,natoms-1+3)) 
         wrk = 0.0_dp
         ! choose reference atom (ideally choose an atom corresponding to the species with the fewest number of atoms in unit cell)
@@ -162,7 +162,7 @@ contains
             if ( i .ne. j) then
             if ( Z(i) .eq. Z(j) ) then
                 ! shift to put reference atom at zero.
-                wrkr(1:3) = tau_frac(1:3,j) - tau_frac(1:3,i)
+                wrkr(1:3) = tau(1:3,j) - tau(1:3,i)
                 ! wrkr = modulo(wrkr+prec,1.0_dp)-prec ! added this in for testing.
                 !
                 if (relax_symmetry) then
@@ -173,7 +173,7 @@ contains
                     seitz = eye(4)
                     seitz(1:3,4) = wrkr
                     !
-                    if ( is_symmetry_valid(seitz=seitz, Z=Z, tau=tau_frac, prec=prec, flags='frac') ) then
+                    if ( is_symmetry_valid(seitz=seitz, Z=Z, tau=tau, prec=prec) ) then
                         nTs = nTs + 1
                         wrk(1:3,nTs) = wrkr
                     endif
@@ -194,10 +194,99 @@ contains
             endif
         endif
         ! allocate output
-        allocate(T_frac(3,nTs))
-        T_frac = wrk(1:3,1:nTs)
+        allocate(T(3,nTs))
+        T = wrk(1:3,1:nTs)
         !
     end function    translations_from_basis
+
+    function        space_symmetries_from_basis(uc,opts) result(seitz)
+        !
+        !The program first finds the primitive unit cell by looking for
+        !additional lattice vectors within the unit cell given in the input.
+        !
+        ! It chooses one of the atoms and tests each vector from that atom to
+        !every other atom of the same type in the unit cell. If that vector
+        !will take us from each atom in the unit cell to another atom of the
+        !same type (not necessarily in the same unit cell), then we have
+        !found a new lattice vector.
+        !
+        ! This process is repeated until we have
+        !found a complete list of lattice vectors. From that list, we find three
+        !which can serve as primitive basis vectors ti of the lattice, i.e. every
+        !lattice vector can be expressed as an integer linear combination of
+        !these basis vectors.
+        !
+        use am_rank_and_sort
+        !
+        implicit none
+        ! subroutine i/o
+        type(am_class_unit_cell), intent(in) :: uc
+        type(am_class_options), intent(in) :: opts
+        real(dp), allocatable :: seitz(:,:,:)
+        real(dp), allocatable :: seitz_probe(:,:)
+        real(dp), allocatable :: T(:,:)
+        real(dp), allocatable :: R(:,:,:)
+        real(dp), allocatable :: wrkspace(:,:,:)
+        real(dp) :: shift(3)
+        real(dp) :: T_shifted(3)
+        integer :: nTs
+        integer :: nRs
+        integer :: i, j, m
+        !
+        R = lattice_symmetries(bas=uc%bas,prec=opts%prec)
+        nRs = size(R,3)
+        !
+        if (opts%verbosity.ge.1) call am_print('possible (im-)proper rotations',nRs,' ... ')
+        !
+        T = translations_from_basis(tau=uc%tau_frac, Z=uc%Z, prec=opts%prec, flags='zero,relax')
+        nTs = size(T,2)
+        !
+        if (opts%verbosity.ge.1) call am_print('possible translations',nTs,' ... ')
+        !
+        if (opts%verbosity.ge.1) then
+            call am_print_two_matrices_side_by_side(name='translations',&
+                Atitle='fractional',A=transpose(T),&
+                Btitle='cartesian' ,B=transpose(matmul(uc%bas,T)),&
+                iopt_emph=' ... ',iopt_teaser=.true.)
+        endif 
+        !
+        allocate(wrkspace(4,4,nTs*nRs))
+        wrkspace = 0.0_dp
+        m=0
+        do i = 1, nRs
+        do j = 1, nTs
+            ! Shift tau to put the first atom at the origin. This is important because the
+            ! rotational part of the symmetry operation must leave at least one atom in it's
+            ! original location. If the atom already has a displacement, then it will be rotated
+            ! to another position.
+            if (.not.any(all(abs(uc%tau_frac).lt.opts%prec,2))) then
+                shift = uc%tau_frac(:,1)
+                ! tau' = R*tau + T
+                ! tau' - s = R*(tau-s) + T
+                ! tau' = R*tau + (R*S+T-s) = R*tau + T_shifted ! sign is wrong here for some reason.
+                ! thus, T_shifted = T - R*s + s
+                T_shifted = T(:,j) - matmul(R(:,:,i),shift) + shift
+                ! reduce to primitive
+                T_shifted = modulo(T_shifted+opts%prec,1.0_dp)-opts%prec
+            else
+                T_shifted = T(:,j)
+            endif
+            !
+            seitz_probe = eye(4)
+            seitz_probe(1:3,1:3) = R(1:3,1:3,i)
+            seitz_probe(1:3,4) = T_shifted
+            !
+            if ( is_symmetry_valid(tau=uc%tau_frac, Z=uc%Z, seitz=seitz_probe, prec=opts%prec)) then
+                m = m + 1
+                wrkspace(:,:,m)=seitz_probe
+            endif
+        enddo
+        enddo
+        !
+        allocate(seitz(4,4,m))
+        seitz = wrkspace(1:4,1:4,1:m)
+        !
+    end function    space_symmetries_from_basis
 
     pure function   is_symmetry_valid(seitz,tau,Z,prec,flags)
         !
@@ -238,9 +327,9 @@ contains
         ! start main part of function here
         allocate(tau_internal, source=tau)
         if (.not.isexact) then
-        do i = 1, natoms
-            tau_internal(:,i) = modulo(tau_internal(:,i)+prec,1.0_dp)-prec
-        enddo
+            do i = 1, natoms
+                tau_internal(:,i) = modulo(tau_internal(:,i)+prec,1.0_dp)-prec
+            enddo
         endif
         !
         ! tau ref is what the rotated vector is compared to
@@ -290,101 +379,12 @@ contains
         !
     end function    is_symmetry_valid
 
-    function        space_symmetries_from_basis(uc,opts) result(seitz_frac)
-        !
-        !The program first finds the primitive unit cell by looking for
-        !additional lattice vectors within the unit cell given in the input.
-        !
-        ! It chooses one of the atoms and tests each vector from that atom to
-        !every other atom of the same type in the unit cell. If that vector
-        !will take us from each atom in the unit cell to another atom of the
-        !same type (not necessarily in the same unit cell), then we have
-        !found a new lattice vector.
-        !
-        ! This process is repeated until we have
-        !found a complete list of lattice vectors. From that list, we find three
-        !which can serve as primitive basis vectors ti of the lattice, i.e. every
-        !lattice vector can be expressed as an integer linear combination of
-        !these basis vectors.
-        !
-        use am_rank_and_sort
-        !
-        implicit none
-        ! subroutine i/o
-        type(am_class_unit_cell), intent(in) :: uc
-        type(am_class_options), intent(in) :: opts
-        real(dp), allocatable :: seitz_frac(:,:,:)
-        real(dp), allocatable :: try(:,:)
-        real(dp), allocatable :: T(:,:)
-        real(dp), allocatable :: R(:,:,:)
-        real(dp), allocatable :: wrk_frac(:,:,:)
-        real(dp) :: shift(3)
-        real(dp) :: T_shifted(3)
-        integer :: nTs
-        integer :: nRs
-        integer :: i, j, m
-        !
-        R = lattice_symmetries(bas=uc%bas,prec=opts%prec)
-        nRs = size(R,3)
-        !
-        if (opts%verbosity.ge.1) call am_print('possible (im-)proper rotations',nRs,' ... ')
-        !
-        T = translations_from_basis(tau_frac=uc%tau_frac, Z=uc%Z, prec=opts%prec, flags='zero,relax')
-        nTs = size(T,2)
-        !
-        if (opts%verbosity.ge.1) call am_print('possible translations',nTs,' ... ')
-        !
-        if (opts%verbosity.ge.1) then
-            call am_print_two_matrices_side_by_side(name='translations',&
-                Atitle='fractional',A=transpose(T),&
-                Btitle='cartesian' ,B=transpose(matmul(uc%bas,T)),&
-                iopt_emph=' ... ',iopt_teaser=.true.)
-        endif 
-        !
-        allocate(wrk_frac(4,4,nTs*nRs))
-        wrk_frac = 0.0_dp
-        m=0
-        do i = 1, nRs
-        do j = 1, nTs
-            ! Shift tau_frac to put the first atom at the origin. This is important because the
-            ! rotational part of the symmetry operation must leave at least one atom in it's
-            ! original location. If the atom already has a displacement, then it will be rotated
-            ! to another position.
-            if (.not.any(all(abs(uc%tau_frac).lt.opts%prec,2))) then
-                shift = uc%tau_frac(:,1)
-                ! tau_frac' = R*tau_frac + T
-                ! tau_frac' - s = R*(tau_frac-s) + T
-                ! tau_frac' = R*tau_frac + (R*S+T-s) = R*tau_frac + T_shifted ! sign is wrong here for some reason.
-                ! thus, T_shifted = T - R*s + s
-                T_shifted = T(:,j) - matmul(R(:,:,i),shift) + shift
-                ! reduce to primitive
-                T_shifted = modulo(T_shifted+opts%prec,1.0_dp)-opts%prec
-            else
-                T_shifted = T(:,j)
-            endif
-            !
-            try = eye(4)
-            try(1:3,1:3) = R(1:3,1:3,i)
-            try(1:3,4)   = T_shifted
-            !
-            if ( is_symmetry_valid(tau=uc%tau_frac, Z=uc%Z, seitz=try, prec=opts%prec, flags='frac')) then
-                m = m + 1
-                wrk_frac(:,:,m)=try
-            endif
-        enddo
-        enddo
-        !
-        allocate(seitz_frac(4,4,m))
-        seitz_frac = wrk_frac(1:4,1:4,1:m)
-        !
-    end function    space_symmetries_from_basis
-
     function        permutation_rep(seitz,tau,prec,flags) result(rep)
         !
         ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
         ! also works to find which kpoint or atoms (in shell) are connected by point group operations
         !
-        ! flags = relax_pbc / skip_check
+        ! flags = relax_pbc
         !
         implicit none
         !
@@ -400,7 +400,9 @@ contains
         integer :: nsyms
         !
         nsyms = size(seitz,3)
+        !
         ntaus = size(tau,2)
+        !
         allocate(rep(ntaus,ntaus,nsyms))
         rep = 0
         !
@@ -408,15 +410,17 @@ contains
             ! determine the permutations of atomic indicies which results from each space symmetry operation
             do j = 1,ntaus
                 found = .false.
-                ! apply symmetry
-                tau_rot = matmul(seitz(1:3,1:3,i),tau(:,j)) + seitz(1:3,4,i)
+                ! apply rotational component
+                tau_rot = matmul(seitz(1:3,1:3,i),tau(:,j))
+                ! apply translational component
+                tau_rot = tau_rot + seitz(1:3,4,i)
                 ! reduce rotated+translated point to unit cell
                 if (index(flags,'relax_pbc').eq.0) then
                     tau_rot = modulo(tau_rot+prec,1.0_dp)-prec
                 endif
                 ! find matching atom
                 search : do k = 1, ntaus
-                    if (isequal(tau_rot,tau(:,k))) then
+                    if (all(abs(tau_rot-tau(:,k)).lt.prec)) then
                     rep(j,k,i) = 1
                     found = .true.
                     exit search ! break loop
@@ -424,8 +428,8 @@ contains
                 enddo search
                 ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
                 ! to ensure atoms must permute onto each other
-                if (index(flags,'skip_check').eq.0) then
-                if (.not.found) then
+                if (index(flags,'relax_pbc').eq.0) then
+                if (found.eq..false.) then
                     call am_print('ERROR','Unable to find matching atom.',flags='E')
                     call am_print('tau (all atoms)',transpose(tau))
                     call am_print('tau',tau(:,j))
@@ -442,7 +446,7 @@ contains
         !
         ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
         ! to ensure atoms must permute onto each other
-        if (index(flags,'skip_check').eq.0) then
+        if (index(flags,'relax_pbc').eq.0) then
         do i = 1, nsyms
         do j = 1, ntaus
             !
@@ -493,6 +497,37 @@ contains
         enddo
         !
     end function    permutation_map
+
+    function        reduce_to_wigner_seitz(tau,grid_points) result(tau_ws)
+        !> reduces kpoint (in fractional) to the first Brillouin zone (Wigner-Seitz cell, defined in cartesian coordinates)
+        !> cartesian kpoint is returned! 
+        implicit none
+        !
+        real(dp), intent(in) :: tau(3) !> fractional
+        real(dp), intent(in) :: grid_points(3,27) !> voronoi points (cartesian)
+        real(dp) :: tau_ws(3) !> kpoint cartesian
+        real(dp) :: G(3) !> reciprocal lattice vector
+        real(dp) :: P !> bragg plane condition
+        integer  :: i ! loop variable
+        logical  :: is_not_done
+        !
+        ! copy kpoint
+        tau_ws = tau
+        ! translating the k-point until the closest reciprocal lattice point is [0 0 0]
+        is_not_done = .true.
+        do while ( is_not_done )
+            is_not_done = .false.
+            do i = 1, 27
+                G = grid_points(:,i)
+                P = 2*dot_product(tau_ws,G) - dot_product(G,G)
+                if ( P.gt. tiny ) then
+                    tau_ws = tau_ws - G
+                    is_not_done = .true.
+                endif
+            enddo
+        end do
+        !
+    end function    reduce_to_wigner_seitz
 
     ! functions which operate on uc or similar derived types
 

@@ -165,9 +165,9 @@ contains
                 call dump_sym_to_file(fid=fid, sym=grp%sym, header='')
             class is (am_class_seitz_group)
                 ! symmerties [frac.]
-                call dump_sym_to_file(fid=fid, sym=grp%seitz_frac,  header='[frac.]')
-                call dump_sym_to_file(fid=fid, sym=grp%seitz_cart,  header='[cart.]')
-                call dump_sym_to_file(fid=fid, sym=grp%seitz_recfrac, header='[rec. frac]')
+                call dump_sym_to_file(fid=fid, sym=grp%seitz_frac,    header='[frac.]')
+                call dump_sym_to_file(fid=fid, sym=grp%seitz_cart,    header='[cart.]')
+                call dump_sym_to_file(fid=fid, sym=grp%seitz_recfrac, header='[rec. frac.]')
             class default
                 stop 'Class unknown!'
             end select

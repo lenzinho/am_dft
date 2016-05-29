@@ -57,11 +57,11 @@ contains
         !
         k=0
         do i = 1, pc%natoms
-            ! mask keeps track of pc atoms which were already mapped onto irreducible atoms
         if (mask(i)) then
             k=k+1
             ind(k)=i
             do j = 1, sg%nsyms
+                ! mask keeps track of pc atoms which were already mapped onto irreducible atoms
                 mask(PM(i,j))=.false.
             enddo
         endif
@@ -72,6 +72,19 @@ contains
         allocate(ic%tau_frac,source=pc%tau_frac(:,ind(1:k)))
         ! transfer irreducible atoms (cart)
         allocate(ic%tau_cart,source=pc%tau_cart(:,ind(1:k)))
+
+        call am_print('PM',PM)
+        call am_print('ind',ind)
+        call am_print('k',k)
+        call am_print('ic%tau_frac',ic%tau_frac)
+        call am_print('ic%tau_cart',ic%tau_cart)
+        call am_print('ic%uc_id',ic%uc_id)
+        call am_print('ic%pc_id',ic%pc_id)
+        call am_print('ic%ic_id',ic%ic_id)
+
+        call sg%dump(iopt_filename='sg.dump')
+
+        stop
         ! transfer Z
         allocate(ic%Z,source=pc%Z(ind(1:k)))
         ! map irreducible atom -> irreducible atom
@@ -95,7 +108,7 @@ contains
             enddo
         enddo
         if (any(pc%ic_id.eq.0)) stop 'ERROR: pc->ic mapping failed.'
-        ! maps (input) unit cell atom onto -> irreducible cell
+        ! maps (input) unit cell atom onto -> irreducible atom
         if (present(uc)) then
             allocate(uc%ic_id(uc%natoms))
             uc%ic_id = 0

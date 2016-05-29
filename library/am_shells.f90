@@ -233,9 +233,6 @@ contains
             bscfp     = 2.0_dp*eye(3)
             inv_bscfp = inv(bscfp)
             call sphere%get_supercell(uc=uc, bscfp=bscfp, opts=notalk)
-
-
-            stop
             ! generate voronoi points [cart]
             grid_points = meshgrid([-1:1],[-1:1],[-1:1])
             grid_points = matmul(sphere%bas,grid_points)
@@ -296,36 +293,6 @@ contains
             if (check_center.eq..false.) stop 'No atom [cart] at the origin.'
             !
         end function   create_sphere
-        function       reduce_to_wigner_seitz(tau,grid_points) result(tau_ws)
-            !> reduces kpoint (in fractional) to the first Brillouin zone (Wigner-Seitz cell, defined in cartesian coordinates)
-            !> cartesian kpoint is returned! 
-            implicit none
-            !
-            real(dp), intent(in) :: tau(3) !> fractional
-            real(dp), intent(in) :: grid_points(3,27) !> voronoi points (cartesian)
-            real(dp) :: tau_ws(3) !> kpoint cartesian
-            real(dp) :: G(3) !> reciprocal lattice vector
-            real(dp) :: P !> bragg plane condition
-            integer  :: i ! loop variable
-            logical  :: is_not_done
-            !
-            ! copy kpoint
-            tau_ws = tau
-            ! translating the k-point until the closest reciprocal lattice point is [0 0 0]
-            is_not_done = .true.
-            do while ( is_not_done )
-                is_not_done = .false.
-                do i = 1, 27
-                    G = grid_points(:,i)
-                    P = 2*dot_product(tau_ws,G) - dot_product(G,G)
-                    if ( P.gt. tiny ) then
-                        tau_ws = tau_ws - G
-                        is_not_done = .true.
-                    endif
-                enddo
-            end do
-            !
-        end function   reduce_to_wigner_seitz
         function       identify_shells(sphere,pg) result(shell_id)
             ! 
             use am_rank_and_sort
