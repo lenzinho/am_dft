@@ -16,6 +16,8 @@ module am_unit_cell
     public :: is_symmetry_valid
     public :: deform
 
+    public :: permutation_rep, permutation_map
+
     type, public :: am_class_unit_cell
         real(dp) :: bas(3,3)    ! basis vectors a(1:3,i), a(1:3,j), a(1:3,k)
         real(dp) :: recbas(3,3) ! reciprocal basis vectors a(1:3,i), a(1:3,j), a(1:3,k)
@@ -179,7 +181,7 @@ contains
                     seitz = eye(4)
                     seitz(1:3,4) = wrkr
                     !
-                    if ( is_symmetry_valid(seitz_frac=seitz, Z=Z, tau_frac=tau_frac, prec=prec) ) then
+                    if ( is_symmetry_valid(seitz=seitz, Z=Z, tau=tau_frac, prec=prec, flags='frac') ) then
                         nTs = nTs + 1
                         wrk(1:3,nTs) = wrkr
                     endif
@@ -205,66 +207,76 @@ contains
         !
     end function   translations_from_basis
 
-    pure function  is_symmetry_valid(tau_frac,Z,seitz_frac,prec,flags)
+    pure function  is_symmetry_valid(seitz,tau,Z,prec,flags)
         !
         ! check whether symmetry operation is valid
         !
         implicit none
         ! function i/o
-        real(dp), intent(in) :: tau_frac(:,:) !> tau_frac(3,natoms) fractional atomic basis
+        real(dp), intent(in) :: seitz(4,4)
+        real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic basis
         integer , intent(in) :: Z(:)     !> Z(natoms) list identify type of atom
-        real(dp), intent(in) :: seitz_frac(4,4)
         real(dp), intent(in) :: prec
         character(*), intent(in), optional :: flags
         !
-        real(dp), allocatable :: tau_frac_internal(:,:)
-        real(dp), allocatable :: tau_frac_ref(:,:) ! what to compare to
+        real(dp), allocatable :: tau_internal(:,:)
+        real(dp), allocatable :: tau_ref(:,:) ! what to compare to
         logical  :: isexact    ! if present, do not apply mod. ; useful for determining stabilizers
-        logical  :: iszero     ! if present, returns that the symmetry is valid if it reduces the tau_frac to [0,0,0]. useful for determing which symmetries flip bonds
-        real(dp) :: tau_frac_rot(3) ! rotated 
+        logical  :: iszero     ! if present, returns that the symmetry is valid if it reduces the tau to [0,0,0]. useful for determing which symmetries flip bonds
+        logical  :: isreverse  ! if present results symmetry that takes tau => - tau 
+        real(dp) :: tau_rot(3) ! rotated 
         logical  :: is_symmetry_valid
         integer  :: natoms
         integer  :: i, j, m
         logical  :: overlap_found
         !
-        natoms = size(tau_frac,2)
+        natoms = size(tau,2)
         !
         !
         ! load flag options
-        isexact = .false.
-        iszero  = .false.
+        isexact   = .false.
+        iszero    = .false.
+        isreverse = .false.
         if (present(flags)) then
-        if (index(flags,'exact').ne.0) isexact = .true.
-        if (index(flags,'zero').ne.0)  iszero  = .true.
+        if (index(flags,'exact').ne.0)    isexact   = .true.
+        if (index(flags,'zero').ne.0)     iszero    = .true.
+        if (index(flags,'reverse').ne.0)  isreverse = .true.
         endif
         !
         ! start main part of function here
-        allocate(tau_frac_internal, source=tau_frac)
+        allocate(tau_internal, source=tau)
         if (.not.isexact) then
         do i = 1, natoms
-            tau_frac_internal(:,i) = modulo(tau_frac_internal(:,i)+prec,1.0_dp)-prec
+            tau_internal(:,i) = modulo(tau_internal(:,i)+prec,1.0_dp)-prec
         enddo
         endif
         !
-        ! tau_frac ref is what the rotated vector is compared to
-        if (iszero) then
-            tau_frac_ref(:,i) = 0.0_dp
+        ! tau ref is what the rotated vector is compared to
+        allocate(tau_ref(3,natoms))
+        if        (iszero) then
+            do i = 1, natoms
+                tau_ref(:,i) = real([0,0,0],dp)
+            enddo
+        elseif (isreverse) then
+            do i = 1, natoms
+                tau_ref(:,i) = -tau_internal(:,i)
+            enddo
         else
             ! default behavior: just compare it to what it was originally before it was rotated
-            allocate(tau_frac_ref,source=tau_frac_internal)
+            tau_ref = tau_internal
         endif
         !
         m = 0
         do i = 1, natoms
             ! apply symmetry operation
-            tau_frac_rot(1:3) = matmul(seitz_frac(1:3,1:3),tau_frac_internal(1:3,i)) + seitz_frac(1:3,4)
+            tau_rot(1:3) = matmul(seitz(1:3,1:3),tau_internal(1:3,i)) + seitz(1:3,4)
             ! reduce rotated+translated point to unit cell
-            if (.not.isexact) tau_frac_rot(1:3) = modulo(tau_frac_rot(1:3)+prec,1.0_dp)-prec
+            if (.not.isexact) tau_rot(1:3) = modulo(tau_rot(1:3)+prec,1.0_dp)-prec
             ! check that newly created point matches something already present
             overlap_found = .false.
             check_overlap : do j = 1,natoms
                 if (Z(i) .eq. Z(j)) then
-                    if (all(abs(tau_frac_rot(1:3)-tau_frac_internal(1:3,j)).lt.prec)) then
+                    if (isequal(tau_rot(1:3),tau_ref(1:3,j))) then
                         m = m + 1
                         overlap_found = .true.
                         exit check_overlap
@@ -272,17 +284,18 @@ contains
                 endif
             enddo check_overlap
             !
-            if ( .not. overlap_found ) then
+            if (.not.overlap_found) then
                 is_symmetry_valid = .false.
                 return
             endif
             !
         enddo
         !
-        if (m .eq. natoms) then
+        if (m.eq.natoms) then
             is_symmetry_valid = .true.
             return
         endif
+        !
     end function   is_symmetry_valid
 
     function       space_symmetries_from_basis(uc,opts) result(seitz_frac)
@@ -309,7 +322,7 @@ contains
         type(am_class_unit_cell), intent(in) :: uc
         type(am_class_options), intent(in) :: opts
         real(dp), allocatable :: seitz_frac(:,:,:)
-        real(dp), allocatable :: seitz_probe(:,:)
+        real(dp), allocatable :: try(:,:)
         real(dp), allocatable :: T(:,:)
         real(dp), allocatable :: R(:,:,:)
         real(dp), allocatable :: wrk_frac(:,:,:)
@@ -358,13 +371,13 @@ contains
                 T_shifted = T(:,j)
             endif
             !
-            seitz_probe = eye(4)
-            seitz_probe(1:3,1:3) = R(1:3,1:3,i)
-            seitz_probe(1:3,4) = T_shifted
+            try = eye(4)
+            try(1:3,1:3) = R(1:3,1:3,i)
+            try(1:3,4)   = T_shifted
             !
-            if ( is_symmetry_valid(tau_frac=uc%tau_frac, Z=uc%Z, seitz_frac=seitz_probe, prec=opts%prec)) then
+            if ( is_symmetry_valid(tau=uc%tau_frac, Z=uc%Z, seitz=try, prec=opts%prec, flags='frac')) then
                 m = m + 1
-                wrk_frac(:,:,m)=seitz_probe
+                wrk_frac(:,:,m)=try
             endif
         enddo
         enddo
@@ -373,6 +386,121 @@ contains
         seitz_frac = wrk_frac(1:4,1:4,1:m)
         !
     end function   space_symmetries_from_basis
+
+    function       permutation_rep(seitz,tau,prec,flags) result(rep)
+        !
+        ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
+        ! also works to find which kpoint or atoms (in shell) are connected by point group operations
+        !
+        ! flags = relax_pbc / skip_check
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: seitz(:,:,:)
+        real(dp), intent(in) :: tau(:,:)
+        real(dp), intent(in) :: prec
+        character(*), intent(in) :: flags
+        integer, allocatable :: rep(:,:,:)
+        real(dp) :: tau_rot(3)
+        integer :: i,j,k
+        logical :: found
+        integer :: ntaus ! number of tau points tau(1:3,ntaus)
+        integer :: nsyms
+        !
+        nsyms = size(seitz,3)
+        ntaus = size(tau,2)
+        allocate(rep(ntaus,ntaus,nsyms))
+        rep = 0
+        !
+        do i = 1, nsyms
+            ! determine the permutations of atomic indicies which results from each space symmetry operation
+            do j = 1,ntaus
+                found = .false.
+                ! apply symmetry
+                tau_rot = matmul(seitz(1:3,1:3,i),tau(:,j)) + seitz(1:3,4,i)
+                ! reduce rotated+translated point to unit cell
+                if (index(flags,'relax_pbc').eq.0) then
+                    tau_rot = modulo(tau_rot+prec,1.0_dp)-prec
+                endif
+                ! find matching atom
+                search : do k = 1, ntaus
+                    if (isequal(tau_rot,tau(:,k))) then
+                    rep(j,k,i) = 1
+                    found = .true.
+                    exit search ! break loop
+                    endif
+                enddo search
+                ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
+                ! to ensure atoms must permute onto each other
+                if (index(flags,'skip_check').eq.0) then
+                if (.not.found) then
+                    call am_print('ERROR','Unable to find matching atom.',flags='E')
+                    call am_print('tau (all atoms)',transpose(tau))
+                    call am_print('tau',tau(:,j))
+                    call am_print('R',seitz(1:3,1:3,i))
+                    call am_print('T',seitz(1:3,4,i))
+                    call am_print('tau_rot',tau_rot)
+                    stop
+                endif
+                endif
+            enddo
+        enddo
+        !
+        ! check that each column and row of the rep sums to 1; i.e. rep(:,:,i) is orthonormal for all i.
+        !
+        ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
+        ! to ensure atoms must permute onto each other
+        if (index(flags,'skip_check').eq.0) then
+        do i = 1, nsyms
+        do j = 1, ntaus
+            !
+            if (sum(rep(:,j,i)).ne.1) then
+               call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
+               call am_print('i',i)
+               call am_print_sparse('spy(P_i)',rep(:,:,i))
+               call am_print('rep',rep(:,:,i))
+               stop
+            endif
+            !
+            if (sum(rep(j,:,i)).ne.1) then
+               call am_print('ERROR','Permutation matrix has a row which does not sum to 1.')
+               call am_print('i',i)
+               call am_print_sparse('spy(P_i)',rep(:,:,i))
+               call am_print('rep',rep(:,:,i))
+               stop
+            endif
+            !
+        enddo
+        enddo
+        endif
+       !
+    end function   permutation_rep
+    
+    function       permutation_map(P) result(PM)
+        !
+        ! PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
+        !
+        implicit none
+        !
+        integer, allocatable, intent(in) :: P(:,:,:)
+        integer, allocatable :: PM(:,:)
+        integer, allocatable :: ind(:)
+        integer :: natoms,nsyms
+        integer :: i
+        !
+        natoms = size(P,1)
+        nsyms  = size(P,3)
+        !
+        ind = [1:natoms]
+        !
+        allocate(PM(natoms,nsyms))
+        PM=0
+        !
+        do i = 1, nsyms
+            PM(:,i) = matmul(P(:,:,i),ind)
+        enddo
+        !
+    end function   permutation_map
 
     ! functions which operate on uc or similar derived types
 

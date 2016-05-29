@@ -244,11 +244,11 @@ contains
         ! number of classes
         grp%cc%nclasses = maxval(grp%cc%id)
         ! get number of elements in each class
-        grp%cc%nelements = nelements(id=grp%cc%id)
+        grp%cc%nelements = id_nelements(id=grp%cc%id)
         ! get members
-        grp%cc%member = member(id=grp%cc%id)
+        grp%cc%member = id_member(id=grp%cc%id)
         ! get representatives
-        grp%cc%representative= representative(id=grp%cc%id)
+        grp%cc%representative = id_representative(id=grp%cc%id)
         !
     end subroutine get_conjugacy_classes
 
@@ -566,7 +566,7 @@ contains
         !
     end subroutine get_point_group
 
-    subroutine     get_rotational_group(rg,uc,pg,opts)
+    subroutine     get_rotational_group(rotg,uc,pg,opts,flags)
         !
         ! Get point symmetries which are compatible with the atomic basis (essentially keeps
         ! rotational part of space symmetries which are able to map all atoms onto each other)
@@ -580,40 +580,45 @@ contains
         !
         implicit none
         ! subroutine i/o
-        class(am_class_point_group),intent(out):: rg
+        class(am_class_point_group),intent(out):: rotg
         class(am_class_unit_cell),  intent(in) :: uc
         type(am_class_point_group), intent(in) :: pg
         type(am_class_options),     intent(in) :: opts
+        character(*)              , intent(in) :: flags
         integer, allocatable   :: indicies(:)
         logical, allocatable   :: mask(:)
         integer :: i
         !
         allocate(mask(pg%nsyms))
+        mask = .false. 
         !
-        do i = 1, pg%nsyms
-            if ( is_symmetry_valid(tau_frac=uc%tau_frac, Z=uc%Z, seitz_frac=pg%seitz_frac, prec=opts%prec)) then
-                mask(i) = .true.
-            else 
-                mask(i) = .false.
-            endif
-        enddo
+        if      (index(flags,'cart').ne.0) then
+            do i = 1, pg%nsyms
+                if ( is_symmetry_valid(tau=uc%tau_cart, Z=uc%Z, seitz=pg%seitz_cart, prec=opts%prec, flags='cart')) then
+                    mask(i) = .true.
+                endif
+            enddo
+        else
+            stop 'Note: rotational group only makes sense for [cart], for which symmetry operations are strictly unitary.'
+        endif
         ! create indices
         allocate(indicies(pg%nsyms))
         indicies=[1:pg%nsyms]
         !
         ! create group
-        call rg%create_seitz_group(seitz_frac=pg%seitz_frac(:,:,pack(indicies,mask)), bas=pg%bas)
+        call rotg%create_seitz_group(seitz_frac=pg%seitz_frac(:,:,pack(indicies,mask)), bas=pg%bas)
         !
     end subroutine get_rotational_group
 
-    subroutine     get_stabilizer_group(vg,pg,v,opts)
+    subroutine     get_stabilizer_group(stab,pg,v,opts,flags)
         !
         implicit none
         !
-        class(am_class_point_group), intent(out):: vg ! stabilizer group associated with vector v
+        class(am_class_point_group), intent(out):: stab ! stabilizer group associated with vector v
         type(am_class_point_group) , intent(in) :: pg
         real(dp)                   , intent(in) :: v(3) ! vector which is stabilized (should be same units as R, which is fractional)
         type(am_class_options)     , intent(in) :: opts
+        character(*)               , intent(in) :: flags
         integer, allocatable :: indicies(:)
         logical, allocatable :: mask(:)
         integer :: i
@@ -621,22 +626,31 @@ contains
         allocate(mask(pg%nsyms))
         mask = .false.
         !
-        do i = 1, pg%nsyms
-            ! mark symmetries which leaves vector strictly invariant (not even modulo a lattice vector)
-            if (is_symmetry_valid(tau_frac=reshape(v,[3,1]), Z=[1], seitz_frac=pg%seitz_frac(:,:,i), prec=opts%prec, flags='exact')) then
-                mask(i) = .true.
-            endif
-        enddo
+        if      (index(flags,'frac').ne.0) then
+            do i = 1, pg%nsyms
+                if (is_symmetry_valid(tau=reshape(v,[3,1]), Z=[1], seitz=pg%seitz_frac(:,:,i), prec=opts%prec, flags=flags//'exact')) then
+                    mask(i) = .true.
+                endif
+            enddo
+        elseif  (index(flags,'cart').ne.0) then
+            do i = 1, pg%nsyms
+                if (is_symmetry_valid(tau=reshape(v,[3,1]), Z=[1], seitz=pg%seitz_cart(:,:,i), prec=opts%prec, flags=flags//'exact')) then
+                    mask(i) = .true.
+                endif
+            enddo
+        else
+            stop 'flags must contain frac/cart'
+        endif
         !
         allocate(indicies(pg%nsyms))
         indicies=[1:pg%nsyms]
         !
         ! create group
-        call vg%create_seitz_group(seitz_frac=pg%seitz_frac(:,:,pack(indicies,mask)), bas=pg%bas)
+        call stab%create_seitz_group(seitz_frac=pg%seitz_frac(:,:,pack(indicies,mask)), bas=pg%bas)
         !
     end subroutine get_stabilizer_group
     
-    subroutine     get_reversal_group(revg,sg,v,opts)
+    subroutine     get_reversal_group(revg,pg,v,opts,flags)
         !
         ! there is a bug in the reversal group. Si-Si first naerest neighbor shells on different primitive cell atoms does not match.
         !
@@ -653,31 +667,42 @@ contains
         implicit none
         !
         class(am_class_point_group), intent(out):: revg ! reversal group associated with vector v, i.e. the space symmetries with bring v to [0,0,0], essentially flipping the atoms at the corners of the vector
-        type(am_class_space_group) , intent(in) :: sg ! space group
+        type(am_class_point_group) , intent(in) :: pg ! space group
         real(dp)                   , intent(in) :: v(3)
         type(am_class_options)     , intent(in) :: opts
+        character(*)               , intent(in) :: flags
         integer, allocatable :: indicies(:)
         logical, allocatable :: mask(:)
         real(dp),allocatable :: seitz_frac(:,:,:)
         integer :: i
         !
-        allocate(mask(sg%nsyms))
+        allocate(mask(pg%nsyms))
         mask = .false.
         !
-        do i = 1, sg%nsyms
-            if (is_symmetry_valid(tau_frac=reshape(v,[3,1]), Z=[1], seitz_frac=sg%seitz_frac(:,:,i), prec=opts%prec, flags='zero')) then
-                mask(i) = .true.
-            endif
-        enddo
+        if      (index(flags,'frac').ne.0) then
+            do i = 1, pg%nsyms
+                if (is_symmetry_valid(tau=reshape(v,[3,1]), Z=[1], seitz=pg%seitz_frac(:,:,i), prec=opts%prec, flags=flags//'reversal')) then
+                    mask(i) = .true.
+                endif
+            enddo
+        elseif  (index(flags,'cart').ne.0) then
+            do i = 1, pg%nsyms
+                if (is_symmetry_valid(tau=reshape(v,[3,1]), Z=[1], seitz=pg%seitz_cart(:,:,i), prec=opts%prec, flags=flags//'reversal')) then
+                    mask(i) = .true.
+                endif
+            enddo
+        else
+            stop 'flags must contain frac/cart'
+        endif
         !
-        allocate(indicies(sg%nsyms))
-        indicies=[1:sg%nsyms]
+        allocate(indicies(pg%nsyms))
+        indicies=[1:pg%nsyms]
         !
-        allocate(seitz_frac, source=sg%seitz_frac(:,:,pack(indicies,mask)))
+        allocate(seitz_frac, source=pg%seitz_frac(:,:,pack(indicies,mask)))
         seitz_frac(1:3,4,:) = 0 ! set all translations to zero
         !
         ! create group
-        call revg%create_seitz_group(seitz_frac=unique(seitz_frac), bas=sg%bas)
+        call revg%create_seitz_group(seitz_frac=unique(seitz_frac), bas=pg%bas)
         !
     end subroutine get_reversal_group
 
@@ -1367,123 +1392,6 @@ contains
             write(*,'(5x,a5,i5)') 's_3', ns3
             stop
     end function   point_group_schoenflies
-
-    ! permutation rep
-
-    function       permutation_rep(seitz,tau,prec,flags) result(rep)
-        !
-        ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
-        ! also works to find which kpoint or atoms (in shell) are connected by point group operations
-        !
-        ! flags = relax_pbc / skip_check
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: seitz(:,:,:)
-        real(dp), intent(in) :: tau(:,:)
-        real(dp), intent(in) :: prec
-        character(*), intent(in) :: flags
-        integer, allocatable :: rep(:,:,:)
-        real(dp) :: tau_rot(3)
-        integer :: i,j,k
-        logical :: found
-        integer :: ntaus ! number of tau points tau(1:3,ntaus)
-        integer :: nsyms
-        !
-        nsyms = size(seitz,3)
-        ntaus = size(tau,2)
-        allocate(rep(ntaus,ntaus,nsyms))
-        rep = 0
-        !
-        do i = 1, nsyms
-            ! determine the permutations of atomic indicies which results from each space symmetry operation
-            do j = 1,ntaus
-                found = .false.
-                ! apply symmetry
-                tau_rot = matmul(seitz(1:3,1:3,i),tau(:,j)) + seitz(1:3,4,i)
-                ! reduce rotated+translated point to unit cell
-                if (index(flags,'relax_pbc').eq.0) then
-                    tau_rot = modulo(tau_rot+prec,1.0_dp)-prec
-                endif
-                ! find matching atom
-                search : do k = 1, ntaus
-                    if (isequal(tau_rot,tau(:,k))) then
-                    rep(j,k,i) = 1
-                    found = .true.
-                    exit search ! break loop
-                    endif
-                enddo search
-                ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
-                ! to ensure atoms must permute onto each other
-                if (index(flags,'skip_check').eq.0) then
-                if (.not.found) then
-                    call am_print('ERROR','Unable to find matching atom.',flags='E')
-                    call am_print('tau (all atoms)',transpose(tau))
-                    call am_print('tau',tau(:,j))
-                    call am_print('R',seitz(1:3,1:3,i))
-                    call am_print('T',seitz(1:3,4,i))
-                    call am_print('tau_rot',tau_rot)
-                    stop
-                endif
-                endif
-            enddo
-        enddo
-        !
-        ! check that each column and row of the rep sums to 1; i.e. rep(:,:,i) is orthonormal for all i.
-        !
-        ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
-        ! to ensure atoms must permute onto each other
-        if (index(flags,'skip_check').eq.0) then
-        do i = 1, nsyms
-        do j = 1, ntaus
-            !
-            if (sum(rep(:,j,i)).ne.1) then
-               call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
-               call am_print('i',i)
-               call am_print_sparse('spy(P_i)',rep(:,:,i))
-               call am_print('rep',rep(:,:,i))
-               stop
-            endif
-            !
-            if (sum(rep(j,:,i)).ne.1) then
-               call am_print('ERROR','Permutation matrix has a row which does not sum to 1.')
-               call am_print('i',i)
-               call am_print_sparse('spy(P_i)',rep(:,:,i))
-               call am_print('rep',rep(:,:,i))
-               stop
-            endif
-            !
-        enddo
-        enddo
-        endif
-       !
-    end function   permutation_rep
-    
-    function       permutation_map(P) result(PM)
-        !
-        ! PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
-        !
-        implicit none
-        !
-        integer, allocatable, intent(in) :: P(:,:,:)
-        integer, allocatable :: PM(:,:)
-        integer, allocatable :: ind(:)
-        integer :: natoms,nsyms
-        integer :: i
-        !
-        natoms = size(P,1)
-        nsyms  = size(P,3)
-        !
-        ind = [1:natoms]
-        !
-        allocate(PM(natoms,nsyms))
-        PM=0
-        !
-        do i = 1, nsyms
-            PM(:,i) = matmul(P(:,:,i),ind)
-        enddo
-        !
-    end function   permutation_map
 
     ! needed
 

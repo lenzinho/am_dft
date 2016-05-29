@@ -350,7 +350,7 @@ module am_symmetry_rep
         !
         !
         ! get conjugacy class members
-        class_member = member(id=flat%cc%id)
+        class_member = id_member(id=flat%cc%id)
         ! intialize indices
         allocate(indices,source=[1:flat%nbases])
         ! initialize augmented workspace matrix A

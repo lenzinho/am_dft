@@ -179,7 +179,7 @@ contains
                 ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245. Also see R. Martin.
                 call flat_ig%get_flat_intrinsic_group(tens=tbvsk, atom_m=ic%atom(shell%i), atom_n=ic%atom(shell%j) )
                 ! determine stabilizers relations
-                call stab%get_stabilizer_group(pg=pg, v=shell%tau_frac(1:3,1), opts=opts)
+                call stab%get_stabilizer_group(pg=pg, v=shell%tau_cart(1:3,1), opts=opts, flags='cart')
                 ! get stabilizer symmetries in the flattened hamiltonin basis
                 call flat_pg%get_flat_point_group(tens=tbvsk, pg=stab, atom_m=ic%atom(shell%i), atom_n=ic%atom(shell%j))
                 ! get combined relations

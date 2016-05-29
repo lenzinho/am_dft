@@ -38,13 +38,14 @@ module am_shells
 
 contains
     
-    subroutine     get_primitive(pp,pc,pg,sg,pair_cutoff,uc,opts)
+    subroutine     get_primitive(pp,pc,pg,pair_cutoff,uc,opts)
+        !
+        use am_symmetry_tables
         !
         implicit none
         !
         class(am_class_pair_shell), intent(inout) :: pp ! primitive pairs
-        type(am_class_prim_cell) , intent(in) :: pc ! primitive cell
-        type(am_class_space_group), intent(in) :: sg ! space group
+        type(am_class_prim_cell)  , intent(in) :: pc ! primitive cell
         type(am_class_point_group), intent(in) :: pg ! point group
         type(am_class_unit_cell)  , intent(in) :: uc ! unit cell
         type(am_class_options)    , intent(in) :: opts
@@ -89,9 +90,9 @@ contains
             ! get number of pairs
             nshells = maxval(shell_id)
             ! get number of pair elements (essentially the oribital weights)
-            shell_nelements = nelements(shell_id)
+            shell_nelements = id_nelements(shell_id)
             ! get pair members [pair representative is given by shell_member(:,1)]
-            shell_member = member(shell_id)
+            shell_member = id_member(shell_id)
             do j = 1, nshells
                 if (allocated(ind)) deallocate(ind)
                 allocate(ind,source=shell_member(j,1:shell_nelements(j)))
@@ -118,11 +119,11 @@ contains
                 pp%shell(k)%m = pc%pc_id(i)
                 pp%shell(k)%n = pp%shell(k)%pc_id(1)
                 ! determine stabilizers of a prototypical bond in shell (vector v)
-                call pp%shell(k)%stab%get_stabilizer_group(pg=pg, v=pp%shell(k)%tau_frac(1:3,1), opts=opts)
+                call pp%shell(k)%stab%get_stabilizer_group(pg=pg, v=pp%shell(k)%tau_cart(1:3,1), opts=opts, flags='cart')
                 ! determine rotations which leaves shell invariant
-                call pp%shell(k)%rotg%get_rotational_group(pg=pg, uc=pp%shell(k), opts=opts)
+                call pp%shell(k)%rotg%get_rotational_group(pg=pg, uc=pp%shell(k), opts=opts, flags='cart')
                 ! determine reversal group, space symmetries, which interchange the position of atoms at the edges of the bond
-                call pp%shell(k)%revg%get_reversal_group(sg=sg  , v=pp%shell(k)%tau_frac(1:3,1), opts=opts)
+                call pp%shell(k)%revg%get_reversal_group(pg=pg  , v=pp%shell(k)%tau_cart(1:3,1), opts=opts, flags='cart')
             enddo
         enddo
         !
@@ -473,7 +474,6 @@ contains
             type(am_class_point_group), intent(in) :: pg ! point group
             class(am_class_unit_cell) , intent(in) :: ic ! irreducible cell
             type(am_class_options)    , intent(in) :: opts
-            type(am_class_point_group) :: stab ! stabilizer of vector v
             integer , allocatable :: Z(:,:) ! Z of each atom in pair
             integer , allocatable :: M(:,:) ! M&N primitive atom indices
             integer , allocatable :: s(:) ! stabilizer point group id
@@ -489,7 +489,7 @@ contains
             !
             ! allocate space 
             allocate(d(pp%nshells))         ! distance between pair of atoms (having atoms the same distance apart is a prerequesit for the bond to be the same)
-            allocate(s(pp%nshells))         ! stabilizer group id (having the same stabilier group is a prerequesit for the bond to be the same)
+            allocate(s(pp%nshells))         ! rotational group should be the same
             allocate(Z(2,pp%nshells))       ! atomic number of elements in pair (having the same types of atoms is a prerequesit for the bond to be the same)
             allocate(M(2,pp%nshells))       ! primitive atom indices
             allocate(isflipped(pp%nshells)) ! indicates which pairs were flipped in the comparison, returns negative ip_id if the corresponding bond was flipped
@@ -513,8 +513,7 @@ contains
                     M([1,2],k) = M([2,1],k)
                 endif
                 ! record stabilzier group
-                call stab%get_stabilizer_group(pg=pg, v=v, opts=opts)
-                s(k) = point_group_schoenflies( stab%ps_id )
+                s(k) = point_group_schoenflies( pp%shell(k)%rotg%ps_id )
                 ! possible write shell for debuging
                 ! call pair%shell(i,j)%write_poscar(file_output_poscar='shell_'//trim(int2char(i))//'_'//trim(int2char(j)))
             enddo

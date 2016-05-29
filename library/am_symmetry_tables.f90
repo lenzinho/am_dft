@@ -299,7 +299,7 @@ contains
             !
             ! identify class members 
             ! members(nclass,maxval(class_nelements))
-            class_member = member(class_id)
+            class_member = id_member(class_id)
             !
             ! for each class, identify the representative element
             allocate(s(nclasses))
@@ -828,7 +828,7 @@ contains
 
     ! identifier functions which operate on identifiers
 
-    function       member(id) result(class_member)
+    function       id_member(id) result(class_member)
         !
         implicit none
         !
@@ -843,7 +843,7 @@ contains
         !
         nclasses = maxval(id)
         !
-        class_nelements = nelements(id)
+        class_nelements = id_nelements(id)
         !
         allocate(class_member(nclasses,maxval(class_nelements)))
         class_member = 0
@@ -856,9 +856,9 @@ contains
                 endif
             enddo
         enddo
-    end function   member
+    end function   id_member
 
-    function       representative(id) result(class_representative)
+    function       id_representative(id) result(class_representative)
         !
         implicit none
         !
@@ -866,13 +866,13 @@ contains
         integer, allocatable :: class_member(:,:) ! members(nclass,maxval(class_nelements))
         integer, allocatable :: class_representative(:)
         !
-        class_member = member(id)
+        class_member = id_member(id)
         !
         allocate(class_representative, source=class_member(:,1))
         !
-    end function   representative
+    end function   id_representative
 
-    function       nelements(id) result(class_nelements)
+    function       id_nelements(id) result(class_nelements)
         !
         implicit none
         !
@@ -888,7 +888,7 @@ contains
         do i = 1, nclasses
             class_nelements(i) = count(i.eq.id)
         enddo
-    end function   nelements
+    end function   id_nelements
 
     ! get point symmetry name
 
