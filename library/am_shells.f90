@@ -64,7 +64,7 @@ contains
         if (opts%verbosity.ge.1) call am_print_title('Determining primitive neighbor pairs')
         !
         ! set pair cutoff radius (smaller than half the smallest cell dimension, larger than the smallest distance between atoms)
-        pair_cutoff = minval([norm2(uc%bas(:,:),1)/real(2,dp), pair_cutoff])
+        pair_cutoff = minval([norm2(uc%bas(:,:),1)/real(2,dp), pair_cutoff]) - opts%prec
         call am_print('pair cutoff radius',pair_cutoff,' ... ')
         !
         ! get maxmimum number of pair shells
@@ -82,12 +82,7 @@ contains
         ! 
         k = 0 ! shell index
         do i = 1, pc%natoms
-            !
-            ! make a sphere containing atoms a maximum distance of a choosen atom; translate all atoms around the sphere.
-            ! this distance is the real-space cut-off radius used in the construction of second-order force constants
-            ! its value cannot exceed half the smallest dimension of the supercell
-            !
-            ! create sphere
+          	! create sphere containing atoms a maximum distance of a choosen atom (atoms are translated to as close to sphere center as possible)
             sphere = create_sphere(uc=uc, sphere_center=pc%tau_cart(:,i), pair_cutoff=pair_cutoff, opts=opts )
             ! identify atoms in the whole sphere that can be mapped onto each other by point symmetry operations and return the id of the pair for each atom (including the center atom)
             shell_id = identify_shells(sphere=sphere,pg=pg)
@@ -127,7 +122,7 @@ contains
                 ! determine rotations which leaves shell invariant
                 call pp%shell(k)%rotg%get_rotational_group(pg=pg, uc=pp%shell(k), opts=opts)
                 ! determine reversal group, space symmetries, which interchange the position of atoms at the edges of the bond
-                call pp%shell(k)%revg%get_reversal_group(sg=sg, v=pp%shell(k)%tau_frac(1:3,1), opts=opts)
+                call pp%shell(k)%revg%get_reversal_group(sg=sg  , v=pp%shell(k)%tau_frac(1:3,1), opts=opts)
             enddo
         enddo
         !
@@ -198,6 +193,8 @@ contains
         contains
         function       create_sphere(uc,sphere_center,pair_cutoff,opts) result(sphere)
             !
+            use am_rank_and_sort
+            !
             implicit none
             !
             type(am_class_unit_cell), intent(in) :: uc
@@ -207,10 +204,11 @@ contains
             real(dp), intent(in)  :: pair_cutoff
             integer , allocatable :: atoms_inside(:)
             type(am_class_options) :: notalk ! supress verbosity
+        	integer , allocatable :: ind(:)
             real(dp) :: bas(3,3)
             real(dp) :: grid_points(3,27) ! voronoi points
-            logical :: check_center
-            integer :: i,j
+            logical  :: check_center
+            integer  :: i,j
             !
             ! set notalk option
             notalk = opts 
@@ -220,11 +218,13 @@ contains
             call sphere%get_supercell(uc=uc, bscfp=bas, opts=notalk)
             ! revert tau_frac back to primitive fractional (rather than supercell fractional)
             sphere%tau_frac = matmul(bas,sphere%tau_frac)
-            ! revert basis back to primitive cell
-            sphere%bas = matmul(inv(bas),sphere%bas)
+            sphere%tau_frac = modulo(sphere%tau_frac + opts%prec, 1.0_dp) - opts%prec
             ! generate voronoi points [cart]
             grid_points = meshgrid([-1:1],[-1:1],[-1:1])
             grid_points = matmul(sphere%bas,grid_points)
+            ! revert basis back to primitive cell basis
+            ! (IMPORTANT: this basis update must come after grid_poins generation; otherwise )
+            sphere%bas = matmul(inv(bas),sphere%bas)
             ! filter sphere keeping only atoms inside pair cutoff radius (elements with incomplete
             ! orbits should be ignored, since they do not have enough information to build full pairs)
             allocate(atoms_inside(sphere%natoms))
@@ -236,15 +236,15 @@ contains
                 ! translate atoms to be as close to the origin as possible
                 sphere%tau_cart(:,i) = reduce_to_wigner_seitz(tau=sphere%tau_cart(:,i), grid_points=grid_points)
                 ! take note of points within the predetermined pair cutoff radius [cart.]
-                if (norm2(sphere%tau_cart(:,i)).le.pair_cutoff + opts%prec) then
+                if (norm2(sphere%tau_cart(:,i)).le.pair_cutoff) then
                     j=j+1
                     atoms_inside(j) = i
                 endif
             enddo
-            ! filter out atoms outside sphere (keep ones within cutoff radius)
+            ! filter atoms outside sphere (keep ones within cutoff radius)
             call sphere%filter(ind=atoms_inside(1:j))
-            call am_print('sphere%tau_cart',transpose(sphere%tau_cart))
-            stop
+            ! sort atoms by increasing distance from [0,0,0]
+            call sphere%sort_atoms(criterion=norm2(sphere%tau_cart,1),flags='ascend')
             ! check that there is one atom at the origin
             check_center = .false.
             do i = 1,sphere%natoms
@@ -292,49 +292,26 @@ contains
             !
         end function   reduce_to_wigner_seitz
         function       identify_shells(sphere,pg) result(shell_id)
-            ! note: pg is obtained with respect to pc. if the basis is mismatched (between pg and pc), there will be problems (see note below)...
-            ! atoms are determined to be in the same shell if there exists a point symmetry operation which connects the atoms
+            ! 
             use am_rank_and_sort
             !
             implicit none
             !
             type(am_class_unit_cell)  , intent(in) :: sphere
-            type(am_class_point_group), intent(in) :: pg ! rotational group (space symmetries which have translational part set to zero and are still compatbile with the atomic basis)
-            integer , allocatable :: PM(:,:) ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-            real(dp), allocatable :: d(:)    ! d(nshells) array containing distances between atoms
-            integer , allocatable :: indices(:)
+            type(am_class_point_group), intent(in) :: pg
+            integer , allocatable :: PM(:,:)
             integer , allocatable :: shell_id(:)
-            integer  :: i, jj, j, k
-            !
-            ! <Antonio Mei: May 26, 2016>
-            ! there is some incosistency here... tau_frac appears to be in fractional, but sym needs to
-            ! be converted to cartesian? problem is that point group was defined for pc, but is
-            ! being used for sphere which is based on the uc... the primitive cell basis is
-            ! (ones(3)-eye(3))/2 the fcc basis, but the uc basis is the conventional cell basis...
-            ! AS LONG AS THE SYMMETRIES AND THE ATOMIC BASIS ARE IN CARTESIAN COORDINATES
-            ! (CONSISTENT AMONG THEMSELVES) WHEN permutation_rep IS CALLED, IT WORKS.
-            ! </Antonio Mei: May 26, 2016>
+            integer  :: i,j,k
             !
             ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-            ! Things absolutely need to be be in cartesian coordinates here. The rotation operation needs to be strictly unitary.
-
-            PM = permutation_map( permutation_rep(seitz=pg%seitz_cart, tau=sphere%tau_cart, flags='relax_pbc', prec=opts%prec) )
-
-            call am_print('sphere%tau_cart',transpose(sphere%tau_cart))
-            stop
-            !
-            ! get distance of atoms from [0,0,0]
-            allocate(d(sphere%natoms))
-            d = norm2(sphere%tau_cart,1)
-            ! rank (but do not sort) atoms according to their distances
-            allocate(indices(sphere%natoms))
-            call rank(d,indices)
+            ! (IMPORTANT: Must use [cart] here! The rotation operation needs to be strictly unitary.)
+            ! (NOTE 	: If rotational group, rather than point group were used, can probably perform check by ommiting skip_check.)
+            PM = permutation_map( permutation_rep(seitz=pg%seitz_cart, tau=sphere%tau_cart, flags='relax_pbc,skip_check', prec=opts%prec) )
             ! get pairs starting with closest atoms first
             allocate(shell_id(sphere%natoms))
             shell_id=0
             k=0
-            do jj = 1, sphere%natoms
-                i = indices(jj)
+            do i = 1, sphere%natoms
                 if (shell_id(i).eq.0) then
                     k=k+1
                     do j = 1, pg%nsyms
@@ -344,7 +321,6 @@ contains
                     enddo
                 endif
             enddo
-            !
         end function   identify_shells
     end subroutine get_primitive
 

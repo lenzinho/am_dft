@@ -32,15 +32,14 @@ module am_unit_cell
         procedure :: get_supercell
         procedure :: copy
         procedure :: filter
+        procedure :: sort_atoms
         procedure :: initialize
     end type am_class_unit_cell
 
 
 contains
 
-    !
     ! symmetry related functions for creating space and point groups
-    !
 
     function       lattice_symmetries(bas,prec) result(R_frac)
         !>
@@ -375,9 +374,7 @@ contains
         !
     end function   space_symmetries_from_basis
 
-    !
     ! functions which operate on uc or similar derived types
-    !
 
     subroutine      load_poscar(uc,opts)
         ! 
@@ -632,13 +629,13 @@ contains
         if (allocated(uc%ic_id)) allocate(cp%ic_id, source=uc%ic_id)
         !
     end subroutine  copy
-   
+
     subroutine      filter(uc,ind)
         !
         implicit none
         !
         class(am_class_unit_cell), intent(inout) :: uc
-        integer , intent(in)  :: ind(:)
+        integer     , intent(in) :: ind(:)
         !
         ! count how many atoms should be passed
         uc%natoms = size(ind)
@@ -699,6 +696,43 @@ contains
             deallocate(Z)
         end subroutine dvfilter
     end subroutine  filter
+
+    subroutine      sort_atoms(uc,criterion,flags)
+        !
+        use am_rank_and_sort
+        !
+        implicit none
+        !
+        class(am_class_unit_cell), intent(inout) :: uc
+        real(dp)    , intent(in) :: criterion(:)
+        character(*), intent(in) :: flags
+        integer , allocatable ::  inds(:)
+        integer , allocatable :: rinds(:) ! reverse inds
+        !
+        allocate(inds(uc%natoms))
+        call rank(criterion,inds)
+        !
+        if     (index(flags,'descend').ne.0) then
+            inds = inds(uc%natoms:1:-1)
+        elseif (index(flags,'ascend' ).ne.0) then
+            inds = inds(1:uc%natoms:+1)
+        else
+            stop 'sort_atoms: ascend/descend?'
+        endif
+        !
+        ! get reverse indices
+        allocate(rinds(uc%natoms))
+        rinds(inds) = [1:uc%natoms]
+        !
+        ! sort stuff
+        uc%tau_frac = uc%tau_frac(:,inds)
+        uc%tau_cart = uc%tau_cart(:,inds)
+        uc%Z        = uc%Z(inds)
+        if (allocated(uc%uc_id)) uc%uc_id = uc%uc_id(inds)
+        if (allocated(uc%pc_id)) uc%pc_id = uc%pc_id(inds)
+        if (allocated(uc%ic_id)) uc%ic_id = uc%ic_id(inds)
+        !
+    end subroutine  sort_atoms
 
     subroutine      initialize(uc,bas,tau_frac,Z,uc_id,pc_id,ic_id)
         !

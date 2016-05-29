@@ -72,10 +72,10 @@ contains
         implicit none
         !
         class(am_class_group), intent(inout) :: grp
+        real(dp)    , intent(in) :: criterion(:)
         character(*), intent(in) :: flags
         integer , allocatable ::  inds(:)
         integer , allocatable :: rinds(:) ! reverse inds
-        real(dp) :: criterion(:)
         integer :: i, j
         !
         allocate(inds(grp%nsyms))
@@ -84,7 +84,7 @@ contains
         if     (index(flags,'descend').ne.0) then
             inds = inds(grp%nsyms:1:-1)
         elseif (index(flags,'ascend' ).ne.0) then
-            ! do nothing
+            inds = inds(1:grp%nsyms:+1)
         else
             stop 'sort_symmetries: ascend/descend?'
         endif
