@@ -251,9 +251,9 @@ contains
             ! filter atoms outside sphere (keep ones within cutoff radius)
             call sphere%filter(ind=atoms_inside(1:j))
             ! sort atoms by increasing distance from [0,0,0]
-            call sphere%sort_atoms(criterion=sphere%tau_cart(1,:),flags='descend') ! puts negative values last
-            call sphere%sort_atoms(criterion=sphere%tau_cart(2,:),flags='descend') ! puts negative values last
-            call sphere%sort_atoms(criterion=sphere%tau_cart(3,:),flags='descend') ! puts negative values last
+            ! call sphere%sort_atoms(criterion=sphere%tau_cart(1,:),flags='descend') ! puts negative values last
+            ! call sphere%sort_atoms(criterion=sphere%tau_cart(2,:),flags='descend') ! puts negative values last
+            ! call sphere%sort_atoms(criterion=sphere%tau_cart(3,:),flags='descend') ! puts negative values last
             call sphere%sort_atoms(criterion=norm2(sphere%tau_cart,1),flags='ascend')
             ! check that there is one atom at the origin
             check_center = .false.
@@ -263,12 +263,15 @@ contains
                     exit
                 endif
             enddo
-            if (check_center.eq..false.) then 
-                call am_print('ERROR','No atom at the origin.',flags='E')
-                call am_print('sphere_center',sphere_center)
-                call am_print('sphere%tau_frac',transpose(sphere%tau_frac))
-                stop
-            endif
+            if (check_center.eq..false.) stop 'No atom [frac] at the origin.'
+            !
+            do i = 1,sphere%natoms
+                if (isequal(sphere%tau_frac(:,i),real([0,0,0],dp))) then
+                    check_center = .true.
+                    exit
+                endif
+            enddo
+            if (check_center.eq..false.) stop 'No atom [cart] at the origin.'
             !
         end function   create_sphere
         function       reduce_to_wigner_seitz(tau,grid_points) result(tau_ws)
