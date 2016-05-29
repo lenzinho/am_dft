@@ -14,6 +14,8 @@ module am_shells
 
     private
 
+    public :: get_pair_cutoff
+
     type, public, extends(am_class_unit_cell) :: am_shell_cell
         real(dp):: center(3) ! center of shell
         integer :: i ! identifies irreducible atoms (center)
@@ -38,7 +40,22 @@ module am_shells
 
 contains
     
+	subroutine     get_pair_cutoff(uc,pair_cutoff,opts)
+		!
+		implicit none
+		!
+        type(am_class_unit_cell), intent(in) :: uc ! unit cell
+        real(dp)			    , intent(inout) :: pair_cutoff
+        type(am_class_options)  , intent(in) :: opts
+		!
+        ! set pair cutoff radius (smaller than half the smallest cell dimension, larger than the smallest distance between atoms)
+        pair_cutoff = minval([norm2(uc%bas(:,:),1)/real(2,dp), pair_cutoff]) - opts%prec
+        !
+    end subroutine get_pair_cutoff
+
     subroutine     get_primitive(pp,pc,pg,pair_cutoff,uc,opts)
+        !
+        ! goal: get rid of uc in input here.
         !
         use am_symmetry_tables
         !
@@ -64,8 +81,6 @@ contains
         ! print title
         if (opts%verbosity.ge.1) call am_print_title('Determining primitive neighbor pairs')
         !
-        ! set pair cutoff radius (smaller than half the smallest cell dimension, larger than the smallest distance between atoms)
-        pair_cutoff = minval([norm2(uc%bas(:,:),1)/real(2,dp), pair_cutoff]) - opts%prec
         call am_print('pair cutoff radius',pair_cutoff,' ... ')
         !
         ! get maxmimum number of pair shells

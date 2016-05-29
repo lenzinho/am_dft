@@ -512,16 +512,12 @@ contains
         if (opts%verbosity.ge.1) call am_print_title('Determining space group symmetries')
         !
         ! determine space symmetries from atomic basis [frac.]
-        seitz_frac = space_symmetries_from_basis(uc=pc,opts=opts)
-        if (opts%verbosity.ge.1) call am_print('number of space group symmetries found',size(seitz_frac,3),' ... ') 
-        !
+        seitz_frac = space_symmetries_from_basis(bas=pc%bas, tau=pc%tau_frac,Z=pc%Z, prec=opts%prec)
         ! put identity first
         call put_identity_first(seitz=seitz_frac)
-        !
-        ! create space group instance (puts identity first)
+        ! create space group instance
         call sg%create_seitz_group(seitz_frac=seitz_frac, bas=pc%bas)
-        !
-        ! stdout
+        ! print stdout
         if (opts%verbosity.ge.1) then
             !
             call am_print('space symmetries',sg%nsyms,' ... ')
@@ -529,12 +525,188 @@ contains
             call am_print('classes',sg%cc%nclasses)
             !
         endif
-        !
         ! write to write_outfile and to file
         call sg%write_outfile(iopt_filename=trim('outfile.spacegroup'))
-        !
         call sg%write_action_table(uc=pc,fname='outfile.space_group_action',opts=opts)
         !
+        contains
+        function        space_symmetries_from_basis(bas,tau,Z,prec) result(seitz)
+            !
+            !The program first finds the primitive unit cell by looking for
+            !additional lattice vectors within the unit cell given in the input.
+            !
+            ! It chooses one of the atoms and tests each vector from that atom to
+            !every other atom of the same type in the unit cell. If that vector
+            !will take us from each atom in the unit cell to another atom of the
+            !same type (not necessarily in the same unit cell), then we have
+            !found a new lattice vector.
+            !
+            ! This process is repeated until we have
+            !found a complete list of lattice vectors. From that list, we find three
+            !which can serve as primitive basis vectors ti of the lattice, i.e. every
+            !lattice vector can be expressed as an integer linear combination of
+            !these basis vectors.
+            !
+            use am_rank_and_sort
+            !
+            implicit none
+            ! subroutine i/o
+            real(dp), intent(in) :: bas(3,3)
+            real(dp), intent(in) :: tau(:,:)
+            integer , intent(in) :: Z(:)
+            real(dp), intent(in) :: prec
+            real(dp), allocatable :: seitz(:,:,:)
+            real(dp), allocatable :: try(:,:)
+            real(dp), allocatable :: T(:,:)
+            real(dp), allocatable :: R(:,:,:)
+            real(dp), allocatable :: wrkspace(:,:,:)
+            real(dp) :: shift(3)
+            real(dp) :: T_shifted(3)
+            integer :: nTs
+            integer :: nRs
+            integer :: i, j, k
+            !
+            R = lattice_symmetries(bas=bas, prec=prec)
+            nRs = size(R,3)
+            !
+            T = translations_from_basis(tau=tau, Z=Z, prec=prec, flags='zero,relax')
+            nTs = size(T,2)
+            !
+            allocate(wrkspace(4,4,nTs*nRs))
+            wrkspace = 0.0_dp
+            k=0
+            do i = 1, nRs
+            do j = 1, nTs
+                ! Shift tau to put the first atom at the origin. This is important because the
+                ! rotational part of the symmetry operation must leave at least one atom in it's
+                ! original location. If the atom already has a displacement, then it will be rotated
+                ! to another position.
+                if (.not.any(all(abs(tau).lt.prec,2))) then
+                    shift = tau(:,1)
+                    ! tau' = R*tau + T
+                    ! tau' - s = R*(tau-s) + T
+                    ! tau' = R*tau + (R*S+T-s) = R*tau + T_shifted ! sign is wrong here for some reason.
+                    ! thus, T_shifted = T - R*s + s
+                    T_shifted = T(:,j) - matmul(R(:,:,i),shift) + shift
+                    ! reduce to primitive
+                    T_shifted = modulo(T_shifted+opts%prec,1.0_dp)-opts%prec
+                else
+                    T_shifted = T(:,j)
+                endif
+                !
+                try = eye(4)
+                try(1:3,1:3) = R(1:3,1:3,i)
+                try(1:3,4) = T_shifted
+                !
+                if ( is_symmetry_valid(tau=tau, Z=Z, seitz=try, prec=opts%prec)) then
+                    k = k + 1
+                    wrkspace(:,:,k)=try
+                endif
+            enddo
+            enddo
+            !
+            allocate(seitz(4,4,k))
+            seitz = wrkspace(1:4,1:4,1:k)
+            !
+            ! print stdout
+            if (opts%verbosity.ge.1) then
+                !
+                call am_print('possible (im-)proper rotations',nRs,' ... ')
+                !
+                call am_print('possible translations',nTs,' ... ')
+                !
+                call am_print_two_matrices_side_by_side(name='translations',&
+                    Atitle='fractional',A=transpose(T),&
+                    Btitle='cartesian' ,B=transpose(matmul(bas,T)),&
+                    iopt_emph=' ... ',iopt_teaser=.true.)
+                !
+            endif
+        end function    space_symmetries_from_basis
+        function        lattice_symmetries(bas,prec) result(R_frac)
+            !>
+            !> Given a metric tensor, this function returns the (arthimetic) a-holohodry:
+            !> the group of point symmetries R (fractional) that are compatible with the
+            !> metric tensor).
+            !>
+            !> Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition.
+            !> Cambridge, UK; New York: Cambridge University Press, 2008. pages 278-279,
+            !> Eq. 10.60 and 10.61
+            !>
+            !> The Mathematical Theory of Symmetry in Solids: Representation Theory
+            !> for Point Groups and Space Groups. 1 edition. Oxford?: New York:
+            !> Oxford University Press, 2010. page 134, table 3.9
+            !>
+            !> Structure of Materials: An Introduction to Crystallography, Diffraction
+            !> and Symmetry. 2 edition. New York: Cambridge University Press, 2012.
+            !>
+            !> page 169:
+            !> "If [point symmetries] are described with respect to the 'primed' basis
+            !>  vectors (fractional coordinates), then once again all [point symmetries]
+            !>  can be represented by matrices which contain only -1, 0, +1"
+            !>
+            !> page 166:
+            !> "The inverse of a unitary matrix (rotation) is equal to its transpose
+            !>  (this is only true in cartesian coordinates.)"
+            !>
+            implicit none
+            ! subroutine i/o
+            real(dp), intent(in) :: bas(3,3)
+            real(dp), intent(in) :: prec
+            real(dp), allocatable :: R_frac(:,:,:) !> point symmetries (fractional)
+            !
+            real(dp) :: id(3,3)
+            real(dp) :: recbas(3,3)
+            real(dp) :: metric(3,3)
+            real(dp) :: buffer(3,3,48) ! buffer for point symmetries
+            integer  :: k ! point symmetry counter
+            real(dp) :: o(3,3)  ! point symmetry in fractional
+            integer  :: i11, i12, i13, i21, i22, i23, i31, i32, i33 ! used to generate unitary rotational matrices
+            !
+            id = eye(3)
+            !
+            recbas = inv(bas)
+            !
+            metric = matmul(transpose(bas),bas)
+            !
+            buffer = 0.0_dp
+            !
+            k = 0
+            !
+            do i11 = -1,1
+            do i12 = -1,1
+            do i13 = -1,1
+                do i21 = -1,1
+                do i22 = -1,1
+                do i23 = -1,1
+                    do i31 = -1,1
+                    do i32 = -1,1
+                    do i33 = -1,1
+                        !
+                        o(1,1:3)=real([i11,i12,i13],dp)
+                        o(2,1:3)=real([i21,i22,i23],dp)
+                        o(3,1:3)=real([i31,i32,i33],dp)
+                        !
+                        ! Check that metric is left unchanged by symmetry opreation in fractional coordinates.
+                        ! i.e. that metric tensor commutes with point symmetry.
+                        if ( all( abs(matmul(transpose(o),matmul(metric,o))-metric) .lt. prec ) ) then
+                            k = k + 1
+                            ! store point symmetry in fractional coordinates
+                            buffer(:,:,k) = o
+                        endif
+                        !
+                    enddo
+                    enddo
+                    enddo
+                enddo
+                enddo
+                enddo
+            enddo
+            enddo
+            enddo
+            !
+            allocate(R_frac,source=buffer(:,:,1:k))
+            !
+        end function    lattice_symmetries
     end subroutine get_space_group
 
     subroutine     get_point_group(pg,pc,sg,opts)

@@ -606,7 +606,7 @@ module am_symmetry_rep
 
     ! super operators
 
-    pure function transp_operator(n) result(M_superop)
+    pure function  transp_operator(n) result(M_superop)
         ! transposition superoperator (c_ij -> c_ji), flat rep
         implicit none
         !
@@ -623,9 +623,9 @@ module am_symmetry_rep
         enddo
         enddo
         !
-    end function  transp_operator
+    end function   transp_operator
 
-    pure function transp_parity_sign(atom_m,atom_n) result(S)
+    pure function  transp_parity_sign(atom_m,atom_n) result(S)
         ! sign under : (l,l',m) = (-1)^(l+l') (l',l,m)
         implicit none
         !
@@ -642,9 +642,9 @@ module am_symmetry_rep
         enddo
         enddo
         !
-    end function  transp_parity_sign
+    end function   transp_parity_sign
 
-    function      orbital_parity(atom_m,atom_n) result(L_superop)
+    function       orbital_parity(atom_m,atom_n) result(L_superop)
         ! transpose superoperator: (l,l',m) = (-1)^(l+l') (l',l,m)
         implicit none
         !
@@ -681,7 +681,7 @@ module am_symmetry_rep
         ! check to make sure things are correct
         if (.not.isequal(Ap_flat,matmul(L_superop,A_flat))) stop 'A /= Ap'
         !
-    end function  orbital_parity
+    end function   orbital_parity
 
 end module am_symmetry_rep
 
