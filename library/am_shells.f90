@@ -92,14 +92,6 @@ contains
             shell_nelements = nelements(shell_id)
             ! get pair members [pair representative is given by shell_member(:,1)]
             shell_member = member(shell_id)
-            call am_print('nshells',nshells)
-            call am_print('shell_nelements',shell_nelements)
-            call am_print('shell_member',shell_member)
-            call am_print('pc_id(shell_member)',sphere%pc_id)
-            call am_print('uc_id(shell_member)',sphere%uc_id)
-            call am_print('ic_id(shell_member)',sphere%ic_id)
-            call am_print('cart',sphere%tau_cart)
-            call am_print('frac',sphere%tau_frac)
             do j = 1, nshells
                 if (allocated(ind)) deallocate(ind)
                 allocate(ind,source=shell_member(j,1:shell_nelements(j)))
@@ -198,15 +190,6 @@ contains
             write(*,'(5x,a)') ' - reversal   (rev) : (im)proper rotational parts of space symmetries which flip bond endpoints'
         endif
         !
-
-
-        stop
-
-
-
-
-
-
         contains
         function       create_sphere(uc,sphere_center,pair_cutoff,opts) result(sphere)
             !
@@ -253,16 +236,14 @@ contains
                 sphere%tau_cart(:,i) = reduce_to_wigner_seitz(tau=sphere%tau_cart(:,i), grid_points=grid_points)
                 ! also apply same tranformations to [frac], shift to origin
 				sphere%tau_frac(:,i) = sphere%tau_frac(:,i) - matmul(uc%recbas,sphere_center)
-				! translate to be close to zero
-            	sphere%tau_frac(:,i) = modulo(sphere%tau_frac(:,i) + 0.5_dp + opts%prec, 1.0_dp) - opts%prec - 0.5_dp
+				! also apply translation to get [frac] in the range [0,1)
+            	sphere%tau_frac(:,i) = modulo(sphere%tau_frac(:,i) + opts%prec, 1.0_dp) - opts%prec
                 ! take note of points within the predetermined pair cutoff radius [cart.]
                 if (norm2(sphere%tau_cart(:,i)).le.pair_cutoff) then
                     j=j+1
                     atoms_inside(j) = i
                 endif
             enddo
-            ! recalculate tau_frac after changing atomic positions above
-            sphere%tau_frac = matmul(uc%recbas,sphere%tau_cart)
             ! correct rounding error
             where (abs(sphere%tau_cart).lt.opts%prec) sphere%tau_cart = 0
         	where (abs(sphere%tau_frac).lt.opts%prec) sphere%tau_frac = 0
