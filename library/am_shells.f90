@@ -496,10 +496,8 @@ contains
             !
             isflipped = .false.
             do k = 1, pp%nshells
-                ! get bond vector
-                v = pp%shell(k)%tau_frac(:,1)
                 ! record distances
-                d(k) = norm2(matmul(pp%shell(k)%bas,v))
+                d(k) = norm2(pp%shell(k)%tau_cart(:,1))
                 ! record sorted pair atomic number
                 Z(1:2,k) = [ic%Z(pp%shell(k)%i), pp%shell(k)%Z(1)]
                 if (Z(1,k).gt.Z(2,k)) then
