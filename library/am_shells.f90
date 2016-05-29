@@ -88,10 +88,18 @@ contains
             shell_id = identify_shells(sphere=sphere,pg=pg)
             ! get number of pairs
             nshells = maxval(shell_id)
-            ! get pair members [pair representative is given by shell_member(:,1)]
-            shell_member = member(shell_id)
             ! get number of pair elements (essentially the oribital weights)
             shell_nelements = nelements(shell_id)
+            ! get pair members [pair representative is given by shell_member(:,1)]
+            shell_member = member(shell_id)
+            call am_print('nshells',nshells)
+            call am_print('shell_nelements',shell_nelements)
+            call am_print('shell_member',shell_member)
+            call am_print('pc_id(shell_member)',sphere%pc_id)
+            call am_print('uc_id(shell_member)',sphere%uc_id)
+            call am_print('ic_id(shell_member)',sphere%ic_id)
+            call am_print('cart',sphere%tau_cart)
+            call am_print('frac',sphere%tau_frac)
             do j = 1, nshells
                 if (allocated(ind)) deallocate(ind)
                 allocate(ind,source=shell_member(j,1:shell_nelements(j)))
@@ -100,7 +108,7 @@ contains
                 call pp%shell(k)%copy(uc=sphere)
                 call pp%shell(k)%filter(ind=ind)
                 ! take note of shell center
-                pp%shell(k)%center = D
+                pp%shell(k)%center = pc%tau_cart(:,i)
                 ! take note of point symmetry which takes atom tau_frac(:,1) to atom tau_frac(:,i)
                 allocate(pp%shell(k)%pg_id(pp%shell(k)%natoms))
                 do m = 1, pp%shell(k)%natoms
@@ -173,10 +181,10 @@ contains
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( pp%shell(k)%stab%ps_id )))
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( pp%shell(k)%rotg%ps_id )))
                     write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( pp%shell(k)%revg%ps_id )))
-                    write(*,'(f10.3)' ,advance='no') norm2(matmul(pp%shell(k)%bas,pp%shell(k)%tau_frac(1:3,1)))
-                    write(*,'(3f10.3)',advance='no') matmul(pp%shell(k)%bas,pp%shell(k)%tau_frac(1:3,1))
+                    write(*,'(f10.3)' ,advance='no') norm2(pp%shell(k)%tau_cart(1:3,1))
+                    write(*,'(3f10.3)',advance='no') 	   pp%shell(k)%tau_cart(1:3,1)
                     write(*,'(f10.3)' ,advance='no') norm2(pp%shell(k)%tau_frac(1:3,1))
-                    write(*,'(3f10.3)',advance='no') pp%shell(k)%tau_frac(1:3,1)
+                    write(*,'(3f10.3)',advance='no') 	   pp%shell(k)%tau_frac(1:3,1)
                     write(*,*)
                 endif
                 enddo
@@ -190,6 +198,15 @@ contains
             write(*,'(5x,a)') ' - reversal   (rev) : (im)proper rotational parts of space symmetries which flip bond endpoints'
         endif
         !
+
+
+        stop
+
+
+
+
+
+
         contains
         function       create_sphere(uc,sphere_center,pair_cutoff,opts) result(sphere)
             !
@@ -218,7 +235,6 @@ contains
             call sphere%get_supercell(uc=uc, bscfp=bas, opts=notalk)
             ! revert tau_frac back to primitive fractional (rather than supercell fractional)
             sphere%tau_frac = matmul(bas,sphere%tau_frac)
-            sphere%tau_frac = modulo(sphere%tau_frac + opts%prec, 1.0_dp) - opts%prec
             ! generate voronoi points [cart]
             grid_points = meshgrid([-1:1],[-1:1],[-1:1])
             grid_points = matmul(sphere%bas,grid_points)
@@ -231,19 +247,31 @@ contains
             atoms_inside = 0
             j=0
             do i = 1, sphere%natoms
-                ! turn sphere into a block with select atom at the origin
+                ! turn sphere into a block with select atom at the origin 
                 sphere%tau_cart(:,i) = sphere%tau_cart(:,i) - sphere_center
                 ! translate atoms to be as close to the origin as possible
                 sphere%tau_cart(:,i) = reduce_to_wigner_seitz(tau=sphere%tau_cart(:,i), grid_points=grid_points)
+                ! also apply same tranformations to [frac], shift to origin
+				sphere%tau_frac(:,i) = sphere%tau_frac(:,i) - matmul(uc%recbas,sphere_center)
+				! translate to be close to zero
+            	sphere%tau_frac(:,i) = modulo(sphere%tau_frac(:,i) + 0.5_dp + opts%prec, 1.0_dp) - opts%prec - 0.5_dp
                 ! take note of points within the predetermined pair cutoff radius [cart.]
                 if (norm2(sphere%tau_cart(:,i)).le.pair_cutoff) then
                     j=j+1
                     atoms_inside(j) = i
                 endif
             enddo
+            ! recalculate tau_frac after changing atomic positions above
+            sphere%tau_frac = matmul(uc%recbas,sphere%tau_cart)
+            ! correct rounding error
+            where (abs(sphere%tau_cart).lt.opts%prec) sphere%tau_cart = 0
+        	where (abs(sphere%tau_frac).lt.opts%prec) sphere%tau_frac = 0
             ! filter atoms outside sphere (keep ones within cutoff radius)
             call sphere%filter(ind=atoms_inside(1:j))
             ! sort atoms by increasing distance from [0,0,0]
+            call sphere%sort_atoms(criterion=sphere%tau_cart(1,:),flags='descend') ! puts negative values last
+            call sphere%sort_atoms(criterion=sphere%tau_cart(2,:),flags='descend') ! puts negative values last
+            call sphere%sort_atoms(criterion=sphere%tau_cart(3,:),flags='descend') ! puts negative values last
             call sphere%sort_atoms(criterion=norm2(sphere%tau_cart,1),flags='ascend')
             ! check that there is one atom at the origin
             check_center = .false.
@@ -304,7 +332,7 @@ contains
             integer  :: i,j,k
             !
             ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
-            ! (IMPORTANT: Must use [cart] here! The rotation operation needs to be strictly unitary.)
+            ! (IMPORTANT: Must use [cart]! The rotation operation needs to be strictly unitary.)
             ! (NOTE 	: If rotational group, rather than point group were used, can probably perform check by ommiting skip_check.)
             PM = permutation_map( permutation_rep(seitz=pg%seitz_cart, tau=sphere%tau_cart, flags='relax_pbc,skip_check', prec=opts%prec) )
             ! get pairs starting with closest atoms first
@@ -321,6 +349,14 @@ contains
                     enddo
                 endif
             enddo
+            !
+            !  Permutation matrix for Si (first atom is in a shell by itself, second three atoms are in a shell by themselves):
+			!  atom 1 [ 0.00000, 0.00000, 0.00000]:  1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1
+			!  atom 2 [ 1.35750, 1.35750, 1.35750]:  2   4   3   5   0   0   0   0   0   0   5   5   3   2   4   2   4   3   0   0   0   0   0   0   0   0   0   0   5   2   2   4   2   3   0   0   0   0   0   0   0   0   5   5   4   3   4   3
+			!  atom 3 [-1.35750,-1.35750, 1.35750]:  3   5   2   4   0   0   0   0   0   0   2   3   5   5   3   4   2   4   0   0   0   0   0   0   0   0   0   0   3   5   3   3   4   2   0   0   0   0   0   0   0   0   4   2   5   5   2   4
+			!  atom 4 [ 1.35750,-1.35750,-1.35750]:  4   2   5   3   0   0   0   0   0   0   4   2   4   3   5   5   3   2   0   0   0   0   0   0   0   0   0   0   4   4   5   2   3   4   0   0   0   0   0   0   0   0   2   3   3   2   5   5
+			!  atom 5 [-1.35750, 1.35750,-1.35750]:  5   3   4   2   0   0   0   0   0   0   3   4   2   4   2   3   5   5   0   0   0   0   0   0   0   0   0   0   2   3   4   5   5   5   0   0   0   0   0   0   0   0   3   4   2   4   3   2
+			!
         end function   identify_shells
     end subroutine get_primitive
 
