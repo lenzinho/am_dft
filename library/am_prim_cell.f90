@@ -61,7 +61,7 @@ contains
         enddo
         ! transfer Z
         allocate(pc%Z(pc%natoms))
-        pc%Z = uc%Z(uc%pc_id)
+        pc%Z = uc%Z(pc%uc_id)
         !
         ! print stdout
         if (opts%verbosity.ge.1) then

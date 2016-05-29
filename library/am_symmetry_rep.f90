@@ -307,7 +307,7 @@ module am_symmetry_rep
         flat_pg%sym = 0
         ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
         do i = 1, pg%nsyms
-            R_cart = pg%seitz_frac(1:3,1:3,i)
+            R_cart = pg%seitz_cart(1:3,1:3,i)
             ! determine rotation in the basis
             if     (index(tens%flags   ,'axial').ne.0) then; flat_pg%sym(:,:,i) = kron_pow(R_cart, tens%rank) * det(R_cart)
             elseif (index(tens%flags   ,'polar').ne.0) then; flat_pg%sym(:,:,i) = kron_pow(R_cart, tens%rank)
@@ -560,7 +560,7 @@ module am_symmetry_rep
         call C%get_multiplication_table()
         !
         ! sort symmetries based on parameters
-        call C%sort_symmetries(criterion=real(C%ps_id,dp)   , flags='acsend')
+        call C%sort_symmetries(criterion=real(C%ps_id,dp), flags='acsend')
         call C%sort_symmetries(criterion=real(C%cc%id,dp), flags='ascend')
         !
         ! get character table

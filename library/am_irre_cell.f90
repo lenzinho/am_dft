@@ -72,19 +72,6 @@ contains
         allocate(ic%tau_frac,source=pc%tau_frac(:,ind(1:k)))
         ! transfer irreducible atoms (cart)
         allocate(ic%tau_cart,source=pc%tau_cart(:,ind(1:k)))
-
-        call am_print('PM',PM)
-        call am_print('ind',ind)
-        call am_print('k',k)
-        call am_print('ic%tau_frac',ic%tau_frac)
-        call am_print('ic%tau_cart',ic%tau_cart)
-        call am_print('ic%uc_id',ic%uc_id)
-        call am_print('ic%pc_id',ic%pc_id)
-        call am_print('ic%ic_id',ic%ic_id)
-
-        call sg%dump(iopt_filename='sg.dump')
-
-        stop
         ! transfer Z
         allocate(ic%Z,source=pc%Z(ind(1:k)))
         ! map irreducible atom -> irreducible atom
@@ -128,17 +115,17 @@ contains
                 Btitle='cartesian' ,B=transpose(matmul(ic%bas,ic%tau_frac)),&
             iopt_emph=' ... ',iopt_teaser=.true.)
             !
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to input:       ic->uc)'
+            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to input: ic->uc)'
             call id_print_map(ic%uc_id)
             !
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to primitive:   ic->pc)'
+            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to primitive: ic->pc)'
             call id_print_map(ic%pc_id)
             !
             write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (from primitive: pc->ic)'
             call id_print_map(pc%ic_id)
             !
             if (present(uc)) then
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (from input:     uc->ic)'
+            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (from input: uc->ic)'
             call id_print_map(uc%ic_id)
             endif
             !

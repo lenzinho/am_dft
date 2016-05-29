@@ -108,21 +108,6 @@ contains
             shell_nelements = id_nelements(shell_id)
             ! get pair members [pair representative is given by shell_member(:,1)]
             shell_member = id_member(shell_id)
-
-            call am_print('shells_id',shell_id)
-            call am_print('nshells',nshells)
-            call am_print('shell_nelements',shell_nelements)
-            call am_print('shell_member',shell_member)
-            call am_print('sphere%uc_id',sphere%uc_id)
-            call am_print('sphere%pc_id',sphere%pc_id)
-            call am_print('sphere%ic_id',sphere%ic_id)
-            call am_print('uc%uc_id',uc%uc_id)
-            call am_print('uc%pc_id',uc%pc_id)
-            call am_print('uc%ic_id',uc%ic_id)
-
-            stop
-
-
             do j = 1, nshells
                 if (allocated(ind)) deallocate(ind)
                 allocate(ind,source=shell_member(j,1:shell_nelements(j)))
@@ -243,7 +228,7 @@ contains
             !
             ! set notalk option
             notalk = opts 
-            notalk%verbosity = 1
+            notalk%verbosity = 0
             ! create sphere instance based on a 2x2x2 supercell
             bscfp     = 2.0_dp*eye(3)
             inv_bscfp = inv(bscfp)

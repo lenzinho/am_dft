@@ -739,7 +739,7 @@ contains
         integer :: i
         !
         do i = 1, size(id)
-            if (modulo(i,10).eq.1) then
+            if (modulo(i,11).eq.1) then
                 write(*,*)
                 write(*,'(5x)',advance='no')
             endif

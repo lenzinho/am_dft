@@ -217,10 +217,10 @@ contains
         select type (grp)
         class is (am_class_symrep_group)
             ! [unitless]  
-            grp%mt%multab = get_multab(sym=grp%sym, flags=flags//'prog')
+            grp%mt%multab = get_multab(sym=grp%sym, flags=flags) !//'prog')
         class is (am_class_seitz_group)
             ! symmerties [frac.]
-            grp%mt%multab = get_multab(sym=grp%seitz_frac, flags=flags//'prog')
+            grp%mt%multab = get_multab(sym=grp%seitz_frac, flags=flags) !//'prog')
         class default
             stop 'unkown class'
         end select
