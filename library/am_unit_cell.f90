@@ -613,7 +613,6 @@ contains
         if (opts%verbosity.ge.1) call am_print_title('Expanding to supercell')
         !
         inv_bscfp = inv(bscfp)
-        !
         sc%bas    = matmul(uc%bas,bscfp)
         sc%recbas = inv(sc%bas)
         !
@@ -663,10 +662,12 @@ contains
               enddo
         enddo map
         ! correct basic rounding error
-        where(abs(sc%tau_frac).lt.opts%prec) sc%tau_frac=0.0_dp 
+        where(abs(sc%tau_frac).lt.opts%prec) sc%tau_frac=0.0_dp
         ! get cartesaian atomic basis
         allocate(sc%tau_cart(3,uc%natoms))
         sc%tau_cart = matmul(sc%bas,sc%tau_frac)
+        ! correct basic rounding error
+        where(abs(sc%tau_cart).lt.opts%prec) sc%tau_cart=0.0_dp
         ! print stdout
         !
         if (opts%verbosity.ge.1) then
@@ -890,9 +891,7 @@ contains
         !
     end subroutine  initialize
 
-    !
     ! deform (strain related stuff)
-    !
 
     subroutine      deform(def,uc,opts)
         !

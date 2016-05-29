@@ -206,7 +206,7 @@ contains
             integer , allocatable :: atoms_inside(:)
             type(am_class_options) :: notalk ! supress verbosity
         	integer , allocatable :: ind(:)
-            real(dp) :: bas(3,3)
+            real(dp) :: bscfp(3,3), inv_bscfp(3,3)
             real(dp) :: grid_points(3,27) ! voronoi points
             logical  :: check_center
             integer  :: i,j
@@ -215,18 +215,14 @@ contains
             notalk = opts 
             notalk%verbosity = 0
             ! create sphere instance based on a 2x2x2 supercell
-            bas = 2.0_dp*eye(3)
-            call sphere%get_supercell(uc=uc, bscfp=bas, opts=notalk)
-            ! revert tau_frac back to primitive fractional (rather than supercell fractional)
-            sphere%tau_frac = matmul(bas,sphere%tau_frac)
+            bscfp     = 2.0_dp*eye(3)
+            inv_bscfp = inv(bscfp)
+            call sphere%get_supercell(uc=uc, bscfp=bscfp, opts=notalk)
             ! generate voronoi points [cart]
             grid_points = meshgrid([-1:1],[-1:1],[-1:1])
             grid_points = matmul(sphere%bas,grid_points)
-            ! revert basis back to primitive cell basis
-            ! (IMPORTANT: this basis update must come after grid_poins generation; otherwise )
-            sphere%bas = matmul(inv(bas),sphere%bas)
             ! filter sphere keeping only atoms inside pair cutoff radius (elements with incomplete
-            ! orbits should be ignored, since they do not have enough information to build full pairs)
+            ! symmetry orbits are ignored, since they do not have enough information to build full pairs)
             allocate(atoms_inside(sphere%natoms))
             atoms_inside = 0
             j=0
@@ -236,15 +232,23 @@ contains
                 ! translate atoms to be as close to the origin as possible
                 sphere%tau_cart(:,i) = reduce_to_wigner_seitz(tau=sphere%tau_cart(:,i), grid_points=grid_points)
                 ! also apply same tranformations to [frac], shift to origin
-				sphere%tau_frac(:,i) = sphere%tau_frac(:,i) - matmul(uc%recbas,sphere_center)
+				sphere%tau_frac(:,i) = sphere%tau_frac(:,i) - matmul(matmul(inv_bscfp,uc%recbas),sphere_center)
 				! also apply translation to get [frac] in the range [0,1)
-            	sphere%tau_frac(:,i) = modulo(sphere%tau_frac(:,i) + opts%prec, 1.0_dp) - opts%prec
+            	sphere%tau_frac(:,i) = modulo(sphere%tau_frac(:,i) + 0.5_dp + opts%prec, 1.0_dp) - opts%prec - 0.5_dp
                 ! take note of points within the predetermined pair cutoff radius [cart.]
                 if (norm2(sphere%tau_cart(:,i)).le.pair_cutoff) then
                     j=j+1
                     atoms_inside(j) = i
                 endif
             enddo
+            ! revert basis back to primitive cell basis and reciprocal basis
+            ! (IMPORTANT: this basis update must come after grid_points generation; otherwise problem later with identify_shell)
+            sphere%bas    = matmul(inv_bscfp,sphere%bas)
+            sphere%recbas = inv(sphere%bas)
+            ! revert tau_frac back to primitive fractional (rather than supercell fractional)
+            ! sphere is in fractional. which means, if a supercell was created by expanding the basis by 
+            ! a factor of 2, the fractional distance between atoms shrunk by half.
+            sphere%tau_frac = matmul(bscfp,sphere%tau_frac)
             ! correct rounding error
             where (abs(sphere%tau_cart).lt.opts%prec) sphere%tau_cart = 0
         	where (abs(sphere%tau_frac).lt.opts%prec) sphere%tau_frac = 0
