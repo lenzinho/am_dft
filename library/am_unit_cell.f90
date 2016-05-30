@@ -464,7 +464,7 @@ contains
         integer :: i1, i2, i3, j, m, i
         type(am_class_options), intent(in) :: opts
         !
-        if (opts%verbosity.ge.1) call am_print_title('Expanding to supercell')
+        if (opts%verbosity.ge.1) call print_title('Expanding to supercell')
         !
         inv_bscfp = inv(bscfp)
         sc%bas    = matmul(uc%bas,bscfp)
@@ -760,7 +760,7 @@ contains
         real(dp), allocatable :: bas_def(:,:,:)
         integer :: i
         !
-        if (opts%verbosity.ge.1) call am_print_title('Elastically deforming structure')
+        if (opts%verbosity.ge.1) call print_title('Elastically deforming structure')
         !
         bas_def = apply_elastic_deformation(bas=uc%bas,deformation_code=opts%deformation_code,strain_max=opts%maxstrain,nstrains=opts%nstrains,iopt_verbosity=opts%verbosity)
         !

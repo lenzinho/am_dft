@@ -96,7 +96,7 @@ contains
         integer :: fid
         integer :: i, j, l, m, n ! loop variables
         !
-        if (opts%verbosity.ge.1) call am_print_title('Writing bandcharacter file')
+        if (opts%verbosity.ge.1) call print_title('Writing bandcharacter file')
         !
         !
         ! generate voronoi points (cartesian), used to reduce points to wigner-seitz brillouin zone

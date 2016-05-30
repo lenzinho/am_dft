@@ -43,7 +43,7 @@ contains
         real(dp) :: Ec(4) ! tet energies
         integer :: i, j, k, m, n, o
         !
-        if (opts%verbosity.ge.1) call am_print_title('Tetrahedron integration')
+        if (opts%verbosity.ge.1) call print_title('Tetrahedron integration')
         !
         dE = 0.01_dp
         minE = minval(dr%E(:,:))
@@ -119,7 +119,7 @@ contains
         integer :: fid
         integer :: i, l, m, n ! loop variables
         !
-        if (opts%verbosity.ge.1) call am_print_title('Writing dosprojected file')
+        if (opts%verbosity.ge.1) call print_title('Writing dosprojected file')
         !
         fid = 1
         open(unit=fid,file="outfile.dosprojected",status="replace",action='write')

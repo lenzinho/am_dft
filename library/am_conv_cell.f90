@@ -36,7 +36,7 @@ contains
 ! !         integer :: m, j, i, k, n
 ! !         logical :: found
 ! !         !
-! !         if (opts%verbosity.ge.1) call am_print_title('Transforming to conventional cell') 
+! !         if (opts%verbosity.ge.1) call print_title('Transforming to conventional cell') 
 ! !         !
 ! !         notalk = opts
 ! !         notalk%verbosity = 0
@@ -102,7 +102,7 @@ contains
 !         integer, allocatable :: P(:,:) ! permutation matrices
 !         integer :: i, j
 ! !         !
-! !         if (opts%verbosity.ge.1) call am_print_title('Transforming to conventional cell') 
+! !         if (opts%verbosity.ge.1) call print_title('Transforming to conventional cell') 
 ! !         !
 ! !         !
 ! !         P = perms(3)

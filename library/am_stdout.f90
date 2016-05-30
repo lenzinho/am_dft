@@ -279,47 +279,6 @@ contains
     !
     ! print related stuff
     !
-
-    pure function  centertitle(title,length) result(title_centered)
-        !
-        implicit none
-        !
-        character(len=*), intent(in) :: title
-        integer, intent(in) :: length
-        character(len=length) :: title_centered
-        integer :: blanks
-        integer :: i 
-        !
-        title_centered = title
-        blanks = 0 
-        do  i = length,1,-1                  ! starting on the right side 
-        if( title_centered(i:i) .ne. ' ' ) goto 33    ! check for trailing blanks 
-        blanks = blanks + 1                  ! count the blanks 
-        enddo 
-        33  continue 
-        if ( blanks .gt. 1 ) then 
-        blanks = blanks/2                      ! cut half of the blanks 
-        do i = length , 1 , -1 
-          if ( i-blanks .gt. 0 ) title_centered(i:i) = title_centered(i-blanks:i-blanks) 
-          if ( i-blanks .le. 0 ) title_centered(i:i) = ' '     ! blank front half 
-        enddo
-        endif
-    end function   centertitle
-
-    subroutine     am_print_title(title)
-        !
-        implicit none
-        !
-        character(len=*), intent(in) :: title
-        integer :: fid
-        !
-        fid = 6
-        !
-        write(unit=fid,fmt='(a,a,a)') "+", repeat("-",column_width-2), "+"
-        write(unit=fid,fmt='(a,a,a)') "|",  centertitle(title,column_width-2), "|" 
-        write(unit=fid,fmt='(a,a,a)') "+", repeat("-",column_width-2), "+"
-        !
-    end subroutine am_print_title
     
     subroutine     am_print_sparse_double(name,A,flags,permission,filename)
         !

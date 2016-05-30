@@ -11,7 +11,7 @@
         logical , allocatable :: is_independent(:)  !> is_independent(nterms) logical array which shows which terms are independent
         integer :: i, j
         !
-        if (opts%verbosity.ge.1) call am_print_title('Determining second-rank tensor')
+        if (opts%verbosity.ge.1) call print_title('Determining second-rank tensor')
         !
         tensor_rank = size(shape(M))
         nsyms = size(pg%R,3)

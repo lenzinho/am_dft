@@ -1,7 +1,9 @@
 include makefile.inc
 
 LIBS  = libam.a
-OBJS  = am_constants.o                 \
+
+OBJS  = dispmodule.o 				   \
+		am_constants.o                 \
 		am_mkl.o                       \
 		am_matlab.o                    \
 		am_stdout.o                    \
@@ -27,9 +29,6 @@ OBJS  = am_constants.o                 \
 		# am_dispersion.o                \
 		# am_dos.o                       \
 		# am_wannier.o                   \
-
-MODS  = OBJS
-
 
 all: $(LIBS)
 	@echo > /dev/null

@@ -262,7 +262,7 @@ contains
         real(dp)                , intent(in) :: s(3)
         type(am_class_options)  , intent(in) :: opts
         !
-        if (opts%verbosity.ge.1) call am_print_title('Generating Monkhorst-Pack mesh on FBZ')
+        if (opts%verbosity.ge.1) call print_title('Generating Monkhorst-Pack mesh on FBZ')
         ! get k-points
         call fbz%create_brillouin_zone(kpt_recfrac=generate_monkhorst_pack_mesh(n=n,s=s), recbas=uc%recbas, bas=uc%bas, prec=opts%prec)
         ! get weights
@@ -317,7 +317,7 @@ contains
         integer, allocatable :: ind(:)
         integer :: i,j,k
         !
-        if (opts%verbosity.ge.1) call am_print_title('Reducing to irreducible brillouin zone')
+        if (opts%verbosity.ge.1) call print_title('Reducing to irreducible brillouin zone')
         !
         ! get permutation map which shows how k-points are permuted by each space symmetry operation, PM(fbz%nkpts,pg%nsyms) 
         PM = permutation_map( permutation_rep(seitz=pg%seitz_cart, tau=fbz%kpt_cart, flags='', prec=opts%prec) )
@@ -395,7 +395,7 @@ contains
 !         integer :: i, j
 !         !
 !         !
-!         if (opts%verbosity.ge.1) call am_print_title('Reducing to IBZ')
+!         if (opts%verbosity.ge.1) call print_title('Reducing to IBZ')
 !         ! 
 !         if (opts%verbosity.ge.1) call am_print('number of original kpoints',bz%nkpts,' ... ')
 !         ! generate voronoi points (cartesian)
@@ -824,7 +824,7 @@ contains
 !         integer :: i, j, m
 !         integer :: w
 !         !
-!         if (opts%verbosity.ge.1) call am_print_title('Expand kpoints to FBZ')
+!         if (opts%verbosity.ge.1) call print_title('Expand kpoints to FBZ')
 !         if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,' ... ')
 !         if (opts%verbosity.ge.1) call am_print('number of kpoints in the original bz',bz%nkpts,' ... ')
 !         if (opts%verbosity.ge.1) then

@@ -1,11 +1,11 @@
 module am_prim_cell
 
     use am_constants
-    use am_stdout
     use am_options
     use am_unit_cell
     use am_matlab
-    use am_mkl , only : det, inv
+    use am_mkl, only : det, inv
+    use dispmodule
 
     implicit none
 
@@ -27,10 +27,11 @@ contains
         class(am_class_prim_cell), intent(inout) :: pc
         class(am_class_unit_cell), intent(inout) :: uc
         type(am_class_options)   , intent(in) :: opts
+        character(:), allocatable :: str(:)
         real(dp) :: uc2prim(3,3)
         integer  :: i
         !
-        if (opts%verbosity.ge.1) call am_print_title('Reducing to primitive cell')
+        if (opts%verbosity.ge.1) call print_title('Reducing to primitive cell')
         !
         ! get primitive cell basis from translations which leave unit cell invariant
         pc%bas = get_primitive_basis(bas=uc%bas,tau_frac=uc%tau_frac,Z=uc%Z,prec=opts%prec)
@@ -65,22 +66,27 @@ contains
         !
         ! print stdout
         if (opts%verbosity.ge.1) then
+            allocate(character(4) :: str(pc%natoms))
             !
-            call am_print_two_matrices_side_by_side(name='original basis',&
-                Atitle='fractional (primitive)',A=matmul(pc%recbas,uc%bas),&
-                Btitle='cartesian'             ,B=uc%bas,&
-                iopt_emph=' ... ',iopt_teaser=.true.)
-            call am_print_two_matrices_side_by_side(name='primitive basis',&
-                Atitle='fractional (input)'    ,A=matmul(uc%recbas,pc%bas),&
-                Btitle='cartesian'             ,B=pc%bas,&
-                iopt_emph=' ... ',iopt_teaser=.true.)
+            write(*,'(a5,a)') ' ... ', 'original basis ='
+            call disp(title=' '                     , X=zeros([1,1])            , style='underline', fmt='i2'   ,advance='no' , zeroas=' ' )
+            call disp(title='fractional (primitive)', X=matmul(pc%recbas,uc%bas), style='underline', fmt='f13.8',advance='no' , trim = 'no')
+            call disp(title='cartesian'             , X=uc%bas                  , style='underline', fmt='f13.8',advance='yes', trim = 'no')
             !
-            call am_print('primitive cell atoms',pc%natoms,' ... ')
+            write(*,'(a5,a)') ' ... ', 'primitive basis ='
+            call disp(title=' '                     , X=zeros([1,1])            , style='underline', fmt='i2'   ,advance='no' , zeroas=' ' )
+            call disp(title='fractional (input)'    , X=matmul(uc%recbas,pc%bas), style='underline', fmt='f13.8',advance='no' , trim = 'no')
+            call disp(title='cartesian'             , X=pc%bas                  , style='underline', fmt='f13.8',advance='yes', trim = 'no')
             !
-            call am_print_two_matrices_side_by_side(name='reduced atomic basis',&
-                Atitle='fractional (primitive)',A=transpose(pc%tau_frac),&
-                Btitle='cartesian'             ,B=transpose(matmul(pc%bas,pc%tau_frac)),&
-                iopt_emph=' ... ',iopt_teaser=.true.)
+            write(*,'(a5,a,a)') ' ... ', 'primitive cell atoms = ', tostring(pc%natoms)
+            do i = 1, pc%natoms
+                str(i) = atm_symb(uc%Z(pc%uc_id(i)))
+            enddo
+            call disp(title=' '                     , X=zeros([1,1])            , style='underline', fmt='i2'   ,advance='no' , zeroas=' ' )
+            call disp(title=' id '                  , X=[1:pc%natoms]           , style='underline', fmt='i7'   ,advance='no' , trim = 'yes')
+            call disp(title='atom'                  , X=str                     , style='underline', fmt='a3'   ,advance='no' , trim = 'no')
+            call disp(title='fractional (primitive)', X=transpose(pc%tau_frac)  , style='underline', fmt='f11.8',advance='no' , trim = 'no')
+            call disp(title='cartesian'             , X=transpose(pc%tau_cart)  , style='underline', fmt='f11.8',advance='yes', trim = 'no')
             !
             write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to primitive: uc->pc)'
             call id_print_map(uc%pc_id)

@@ -34,12 +34,13 @@ contains
         class(am_class_unit_cell), intent(inout), optional :: uc ! if present, mapping from ic <-> uc is obtained
         type(am_class_space_group),intent(in) :: sg
         type(am_class_options)   , intent(in) :: opts
+        character(:), allocatable :: str(:)
         integer, allocatable :: PM(:,:)
         logical, allocatable :: mask(:)
         integer, allocatable :: ind(:)
         integer :: i,j,k
         !
-        if (opts%verbosity.ge.1) call am_print_title('Reducing to irreducible cell')
+        if (opts%verbosity.ge.1) call print_title('Reducing to irreducible cell')
         !
         ! get primitive basis
         ic%bas = pc%bas
@@ -104,16 +105,21 @@ contains
             enddo
         endif
         ! print stdout
+
         if (opts%verbosity.ge.1) then
+            allocate(character(4) :: str(ic%natoms))
             !
-            call am_print('primitive cell atoms',pc%natoms,' ... ')
-            !
-            call am_print('irreducible cell atoms',ic%natoms,' ... ')
-            !
-            call am_print_two_matrices_side_by_side(name='irreducible atomic basis',&
-                Atitle='fractional',A=transpose(ic%tau_frac),&
-                Btitle='cartesian' ,B=transpose(matmul(ic%bas,ic%tau_frac)),&
-            iopt_emph=' ... ',iopt_teaser=.true.)
+            write(*,'(a5,a,a)') ' ... ', 'input atoms = ', tostring(uc%natoms)
+            write(*,'(a5,a,a)') ' ... ', 'primitive atoms = ', tostring(pc%natoms)
+            write(*,'(a5,a,a)') ' ... ', 'irreducible atoms = ', tostring(ic%natoms)
+            do i = 1, ic%natoms
+                str(i) = atm_symb(ic%Z(i))
+            enddo
+            call disp(title=' '                     , X=zeros([1,1])            , style='underline', fmt='i2'   ,advance='no' , zeroas=' ' )
+            call disp(title=' id '                  , X=[1:ic%natoms]           , style='underline', fmt='i7'   ,advance='no' , trim = 'yes')
+            call disp(title='atom'                  , X=str                     , style='underline', fmt='a3'   ,advance='no' , trim = 'no')
+            call disp(title='fractional (primitive)', X=transpose(ic%tau_frac)  , style='underline', fmt='f11.8',advance='no' , trim = 'no')
+            call disp(title='cartesian'             , X=transpose(ic%tau_cart)  , style='underline', fmt='f11.8',advance='yes', trim = 'no')
             !
             write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to input: ic->uc)'
             call id_print_map(ic%uc_id)

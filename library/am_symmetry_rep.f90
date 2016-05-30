@@ -403,7 +403,7 @@ module am_symmetry_rep
         type(am_class_flat_group) :: flat_pg
         integer :: m, n, o, nterms
         !
-        if (opts%verbosity.ge.1) call am_print_title('Determining group of '//trim(property))
+        if (opts%verbosity.ge.1) call print_title('Determining group of '//trim(property))
         !
         ! initialize
         call initialize_property(prop=prop, property=property)

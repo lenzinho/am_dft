@@ -56,7 +56,7 @@ contains
         integer :: m,n,o
         !
         !
-        if (opts%verbosity.ge.1) call am_print_title('Imposing symmetry constraints on tight-binding model')
+        if (opts%verbosity.ge.1) call print_title('Imposing symmetry constraints on tight-binding model')
         !
         tb%nshells = ip%nshells
         allocate(tb%tbvsk(tb%nshells))
@@ -254,8 +254,6 @@ contains
                 ! get matrix elements (initialize Hsub)
                 Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))
                 ! rotate matrix elements as needed to get from the tau_frac(:,1) => tau_frac(:,x)
-                call am_print('Dn'//trim(int2char(pp%shell(k)%pg_id(p))),Dn)
-                call am_print('Dm'//trim(int2char(pp%shell(k)%pg_id(p))),Dm)
                 Hsub = matmul(Hsub, Dn)
                 Hsub = matmul(transpose(Dm), Hsub)
                 ! multiply exponential factor from Bloch sum
@@ -283,7 +281,10 @@ contains
         H = tb%get_hamiltonian(tbpg=tbpg, ic=ic, ip=ip, pp=pp, kpt=real([0,0,0],dp))
         !
         ! check that H is hermitian
-        if ( .not. isequal(H,adjoint(H)) ) stop 'H is not Hermitian.'
+        if ( .not. isequal(H,adjoint(H)) ) then
+            call am_print('H',H)
+            stop 'H is not Hermitian.'
+        endif
         !
         allocate(R(tbpg%nbases,tbpg%nbases))
         do i = 1, tbpg%nsyms
@@ -529,7 +530,7 @@ contains
 !         character(len=:), allocatable :: word(:) ! read buffer
 !         integer :: fid, k
 !       !
-!       if (opts%verbosity.ge.1) call am_print_title('Reading tight binding matrix elements')
+!       if (opts%verbosity.ge.1) call print_title('Reading tight binding matrix elements')
 !       !
 !       if (opts%verbosity.ge.1) call am_print('input file',trim(opts%tbf))
 !       !

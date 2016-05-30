@@ -77,7 +77,7 @@ module am_stopwatch
         implicit none
         integer :: i
         !
-        call am_print_title('Timing information')
+        call print_title('Timing information')
         write(stdout,'(a5,a60,a20,a20)') ' ... ', 'Tag','Ncalls','Time [s]'
         do i=1,nnames
             write(stdout,'(a5,a60,i20,f20.3)') &

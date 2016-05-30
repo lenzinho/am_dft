@@ -7,18 +7,19 @@ module am_symmetry
     use am_mkl
     use am_symmetry_tables
     use am_matlab
+    use dispmodule
 
     implicit none
 
     public
 
     type, public :: am_class_group
-        integer :: nsyms                          ! number of symmetries
-        integer :: nbases                         ! number of bases functions (dimensions of rep)
-        integer , allocatable :: ps_id(:)         ! integer which identifies point symmetries (see decode_pointsymmetry)
-        type(am_class_conjugacy_class)      :: cc ! conjugacy classes
-        type(am_class_character_table)      :: ct ! character table
-        type(am_class_multiplication_table) :: mt ! multiplication table
+        integer :: nsyms                              ! number of symmetries
+        integer :: nbases                             ! number of bases functions (dimensions of rep)
+        integer , allocatable :: ps_id(:)             ! integer which identifies point symmetries (see decode_pointsymmetry)
+        type(am_class_conjugacy_class)      :: cc     ! conjugacy classes
+        type(am_class_character_table)      :: ct     ! character table
+        type(am_class_multiplication_table) :: mt     ! multiplication table
     contains
         procedure :: sort_symmetries
         procedure :: dump
@@ -30,7 +31,7 @@ module am_symmetry
 
     type, public, extends(am_class_group)       :: am_class_symrep_group
         ! generic symmetry group
-        real(dp), allocatable :: sym(:,:,:)        ! symmetry elements [unitless rep]
+        real(dp), allocatable :: sym(:,:,:)           ! symmetry elements [unitless rep]
     end type am_class_symrep_group
 
     type, public, extends(am_class_group)       :: am_class_seitz_group
@@ -449,6 +450,9 @@ contains
         do i = 1, sg%nsyms
             sg%seitz_recfrac(:,:,i) = seitz_cart2recfrac(seitz_cart=sg%seitz_cart(:,:,i), bas=sg%bas, recbas=sg%recbas)
         enddo
+        ! correct rounding error
+        where(abs(sg%seitz_frac).lt.tiny) sg%seitz_frac = 0
+        where(abs(sg%seitz_cart).lt.tiny) sg%seitz_cart = 0
         ! identify point symmetries
         allocate(sg%ps_id(sg%nsyms))
         do i = 1, sg%nsyms
@@ -508,8 +512,11 @@ contains
         class(am_class_unit_cell)  , intent(in) :: pc ! space groups are tabulated in the litearture for conventional cells, but primitive or arbitrary cell works just as well.
         type(am_class_options)     , intent(in) :: opts
         real(dp), allocatable  :: seitz_frac(:,:,:)
+        character(20) :: str
+        integer :: mpl
+        integer :: i
         !
-        if (opts%verbosity.ge.1) call am_print_title('Determining space group symmetries')
+        if (opts%verbosity.ge.1) call print_title('Determining space group symmetries')
         !
         ! determine space symmetries from atomic basis [frac.]
         seitz_frac = space_symmetries_from_basis(bas=pc%bas, tau=pc%tau_frac,Z=pc%Z, prec=opts%prec)
@@ -519,11 +526,26 @@ contains
         call sg%create_seitz_group(seitz_frac=seitz_frac, bas=pc%bas)
         ! print stdout
         if (opts%verbosity.ge.1) then
-            !
-            call am_print('space symmetries',sg%nsyms,' ... ')
-            !
-            call am_print('classes',sg%cc%nclasses)
-            !
+            write(*,'(a5,a,a)') ' ... ', 'space symmetries = ' , tostring(sg%nsyms)
+            write(*,'(a5,a,a)') ' ... ', 'conjugacy classes = ', tostring(sg%cc%nclasses)
+            write(*,'(a5,a)')   ' ... ', 'seitz symmetries [frac/cart] = '
+            mpl=2 ! matrices per line
+            do i = 1,sg%nsyms
+                str = tostring(i)//': '//decode_pointsymmetry(sg%ps_id(i))
+                if ((mod(i,mpl).eq.1)) then
+                    call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
+                    call disp(title=trim(str), X=nint(sg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
+                    call disp(title=trim(str), X=(sg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
+                elseif ((mod(i,mpl).eq.0).or.(i.eq.sg%nsyms)) then
+                    call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
+                    call disp(title=trim(str), X=nint(sg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
+                    call disp(title=trim(str), X=(sg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='yes', trim='no')
+                else
+                    call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
+                    call disp(title=trim(str), X=nint(sg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
+                    call disp(title=trim(str), X=(sg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
+                endif
+            enddo
         endif
         ! write to write_outfile and to file
         call sg%write_outfile(iopt_filename=trim('outfile.spacegroup'))
@@ -610,16 +632,12 @@ contains
             !
             ! print stdout
             if (opts%verbosity.ge.1) then
-                !
-                call am_print('possible (im-)proper rotations',nRs,' ... ')
-                !
-                call am_print('possible translations',nTs,' ... ')
-                !
-                call am_print_two_matrices_side_by_side(name='translations',&
-                    Atitle='fractional',A=transpose(T),&
-                    Btitle='cartesian' ,B=transpose(matmul(bas,T)),&
-                    iopt_emph=' ... ',iopt_teaser=.true.)
-                !
+                call am_print('(im-)proper generators',nRs,' ... ')
+                call am_print('translation generators',nTs,' ... ')
+                ! call am_print_two_matrices_side_by_side(name='translations',&
+                !     Atitle='fractional',A=transpose(T),&
+                !     Btitle='cartesian' ,B=transpose(matmul(bas,T)),&
+                !     iopt_emph=' ... ',iopt_teaser=.true.)
             endif
         end function    space_symmetries_from_basis
         function        lattice_symmetries(bas,prec) result(R_frac)
@@ -718,8 +736,11 @@ contains
         class(am_class_unit_cell)  , intent(in) :: pc  ! accepts unit cell, primitive cell, conventional cell.
         type(am_class_options)     , intent(in) :: opts
         real(dp), allocatable  :: wrk_frac(:,:,:)
+        character(20) :: str
+        integer :: mpl
+        integer :: i
         !
-        if (opts%verbosity.ge.1) call am_print_title('Determining point group symmetries')
+        if (opts%verbosity.ge.1) call print_title('Point group symmetries')
         !
         ! create point group instance
         allocate(wrk_frac,source=sg%seitz_frac)
@@ -727,8 +748,29 @@ contains
         call pg%create_seitz_group(seitz_frac=unique(wrk_frac), bas=pc%bas)
         !
         if (opts%verbosity.ge.1) then
-            call am_print('point group',decode_pointgroup(point_group_schoenflies(pg%ps_id)),' ... ')
-            call am_print('point symmetries',pg%nsyms,' ... ')
+            write(*,'(a5,a,a)') ' ... ', 'point group = '      , decode_pointgroup(point_group_schoenflies(pg%ps_id))
+            write(*,'(a5,a,a)') ' ... ', 'point symmetries = ' , tostring(pg%nsyms)
+            write(*,'(a5,a,a)') ' ... ', 'conjugacy classes = ', tostring(pg%cc%nclasses)
+            write(*,'(a5,a)')   ' ... ', 'point symmetries [frac/cart] = '
+            mpl=2 ! matrices per line
+            do i = 1,pg%nsyms
+                str = tostring(i)//': '//decode_pointsymmetry(pg%ps_id(i))
+                if ((mod(i,mpl).eq.1)) then
+                    call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
+                    call disp(title=trim(str), X=nint(pg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
+                    call disp(title=trim(str), X=(pg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
+                elseif ((mod(i,mpl).eq.0).or.(i.eq.pg%nsyms)) then
+                    call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
+                    call disp(title=trim(str), X=nint(pg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
+                    call disp(title=trim(str), X=(pg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='yes', trim='no')
+                else
+                    call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
+                    call disp(title=trim(str), X=nint(pg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
+                    call disp(title=trim(str), X=(pg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
+                endif
+            enddo
+            !
+            call print_title('Point group character table')
             call pg%print_character_table()
         endif
         !

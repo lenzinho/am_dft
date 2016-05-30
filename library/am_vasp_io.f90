@@ -64,7 +64,7 @@ module am_vasp_io
         !
         !
         !
-        if (verbosity.ge.1) call am_print_title('Reading IBZKPT')
+        if (verbosity.ge.1) call print_title('Reading IBZKPT')
         !
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
@@ -210,7 +210,7 @@ module am_vasp_io
         !
         !
         !
-        if (verbosity.ge.1) call am_print_title('Reading PROCAR')
+        if (verbosity.ge.1) call print_title('Reading PROCAR')
         !
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
@@ -362,7 +362,7 @@ module am_vasp_io
         !
         !
         !
-        if (verbosity.ge.1) call am_print_title('Reading PRJCAR')
+        if (verbosity.ge.1) call print_title('Reading PRJCAR')
         !
         ! SKIM FILE TO DETEMRINE PARAMETERS NECESSARY TO ALLOCATE SPACE
         !
@@ -541,7 +541,7 @@ module am_vasp_io
         !
         !
         !
-        if (verbosity.ge.1) call am_print_title('Reading EIGENVAL')
+        if (verbosity.ge.1) call print_title('Reading EIGENVAL')
         !
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
@@ -692,7 +692,7 @@ module am_vasp_io
         !
         !
         !
-        if (verbosity.ge.1) call am_print_title('Reading POSCAR')
+        if (verbosity.ge.1) call print_title('Reading POSCAR')
         !
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
@@ -860,7 +860,7 @@ module am_vasp_io
         !
         !
         !
-        call am_print_title('Writing POSCAR')
+        call print_title('Writing POSCAR')
         !
         fid = 1
         open(unit=fid,file=trim(fname),status='replace',action='write')
@@ -939,7 +939,7 @@ module am_vasp_io
         !
         !
         !
-        if (verbosity.ge.1) call am_print_title('Reading wannier unitary matrix (U matrix)')
+        if (verbosity.ge.1) call print_title('Reading wannier unitary matrix (U matrix)')
         !
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
@@ -1004,7 +1004,7 @@ module am_vasp_io
         verbosity = 1
         if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
         !
-        if (verbosity.ge.1) call am_print_title('Reading eigenvalues for wannier')
+        if (verbosity.ge.1) call print_title('Reading eigenvalues for wannier')
         !
         ! SKIM FILE TO DETEMRINE PARAMETERS NECESSARY TO ALLOCATE SPACE
         !
@@ -1084,7 +1084,7 @@ module am_vasp_io
 !         !
 !         !
 !         !
-!         if (verbosity.ge.1) call am_print_title('Reading wannier overlaps (MMN)')
+!         if (verbosity.ge.1) call print_title('Reading wannier overlaps (MMN)')
 !         !
 !         fid = 1
 !         open(unit=fid,file=trim(fname),status="old",action='read')

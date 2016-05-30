@@ -79,7 +79,7 @@ contains
         integer  :: m,n
         !
         ! print title
-        if (opts%verbosity.ge.1) call am_print_title('Determining primitive neighbor pairs')
+        if (opts%verbosity.ge.1) call print_title('Determining primitive neighbor pairs')
         !
         call am_print('pair cutoff radius',pair_cutoff,' ... ')
         !
@@ -118,15 +118,18 @@ contains
                 ! take note of shell center
                 pp%shell(k)%center = pc%tau_cart(:,i)
                 ! take note of point symmetry which takes atom tau_frac(:,1) to atom tau_frac(:,i)
+                ! should use cart here because a unitary transformation is necessary
                 allocate(pp%shell(k)%pg_id(pp%shell(k)%natoms))
+                pp%shell(k)%pg_id = 0
                 do m = 1, pp%shell(k)%natoms
                     search : do n = 1, pg%nsyms
-                        if (isequal(pp%shell(k)%tau_frac(:,m), matmul(pg%seitz_frac(1:3,1:3,n),pp%shell(k)%tau_frac(:,1)))) then
+                        if (isequal(pp%shell(k)%tau_cart(:,m), matmul(pg%seitz_cart(1:3,1:3,n),pp%shell(k)%tau_cart(:,1)))) then
                             pp%shell(k)%pg_id(m) = n
                             exit search
                         endif
                     enddo search
                 enddo
+                if (any(pp%shell(k)%pg_id.eq.0)) stop 'pg_id = 0'
                 ! get irreducible atom indices
                 pp%shell(k)%i = pc%ic_id(i)
                 pp%shell(k)%j = pp%shell(k)%ic_id(1)
@@ -347,7 +350,7 @@ contains
         integer , allocatable :: ip_id_unique(:) ! strictly positive
         integer :: i,k
         !
-        if (opts%verbosity.ge.1) call am_print_title('Determining irreducible nearest-neighbor pairs')
+        if (opts%verbosity.ge.1) call print_title('Determining irreducible nearest-neighbor pairs')
         !
         ! output shells
         if (opts%verbosity.ge.1) call am_print('pair shells',pp%nshells)

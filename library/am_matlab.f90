@@ -27,6 +27,10 @@ module am_matlab
         module procedure ones, ones_nxm
     end interface ! ones
 
+    interface zeros
+        module procedure zeros_nxm, zeros
+    end interface ! zeros
+
     interface meshgrid
         module procedure dmeshgrid, imeshgrid
     end interface ! meshgrid
@@ -56,6 +60,49 @@ module am_matlab
     end interface ! cumprod
 
     contains
+
+    ! basic print routine for title
+
+    pure function  centertitle(title,length) result(title_centered)
+        !
+        implicit none
+        !
+        character(len=*), intent(in) :: title
+        integer, intent(in) :: length
+        character(len=length) :: title_centered
+        integer :: blanks
+        integer :: i 
+        !
+        title_centered = title
+        blanks = 0 
+        do  i = length,1,-1                  ! starting on the right side 
+        if( title_centered(i:i) .ne. ' ' ) goto 33    ! check for trailing blanks 
+        blanks = blanks + 1                  ! count the blanks 
+        enddo 
+        33  continue 
+        if ( blanks .gt. 1 ) then 
+        blanks = blanks/2                      ! cut half of the blanks 
+        do i = length , 1 , -1 
+          if ( i-blanks .gt. 0 ) title_centered(i:i) = title_centered(i-blanks:i-blanks) 
+          if ( i-blanks .le. 0 ) title_centered(i:i) = ' '     ! blank front half 
+        enddo
+        endif
+    end function   centertitle
+
+    subroutine     print_title(title)
+        !
+        implicit none
+        !
+        character(len=*), intent(in) :: title
+        integer :: fid
+        !
+        fid = 6
+        !
+        write(unit=fid,fmt='(a,a,a)') "+", repeat("-",column_width-2), "+"
+        write(unit=fid,fmt='(a,a,a)') "|",  centertitle(title,column_width-2), "|" 
+        write(unit=fid,fmt='(a,a,a)') "+", repeat("-",column_width-2), "+"
+        !
+    end subroutine print_title
 
     ! progress bar
 
@@ -1559,6 +1606,30 @@ module am_matlab
         M=1.0_dp
         !
     end function  ones_nxm
+
+    pure function zeros(n) result(M)
+        !> nxn identity matrix
+        implicit none
+        !
+        integer, intent(in) :: n
+        integer, dimension(:,:), allocatable :: M
+        !
+        allocate(M(n,n))
+        M = 0.0_dp
+        !
+    end function  zeros
+
+    pure function zeros_nxm(n) result(M)
+        !> nxn identity matrix
+        implicit none
+        !
+        integer, intent(in) :: n(2)
+        integer, dimension(:,:), allocatable :: M
+        !
+        allocate(M(n(1),n(2)))
+        M=0.0_dp
+        !
+    end function  zeros_nxm
 
     ! matrix-matrix operations
 
