@@ -10,6 +10,7 @@ module am_tight_binding
     use am_symmetry
     use am_symmetry_rep
     use am_mkl
+    use dispmodule
 
 	implicit none
 
@@ -212,7 +213,8 @@ contains
         integer :: n ! primitive atom 2 index
         integer :: i ! irreducible atom 1 index 
         integer :: j ! irreducible atom 2 index
-        integer :: k ! shell
+        integer :: k ! shell (primitive)
+        integer :: l ! shell (irreducible)
         integer :: p ! atoms
         !
         ! mask irreducible pair shells 
@@ -235,33 +237,39 @@ contains
         allocate(H(tbpg%nbases,tbpg%nbases))
         H = cmplx(0,0,dp)
         ! construct Hamiltonian
-        call am_print('pp%ip_id',pp%ip_id)
-        do k = 1, pp%nshells
-        if ( mask(abs(pp%ip_id(k))) ) then
-            ! primitive atom indicies
-            m = pp%shell(k)%m
-            n = pp%shell(k)%n
-            ! irreducible atom indicies
-            i = pp%shell(k)%i
-            j = pp%shell(k)%j
-            ! tbpg%sym(tbpg%H_start(pc_id):tbpg%H_end(pc_id), tbpg%H_start(pc_id):tbpg%H_end(pc_id), pg_id)
-            ! compute bloch sum by loop over atoms in shell
-            do p = 1, pp%shell(k)%natoms
-                ! set pointers
-                Hsub => wrkHsub(S(m):E(m), S(n):E(n))
-                Dm   => wrktbpg(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p) )
-                Dn   => wrktbpg(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
-                ! get matrix elements (initialize Hsub)
-                Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))
-                ! rotate matrix elements as needed to get from the tau_frac(:,1) => tau_frac(:,x)
-                Hsub = matmul(Hsub, Dn)
-                Hsub = matmul(transpose(Dm), Hsub)
-                ! multiply exponential factor from Bloch sum
-                Hsub = Hsub * exp(-itwopi*dot_product(pp%shell(k)%tau_frac(1:3,p), kpt)) ! kpt is in fractional
-                ! this pair's contribution to the Hamiltonian
-                H(S(m):E(m), S(n):E(n)) = H(S(m):E(m), S(n):E(n)) + Hsub
+        do l = 1, ip%nshells
+            do k = 1, pp%nshells
+            if (abs(pp%ip_id(k)).eq.l) then
+            !if ( mask(abs(pp%ip_id(k))) ) then
+                ! primitive atom indicies
+                m = pp%shell(k)%m
+                n = pp%shell(k)%n
+                ! irreducible atom indicies
+                i = pp%shell(k)%i
+                j = pp%shell(k)%j
+                ! tbpg%sym(tbpg%H_start(pc_id):tbpg%H_end(pc_id), tbpg%H_start(pc_id):tbpg%H_end(pc_id), pg_id)
+                ! compute bloch sum by loop over atoms in shell
+                do p = 1, pp%shell(k)%natoms
+                    ! set pointers
+                    Hsub => wrkHsub(S(m):E(m), S(n):E(n))
+                    Dm   => wrktbpg(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p) )
+                    Dn   => wrktbpg(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
+                    ! get matrix elements (initialize Hsub)
+                    Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))
+                    ! rotate matrix elements as needed to get from the tau_frac(:,1) => tau_frac(:,x)
+                    Hsub = matmul(matmul(transpose(Dm), Hsub), Dn)
+                    ! multiply exponential factor from Bloch sum
+                    Hsub = Hsub * exp(-itwopi*dot_product(pp%shell(k)%tau_frac(1:3,p), kpt)) ! kpt is in fractional
+                    ! this pair's contribution to the Hamiltonian
+                    H(S(m):E(m), S(n):E(n)) = H(S(m):E(m), S(n):E(n)) + Hsub
+                enddo
+            endif
             enddo
-        endif
+            !
+            write(*,'(a5,a,a)') ' ... ', 'irreducible shell: ', tostring(l)
+            call disp(H)
+            !
+            if ( .not. isequal(H,adjoint(H)) ) stop 'H is not Hermitian.'
         enddo
     end function   get_hamiltonian
 
@@ -282,7 +290,7 @@ contains
         !
         ! check that H is hermitian
         if ( .not. isequal(H,adjoint(H)) ) then
-            call am_print('H',H)
+            call disp('H',H)
             stop 'H is not Hermitian.'
         endif
         !
@@ -290,10 +298,9 @@ contains
         do i = 1, tbpg%nsyms
             R = tbpg%sym(:,:,i)
             if (.not.isequal(matmul(H,R),matmul(R,H))) then
-                call am_print('Re(H)',real(H))
-                call am_print('Im(H)',aimag(H))
-                call am_print('sym',R)
-                call am_print('[H,R]', real(matmul(H,R) - matmul(R,H),dp) )
+                call disp('H',H)
+                call disp('R',R)
+                call disp('[H,R]',matmul(H,R)-matmul(R,H))
                 stop 'H does not commute with symmetry.'
             endif
         enddo
@@ -318,14 +325,16 @@ contains
         integer :: id
         integer :: m,n
         !
+        ! note the absolute value
         id = abs(ip_id)
-        !
+        ! get primitive atom indices
         m = tb%tbvsk(id)%dims(1)
         n = tb%tbvsk(id)%dims(2)
-        !
-        if (id.lt.0) then
+        ! if irreducible pair id is negative, it means the pair was flipped
+        ! note the lack of an absolte value!
+        if (ip_id.lt.0) then
             allocate(V(n,m))
-            V = adjoint( reshape(tb%tbvsk(id)%V, [m,n]) ) * transp_parity_sign(atom_m=atom_m, atom_n=atom_n)
+            V = adjoint( reshape(tb%tbvsk(id)%V, [m,n]) ) ! * transp_parity_sign(atom_m=atom_m, atom_n=atom_n)
         else
             allocate(V(m,n))
             V =          reshape(tb%tbvsk(id)%V, [m,n])

@@ -9,6 +9,7 @@ module am_symmetry_rep
     use am_prim_cell
     use am_irre_cell
     use am_symmetry_relations
+    use dispmodule
 
     implicit none
 
@@ -141,7 +142,7 @@ module am_symmetry_rep
         ! determine rotation in the hamiltonian basis
         ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
         do i = 1, pg%nsyms
-            tbpg%sym(:,:,i) = ps2tb_H(R_cart=pg%seitz_cart(1:3,1:3,:), pc=pc, ic=ic)
+            tbpg%sym(:,:,i) = ps2tb_H(R_cart=pg%seitz_cart(1:3,1:3,i), pc=pc, ic=ic)
         enddo
         ! copy symmetry ids
         allocate(tbpg%ps_id, source=pg%ps_id)

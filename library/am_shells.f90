@@ -113,7 +113,7 @@ contains
                 k=k+1
                 call pp%shell(k)%copy(uc=sphere)
                 call pp%shell(k)%filter(ind=ind)
-                ! take note of shell center
+                ! record of shell center
                 pp%shell(k)%center = pc%tau_cart(:,i)
                 ! take note of point symmetry which takes atom tau_frac(:,1) to atom tau_frac(:,i)
                 ! should use cart here because a unitary transformation is necessary
@@ -211,8 +211,6 @@ contains
         contains
         function       create_sphere(uc,sphere_center,pair_cutoff,opts) result(sphere)
             !
-            use am_rank_and_sort
-            !
             implicit none
             !
             type(am_class_unit_cell), intent(in) :: uc
@@ -296,8 +294,6 @@ contains
             !
         end function   create_sphere
         function       identify_shells(sphere,pg) result(shell_id)
-            ! 
-            use am_rank_and_sort
             !
             implicit none
             !
@@ -338,6 +334,8 @@ contains
 
     subroutine     get_irreducible(ip,pp,pg,ic,opts)
         !
+        use am_rank_and_sort
+        !
         implicit none
         !
         class(am_class_pair_shell), intent(out) :: ip
@@ -346,17 +344,16 @@ contains
         class(am_class_unit_cell) , intent(in) :: ic
         type(am_class_options)    , intent(in) :: opts
         integer , allocatable :: ip_id(:) ! can have negative, it means bond was flipped!
-        integer , allocatable :: ip_id_unique(:) ! strictly positive
+        real(dp), allocatable :: d(:)
+        integer , allocatable :: ind(:), rind(:)
         integer :: i,k
         !
         if (opts%verbosity.ge.1) call print_title('Irreducible neighbor pairs')
         !
         ! determine irreducible pair shells
-        ip_id = identify_irreducible(pp=pp,pg=pg,ic=ic,opts=opts)
-        ! allocate space
-        ip_id_unique = unique(abs(ip_id))
+        ip_id = identify_irreducible(pp=pp, pg=pg, ic=ic, opts=opts)
         ! get number of shells
-        ip%nshells = size(ip_id_unique)
+        ip%nshells = size(unique(abs(ip_id)))
         ! create maps irreducible pair to/from primitive pair
         allocate(pp%pp_id, source = [1:pp%nshells])
         allocate(pp%ip_id, source = ip_id)
@@ -373,6 +370,46 @@ contains
         do i = 1,ip%nshells
             ip%shell(i) = pp%shell( ip%pp_id(i) )
         enddo
+        ! ! sort irreducible pair shells based on distance
+        ! allocate(d(ip%nshells))
+        ! do i = 1, ip%nshells
+        !     d(i) = norm2(ip%shell(i)%tau_cart(:,1))
+        ! enddo
+        ! allocate( ind(ip%nshells))
+        ! allocate(rind(ip%nshells))
+        ! call rank(d,ind)
+        ! rind(ind)= [1:ip%nshells]
+        ! ip%shell = ip%shell(ind)
+        ! ip%pp_id = ip%pp_id(ind)
+        ! THIS LAST PART SEEMS TO NOT BE WORKING
+        ! do i = 1, pp%nshells
+        !     pp%ip_id(i) = pp%ip_id(ind(i))
+        ! enddo
+        ! ANSWER SHOULD BE:
+        !  shell Zi-Zj   i-j   m-n    m   stab.    rot.    rev. |v(cart)|           v(cart)             |v(frac)|           v(frac)
+        !  ----- ----- ----- ----- ---- ------- ------- ------- --------- ----------------------------- --------- -----------------------------
+        !      1 Ga-Ga   1-1   1-1    1     t_d     t_d     t_d     0.000     0.000     0.000     0.000     0.000     0.000     0.000     0.000
+        !      2 As-As   2-2   2-2    1     t_d     t_d     t_d     0.000     0.000     0.000     0.000     0.000     0.000     0.000     0.000
+        !      3 Ga-As   1-2   1-2    4    c_3v     t_d    c_3v     2.490     1.438     1.438    -1.438     0.153     0.062     0.062    -0.125
+        !      4 Ga-Ga   1-1   1-1   12    c_1h     t_d    c_1h     4.066     2.875     2.875     0.000     0.177     0.125     0.125     0.000
+        !      5 As-As   2-2   2-1    4    c_1h     t_d    c_1h     4.066     2.875     2.875     0.000     0.177     0.125     0.125     0.000
+        !      6 Ga-As   1-2   1-2   12    c_1h     t_d    c_1h     4.768     4.313     1.438     1.438     0.234     0.187     0.062     0.125
+
+        !
+
+
+!         ! take note of point symmetry which takes atom tau_frac(:,1) to atom tau_frac(:,i)
+!         ! should use cart here because a unitary transformation is necessary
+!         allocate(ip%shell(k)%pg_id(ip%shell(k)%natoms))
+!         pp%shell(k)%pg_id = 0
+!         do m = 1, pp%shell(k)%natoms
+!             search : do n = 1, pg%nsyms
+!                 if (isequal(pp%shell(k)%tau_cart(:,m), matmul(pg%seitz_cart(1:3,1:3,n),pp%shell(k)%tau_cart(:,1)))) then
+!                     pp%shell(k)%pg_id(m) = n
+!                     exit search
+!                 endif
+!             enddo search
+!         enddo
         !
         ! write to stdout
         if (opts%verbosity.ge.1) then
@@ -452,7 +489,8 @@ contains
             class(am_class_unit_cell) , intent(in) :: ic ! irreducible cell
             type(am_class_options)    , intent(in) :: opts
             integer , allocatable :: Z(:,:) ! Z of each atom in pair
-            integer , allocatable :: M(:,:) ! M&N primitive atom indices
+            integer , allocatable :: M(:,:) !primitive atom indices
+            real(dp), allocatable :: n(:) ! number of atoms in shell
             integer , allocatable :: s(:) ! stabilizer point group id
             real(dp), allocatable :: d(:) ! distances of atoms
             integer , allocatable :: ip_id(:) ! can have negative, it means bond was flipped!
@@ -467,6 +505,7 @@ contains
             ! allocate space 
             allocate(d(pp%nshells))         ! distance between pair of atoms (having atoms the same distance apart is a prerequesit for the bond to be the same)
             allocate(s(pp%nshells))         ! rotational group should be the same
+            allocate(n(pp%nshells))         ! number of atoms in shell
             allocate(Z(2,pp%nshells))       ! atomic number of elements in pair (having the same types of atoms is a prerequesit for the bond to be the same)
             allocate(M(2,pp%nshells))       ! primitive atom indices
             allocate(isflipped(pp%nshells)) ! indicates which pairs were flipped in the comparison, returns negative ip_id if the corresponding bond was flipped
@@ -475,6 +514,8 @@ contains
             do k = 1, pp%nshells
                 ! record distances
                 d(k) = norm2(pp%shell(k)%tau_cart(:,1))
+                ! record number of atoms in shell
+                n(k) = pp%shell(k)%natoms
                 ! record sorted pair atomic number
                 Z(1:2,k) = [ic%Z(pp%shell(k)%i), pp%shell(k)%Z(1)]
                 if (Z(1,k).gt.Z(2,k)) then
@@ -503,6 +544,8 @@ contains
                     ! isfound is used to count the number of irreducible shells
                     isfound = .false.
                     do j = 1, pp%nshells
+                        ! check that number of atoms in shell are the same
+                        if ( abs(n(i)-n(j)).lt.opts%prec) then
                         ! check that bond length is the same
                         if ( abs(d(i)-d(j)).lt.opts%prec) then
                         ! check that atoms are the same type
@@ -513,6 +556,7 @@ contains
                         ! mark all shells that are the same before augmenting irrep shell counter
                             isfound = .true.
                             ip_id(j) = k
+                        endif
                         endif
                         endif
                         endif
