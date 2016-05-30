@@ -56,7 +56,7 @@ contains
         integer :: m,n,o
         !
         !
-        if (opts%verbosity.ge.1) call print_title('Imposing symmetry constraints on tight-binding model')
+        if (opts%verbosity.ge.1) call print_title('Symmetry-adapted tight-binding parameters')
         !
         tb%nshells = ip%nshells
         allocate(tb%tbvsk(tb%nshells))

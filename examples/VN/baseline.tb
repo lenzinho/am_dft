@@ -421,9 +421,9 @@
          1->1    2->1    3->1    4->1    5->1    6->1    7->1    8->1    9->2   10->2   11->2
         12->2   13->2   14->2   15->2   16->2
 +--------------------------------------------------------------------------------------------------+
-|                               Determining primitive neighbor pairs                               |
+|                                     Primitive neighbor pairs                                     |
 +--------------------------------------------------------------------------------------------------+
- ... pair cutoff radius = 2.8782540106842
+ ... pair cutoff radius = 2.8783
  ... primitive atom 1 at 0.00,0.00,0.00 (frac) has 2 nearest-neighbor shells
      shell Zi-Zj   i-j   m-n    m   stab.    rot.    rev. |v(cart)|           v(cart)             |v(frac)|           v(frac)            
      ----- ----- ----- ----- ---- ------- ------- ------- --------- ----------------------------- --------- -----------------------------
@@ -442,10 +442,10 @@
       - rotational (rot) : point symmetries which leave shell invariant
       - reversal   (rev) : (im)proper rotational parts of space symmetries which flip bond endpoints
 +--------------------------------------------------------------------------------------------------+
-|                          Determining irreducible nearest-neighbor pairs                          |
+|                                    Irreducible neighbor pairs                                    |
 +--------------------------------------------------------------------------------------------------+
- ... pair shells = 4                                                                                                   
- ... irreducible pair shells = 3                                                                                                   
+ ... primitive pair shells = 4
+ ... irreducible pair shells = 3
      shell Zi-Zj   i-j   m-n    m   stab.    rot.    rev. |v(cart)|           v(cart)             |v(frac)|           v(frac)            
      ----- ----- ----- ----- ---- ------- ------- ------- --------- ----------------------------- --------- -----------------------------
          1   V-V   1-1   1-1    1     o_h     o_h     o_h     0.000     0.000     0.000     0.000     0.000     0.000     0.000     0.000
@@ -463,12 +463,15 @@
       - rotational (rot) : point symmetries which leave shell invariant
       - reversal   (rev) : (im)proper rotational parts of space symmetries which flip bond endpoints
       - negative mappings indicate that endpoints have been flipped
++--------------------------------------------------------------------------------------------------+
+|                                         Atomic orbitals                                          |
++--------------------------------------------------------------------------------------------------+
  ... irreducible atom 1 contributes 4 orbitals (n,l,m,s):
       ( 2, 0, 0, 0)  ( 2, 1,-1, 0)  ( 2, 1, 0, 0)  ( 2, 1, 1, 0) 
  ... irreducible atom 2 contributes 4 orbitals (n,l,m,s):
       ( 2, 0, 0, 0)  ( 2, 1,-1, 0)  ( 2, 1, 0, 0)  ( 2, 1, 1, 0) 
 +--------------------------------------------------------------------------------------------------+
-|                       Imposing symmetry constraints on tight-binding model                       |
+|                            Symmetry-adapted tight-binding parameters                             |
 +--------------------------------------------------------------------------------------------------+
  ...  shell terms          null     dependent   independent
       ----- ----- ------------- ------------- -------------

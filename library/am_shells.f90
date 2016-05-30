@@ -1,7 +1,6 @@
 module am_shells
 
     use am_constants
-    use am_stdout
     use am_unit_cell
     use am_prim_cell
     use am_irre_cell
@@ -9,6 +8,7 @@ module am_shells
     use am_mkl
     use am_atom
     use am_symmetry
+    use dispmodule
 
     implicit none
 
@@ -79,9 +79,7 @@ contains
         integer  :: m,n
         !
         ! print title
-        if (opts%verbosity.ge.1) call print_title('Determining primitive neighbor pairs')
-        !
-        call am_print('pair cutoff radius',pair_cutoff,' ... ')
+        if (opts%verbosity.ge.1) call print_title('Primitive neighbor pairs')
         !
         ! get maxmimum number of pair shells
         nshells=0
@@ -147,6 +145,7 @@ contains
         !
         ! print stuff
         if (opts%verbosity.ge.1) then
+            write(*,'(5a,a,a)') ' ... ', 'pair cutoff radius = ', tostring(pair_cutoff)
             ! write the number of shells each primitive cell atom hsa
             do i = 1, pc%natoms
                 D = matmul(matmul(inv(uc%bas),pc%bas),pc%tau_frac(:,i))
@@ -350,20 +349,14 @@ contains
         integer , allocatable :: ip_id_unique(:) ! strictly positive
         integer :: i,k
         !
-        if (opts%verbosity.ge.1) call print_title('Determining irreducible nearest-neighbor pairs')
-        !
-        ! output shells
-        if (opts%verbosity.ge.1) call am_print('pair shells',pp%nshells)
+        if (opts%verbosity.ge.1) call print_title('Irreducible neighbor pairs')
         !
         ! determine irreducible pair shells
         ip_id = identify_irreducible(pp=pp,pg=pg,ic=ic,opts=opts)
-        !
         ! allocate space
         ip_id_unique = unique(abs(ip_id))
-        ! call am_print('ip_id_unique',ip_id_unique)
+        ! get number of shells
         ip%nshells = size(ip_id_unique)
-        if (opts%verbosity.ge.1) call am_print('irreducible pair shells',ip%nshells)
-        !
         ! create maps irreducible pair to/from primitive pair
         allocate(pp%pp_id, source = [1:pp%nshells])
         allocate(pp%ip_id, source = ip_id)
@@ -375,7 +368,6 @@ contains
             ip%pp_id(abs(ip_id(i))) = i
         endif
         enddo
-        !
         ! create ip instance
         allocate(ip%shell(ip%nshells))
         do i = 1,ip%nshells
@@ -384,6 +376,8 @@ contains
         !
         ! write to stdout
         if (opts%verbosity.ge.1) then
+            write(*,'(a5,a,a)') ' ... ', 'primitive pair shells = ', tostring(pp%nshells)
+            write(*,'(a5,a,a)') ' ... ', 'irreducible pair shells = ', tostring(ip%nshells)
             write(*,'(5x)' ,advance='no')
             write(*,'(a5)' ,advance='no') 'shell'
             write(*,'(a6)' ,advance='no') 'Zi-Zj'

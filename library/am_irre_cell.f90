@@ -154,6 +154,8 @@ contains
         type(am_class_options)   , intent(in) :: opts
         integer :: i
         !
+        call print_title('Atomic orbitals')
+        !
         ! create basis on each irreducible atoms
         allocate(ic%atom(ic%natoms))
         do i = 1, ic%natoms
