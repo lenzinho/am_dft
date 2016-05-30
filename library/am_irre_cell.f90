@@ -195,6 +195,7 @@ contains
                     do j = 1, ic%atom(i)%nazimuthals
                         write(fid,'(a)',advance='no') ' '//trim(ic%atom(i)%orbname(j))
                     enddo
+                    write(fid,*)
                 enddo
             close(fid)
             !

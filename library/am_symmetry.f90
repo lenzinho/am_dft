@@ -516,7 +516,7 @@ contains
         integer :: mpl
         integer :: i
         !
-        if (opts%verbosity.ge.1) call print_title('Determining space group symmetries')
+        if (opts%verbosity.ge.1) call print_title('Space group symmetries')
         !
         ! determine space symmetries from atomic basis [frac.]
         seitz_frac = space_symmetries_from_basis(bas=pc%bas, tau=pc%tau_frac,Z=pc%Z, prec=opts%prec)
@@ -526,10 +526,12 @@ contains
         call sg%create_seitz_group(seitz_frac=seitz_frac, bas=pc%bas)
         ! print stdout
         if (opts%verbosity.ge.1) then
+            ! print global information
             write(*,'(a5,a,a)') ' ... ', 'space symmetries = ' , tostring(sg%nsyms)
             write(*,'(a5,a,a)') ' ... ', 'conjugacy classes = ', tostring(sg%cc%nclasses)
             write(*,'(a5,a)')   ' ... ', 'seitz symmetries [frac/cart] = '
-            mpl=2 ! matrices per line
+            ! print seitz operators
+            mpl=2
             do i = 1,sg%nsyms
                 str = tostring(i)//': '//decode_pointsymmetry(sg%ps_id(i))
                 if ((mod(i,mpl).eq.1)) then
@@ -546,6 +548,10 @@ contains
                     call disp(title=trim(str), X=(sg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
                 endif
             enddo
+            ! print multiplication table
+            call print_title('Space group multiplication table')
+            call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
+            call disp(X=sg%mt%multab,advance='yes',trim='yes')
         endif
         ! write to write_outfile and to file
         call sg%write_outfile(iopt_filename=trim('outfile.spacegroup'))
@@ -769,7 +775,11 @@ contains
                     call disp(title=trim(str), X=(pg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
                 endif
             enddo
-            !
+            ! print multiplication table
+            call print_title('Point group multiplication table')
+            call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
+            call disp(X=pg%mt%multab,advance='yes',trim='yes')
+            ! print character table
             call print_title('Point group character table')
             call pg%print_character_table()
         endif
