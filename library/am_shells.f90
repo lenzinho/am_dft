@@ -33,10 +33,17 @@ module am_shells
         type(am_shell_cell), allocatable :: shell(:) ! shell(k)
         integer, allocatable :: ip_id(:) ! identifies irreducible pair
         integer, allocatable :: pp_id(:) ! identifies primitive cell pair
-    contains
-        procedure :: get_primitive
-        procedure :: get_irreducible
     end type am_class_pair_shell
+
+    type, public, extends(am_class_pair_shell) :: am_class_prim_pair
+        contains
+        procedure :: get_primitive
+    end type am_class_prim_pair
+
+    type, public, extends(am_class_pair_shell) :: am_class_irre_pair
+        contains
+        procedure :: get_irreducible
+    end type am_class_irre_pair
 
 contains
     
@@ -61,7 +68,7 @@ contains
         !
         implicit none
         !
-        class(am_class_pair_shell), intent(inout) :: pp ! primitive pairs
+        class(am_class_prim_pair) , intent(inout) :: pp ! primitive pairs
         type(am_class_prim_cell)  , intent(in) :: pc ! primitive cell
         type(am_class_point_group), intent(in) :: pg ! point group
         type(am_class_unit_cell)  , intent(in) :: uc ! unit cell
@@ -338,10 +345,10 @@ contains
         !
         implicit none
         !
-        class(am_class_pair_shell), intent(out) :: ip
-        class(am_class_pair_shell), intent(inout) :: pp
-        type(am_class_point_group), intent(in) :: pg ! point group
-        class(am_class_unit_cell) , intent(in) :: ic
+        class(am_class_irre_pair) , intent(out) :: ip
+        type(am_class_prim_pair)  , intent(inout) :: pp
+        type(am_class_point_group), intent(in) :: pg
+        type(am_class_irre_cell)  , intent(in) :: ic
         type(am_class_options)    , intent(in) :: opts
         integer , allocatable :: ip_id(:) ! can have negative, it means bond was flipped!
         real(dp), allocatable :: d(:)
@@ -484,9 +491,9 @@ contains
             !
             implicit none
             !
-            class(am_class_pair_shell), intent(in) :: pp ! primitive pairs
+            class(am_class_prim_pair) , intent(in) :: pp ! primitive pairs
             type(am_class_point_group), intent(in) :: pg ! point group
-            class(am_class_unit_cell) , intent(in) :: ic ! irreducible cell
+            type(am_class_irre_cell)  , intent(in) :: ic ! irreducible cell
             type(am_class_options)    , intent(in) :: opts
             integer , allocatable :: Z(:,:) ! Z of each atom in pair
             integer , allocatable :: M(:,:) !primitive atom indices

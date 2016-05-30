@@ -47,7 +47,7 @@ contains
         type(am_class_point_group)   , intent(in)  :: pg   ! seitz point group
         type(am_class_prim_cell)     , intent(in)  :: pc   ! primitive cell
         type(am_class_irre_cell)     , intent(in)  :: ic   ! irreducible cell
-        type(am_class_pair_shell)    , intent(in)  :: ip   ! irreducible pairs
+        type(am_class_irre_pair)     , intent(in)  :: ip   ! irreducible pairs
         type(am_class_options)       , intent(in)  :: opts
         logical, allocatable :: is_independent(:)
         integer :: sub(2)
@@ -198,8 +198,8 @@ contains
         class(am_class_tight_binding), intent(in) :: tb     ! tight binding matrix elements
         type(am_class_tb_group)      , intent(in) :: tbpg   ! point group in tight binding representation
         type(am_class_irre_cell)     , intent(in) :: ic     ! irreducible cell
-        type(am_class_pair_shell)    , intent(in) :: pp     ! primitive pairs
-        type(am_class_pair_shell)    , intent(in) :: ip     ! irreducible pairs
+        type(am_class_prim_pair)     , intent(in) :: pp     ! primitive pairs
+        type(am_class_irre_pair)     , intent(in) :: ip     ! irreducible pairs
         real(dp)                     , intent(in) :: kpt(3) ! fractional
         logical, optional            , intent(in) :: iopt_mask(:)
         logical    , allocatable :: mask(:)
@@ -274,6 +274,8 @@ contains
         enddo
     end function   get_hamiltonian
 
+
+
     subroutine     test_hamiltonian(tb,tbpg,ic,ip,pp)
         ! makes sure Hamiltonian at Gamma commutes with all point symmetry operations
         implicit none
@@ -281,8 +283,8 @@ contains
         type(am_class_tight_binding) , intent(in) :: tb   ! tight binding matrix elements
         type(am_class_tb_group)      , intent(in) :: tbpg ! point group in tight binding representation
         type(am_class_irre_cell)     , intent(in) :: ic   ! irreducible cell
-        type(am_class_pair_shell)    , intent(in) :: pp   ! primitive pairs
-        type(am_class_pair_shell)    , intent(in) :: ip   ! irreducible pairs
+        type(am_class_prim_pair)     , intent(in) :: pp   ! primitive pairs
+        type(am_class_irre_pair)     , intent(in) :: ip   ! irreducible pairs
         complex(dp), allocatable :: H(:,:)
         real(dp)   , allocatable :: R(:,:)
         integer :: i
