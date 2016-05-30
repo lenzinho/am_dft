@@ -14,6 +14,7 @@ module am_atom
         integer :: nazimuthals
         integer, allocatable :: orbital(:,:) ! quantum numbers [n,l,m,s]
         integer, allocatable :: azimuthal(:) ! list of l oribtal angular momenta, used for the construction of O3 irrep rotation
+        character(5), allocatable :: orbname(:) ! 1 name per azimuthal quantum number
         !
     contains
     	procedure :: gen_orbitals
@@ -117,7 +118,7 @@ module am_atom
 		integer :: nazimuthals
 		!
 		!
-		if (index(orbital_flags,'spin_polarized')) then
+		if (index(orbital_flags,'polarized')) then
             allocate(slist,source=[-1,1])
             smax = size(slist)
 		else
@@ -130,13 +131,9 @@ module am_atom
 		atom%norbitals = 0
 		do n = 1,4
 		do l = 0, (n-1)
-			!
 			orbital_name(1:2) = trim(int2char(n))//trim(l2spdf(l))
-			!
 			if (index(orbital_flags,orbital_name).ne.0) then
-				!
 				nazimuthals = nazimuthals + 1
-				!
 				do m = -l, l
 		        do s = 1, smax
 			        atom%norbitals = atom%norbitals + 1
@@ -145,23 +142,19 @@ module am_atom
 			endif
 		enddo
 		enddo
-		!
 		! 
 		allocate(atom%orbital(4,atom%norbitals))
 		allocate(atom%azimuthal(nazimuthals))
-		!
+		allocate(atom%orbname(nazimuthals))
 		nazimuthals = 0
 		k = 0
 		do n = 1, 4
 		do l = 0, (n-1)
-			!
 			orbital_name(1:2) = trim(int2char(n))//trim(l2spdf(l))
-			!
 			if (index(orbital_flags,orbital_name).ne.0) then
-				!
 				nazimuthals = nazimuthals + 1
 				atom%azimuthal(nazimuthals) = l
-				!
+				atom%orbname(nazimuthals) = orbital_name
 				do m = -l, l
 		        do s = 1, smax
 			        k = k+1
@@ -174,9 +167,7 @@ module am_atom
 			endif
 		enddo
 		enddo
-		!
 		atom%nazimuthals = nazimuthals
-		!
 	end subroutine  gen_orbitals
 
 end module

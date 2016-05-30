@@ -1,6 +1,7 @@
 module am_irre_cell
 
     use am_constants
+    use am_matlab
     use am_stdout
     use am_options
     use am_symmetry
@@ -8,6 +9,7 @@ module am_irre_cell
     use am_prim_cell
     use am_mkl
     use am_atom
+    use dispmodule
 
     implicit none
 
@@ -20,7 +22,6 @@ module am_irre_cell
     contains
         procedure :: get_irreducible
         procedure :: initialize_orbitals
-        procedure :: print_orbital_basis
     end type am_class_irre_cell
 
 contains
@@ -153,42 +154,128 @@ contains
         class(am_class_irre_cell), intent(inout) :: ic
         type(am_class_options)   , intent(in) :: opts
         integer :: i
+        character(100) :: fname
         !
         call print_title('Atomic orbitals')
         !
-        ! create basis on each irreducible atoms
-        allocate(ic%atom(ic%natoms))
-        do i = 1, ic%natoms
-            call ic%atom(i)%gen_orbitals(orbital_flags='2s,2p')
-        enddo
-        if (opts%verbosity.ge.1) call ic%print_orbital_basis()
-        !
-    end subroutine initialize_orbitals
-
-    subroutine     print_orbital_basis(ic)
-        !
-        implicit none
-        !
-        class(am_class_irre_cell) , intent(inout) :: ic
-        integer :: n,l,m,s
-        integer :: i,j
-        !
-        do i = 1, ic%natoms
-            write(*,'(a5,a)',advance='no') ' ... ', 'irreducible atom '//trim(int2char(i))//' contributes '//trim(int2char(ic%atom(i)%norbitals))//' orbitals (n,l,m,s):'
-            !
-            do j = 1, ic%atom(i)%norbitals
-                if (mod(j,6).eq.1) then
-                    write(*,*)
-                    write(*,'(5x)',advance='no')
-                endif
-                n = ic%atom(i)%orbital(1,j)
-                l = ic%atom(i)%orbital(2,j)
-                m = ic%atom(i)%orbital(3,j)
-                s = ic%atom(i)%orbital(4,j)
-                write(*,'(a2,i2,a1,i2,a1,i2,a1,i2,a2)',advance='no') ' (', n, ',', l, ',', m, ',', s, ') '
+        fname = 'infile.tb_orbitals'
+        if (fexists(fname)) then
+            ! read it
+            call read_orbital_basis(ic,fname,opts%verbosity)
+        else
+            ! create basis on each irreducible atoms
+            allocate(ic%atom(ic%natoms))
+            do i = 1, ic%natoms
+                call ic%atom(i)%gen_orbitals(orbital_flags='2s,2p')
             enddo
-            write(*,*)
-        enddo
-    end subroutine print_orbital_basis
+            call write_orbital_basis(ic)
+        endif
+        !
+        if (opts%verbosity.ge.1) call print_orbital_basis(ic)
+        !
+        contains
+        subroutine     write_orbital_basis(ic)
+            !
+            implicit none
+            !
+            class(am_class_irre_cell), intent(inout) :: ic
+            integer :: i, j
+            integer :: fid
+            !
+            fid = 1
+            open(unit=fid,file='outfile.tb_orbitals',status='replace',action='write')
+                ! spin polarized?
+                write(fid,'(a)') 'spin: off'
+                ! irreducible atoms
+                write(fid,'(a,a)') 'irreducible atoms: ', tostring(ic%natoms)
+                ! loop over irreducible atoms
+                do i = 1, ic%natoms
+                    write(fid,'(i10)',advance='no') i
+                    ! loop over azimuthal quantum numbers
+                    do j = 1, ic%atom(i)%nazimuthals
+                        write(fid,'(a)',advance='no') ' '//trim(ic%atom(i)%orbname(j))
+                    enddo
+                enddo
+            close(fid)
+            !
+        end subroutine write_orbital_basis
+        subroutine     read_orbital_basis(ic,fname,verbosity)
+            !
+            implicit none
+            !
+            class(am_class_irre_cell), intent(inout) :: ic
+            character(*), intent(in) :: fname
+            integer, intent(in) :: verbosity
+            integer :: i,j,k
+            integer :: fid
+            integer :: iostat
+            character(maximum_buffer_size) :: buffer ! read buffer
+            character(len=:), allocatable :: word(:) ! read buffer
+            integer :: ic_natoms, nazimuthals
+            character(len=100) :: orbital_flags
+            character(len=100) :: spin_polarized_flag
+            !
+            fid = 1
+            open(unit=fid,file=trim(fname),status="old",action='read')
+                !
+                write(*,'(a5,a)') ' ... ', 'reading atomic orbitals'
+                ! spin polarized?
+                read(unit=fid,fmt='(a)') buffer
+                word = strsplit(buffer,delimiter=' ')
+                read(word(2),*) spin_polarized_flag
+                ! irreducible atoms
+                read(unit=fid,fmt='(a)') buffer
+                word = strsplit(buffer,delimiter=' ')
+                read(word(3),*) ic_natoms
+                write(*,'(a5,a,a)') ' ... ', 'irreducible atoms = ', tostring(ic_natoms)
+                ! set irreducible atoms
+                if (ic%natoms.ne.ic_natoms) stop 'number of irreducible atoms input does not match internally calculated.'
+                allocate(ic%atom(ic_natoms))
+                ! loop over irreducible atoms
+                do j = 1, ic_natoms
+                    read(unit=fid,fmt='(a)') buffer
+                    word = strsplit(buffer,delimiter=' ')
+                    read(word(1),*) i
+                    !
+                    nazimuthals = size(word) - 1
+                    write(*,'(a5,a,a,a)', advance='no') ' ... ', 'atom ', tostring(ic_natoms), ' azimuthals ('//tostring(nazimuthals)//'): '
+                    if (nazimuthals.le.0) stop 'number of azimuthals < 0'
+                    !
+                    orbital_flags=trim(spin_polarized_flag)
+                    do k = 1, nazimuthals
+                        orbital_flags=trim(orbital_flags)//','//trim(word(k+1))
+                        write(*,'(a)',advance='no') ' '//trim(word(k+1))
+                    enddo
+                    write(*,*)
+                    !
+                    call ic%atom(i)%gen_orbitals(orbital_flags=orbital_flags)
+                    !
+                enddo
+            close(fid)
+            !
+        end subroutine read_orbital_basis
+        subroutine     print_orbital_basis(ic)
+            !
+            implicit none
+            !
+            class(am_class_irre_cell) , intent(inout) :: ic
+            integer :: n,l,m,s
+            integer :: i,j,a
+            !
+            do i = 1, ic%natoms
+                write(*,'(a5,a)') ' ... ', 'irreducible atom '//trim(int2char(i))//' contributes '//trim(int2char(ic%atom(i)%norbitals))//' orbitals |n,l,m,s> :'
+                do a = 1, ic%atom(i)%nazimuthals
+                    write(*,'(5x,a,a)') trim(ic%atom(i)%orbname(a)), ':'
+                do j = 1, ic%atom(i)%norbitals
+                    n = ic%atom(i)%orbital(1,j)
+                    l = ic%atom(i)%orbital(2,j)
+                    m = ic%atom(i)%orbital(3,j)
+                    s = ic%atom(i)%orbital(4,j)
+                    if (ic%atom(i)%azimuthal(a).eq.l) write(*,'(5x,a2,i2,a1,i2,a1,i2,a1,i2,a2)') ' |', n, ',', l, ',', m, ',', s, '> '
+                enddo
+                enddo
+            enddo
+        end subroutine print_orbital_basis
+    end subroutine initialize_orbitals
 
 end module am_irre_cell

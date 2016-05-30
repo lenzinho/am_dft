@@ -1007,7 +1007,7 @@ module am_matlab
         !
         implicit none
         !
-        character(max_argument_length) :: fname
+        character(*) :: fname
         logical :: fexists
         !
         inquire(file=trim(fname),exist=fexists)

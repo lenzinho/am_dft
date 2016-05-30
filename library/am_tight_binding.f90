@@ -238,9 +238,9 @@ contains
         H = cmplx(0,0,dp)
         ! construct Hamiltonian
         do l = 1, ip%nshells
+        if ( mask(l) ) then
             do k = 1, pp%nshells
             if (abs(pp%ip_id(k)).eq.l) then
-            !if ( mask(abs(pp%ip_id(k))) ) then
                 ! primitive atom indicies
                 m = pp%shell(k)%m
                 n = pp%shell(k)%n
@@ -270,6 +270,7 @@ contains
             call disp(H)
             !
             if ( .not. isequal(H,adjoint(H)) ) stop 'H is not Hermitian.'
+        endif
         enddo
     end function   get_hamiltonian
 
