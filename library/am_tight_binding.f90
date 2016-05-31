@@ -18,24 +18,49 @@ module am_tight_binding
 
     public :: test_hamiltonian, set_Vsk_dummies ! for testing
 
-    type, public, extends(am_class_group) :: am_class_tb_pg
-    end type am_class_tb_pg
-
     type, public, extends(am_class_tensor) :: am_class_tens_tb
+        ! <INHERITED>
+        ! character(100)        :: property       ! name of property
+        ! character(100)        :: flags          ! axial/polar/tight
+        ! integer               :: rank           ! tensor rank
+        ! integer , allocatable :: dims(:)        ! tensor dimensions
+        ! real(dp), allocatable :: relations(:,:) ! relations connecting tensor elements
+        ! real(dp), allocatable :: V(:)           ! the value of the tensor, use reshape(V,dims)
+        ! </INHERITED>
     end type am_class_tens_tb
 
     type, public :: am_class_tight_binding
-        integer :: nshells ! how many shells irreducible atoms
+        integer :: nshells                     ! how many shells irreducible atoms
         type(am_class_tens_tb), allocatable :: tbvsk(:)  ! tbvsk(nshells)
-        !
+    end type am_class_tight_binding
+
+    type, public, extends(am_class_tight_binding) :: am_class_irre_tight_binding
         integer, allocatable :: nVs            ! number of irreducible matrix element values
         integer, allocatable :: V(:)           ! their values
         integer, allocatable :: V_ind(:,:)     ! their indices V_ind( [i,j], nVs); j = compound [alpha x beta index, see initialize_tb subroutine]
-        !
         contains
             procedure :: initialize_tb
             procedure :: get_hamiltonian
-    end type am_class_tight_binding
+    end type am_class_irre_tight_binding
+
+    type, public :: am_class_explicit_tb
+        ! explicit tb (should be entire self contained so that the band structure can be generated from matlab)
+        integer  :: natoms
+        real(dp), allocatable :: tau_cart(:,:) ! explicit atomic positions
+        real(dp), allocatable :: tau_frac(:,:) ! explicit atomic positions
+        integer , allocatable :: m(:)   ! primitive atom index
+        integer , allocatable :: n(:)   ! primitive atom index
+        integer , allocatable :: i(:)   ! irreducible atom index
+        integer , allocatable :: j(:)   ! irreducible atom index
+        integer , allocatable :: nVs(:) ! number of tight binding parameters
+        integer , allocatable :: dims(:,:) ! dimensions of tight binding matrix
+        real(dp), allocatable :: Dm(:,:)! rotation primitive atom index
+        real(dp), allocatable :: Dn(:,:)! rotation primitive atom index
+        real(dp), allocatable :: V(:,:) ! tight binding parameters
+        contains
+            procedure :: get_explicit_tb
+            procedure :: write_explicit_tb
+    end type am_class_explicit_tb
 
 contains
 
@@ -43,12 +68,12 @@ contains
         !
         implicit none
         !
-        class(am_class_tight_binding), intent(out) :: tb   ! tight binding parameters
-        type(am_class_point_group)   , intent(in)  :: pg   ! seitz point group
-        type(am_class_prim_cell)     , intent(in)  :: pc   ! primitive cell
-        type(am_class_irre_cell)     , intent(in)  :: ic   ! irreducible cell
-        type(am_class_irre_pair)     , intent(in)  :: ip   ! irreducible pairs
-        type(am_class_options)       , intent(in)  :: opts
+        class(am_class_irre_tight_binding), intent(out) :: tb   ! tight binding parameters
+        type(am_class_point_group)        , intent(in)  :: pg   ! seitz point group
+        type(am_class_prim_cell)          , intent(in)  :: pc   ! primitive cell
+        type(am_class_irre_cell)          , intent(in)  :: ic   ! irreducible cell
+        type(am_class_irre_pair)          , intent(in)  :: ip   ! irreducible pairs
+        type(am_class_options)            , intent(in)  :: opts
         logical, allocatable :: is_independent(:)
         integer :: sub(2)
         integer :: nterms
@@ -195,7 +220,7 @@ contains
         ! 
         implicit none
         !
-        class(am_class_tight_binding), intent(in) :: tb     ! tight binding matrix elements
+        class(am_class_irre_tight_binding), intent(in) :: tb     ! tight binding matrix elements
         type(am_class_tb_group)      , intent(in) :: tbpg   ! point group in tight binding representation
         type(am_class_irre_cell)     , intent(in) :: ic     ! irreducible cell
         type(am_class_prim_pair)     , intent(in) :: pp     ! primitive pairs
@@ -247,7 +272,6 @@ contains
                 ! irreducible atom indicies
                 i = pp%shell(k)%i
                 j = pp%shell(k)%j
-                ! tbpg%sym(tbpg%H_start(pc_id):tbpg%H_end(pc_id), tbpg%H_start(pc_id):tbpg%H_end(pc_id), pg_id)
                 ! compute bloch sum by loop over atoms in shell
                 do p = 1, pp%shell(k)%natoms
                     ! set pointers
@@ -259,53 +283,65 @@ contains
                     ! rotate matrix elements as needed to get from the tau_frac(:,1) => tau_frac(:,x)
                     Hsub = matmul(matmul(transpose(Dm), Hsub), Dn)
                     ! multiply exponential factor from Bloch sum
-                    Hsub = Hsub * exp(-itwopi*dot_product(pp%shell(k)%tau_frac(1:3,p), kpt)) ! kpt is in fractional
+                    Hsub = Hsub * exp(-itwopi*dot_product(pp%shell(k)%tau_cart(1:3,p), kpt)) ! kpt is in fractional
                     ! this pair's contribution to the Hamiltonian
                     H(S(m):E(m), S(n):E(n)) = H(S(m):E(m), S(n):E(n)) + Hsub
                 enddo
             endif
             enddo
-            !
-            write(*,'(a5,a,a)') ' ... ', 'irreducible shell: ', tostring(l)
-            call disp(H)
-            !
+            ! write(*,'(a5,a,a)') ' ... ', 'irreducible shell: ', tostring(l)
+            ! call disp(H)
             if ( .not. isequal(H,adjoint(H)) ) stop 'H is not Hermitian.'
         endif
         enddo
     end function   get_hamiltonian
 
-
-
     subroutine     test_hamiltonian(tb,tbpg,ic,ip,pp)
         ! makes sure Hamiltonian at Gamma commutes with all point symmetry operations
         implicit none
         !
-        type(am_class_tight_binding) , intent(in) :: tb   ! tight binding matrix elements
+        type(am_class_irre_tight_binding) , intent(in) :: tb   ! tight binding matrix elements
         type(am_class_tb_group)      , intent(in) :: tbpg ! point group in tight binding representation
         type(am_class_irre_cell)     , intent(in) :: ic   ! irreducible cell
         type(am_class_prim_pair)     , intent(in) :: pp   ! primitive pairs
         type(am_class_irre_pair)     , intent(in) :: ip   ! irreducible pairs
         complex(dp), allocatable :: H(:,:)
         real(dp)   , allocatable :: R(:,:)
-        integer :: i
+        logical    , allocatable :: mask(:) ! mask the irreducible shells which are considered in construction of the hamiltonin
+        integer :: i, j
         !
-        H = tb%get_hamiltonian(tbpg=tbpg, ic=ic, ip=ip, pp=pp, kpt=real([0,0,0],dp))
-        !
-        ! check that H is hermitian
-        if ( .not. isequal(H,adjoint(H)) ) then
-            call disp('H',H)
-            stop 'H is not Hermitian.'
-        endif
-        !
+        ! allocate space for mask
+        allocate(mask(ip%nshells))
+        ! allocate space for symmetry in tb basis
         allocate(R(tbpg%nbases,tbpg%nbases))
-        do i = 1, tbpg%nsyms
-            R = tbpg%sym(:,:,i)
-            if (.not.isequal(matmul(H,R),matmul(R,H))) then
+        !
+        call print_title('Checking Hamiltonian at Gamma')
+        !
+        ! loop over irreducible shells
+        do j = 1, ip%nshells
+            ! ignore all irreducible shells, except j
+            mask = .false.
+            mask(j) = .true.
+            !
+            H = tb%get_hamiltonian(tbpg=tbpg, ic=ic, ip=ip, pp=pp, kpt=real([0,0,0],dp),iopt_mask=mask)
+            !
+            ! check that H is hermitian
+            if ( .not. isequal(H,adjoint(H)) ) then
                 call disp('H',H)
-                call disp('R',R)
-                call disp('[H,R]',matmul(H,R)-matmul(R,H))
-                stop 'H does not commute with symmetry.'
+                stop 'H is not Hermitian.'
             endif
+            !
+            do i = 1, tbpg%nsyms
+                R = tbpg%sym(:,:,i)
+                if (.not.isequal(matmul(H,R),matmul(R,H))) then
+                    call disp('H',H,style='above')
+                    call disp('R',R,style='above')
+                    call disp('[H,R]',matmul(H,R)-matmul(R,H),style='above')
+                    stop 'H does not commute with symmetry.'
+                endif
+            enddo
+            !
+            write(*,'(a5,a)') ' ... ' ,'shell '//tostring(j)//': OK!'
         enddo
     end subroutine test_hamiltonian
 
@@ -320,7 +356,7 @@ contains
         !
         implicit none
         !
-        class(am_class_tight_binding), intent(in) :: tb
+        class(am_class_irre_tight_binding), intent(in) :: tb
         type(am_class_atom), intent(in) :: atom_m
         type(am_class_atom), intent(in) :: atom_n
         integer , intent(in) :: ip_id
@@ -334,7 +370,6 @@ contains
         m = tb%tbvsk(id)%dims(1)
         n = tb%tbvsk(id)%dims(2)
         ! if irreducible pair id is negative, it means the pair was flipped
-        ! note the lack of an absolte value!
         if (ip_id.lt.0) then
             allocate(V(n,m))
             V = adjoint( reshape(tb%tbvsk(id)%V, [m,n]) ) ! * transp_parity_sign(atom_m=atom_m, atom_n=atom_n)
@@ -349,14 +384,17 @@ contains
         ! flags = seq/rand
         implicit none
         !
-        class(am_class_tight_binding), intent(inout) :: tb
+        class(am_class_irre_tight_binding), intent(inout) :: tb
         character(*), intent(in) :: flags
         integer :: i, j, k, alpha, beta
         !
         ! set irreducible matrix elements
         do i = 1, tb%nVs
-            if      (index(flags, 'seq').ne.0) then; tb%V(i) = i
-            elseif  (index(flags,'rand').ne.0) then; tb%V(i) = rand()
+            if      (index(flags, 'seq').ne.0) then
+                tb%V(i) = i
+            elseif  (index(flags,'rand').ne.0) then
+                stop 'rand does not seem to be working here'
+                tb%V(i) = rand()
             else
                 stop 'Unknown flag set_Vsk_dummies'
             endif
@@ -398,7 +436,7 @@ contains
         !
         implicit none
         !
-        class(am_class_tight_binding), intent(in) :: tb
+        class(am_class_irre_tight_binding), intent(in) :: tb
         integer :: k ! shell index
         integer :: alpha
         integer :: beta
@@ -413,8 +451,130 @@ contains
             ! write 
             write(*,*) k, alpha, beta, tb%V(i)
         enddo
-
     end subroutine write_irreducible_Vsk
+
+    ! explicit tb (should be entire self contained so that the band structure can be generated in matlab)
+
+    subroutine     get_explicit_tb(etb,tb,tbpg,ic,pp)
+        ! 
+        implicit none
+        !
+        class(am_class_explicit_tb)      , intent(out) :: etb    ! explicit    tight binding matrix elements
+        type(am_class_irre_tight_binding), intent(in)  :: tb     ! irreducible tight binding matrix elements
+        type(am_class_tb_group)          , intent(in)  :: tbpg   ! point group in tight binding representation
+        type(am_class_irre_cell)         , intent(in)  :: ic     ! irreducible cell
+        type(am_class_prim_pair)         , intent(in)  :: pp     ! primitive pairs
+        integer    , allocatable :: S(:) ,E(:)
+        real(dp)   , allocatable, target :: wrktbpg(:,:,:)
+        real(dp), pointer :: Dm(:,:), Dn(:,:)
+        integer :: m ! primitive atom 1 index 
+        integer :: n ! primitive atom 2 index
+        integer :: i ! irreducible atom 1 index 
+        integer :: j ! irreducible atom 2 index
+        integer :: k ! shell (primitive)
+        integer :: p ! atoms
+        integer :: z ! explicit pair counter
+        integer :: maxorbitals
+        !
+        ! allocate space for vectors demarking start and end of Hamiltonian subsection
+        allocate(S, source=tbpg%H_start)
+        allocate(E, source=tbpg%H_end)
+        ! allocate workspace for H subsection (initialized later)
+        allocate(wrktbpg, source=tbpg%sym)
+        !
+        ! get number of shells
+        etb%natoms = 0
+        do k = 1, pp%nshells
+            etb%natoms = etb%natoms + pp%shell(k)%natoms
+        enddo
+        ! get largest basis on any given atom
+        maxorbitals = 0
+        do i = 1, ic%natoms
+            if (ic%atom(i)%norbitals.gt.maxorbitals) maxorbitals = ic%atom(i)%norbitals
+        enddo
+        ! allocate stuff
+        allocate(etb%tau_cart(3,etb%natoms))
+        allocate(etb%tau_frac(3,etb%natoms))
+        allocate(etb%m(etb%natoms))
+        allocate(etb%n(etb%natoms))
+        allocate(etb%i(etb%natoms))
+        allocate(etb%j(etb%natoms))
+        allocate(etb%nVs(etb%natoms))
+        allocate(etb%dims(2,etb%natoms))
+        allocate(etb%V(maxorbitals**2,etb%natoms))
+        allocate(etb%Dm(maxorbitals**2,etb%natoms))
+        allocate(etb%Dn(maxorbitals**2,etb%natoms))
+        ! initializ stuff
+        etb%tau_cart = 1234
+        etb%tau_frac = 1234
+        etb%m        = 1234
+        etb%n        = 1234
+        etb%i        = 1234
+        etb%j        = 1234
+        etb%nVs      = 1234
+        etb%dims     = 1234
+        etb%V        = 1234
+        etb%Dm       = 1234
+        etb%Dn       = 1234
+        ! transfer stuff
+        z = 0
+        do k = 1, pp%nshells
+            m = pp%shell(k)%m
+            n = pp%shell(k)%n
+            i = pp%shell(k)%i 
+            j = pp%shell(k)%j 
+        do p = 1, pp%shell(k)%natoms
+            z=z+1
+            Dm => wrktbpg(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p) )
+            Dn => wrktbpg(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
+            etb%tau_cart(1:3,z)          = pp%shell(k)%tau_cart(1:3,p)
+            etb%tau_frac(1:3,z)          = pp%shell(k)%tau_frac(1:3,p)
+            etb%m(z)                     = m
+            etb%n(z)                     = n
+            etb%i(z)                     = i
+            etb%j(z)                     = j
+            etb%dims(1:2,z)              = [E(m)-S(m)+1, E(n)-S(n)+1]
+            etb%nVs(z)                   = product(etb%dims(1:2,z))
+            etb%V(1:etb%nVs(z),z)        = reshape( matmul(matmul(transpose(Dm), get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))), Dn), [etb%nVs(z)] )
+            etb%Dm(1:etb%dims(1,z)**2,z) = reshape(Dm,[etb%dims(1,z)**2])
+            etb%Dn(1:etb%dims(2,z)**2,z) = reshape(Dn,[etb%dims(2,z)**2])
+            call disp('Dn',Dn)
+            call disp('Dn',reshape(etb%Dn(1:etb%dims(2,z)**2,z),[etb%dims(2,z),etb%dims(2,z)]))
+
+        enddo
+        enddo
+    end subroutine get_explicit_tb
+
+    subroutine     write_explicit_tb(etb)
+        ! 
+        implicit none
+        !
+        class(am_class_explicit_tb), intent(in) :: etb
+        integer :: fid
+        integer :: z
+        !
+        fid = 1
+        open(unit=fid,file='outfile.tb_matrix_elements',status='replace',action='write')
+            write(fid,*) etb%natoms
+            do z = 1, etb%natoms
+                write(fid,*) '-------------------------------------------------------------------------------'
+                write(fid,*) 'primitive indices:'
+                call disp(unit=fid,X=[etb%m(z), etb%n(z)]                             ,orient='row',fmt='i10'  ,trim='no')
+                write(fid,*) 'irreducible indices:'
+                call disp(unit=fid,X=[etb%i(z), etb%j(z)]                             ,orient='row',fmt='i10'  ,trim='no')
+                write(fid,*) "R-R' [cart]:"
+                call disp(unit=fid,X=etb%tau_cart(1:3,z)                              ,orient='row',fmt='f10.5',trim='no')
+                write(fid,*) 'matrix elements ('//tostring(etb%dims(1,z))//' x '//tostring(etb%dims(2,z))//'):'
+                call disp(unit=fid,X=reshape(etb%V(1:etb%nVs(z),z), [etb%dims(1,z), etb%dims(2,z)]),fmt='f10.5',trim='no')
+                write(fid,*) 'Dm ('//tostring(etb%dims(1,z))//' x '//tostring(etb%dims(1,z))//'):'
+                call disp(unit=fid,X=reshape(etb%Dm(1:etb%dims(1,z)**2,z), [etb%dims(1,z), etb%dims(1,z)]),fmt='f10.5',trim='no')
+                write(fid,*) 'Dn ('//tostring(etb%dims(2,z))//' x '//tostring(etb%dims(2,z))//'):'
+                call disp(unit=fid,X=reshape(etb%Dn(1:etb%dims(2,z)**2,z), [etb%dims(2,z), etb%dims(2,z)]),fmt='f10.5',trim='no')
+            enddo
+        close(unit=fid)
+    end subroutine write_explicit_tb
+
+
 
 
 !         function       sort_seitz_based_on_tau_frac(tau_frac,seitz) result(seitz_out)

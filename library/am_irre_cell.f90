@@ -106,7 +106,6 @@ contains
             enddo
         endif
         ! print stdout
-
         if (opts%verbosity.ge.1) then
             allocate(character(4) :: str(ic%natoms))
             !

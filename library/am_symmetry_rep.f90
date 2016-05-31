@@ -144,6 +144,8 @@ module am_symmetry_rep
         do i = 1, pg%nsyms
             tbpg%sym(:,:,i) = ps2tb_H(R_cart=pg%seitz_cart(1:3,1:3,i), pc=pc, ic=ic)
         enddo
+        ! correct basic rounding errors
+        where (abs(nint(tbpg%sym)-tbpg%sym).lt.tiny) tbpg%sym = nint(tbpg%sym)
         ! copy symmetry ids
         allocate(tbpg%ps_id, source=pg%ps_id)
         ! copy classes
@@ -256,6 +258,10 @@ module am_symmetry_rep
             allocate(flat_ig%sym(flat_ig%nbases,flat_ig%nbases,flat_ig%nsyms))
             k=k+1; flat_ig%sym(:,:,k) = eye(flat_ig%nbases)    ! E
             k=k+1; flat_ig%sym(:,:,k) = orbital_parity(atom_m,atom_n) ! (l,l',m) = (-1)^(l+l') (l',l,m)
+            ! for the cases in which one atom only has s orbital, the orbital parity = identity.
+            ! if unique is not taken here, it will cause problems later on when attempting to determine the multiplication table
+            flat_ig%sym = unique(flat_ig%sym)
+            flat_ig%nsyms = size(flat_ig%sym,3)
         elseif (index(tens%flags   ,'i/=j'             ).ne.0) then
             ! atoms correspond to different irreducible atoms
             flat_ig%nsyms = 1
