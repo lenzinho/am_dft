@@ -88,7 +88,10 @@ contains
         allocate(tb%tbvsk(tb%nshells))
         !
         do k = 1, tb%nshells
-            call get_shell_relations(tbvsk=tb%tbvsk(k), pg=pg, pc=pc, ic=ic, shell=ip%shell(k), opts=opts)
+            ! get rank, dims, flags, property
+            call initialize_tbvsk(tbvsk=tb%tbvsk(k), pc=pc, ic=ic, shell=ip%shell(k))
+            ! get relations
+            call get_shell_relations(tbvsk=tb%tbvsk(k), pg=pg, ic=ic, shell=ip%shell(k), opts=opts)
         enddo
         ! get number of independent (irreducible) matrix elements
         tb%nVs = 0
@@ -184,13 +187,12 @@ contains
             allocate(tbvsk%V(tbvsk%dims(1)*tbvsk%dims(2)))
             !
         end subroutine initialize_tbvsk
-        subroutine     get_shell_relations(tbvsk,pg,pc,ic,shell,opts)
+        subroutine     get_shell_relations(tbvsk,pg,ic,shell,opts)
                 !
                 implicit none
                 !
                 type(am_class_tens_tb)    , intent(inout) :: tbvsk
                 type(am_class_point_group), intent(in) :: pg   ! seitz point group
-                type(am_class_prim_cell)  , intent(in) :: pc
                 type(am_class_irre_cell)  , intent(in) :: ic
                 type(am_shell_cell)       , intent(in) :: shell
                 type(am_class_options)    , intent(in) :: opts
@@ -198,8 +200,6 @@ contains
                 type(am_class_flat_group)  :: flat_ig
                 type(am_class_point_group) :: stab
                 !
-                ! get rank, dims, flags, property
-                call initialize_tbvsk(tbvsk=tbvsk, pc=pc, ic=ic, shell=shell)
                 ! determine intrinsic symmetries (if both irreducible atoms are of the same irreducible type)
                 ! Interchange of indices: (l,l',m) = (-1)^(l+l') * (l',l,m), due to parity of wavefunction. (s,d are even under inversion, p,f are odd)
                 ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245. Also see R. Martin.
@@ -280,9 +280,6 @@ contains
                     Dn   => wrktbpg(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
                     ! get matrix elements (initialize Hsub)
                     Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))
-                    ! check dimensions
-                    if (size(Dm,2).ne.size(Hsub,1)) stop 'Dm * Hsub : dimension mismatch'
-                    if (size(Dn,1).ne.size(Hsub,2)) stop 'Hsub * Dn : dimension mismatch'
                     ! rotate matrix elements as needed to get from the tau_frac(:,1) => tau_frac(:,x)
                     Hsub = matmul(matmul(transpose(Dm), Hsub), Dn)
                     ! multiply exponential factor from Bloch sum
@@ -292,9 +289,6 @@ contains
                 enddo
             endif
             enddo
-            ! write(*,'(a5,a,a)') ' ... ', 'irreducible shell: ', tostring(l)
-            ! call disp(H)
-            ! if ( .not. isequal(H,adjoint(H)) ) stop 'H is not Hermitian.'
         endif
         enddo
     end function   get_hamiltonian
