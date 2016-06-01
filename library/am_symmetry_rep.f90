@@ -157,6 +157,8 @@ module am_symmetry_rep
         ! check that identity is first
         if (.not.isequal(tbpg%sym(:,:,1),eye(tbpg%nbases))) stop 'tbpg: Identity is not first.'
         !
+        call tbpg%write_outfile(iopt_filename='outfile.tb_pointgroup')
+        !
         contains
         function       ps2tb_H(R_cart,pc,ic) result(H)
             ! produces rotation which commutes with the entire Hamiltonian (useful building Hamiltonian and probably later for kpoints stuff too)

@@ -22,11 +22,11 @@ module am_symmetry
         type(am_class_multiplication_table) :: mt     ! multiplication table
     contains
         procedure :: sort_symmetries
-        procedure :: dump
         procedure :: get_multiplication_table
         procedure :: get_conjugacy_classes
         procedure :: get_character_table
         procedure :: print_character_table
+        procedure :: write_outfile
     end type am_class_group
 
     type, public, extends(am_class_group)       :: am_class_symrep_group
@@ -43,7 +43,6 @@ module am_symmetry
         ! sym(:,:,:) are seitz operators
         contains
         procedure :: create_seitz_group
-        procedure :: write_outfile
         procedure :: write_action_table
     end type am_class_seitz_group
 
@@ -145,7 +144,7 @@ contains
         !
     end subroutine sort_symmetries
 
-    subroutine     dump(grp,iopt_filename)
+    subroutine     write_outfile(grp,iopt_filename)
         !
         implicit none
         !
@@ -160,15 +159,19 @@ contains
         !
         fid = 1
         open(unit=fid,file=trim(iopt_filename),status="replace",action='write')
+            !
+            write(fid,'(a,a)') tostring(grp%nsyms),  ' symmetries'
+            write(fid,'(a,a)') tostring(grp%nbases), ' dimensions'
+            !
             select type (grp)
             class is (am_class_symrep_group)
                 ! [unitless]  
                 call dump_sym_to_file(fid=fid, sym=grp%sym, header='')
             class is (am_class_seitz_group)
-                ! symmerties [frac.]
-                call dump_sym_to_file(fid=fid, sym=grp%seitz_frac,    header='[frac.]')
+                ! symmerties [cart./frac.]
                 call dump_sym_to_file(fid=fid, sym=grp%seitz_cart,    header='[cart.]')
-                call dump_sym_to_file(fid=fid, sym=grp%seitz_recfrac, header='[rec. frac.]')
+                call dump_sym_to_file(fid=fid, sym=grp%seitz_frac,    header='[frac.]')
+                ! call dump_sym_to_file(fid=fid, sym=grp%seitz_recfrac, header='[rec. frac.]')
             class default
                 stop 'Class unknown!'
             end select
@@ -185,20 +188,12 @@ contains
             integer :: nbases, nsyms
             integer :: i,j,k
             !
-            nsyms  = size(sym,3)
-            nbases = size(sym,1)
-            !
-            do i = 1, nsyms
-                write(fid,*) 'symmetry', i, header
-                do j = 1, nbases
-                    do k = 1, nbases
-                        write(fid,"(f)",advance='no') sym(j,k,i)
-                    enddo
-                    write(fid,*)
-                enddo
+            do i = 1, size(sym,3)
+                call disp(unit=fid,title=tostring(i)//' '//trim(header),style='underline',X=sym(:,:,i),fmt='f18.10')
             enddo
+            !
         end subroutine dump_sym_to_file
-    end subroutine dump
+    end subroutine write_outfile
 
     subroutine     get_multiplication_table(grp)
         !
@@ -432,8 +427,8 @@ contains
         sg%bas = bas
         ! get reciprocal basis in which [recfrac] are defined
         sg%recbas = inv(bas)
-        ! number of "bases functions", doesn't have any real meaning here. Using 3 rather than 4.
-        sg%nbases = 3
+        ! number of "bases functions", doesn't have any real meaning here.
+        sg%nbases = 4
         ! get number of symmetries
         sg%nsyms = size(seitz_frac,3)
         ! get symmetries [frac.]
@@ -930,102 +925,6 @@ contains
         !
     end subroutine get_reversal_group
 
-    subroutine     write_outfile(sg,iopt_filename)
-        !
-        implicit none
-        !
-        class(am_class_seitz_group), intent(in) ::  sg
-        character(*), intent(in), optional :: iopt_filename
-        integer :: width
-        real(dp) :: R(3,3), T(3)
-        integer :: fid
-        integer :: i,j,k
-        character(15) :: fmt5, fmt4, fmt6, fmt1, fmt2, fmt3
-        !
-        if ( present(iopt_filename) ) then
-            ! write to file
-            fid = 1
-            open(unit=fid,file=trim(iopt_filename),status="replace",action='write')
-        else
-            ! write_outfile
-            fid = 6
-        endif
-            !
-            ! write standard out to file
-            fmt5=   "(a4)"
-            fmt4=   "(a4,3a7)"
-            fmt6=       "(a7)"
-            fmt1="(5x,i3,9a7)"
-            fmt2="(5x,a3,9a7)"
-            fmt3="(5x,a)"
-            width = 9*7+3
-            width = width + 3*7+4
-            !
-            !
-            ! fractional
-            write(fid,fmt3) centertitle('seitz [frac.]',width)
-            write(fid,fmt3) repeat('-',width)
-            write(fid,fmt2,advance='no') '#', 'R11', 'R21', 'R31', 'R12', 'R22', 'R32', 'R13', 'R23', 'R33'
-            write(fid,fmt4,advance='no') '  | ', 'T1', 'T2', 'T3'
-            write(fid,*)
-            do i = 1, sg%nsyms
-                !
-                R = sg%seitz_frac(1:3,1:3,i)
-                write(fid,fmt1,advance='no') i, (( trim(print_pretty(R(j,k))), j = 1,3) , k = 1,3)
-                !
-                T = sg%seitz_frac(1:3,4,i)
-                write(fid,fmt5,advance='no') '  | '
-                do j = 1,3
-                    write(fid,fmt6,advance='no') trim(print_pretty(T(j)))
-                enddo
-                write(fid,*)
-                !
-            enddo
-            !
-            ! cartesian
-            write(fid,fmt3) centertitle('seitz [cart.]',width)
-            write(fid,fmt3) repeat('-',width)
-            write(fid,fmt2,advance='no') '#', 'R11', 'R21', 'R31', 'R12', 'R22', 'R32', 'R13', 'R23', 'R33'
-            write(fid,fmt4,advance='no') '  | ', 'T1', 'T2', 'T3'
-            write(fid,*)
-            !
-            do i = 1, sg%nsyms
-                !
-                R = sg%seitz_cart(1:3,1:3,i)
-                write(fid,fmt1,advance='no') i, (( trim(print_pretty(R(j,k))), j = 1,3) , k = 1,3)
-                !
-                T = sg%seitz_cart(1:3,4,i)
-                write(fid,fmt5,advance='no') '  | '
-                do j = 1,3
-                    write(fid,fmt6,advance='no') trim(print_pretty(T(j)))
-                enddo
-                write(fid,*)
-            enddo
-            !
-            ! recfrac
-            write(fid,fmt3) centertitle('seitz [rec. frac.]',width)
-            write(fid,fmt3) repeat('-',width)
-            write(fid,fmt2,advance='no') '#', 'R11', 'R21', 'R31', 'R12', 'R22', 'R32', 'R13', 'R23', 'R33'
-            write(fid,fmt4,advance='no') '  | ', 'T1', 'T2', 'T3'
-            write(fid,*)
-            !
-            do i = 1, sg%nsyms
-                !
-                R = sg%seitz_cart(1:3,1:3,i)
-                write(fid,fmt1,advance='no') i, (( trim(print_pretty(R(j,k))), j = 1,3) , k = 1,3)
-                !
-                T = sg%seitz_cart(1:3,4,i)
-                write(fid,fmt5,advance='no') '  | '
-                do j = 1,3
-                    write(fid,fmt6,advance='no') trim(print_pretty(T(j)))
-                enddo
-                write(fid,*)
-            enddo
-        ! close file
-        if ( present(iopt_filename) ) close(fid)
-        !
-    end subroutine write_outfile
-
     subroutine     write_action_table(sg,uc,fname,opts)
         !
         implicit none
@@ -1339,36 +1238,6 @@ contains
         ! close file
         close(fid)
     end subroutine write_action_table
-
-!     subroutine     print_tensor(seitz)
-!         !
-!         implicit none
-!         !
-!         real(dp), target, intent(in) :: seitz(:,:,:)
-!         integer :: i,j,k
-!         integer :: m,n,o
-!         integer :: t
-!         integer :: matrix_per_line
-!         real(dp), pointer :: p(:,:,:)
-!         !
-!         m=size(seitz,1)
-!         n=size(seitz,2)
-!         o=size(seitz,3)
-!         !
-!         t = 0
-!         do i = 1, m
-!             do k = 1, o ! get three tensors per line
-!                 do j = 1, n
-!                     write(*,'(f8.2)') seitz(i,j,k)
-!                 enddo
-!                     write(*,'(5x)')
-!                 enddo
-
-!             enddo
-
-!         enddo
-!         !
-!     end subroutine print_tensor
 
     ! decoding/naming functions 
 
