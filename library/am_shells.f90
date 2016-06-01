@@ -46,7 +46,7 @@ module am_shells
     end type am_class_irre_pair
 
 contains
-    
+
 	subroutine     get_pair_cutoff(uc,pair_cutoff,opts)
 		!
 		implicit none
