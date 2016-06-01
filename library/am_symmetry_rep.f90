@@ -526,6 +526,8 @@ module am_symmetry_rep
         end subroutine initialize_property
     end subroutine get_property
 
+    ! other stuff
+
     subroutine     get_direct_product(C,A,B)
         !
         implicit none

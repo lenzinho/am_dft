@@ -478,91 +478,50 @@ contains
 
     ! explicit tb (should be entire self contained so that the band structure can be generated in matlab)
 
-!     subroutine     write_tb_explicit(tb,tbpg,ic,pp)
-!         !
-!         implicit none
-!         !
-!         type(am_class_irre_tight_binding), intent(in)  :: tb     ! irreducible tight binding matrix elements
-!         type(am_class_tb_group)          , intent(in)  :: tbpg   ! point group in tight binding representation
-!         type(am_class_irre_cell)         , intent(in)  :: ic     ! irreducible cell
-!         type(am_class_prim_pair)         , intent(in)  :: pp     ! primitive pairs
-!         integer    , allocatable :: S(:) ,E(:)
-!         real(dp)   , allocatable, target :: wrktbpg(:,:,:)
-!         real(dp), pointer :: Dm(:,:), Dn(:,:)
-!         integer :: m ! primitive atom 1 index 
-!         integer :: n ! primitive atom 2 index
-!         integer :: i ! irreducible atom 1 index 
-!         integer :: j ! irreducible atom 2 index
-!         integer :: k ! shell (primitive)
-!         integer :: p ! atoms
-!         integer :: z ! explicit pair counter
-!         integer :: maxorbitals
-!         !
-!         ! allocate space for vectors demarking start and end of Hamiltonian subsection
-!         allocate(S, source=tbpg%H_start)
-!         allocate(E, source=tbpg%H_end)
-!         ! allocate workspace for H subsection (initialized later)
-!         allocate(wrktbpg, source=tbpg%sym)
-!         !
-!         ! get number of shells
-!         etb%natoms = 0
-!         do k = 1, pp%nshells
-!             etb%natoms = etb%natoms + pp%shell(k)%natoms
-!         enddo
-!         ! get largest basis on any given atom
-!         maxorbitals = 0
-!         do i = 1, ic%natoms
-!             if (ic%atom(i)%norbitals.gt.maxorbitals) maxorbitals = ic%atom(i)%norbitals
-!         enddo
-!         ! allocate stuff
-!         allocate(etb%tau_cart(3,etb%natoms))
-!         allocate(etb%tau_frac(3,etb%natoms))
-!         allocate(etb%m(etb%natoms))
-!         allocate(etb%n(etb%natoms))
-!         allocate(etb%i(etb%natoms))
-!         allocate(etb%j(etb%natoms))
-!         allocate(etb%nVs(etb%natoms))
-!         allocate(etb%dims(2,etb%natoms))
-!         allocate(etb%V(maxorbitals**2,etb%natoms))
-!         allocate(etb%Dm(maxorbitals**2,etb%natoms))
-!         allocate(etb%Dn(maxorbitals**2,etb%natoms))
-!         ! initializ stuff
-!         etb%tau_cart = 1234
-!         etb%tau_frac = 1234
-!         etb%m        = 1234
-!         etb%n        = 1234
-!         etb%i        = 1234
-!         etb%j        = 1234
-!         etb%nVs      = 1234
-!         etb%dims     = 1234
-!         etb%V        = 1234
-!         etb%Dm       = 1234
-!         etb%Dn       = 1234
-!         ! transfer stuff
-!         z = 0
-!         do k = 1, pp%nshells
-!             m = pp%shell(k)%m
-!             n = pp%shell(k)%n
-!             i = pp%shell(k)%i
-!             j = pp%shell(k)%j
-!         do p = 1, pp%shell(k)%natoms
-!             z=z+1
-!             Dm => wrktbpg(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p) )
-!             Dn => wrktbpg(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
-!             etb%tau_cart(1:3,z)          = pp%shell(k)%tau_cart(1:3,p)
-!             etb%tau_frac(1:3,z)          = pp%shell(k)%tau_frac(1:3,p)
-!             etb%m(z)                     = m
-!             etb%n(z)                     = n
-!             etb%i(z)                     = i
-!             etb%j(z)                     = j
-!             etb%dims(1:2,z)              = [E(m)-S(m)+1, E(n)-S(n)+1]
-!             etb%nVs(z)                   = product(etb%dims(1:2,z))
-!             etb%V(1:etb%nVs(z),z)        = reshape( matmul(matmul(transpose(Dm), get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))), Dn), [etb%nVs(z)] )
-!             etb%Dm(1:etb%dims(1,z)**2,z) = reshape(Dm,[etb%dims(1,z)**2])
-!             etb%Dn(1:etb%dims(2,z)**2,z) = reshape(Dn,[etb%dims(2,z)**2])
-!         enddo
-!         enddo
-!     end subroutine write_tb_explicit
+    subroutine     write_tb_explicit(tb,tbpg,ic,pp)
+        !
+        implicit none
+        !
+        type(am_class_irre_tight_binding), intent(in)  :: tb     ! irreducible tight binding matrix elements
+        type(am_class_tb_group)          , intent(in)  :: tbpg   ! point group in tight binding representation
+        type(am_class_irre_cell)         , intent(in)  :: ic     ! irreducible cell
+        type(am_class_prim_pair)         , intent(in)  :: pp     ! primitive pairs
+        integer    , allocatable :: S(:) ,E(:)
+        real(dp)   , allocatable, target :: wrktbpg(:,:,:)
+        real(dp), pointer :: Dm(:,:), Dn(:,:)
+        integer :: m ! primitive atom 1 index 
+        integer :: n ! primitive atom 2 index
+        integer :: i ! irreducible atom 1 index 
+        integer :: j ! irreducible atom 2 index
+        integer :: k ! shell (primitive)
+        integer :: p ! atoms
+        integer :: z ! explicit pair counter
+        integer :: maxorbitals
+        !
+        ! allocate space for vectors demarking start and end of Hamiltonian subsection
+        allocate(S, source=tbpg%H_start)
+        allocate(E, source=tbpg%H_end)
+        !
+        do k = 1, pp%nshells
+            m = pp%shell(k)%m
+            n = pp%shell(k)%n
+            i = pp%shell(k)%i
+            j = pp%shell(k)%j
+        do p = 1, pp%shell(k)%natoms
+            etb%tau_cart(1:3,z)          = pp%shell(k)%tau_cart(1:3,p)
+            etb%tau_frac(1:3,z)          = pp%shell(k)%tau_frac(1:3,p)
+            etb%m(z)                     = m
+            etb%n(z)                     = n
+            etb%i(z)                     = i
+            etb%j(z)                     = j
+            etb%dims(1:2,z)              = [E(m)-S(m)+1, E(n)-S(n)+1]
+            etb%nVs(z)                   = product(etb%dims(1:2,z))
+            etb%V(1:etb%nVs(z),z)        = reshape( matmul(matmul(transpose(Dm), get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))), Dn), [etb%nVs(z)] )
+            etb%Dm(1:etb%dims(1,z)**2,z) = reshape(Dm,[etb%dims(1,z)**2])
+            etb%Dn(1:etb%dims(2,z)**2,z) = reshape(Dn,[etb%dims(2,z)**2])
+        enddo
+        enddo
+    end subroutine write_tb_explicit
 
     subroutine     get_explicit_tb(etb,tb,tbpg,ic,pp)
         !
