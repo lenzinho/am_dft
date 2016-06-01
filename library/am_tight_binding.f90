@@ -299,7 +299,7 @@ contains
         enddo
     end function   get_hamiltonian
 
-    subroutine     test_hamiltonian(tb,tbpg,ic,ip,pp)
+    subroutine     test_hamiltonian(tb,tbpg,ic,ip,pp,pc)
         ! makes sure Hamiltonian at Gamma commutes with all point symmetry operations
         implicit none
         !
@@ -308,6 +308,8 @@ contains
         type(am_class_irre_cell)     , intent(in) :: ic   ! irreducible cell
         type(am_class_prim_pair)     , intent(in) :: pp   ! primitive pairs
         type(am_class_irre_pair)     , intent(in) :: ip   ! irreducible pairs
+        type(am_class_prim_cell)     , intent(in) :: pc ! primitive cell
+        type(am_class_tb_group)  :: tb_stab ! stabilizer group in tight binding representation
         complex(dp), allocatable :: H(:,:)
         real(dp)   , allocatable :: R(:,:)
         logical    , allocatable :: mask(:) ! mask the irreducible shells which are considered in construction of the hamiltonin
@@ -333,6 +335,18 @@ contains
                 call disp('H',H)
                 stop 'H is not Hermitian.'
             endif
+            ! check that H commutes with symmetries in stabilizer group
+            call tb_stab%get_tight_binding_point_group(pg=ip%shell(j)%stab, pc=pc, ic=ic)
+            do i = 1, tb_stab%nsyms
+                R = tb_stab%sym(:,:,i)
+                if (.not.isequal(matmul(H,R),matmul(R,H))) then
+                    call disp('H',H,style='above')
+                    call disp('R',R,style='above')
+                    call disp('[H,R]',matmul(H,R)-matmul(R,H),style='above')
+                    call disp("R'*H*R - H",matmul(matmul(transpose(R),H),R)-H,style='above')
+                    stop 'H does not commute with stabilizer symmetries.'
+                endif
+            enddo
             ! check that H commutes with all point symmetries
             do i = 1, tbpg%nsyms
                 R = tbpg%sym(:,:,i)
@@ -469,7 +483,7 @@ contains
     ! explicit tb (should be entire self contained so that the band structure can be generated in matlab)
 
     subroutine     get_explicit_tb(etb,tb,tbpg,ic,pp)
-        ! 
+        !
         implicit none
         !
         class(am_class_explicit_tb)      , intent(out) :: etb    ! explicit    tight binding matrix elements
