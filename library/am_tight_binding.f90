@@ -203,6 +203,7 @@ contains
                 ! determine intrinsic symmetries (if both irreducible atoms are of the same irreducible type)
                 ! Interchange of indices: (l,l',m) = (-1)^(l+l') * (l',l,m), due to parity of wavefunction. (s,d are even under inversion, p,f are odd)
                 ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245. Also see R. Martin.
+                ! NOTE: FOR SOME REASON, MUST CALL atom_m
                 call flat_ig%get_flat_intrinsic_group(tens=tbvsk, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i) )
                 ! determine stabilizers relations
                 call stab%get_stabilizer_group(pg=pg, v=shell%tau_cart(1:3,1), opts=opts, flags='cart')
@@ -388,7 +389,7 @@ contains
             ! atom_m and atom_n are taken from pp on input, as a result they are already in the correct order (no need to flip them)
             ! m and n are taken from ip on input, thus, they need to be flipped.
             S = transp_parity_sign(atom_m=atom_m, atom_n=atom_n)
-            if (.not.isequal(shape(S),shape(V))) stop 'S * V : dimension mismatch'
+            ! if (.not.isequal(shape(S),shape(V))) stop 'S * V : dimension mismatch'
             ! Adding the sign flip here seems to cause H to not be Hermitian...
             ! Looking at Chadi/Cohen and Vogl. There doesn't seem to be a sign flip.
             ! The sign flip is probably only used in determining the irreducible matrix elements.

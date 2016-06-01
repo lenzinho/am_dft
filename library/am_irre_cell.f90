@@ -218,7 +218,7 @@ contains
             fid = 1
             open(unit=fid,file=trim(fname),status="old",action='read')
                 !
-                write(*,'(a5,a)') ' ... ', 'reading atomic orbitals'
+                write(*,'(a5,a,a)') ' ... ', 'atomic orbitals read = ', trim(fname)
                 ! spin polarized?
                 read(unit=fid,fmt='(a)') buffer
                 word = strsplit(buffer,delimiter=' ')
@@ -238,7 +238,7 @@ contains
                     read(word(1),*) i
                     !
                     nazimuthals = size(word) - 1
-                    write(*,'(a5,a,a,a)', advance='no') ' ... ', 'atom ', tostring(ic_natoms), ' azimuthals ('//tostring(nazimuthals)//'): '
+                    write(*,'(a5,a,a,a)', advance='no') ' ... ', 'atom ', tostring(j), ' azimuthals ('//tostring(nazimuthals)//'):'
                     if (nazimuthals.le.0) stop 'number of azimuthals < 0'
                     !
                     orbital_flags=trim(spin_polarized_flag)
@@ -263,7 +263,7 @@ contains
             integer :: i,j,a
             !
             do i = 1, ic%natoms
-                write(*,'(a5,a)') ' ... ', 'irreducible atom '//trim(int2char(i))//' contributes '//trim(int2char(ic%atom(i)%norbitals))//' orbitals |n,l,m,s> :'
+                write(*,'(a5,a)') ' ... ', 'irreducible atom '//tostring(i)//' contributes '//tostring((ic%atom(i)%norbitals))//' orbitals |n,l,m,s> :'
                 do a = 1, ic%atom(i)%nazimuthals
                     write(*,'(5x,a,a)') trim(ic%atom(i)%orbname(a)), ':'
                 do j = 1, ic%atom(i)%norbitals

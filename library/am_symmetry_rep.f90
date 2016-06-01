@@ -258,10 +258,6 @@ module am_symmetry_rep
             allocate(flat_ig%sym(flat_ig%nbases,flat_ig%nbases,flat_ig%nsyms))
             k=k+1; flat_ig%sym(:,:,k) = eye(flat_ig%nbases)    ! E
             k=k+1; flat_ig%sym(:,:,k) = orbital_parity(atom_m,atom_n) ! (l,l',m) = (-1)^(l+l') (l',l,m)
-            ! for the cases in which one atom only has s orbital, the orbital parity = identity.
-            ! if unique is not taken here, it will cause problems later on when attempting to determine the multiplication table
-            flat_ig%sym = unique(flat_ig%sym)
-            flat_ig%nsyms = size(flat_ig%sym,3)
         elseif (index(tens%flags   ,'i/=j'             ).ne.0) then
             ! atoms correspond to different irreducible atoms
             flat_ig%nsyms = 1
@@ -271,6 +267,11 @@ module am_symmetry_rep
         else
             stop 'Undefined propery encountered.'
         endif
+        ! sometimes for 1-dimensional reps, multiple symmetries can be the same; a unique is added
+        ! below to handle such cases. if ignored, it will cause problems later on when attempting to
+        ! determine the multiplication table
+        flat_ig%sym = unique(flat_ig%sym)
+        flat_ig%nsyms = size(flat_ig%sym,3)
         !
         allocate(flat_ig%ps_id(flat_ig%nsyms))
         flat_ig%ps_id    = default_ps_id_value
