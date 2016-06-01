@@ -280,6 +280,9 @@ contains
                     Dn   => wrktbpg(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
                     ! get matrix elements (initialize Hsub)
                     Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))
+                    ! check dimensions
+                    if (size(Dm,2).ne.size(Hsub,1)) stop 'Dm * Hsub : dimension mismatch'
+                    if (size(Dn,1).ne.size(Hsub,2)) stop 'Hsub * Dn : dimension mismatch'
                     ! rotate matrix elements as needed to get from the tau_frac(:,1) => tau_frac(:,x)
                     Hsub = matmul(matmul(transpose(Dm), Hsub), Dn)
                     ! multiply exponential factor from Bloch sum
@@ -291,7 +294,7 @@ contains
             enddo
             ! write(*,'(a5,a,a)') ' ... ', 'irreducible shell: ', tostring(l)
             ! call disp(H)
-            if ( .not. isequal(H,adjoint(H)) ) stop 'H is not Hermitian.'
+            ! if ( .not. isequal(H,adjoint(H)) ) stop 'H is not Hermitian.'
         endif
         enddo
     end function   get_hamiltonian
@@ -330,13 +333,14 @@ contains
                 call disp('H',H)
                 stop 'H is not Hermitian.'
             endif
-            !
+            ! check that H commutes with all point symmetries
             do i = 1, tbpg%nsyms
                 R = tbpg%sym(:,:,i)
                 if (.not.isequal(matmul(H,R),matmul(R,H))) then
                     call disp('H',H,style='above')
                     call disp('R',R,style='above')
                     call disp('[H,R]',matmul(H,R)-matmul(R,H),style='above')
+                    call disp("R'*H*R - H",matmul(matmul(transpose(R),H),R)-H,style='above')
                     stop 'H does not commute with symmetry.'
                 endif
             enddo
@@ -348,10 +352,8 @@ contains
     ! functions which operate on V
 
     function       get_Vsk(tb,atom_m,atom_n,ip_id) result(V)
-        !
         ! irreducible pair (ip_id), can be negative (corresponds to pair n-m rathet than m-n, on the
         ! opposite [upper/lower] side of the Hamiltonian), in which case adjoint of V is returned
-        !
         use am_atom
         !
         implicit none
@@ -361,6 +363,7 @@ contains
         type(am_class_atom), intent(in) :: atom_n
         integer , intent(in) :: ip_id
         real(dp), allocatable :: V(:,:)
+        real(dp), allocatable :: S(:,:)
         integer :: id
         integer :: m,n
         !
@@ -372,10 +375,20 @@ contains
         ! if irreducible pair id is negative, it means the pair was flipped
         if (ip_id.lt.0) then
             allocate(V(n,m))
-            V = adjoint( reshape(tb%tbvsk(id)%V, [m,n]) ) ! * transp_parity_sign(atom_m=atom_m, atom_n=atom_n)
+            allocate(S(n,m))
+            V = adjoint( reshape(tb%tbvsk(id)%V, [m,n]) )
+            ! atom_m and atom_n are taken from pp on input, as a result they are already in the correct order (no need to flip them)
+            ! m and n are taken from ip on input, thus, they need to be flipped.
+            S = transp_parity_sign(atom_m=atom_m, atom_n=atom_n)
+            if (.not.isequal(shape(S),shape(V))) stop 'S * V : dimension mismatch'
+            ! Adding the sign flip here seems to cause H to not be Hermitian...
+            ! Looking at Chadi/Cohen and Vogl. There doesn't seem to be a sign flip.
+            ! The sign flip is probably only used in determining the irreducible matrix elements.
+            V = V ! * S
         else
+            if (.not.isequal(tb%tbvsk(id)%dims,[atom_m%norbitals,atom_n%norbitals])) stop 'dims /= norbitals'
             allocate(V(m,n))
-            V =          reshape(tb%tbvsk(id)%V, [m,n])
+            V = reshape(tb%tbvsk(id)%V, [m,n])
         endif
         !
     end function   get_Vsk
@@ -538,9 +551,6 @@ contains
             etb%V(1:etb%nVs(z),z)        = reshape( matmul(matmul(transpose(Dm), get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))), Dn), [etb%nVs(z)] )
             etb%Dm(1:etb%dims(1,z)**2,z) = reshape(Dm,[etb%dims(1,z)**2])
             etb%Dn(1:etb%dims(2,z)**2,z) = reshape(Dn,[etb%dims(2,z)**2])
-            call disp('Dn',Dn)
-            call disp('Dn',reshape(etb%Dn(1:etb%dims(2,z)**2,z),[etb%dims(2,z),etb%dims(2,z)]))
-
         enddo
         enddo
     end subroutine get_explicit_tb
@@ -563,13 +573,13 @@ contains
                 write(fid,*) 'irreducible indices:'
                 call disp(unit=fid,X=[etb%i(z), etb%j(z)]                             ,orient='row',fmt='i10'  ,trim='no')
                 write(fid,*) "R-R' [cart]:"
-                call disp(unit=fid,X=etb%tau_cart(1:3,z)                              ,orient='row',fmt='f10.5',trim='no')
+                call disp(unit=fid,X=etb%tau_cart(1:3,z)                              ,orient='row',fmt='f10.4',trim='no')
                 write(fid,*) 'matrix elements ('//tostring(etb%dims(1,z))//' x '//tostring(etb%dims(2,z))//'):'
-                call disp(unit=fid,X=reshape(etb%V(1:etb%nVs(z),z), [etb%dims(1,z), etb%dims(2,z)]),fmt='f10.5',trim='no')
+                call disp(unit=fid,X=reshape(etb%V(1:etb%nVs(z),z), [etb%dims(1,z), etb%dims(2,z)]),fmt='f10.4',trim='no',zeroas='0')
                 write(fid,*) 'Dm ('//tostring(etb%dims(1,z))//' x '//tostring(etb%dims(1,z))//'):'
-                call disp(unit=fid,X=reshape(etb%Dm(1:etb%dims(1,z)**2,z), [etb%dims(1,z), etb%dims(1,z)]),fmt='f10.5',trim='no')
+                call disp(unit=fid,X=reshape(etb%Dm(1:etb%dims(1,z)**2,z), [etb%dims(1,z), etb%dims(1,z)]),fmt='f10.4',trim='no',zeroas='0')
                 write(fid,*) 'Dn ('//tostring(etb%dims(2,z))//' x '//tostring(etb%dims(2,z))//'):'
-                call disp(unit=fid,X=reshape(etb%Dn(1:etb%dims(2,z)**2,z), [etb%dims(2,z), etb%dims(2,z)]),fmt='f10.5',trim='no')
+                call disp(unit=fid,X=reshape(etb%Dn(1:etb%dims(2,z)**2,z), [etb%dims(2,z), etb%dims(2,z)]),fmt='f10.4',trim='no',zeroas='0')
             enddo
         close(unit=fid)
     end subroutine write_explicit_tb

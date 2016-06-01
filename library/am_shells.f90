@@ -62,7 +62,7 @@ contains
 
     subroutine     get_primitive(pp,pc,pg,pair_cutoff,uc,opts)
         !
-        ! goal: get rid of uc in input here.
+        ! goal: get rid of uc in input here; do it all via pc.
         !
         use am_symmetry_tables
         !
@@ -277,9 +277,6 @@ contains
             ! filter atoms outside sphere (keep ones within cutoff radius)
             call sphere%filter(ind=atoms_inside(1:j))
             ! sort atoms by increasing distance from [0,0,0]
-            ! call sphere%sort_atoms(criterion=sphere%tau_cart(1,:),flags='descend') ! puts negative values last
-            ! call sphere%sort_atoms(criterion=sphere%tau_cart(2,:),flags='descend') ! puts negative values last
-            ! call sphere%sort_atoms(criterion=sphere%tau_cart(3,:),flags='descend') ! puts negative values last
             call sphere%sort_atoms(criterion=norm2(sphere%tau_cart,1),flags='ascend')
             ! check that there is one atom at the origin
             check_center = .false.
@@ -401,22 +398,6 @@ contains
         !      4 Ga-Ga   1-1   1-1   12    c_1h     t_d    c_1h     4.066     2.875     2.875     0.000     0.177     0.125     0.125     0.000
         !      5 As-As   2-2   2-1    4    c_1h     t_d    c_1h     4.066     2.875     2.875     0.000     0.177     0.125     0.125     0.000
         !      6 Ga-As   1-2   1-2   12    c_1h     t_d    c_1h     4.768     4.313     1.438     1.438     0.234     0.187     0.062     0.125
-
-        !
-
-
-!         ! take note of point symmetry which takes atom tau_frac(:,1) to atom tau_frac(:,i)
-!         ! should use cart here because a unitary transformation is necessary
-!         allocate(ip%shell(k)%pg_id(ip%shell(k)%natoms))
-!         pp%shell(k)%pg_id = 0
-!         do m = 1, pp%shell(k)%natoms
-!             search : do n = 1, pg%nsyms
-!                 if (isequal(pp%shell(k)%tau_cart(:,m), matmul(pg%seitz_cart(1:3,1:3,n),pp%shell(k)%tau_cart(:,1)))) then
-!                     pp%shell(k)%pg_id(m) = n
-!                     exit search
-!                 endif
-!             enddo search
-!         enddo
         !
         ! write to stdout
         if (opts%verbosity.ge.1) then
@@ -454,9 +435,9 @@ contains
                 write(*,'(5x)'    ,advance='no')
                 write(*,'(i5)'    ,advance='no') k ! shell
                 write(*,'(a6)'    ,advance='no') trim(atm_symb(ic%Z( ip%shell(k)%i )))//'-'//trim(atm_symb(ic%Z( ip%shell(k)%j )))
-                write(*,'(a6)'    ,advance='no') trim(int2char(ip%shell(k)%i))//'-'//trim(int2char(ip%shell(k)%j))
-                write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%m))//'-'//trim(int2char(pp%shell(k)%n))
-                write(*,'(i5)'    ,advance='no') pp%shell(k)%natoms
+                write(*,'(a6)'    ,advance='no') tostring(ip%shell(k)%i)//'-'//tostring(ip%shell(k)%j)
+                write(*,'(a6)'    ,advance='no') tostring(ip%shell(k)%m)//'-'//tostring(ip%shell(k)%n)
+                write(*,'(i5)'    ,advance='no') ip%shell(k)%natoms
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%stab%ps_id )))
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%rotg%ps_id )))
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%revg%ps_id )))
