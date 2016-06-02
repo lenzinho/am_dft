@@ -5,6 +5,7 @@ module am_unit_cell
     use am_options
     use am_mkl
     use am_atom
+    use dispmodule
 
     implicit none
 
@@ -676,22 +677,19 @@ contains
         real(dp)    , intent(in) :: criterion(:)
         character(*), intent(in) :: flags
         integer , allocatable ::  inds(:)
-        integer , allocatable :: rinds(:) ! reverse inds
         !
         allocate(inds(uc%natoms))
         call rank(criterion,inds)
         !
+        if (size(criterion).ne.uc%natoms) stop 'size(criterion) /= number of atoms'
+        !
         if     (index(flags,'descend').ne.0) then
             inds = inds(uc%natoms:1:-1)
         elseif (index(flags,'ascend' ).ne.0) then
-            inds = inds(1:uc%natoms:+1)
+            ! do nothing
         else
             stop 'sort_atoms: ascend/descend?'
         endif
-        !
-        ! get reverse indices
-        allocate(rinds(uc%natoms))
-        rinds(inds) = [1:uc%natoms]
         !
         ! sort stuff
         uc%tau_frac = uc%tau_frac(:,inds)

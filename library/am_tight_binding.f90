@@ -281,11 +281,11 @@ contains
         ! makes sure Hamiltonian at Gamma commutes with all point symmetry operations
         implicit none
         !
-        type(am_class_irre_tight_binding) , intent(in) :: tb   ! tight binding matrix elements
-        type(am_class_tb_group)      , intent(in) :: tbpg ! point group in tight binding representation
-        type(am_class_irre_cell)     , intent(in) :: ic   ! irreducible cell
-        type(am_class_prim_pair)     , intent(in) :: pp   ! primitive pairs
-        type(am_class_irre_pair)     , intent(in) :: ip   ! irreducible pairs
+        type(am_class_irre_tight_binding), intent(in) :: tb   ! tight binding matrix elements
+        type(am_class_tb_group)          , intent(in) :: tbpg ! point group in tight binding representation
+        type(am_class_irre_cell)         , intent(in) :: ic   ! irreducible cell
+        type(am_class_prim_pair)         , intent(in) :: pp   ! primitive pairs
+        type(am_class_irre_pair)         , intent(in) :: ip   ! irreducible pairs
         complex(dp), allocatable :: H(:,:)
         real(dp)   , allocatable :: R(:,:)
         logical    , allocatable :: mask(:) ! mask the irreducible shells which are considered in construction of the hamiltonin
@@ -299,7 +299,7 @@ contains
         call print_title('Checking Hamiltonian at Gamma')
         !
         ! loop over irreducible shells
-        do j = 1, ip%nshells
+        do j = 2,2 !1, ip%nshells
             ! ignore all irreducible shells, except j
             mask    = .false.
             mask(j) = .true.

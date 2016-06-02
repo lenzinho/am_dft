@@ -122,6 +122,10 @@ contains
                 call pp%shell(k)%filter(ind=ind)
                 ! record of shell center
                 pp%shell(k)%center = pc%tau_cart(:,i)
+                ! this sort below is absolutely necessary, othewise there will be problems later when pg_id is called when building the tb hamiltonian
+                call pp%shell(k)%sort_atoms(criterion=pp%shell(k)%tau_cart(1,:),flags='descend')
+                call pp%shell(k)%sort_atoms(criterion=pp%shell(k)%tau_cart(2,:),flags='descend')
+                call pp%shell(k)%sort_atoms(criterion=pp%shell(k)%tau_cart(3,:),flags='descend')
                 ! take note of point symmetry which takes atom tau_frac(:,1) to atom tau_frac(:,i)
                 ! should use cart here because a unitary transformation is necessary
                 allocate(pp%shell(k)%pg_id(pp%shell(k)%natoms))
@@ -401,7 +405,7 @@ contains
         !
         ! write to stdout
         if (opts%verbosity.ge.1) then
-            write(*,'(a5,a,a)') ' ... ', 'primitive pair shells = ', tostring(pp%nshells)
+            write(*,'(a5,a,a)') ' ... ', 'primitive pair shells = '  , tostring(pp%nshells)
             write(*,'(a5,a,a)') ' ... ', 'irreducible pair shells = ', tostring(ip%nshells)
             write(*,'(5x)' ,advance='no')
             write(*,'(a5)' ,advance='no') 'shell'
@@ -441,10 +445,10 @@ contains
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%stab%ps_id )))
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%rotg%ps_id )))
                 write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%revg%ps_id )))
-                write(*,'(f10.3)' ,advance='no') norm2(matmul(ip%shell(k)%bas,ip%shell(k)%tau_frac(1:3,1)))
-                write(*,'(3f10.3)',advance='no') matmul(ip%shell(k)%bas,ip%shell(k)%tau_frac(1:3,1))
+                write(*,'(f10.3)' ,advance='no') norm2(ip%shell(k)%tau_cart(1:3,1))
+                write(*,'(3f10.3)',advance='no')       ip%shell(k)%tau_cart(1:3,1)
                 write(*,'(f10.3)' ,advance='no') norm2(ip%shell(k)%tau_frac(1:3,1))
-                write(*,'(3f10.3)',advance='no') ip%shell(k)%tau_frac(1:3,1)
+                write(*,'(3f10.3)',advance='no')       ip%shell(k)%tau_frac(1:3,1)
                 write(*,*)
             enddo
             ! write maps
