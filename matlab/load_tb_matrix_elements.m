@@ -2,19 +2,14 @@ function [pp] = load_tb_matrix_elements()
     fid=fopen('outfile.tb_matrix_elements');
     % number of atoms
     pp.nshells = sscanf(fgetl(fid),'%i');
+    pp.S = sscanf(fgetl(fid),'%i'); % start
+    pp.E = sscanf(fgetl(fid),'%i'); % end  
     fprintf('shells %i\n',pp.nshells)
     for i = 1:pp.nshells
-        % divider
-        fgetl(fid);
-        k = sscanf(fgetl(fid),'%i');
+        fgetl(fid); % divider
+        k = sscanf(fgetl(fid),'%i'); % shell id
         pp.shell(k).m = sscanf(fgetl(fid),'%i');
         pp.shell(k).n = sscanf(fgetl(fid),'%i');
-        SE(1:2) = sscanf(fgetl(fid),'%i'); % [m]
-        pp.S(pp.shell(k).m) = SE(1); 
-        pp.E(pp.shell(k).m) = SE(2); 
-        SE(1:2) = sscanf(fgetl(fid),'%i'); % [n]
-        pp.S(pp.shell(k).n) = SE(1); 
-        pp.E(pp.shell(k).n) = SE(2); 
         pp.shell(k).npairs = sscanf(fgetl(fid),'%i');
         for p = 1:pp.shell(k).npairs
         pp.shell(k).pair(p).tau(1:3) = sscanf(fgetl(fid),'%f'); % [cart]
