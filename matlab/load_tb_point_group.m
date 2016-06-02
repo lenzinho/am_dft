@@ -13,6 +13,7 @@ function [pg] = load_tb_point_group()
         pg.sym(j,:,i) = sscanf(fgetl(fid),'%f');
         end
     end
+    fprintf(' ... done\n');
 end
 
 

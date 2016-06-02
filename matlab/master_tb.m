@@ -11,7 +11,10 @@ kpt = [0,0,0];
 for i = 1:pg.nsyms
     R = pg.sym(:,:,i);
     if (abs(norm(H*R-R*H))>tiny)
-       asdfs
+       fprintf('ERROR: [H,R] ~= 0!\n')
     end
 end
-
+% check H = H'
+if (abs(norm(H-H'))>tiny)
+    fprintf('ERROR: H is not hermitian!\n')
+end
