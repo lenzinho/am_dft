@@ -21,7 +21,7 @@ module am_tight_binding
     type, public, extends(am_class_tensor) :: am_class_tens_tb
         ! <INHERITED>
         ! character(100)        :: property       ! name of property
-        ! character(100)        :: flags          ! axial/polar/tight
+        ! character(100)        :: flags          ! axial/polar/i==j/i/=j
         ! integer               :: rank           ! tensor rank
         ! integer , allocatable :: dims(:)        ! tensor dimensions
         ! real(dp), allocatable :: relations(:,:) ! relations connecting tensor elements
@@ -43,25 +43,6 @@ module am_tight_binding
             procedure :: get_hamiltonian
             procedure :: write_tb_explicit
     end type am_class_irre_tight_binding
-
-!     type, public :: am_class_explicit_tb
-!         ! explicit tb (should be entire self contained so that the band structure can be generated from matlab)
-!         integer  :: natoms
-!         real(dp), allocatable :: tau_cart(:,:) ! explicit atomic positions
-!         real(dp), allocatable :: tau_frac(:,:) ! explicit atomic positions
-!         integer , allocatable :: m(:)          ! primitive atom index
-!         integer , allocatable :: n(:)          ! primitive atom index
-!         integer , allocatable :: i(:)          ! irreducible atom index
-!         integer , allocatable :: j(:)          ! irreducible atom index
-!         integer , allocatable :: nVs(:)        ! number of tight binding parameters
-!         integer , allocatable :: dims(:,:)     ! dimensions of tight binding matrix
-!         real(dp), allocatable :: Dm(:,:)       ! rotation primitive atom index
-!         real(dp), allocatable :: Dn(:,:)       ! rotation primitive atom index
-!         real(dp), allocatable :: V(:,:)        ! tight binding parameters
-!         contains
-!             procedure :: get_explicit_tb
-!             procedure :: write_explicit_tb
-!     end type am_class_explicit_tb
 
 contains
 
@@ -296,7 +277,7 @@ contains
         enddo
     end function   get_hamiltonian
 
-    subroutine     test_hamiltonian(tb,tbpg,ic,ip,pp,pc)
+    subroutine     test_hamiltonian(tb,tbpg,ic,ip,pp)
         ! makes sure Hamiltonian at Gamma commutes with all point symmetry operations
         implicit none
         !
@@ -305,7 +286,6 @@ contains
         type(am_class_irre_cell)     , intent(in) :: ic   ! irreducible cell
         type(am_class_prim_pair)     , intent(in) :: pp   ! primitive pairs
         type(am_class_irre_pair)     , intent(in) :: ip   ! irreducible pairs
-        type(am_class_prim_cell)     , intent(in) :: pc ! primitive cell
         complex(dp), allocatable :: H(:,:)
         real(dp)   , allocatable :: R(:,:)
         logical    , allocatable :: mask(:) ! mask the irreducible shells which are considered in construction of the hamiltonin
@@ -484,6 +464,8 @@ contains
         allocate(pg_target, source=tbpg%sym)
         allocate(S, source=tbpg%H_start)
         allocate(E, source=tbpg%H_end)
+        !
+        call tostring_set(sep=' ')
         !
         fid = 1
         open(unit=fid,file='outfile.tb_matrix_elements',status='replace',action='write')
