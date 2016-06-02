@@ -17,7 +17,7 @@ module am_shells
     public :: get_pair_cutoff
 
     type, public, extends(am_class_unit_cell) :: am_shell_cell
-        real(dp):: center(3) ! center of shell
+        real(dp):: center(3) ! center of shell [cart]
         integer :: i ! identifies irreducible atoms (center)
         integer :: j ! identifies irreducible atoms (shell)
         integer :: m ! identifies primitive atoms (center)

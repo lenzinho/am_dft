@@ -170,6 +170,10 @@ contains
             call write_orbital_basis(ic)
         endif
         !
+        do i = 1, ic%natoms
+            if (ic%atom(i)%norbitals.le.0) stop 'no orbitals set on an atom. check input.'
+        enddo
+        !
         if (opts%verbosity.ge.1) call print_orbital_basis(ic)
         !
         contains

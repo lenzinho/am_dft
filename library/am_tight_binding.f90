@@ -41,26 +41,27 @@ module am_tight_binding
         contains
             procedure :: initialize_tb
             procedure :: get_hamiltonian
+            procedure :: write_tb_explicit
     end type am_class_irre_tight_binding
 
-    type, public :: am_class_explicit_tb
-        ! explicit tb (should be entire self contained so that the band structure can be generated from matlab)
-        integer  :: natoms
-        real(dp), allocatable :: tau_cart(:,:) ! explicit atomic positions
-        real(dp), allocatable :: tau_frac(:,:) ! explicit atomic positions
-        integer , allocatable :: m(:)          ! primitive atom index
-        integer , allocatable :: n(:)          ! primitive atom index
-        integer , allocatable :: i(:)          ! irreducible atom index
-        integer , allocatable :: j(:)          ! irreducible atom index
-        integer , allocatable :: nVs(:)        ! number of tight binding parameters
-        integer , allocatable :: dims(:,:)     ! dimensions of tight binding matrix
-        real(dp), allocatable :: Dm(:,:)       ! rotation primitive atom index
-        real(dp), allocatable :: Dn(:,:)       ! rotation primitive atom index
-        real(dp), allocatable :: V(:,:)        ! tight binding parameters
-        contains
-            procedure :: get_explicit_tb
-            procedure :: write_explicit_tb
-    end type am_class_explicit_tb
+!     type, public :: am_class_explicit_tb
+!         ! explicit tb (should be entire self contained so that the band structure can be generated from matlab)
+!         integer  :: natoms
+!         real(dp), allocatable :: tau_cart(:,:) ! explicit atomic positions
+!         real(dp), allocatable :: tau_frac(:,:) ! explicit atomic positions
+!         integer , allocatable :: m(:)          ! primitive atom index
+!         integer , allocatable :: n(:)          ! primitive atom index
+!         integer , allocatable :: i(:)          ! irreducible atom index
+!         integer , allocatable :: j(:)          ! irreducible atom index
+!         integer , allocatable :: nVs(:)        ! number of tight binding parameters
+!         integer , allocatable :: dims(:,:)     ! dimensions of tight binding matrix
+!         real(dp), allocatable :: Dm(:,:)       ! rotation primitive atom index
+!         real(dp), allocatable :: Dn(:,:)       ! rotation primitive atom index
+!         real(dp), allocatable :: V(:,:)        ! tight binding parameters
+!         contains
+!             procedure :: get_explicit_tb
+!             procedure :: write_explicit_tb
+!     end type am_class_explicit_tb
 
 contains
 
@@ -231,8 +232,8 @@ contains
         logical, optional            , intent(in) :: iopt_mask(:)
         logical    , allocatable :: mask(:)
         integer    , allocatable :: S(:),E(:)
-        complex(dp), allocatable, target :: wrkHsub(:,:)
-        real(dp)   , allocatable, target :: wrktbpg(:,:,:)
+        complex(dp), allocatable, target :: Hsub_target(:,:)
+        real(dp)   , allocatable, target :: pg_target(:,:,:)
         complex(dp), allocatable :: H(:,:)
         complex(dp), pointer :: Hsub(:,:)
         real(dp), pointer :: Dm(:,:), Dn(:,:)
@@ -257,9 +258,9 @@ contains
         allocate(S, source=tbpg%H_start)
         allocate(E, source=tbpg%H_end)
         ! allocate workspace for H subsection (initialized later)
-        allocate(wrkHsub(tbpg%nbases,tbpg%nbases))
+        allocate(Hsub_target(tbpg%nbases,tbpg%nbases))
         ! allocate workspace for H subsection (initialized later)
-        allocate(wrktbpg, source=tbpg%sym)
+        allocate(pg_target, source=tbpg%sym)
         ! allocate and initialize
         allocate(H(tbpg%nbases,tbpg%nbases))
         H = cmplx(0,0,dp)
@@ -277,9 +278,9 @@ contains
                 ! compute bloch sum by loop over atoms in shell
                 do p = 1, pp%shell(k)%natoms
                     ! set pointers
-                    Hsub => wrkHsub(S(m):E(m), S(n):E(n))
-                    Dm   => wrktbpg(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p) )
-                    Dn   => wrktbpg(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
+                    Hsub => Hsub_target(S(m):E(m), S(n):E(n))
+                    Dm   => pg_target(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p) )
+                    Dn   => pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
                     ! get matrix elements (initialize Hsub)
                     Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))
                     ! rotate matrix elements as needed to get from the tau_frac(:,1) => tau_frac(:,x)
@@ -321,7 +322,7 @@ contains
         ! loop over irreducible shells
         do j = 1, ip%nshells
             ! ignore all irreducible shells, except j
-            mask = .false.
+            mask    = .false.
             mask(j) = .true.
             !
             H = tb%get_hamiltonian(tbpg=tbpg, ic=ic, ip=ip, pp=pp, kpt=real([0,0,0],dp),iopt_mask=mask)
@@ -331,18 +332,19 @@ contains
                 call disp('H',H)
                 stop 'H is not Hermitian.'
             endif
-            ! check that H commutes with symmetries in stabilizer group
-            call tb_stab%get_tight_binding_point_group(pg=ip%shell(j)%stab, pc=pc, ic=ic)
-            do i = 1, tb_stab%nsyms
-                R = tb_stab%sym(:,:,i)
-                if (.not.isequal(matmul(H,R),matmul(R,H))) then
-                    call disp('H',H,style='above')
-                    call disp('R',R,style='above')
-                    call disp('[H,R]',matmul(H,R)-matmul(R,H),style='above')
-                    call disp("R'*H*R - H",matmul(matmul(transpose(R),H),R)-H,style='above')
-                    stop 'H does not commute with stabilizer symmetries.'
-                endif
-            enddo
+            ! ! if this stuff below is uncommented, outfile.tb_pointgroup is overwritten
+            ! ! check that H commutes with symmetries in stabilizer group
+            ! call tb_stab%get_tight_binding_point_group(pg=ip%shell(j)%stab, pc=pc, ic=ic)
+            ! do i = 1, tb_stab%nsyms
+            !     R = tb_stab%sym(:,:,i)
+            !     if (.not.isequal(matmul(H,R),matmul(R,H))) then
+            !         call disp('H',H,style='above')
+            !         call disp('R',R,style='above')
+            !         call disp('[H,R]',matmul(H,R)-matmul(R,H),style='above')
+            !         call disp("R'*H*R - H",matmul(matmul(transpose(R),H),R)-H,style='above')
+            !         stop 'H does not commute with stabilizer symmetries.'
+            !     endif
+            ! enddo
             ! check that H commutes with all point symmetries
             do i = 1, tbpg%nsyms
                 R = tbpg%sym(:,:,i)
@@ -358,8 +360,6 @@ contains
             write(*,'(a5,a)') ' ... ' ,'shell '//tostring(j)//': OK!'
         enddo
     end subroutine test_hamiltonian
-
-    ! functions which operate on V
 
     function       get_Vsk(tb,atom_m,atom_n,ip_id) result(V)
         ! irreducible pair (ip_id), can be negative (corresponds to pair n-m rathet than m-n, on the
@@ -476,168 +476,60 @@ contains
         enddo
     end subroutine write_irreducible_Vsk
 
-    ! explicit tb (should be entire self contained so that the band structure can be generated in matlab)
-
     subroutine     write_tb_explicit(tb,tbpg,ic,pp)
         !
         implicit none
         !
-        type(am_class_irre_tight_binding), intent(in)  :: tb     ! irreducible tight binding matrix elements
-        type(am_class_tb_group)          , intent(in)  :: tbpg   ! point group in tight binding representation
-        type(am_class_irre_cell)         , intent(in)  :: ic     ! irreducible cell
-        type(am_class_prim_pair)         , intent(in)  :: pp     ! primitive pairs
-        integer    , allocatable :: S(:) ,E(:)
-        real(dp)   , allocatable, target :: wrktbpg(:,:,:)
+        class(am_class_irre_tight_binding), intent(in) :: tb    ! irreducible tight binding matrix elements
+        type(am_class_tb_group)           , intent(in) :: tbpg  ! point group in tight binding representation
+        type(am_class_irre_cell)          , intent(in) :: ic    ! irreducible cell
+        type(am_class_prim_pair)          , intent(in) :: pp    ! primitive pairs
+        real(dp), allocatable, target :: Hsub_target(:,:)
+        real(dp), allocatable, target :: pg_target(:,:,:)
+        integer , allocatable :: S(:) ,E(:)
         real(dp), pointer :: Dm(:,:), Dn(:,:)
-        integer :: m ! primitive atom 1 index 
-        integer :: n ! primitive atom 2 index
-        integer :: i ! irreducible atom 1 index 
-        integer :: j ! irreducible atom 2 index
-        integer :: k ! shell (primitive)
-        integer :: p ! atoms
-        integer :: z ! explicit pair counter
-        integer :: maxorbitals
-        !
-        ! allocate space for vectors demarking start and end of Hamiltonian subsection
-        allocate(S, source=tbpg%H_start)
-        allocate(E, source=tbpg%H_end)
-        !
-        do k = 1, pp%nshells
-            m = pp%shell(k)%m
-            n = pp%shell(k)%n
-            i = pp%shell(k)%i
-            j = pp%shell(k)%j
-        do p = 1, pp%shell(k)%natoms
-            etb%tau_cart(1:3,z)          = pp%shell(k)%tau_cart(1:3,p)
-            etb%tau_frac(1:3,z)          = pp%shell(k)%tau_frac(1:3,p)
-            etb%m(z)                     = m
-            etb%n(z)                     = n
-            etb%i(z)                     = i
-            etb%j(z)                     = j
-            etb%dims(1:2,z)              = [E(m)-S(m)+1, E(n)-S(n)+1]
-            etb%nVs(z)                   = product(etb%dims(1:2,z))
-            etb%V(1:etb%nVs(z),z)        = reshape( matmul(matmul(transpose(Dm), get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))), Dn), [etb%nVs(z)] )
-            etb%Dm(1:etb%dims(1,z)**2,z) = reshape(Dm,[etb%dims(1,z)**2])
-            etb%Dn(1:etb%dims(2,z)**2,z) = reshape(Dn,[etb%dims(2,z)**2])
-        enddo
-        enddo
-    end subroutine write_tb_explicit
-
-    subroutine     get_explicit_tb(etb,tb,tbpg,ic,pp)
-        !
-        implicit none
-        !
-        class(am_class_explicit_tb)      , intent(out) :: etb    ! explicit    tight binding matrix elements
-        type(am_class_irre_tight_binding), intent(in)  :: tb     ! irreducible tight binding matrix elements
-        type(am_class_tb_group)          , intent(in)  :: tbpg   ! point group in tight binding representation
-        type(am_class_irre_cell)         , intent(in)  :: ic     ! irreducible cell
-        type(am_class_prim_pair)         , intent(in)  :: pp     ! primitive pairs
-        integer    , allocatable :: S(:) ,E(:)
-        real(dp)   , allocatable, target :: wrktbpg(:,:,:)
-        real(dp), pointer :: Dm(:,:), Dn(:,:)
-        integer :: m ! primitive atom 1 index 
-        integer :: n ! primitive atom 2 index
-        integer :: i ! irreducible atom 1 index 
-        integer :: j ! irreducible atom 2 index
-        integer :: k ! shell (primitive)
-        integer :: p ! atoms
-        integer :: z ! explicit pair counter
-        integer :: maxorbitals
-        !
-        ! allocate space for vectors demarking start and end of Hamiltonian subsection
-        allocate(S, source=tbpg%H_start)
-        allocate(E, source=tbpg%H_end)
-        ! allocate workspace for H subsection (initialized later)
-        allocate(wrktbpg, source=tbpg%sym)
-        !
-        ! get number of shells
-        etb%natoms = 0
-        do k = 1, pp%nshells
-            etb%natoms = etb%natoms + pp%shell(k)%natoms
-        enddo
-        ! get largest basis on any given atom
-        maxorbitals = 0
-        do i = 1, ic%natoms
-            if (ic%atom(i)%norbitals.gt.maxorbitals) maxorbitals = ic%atom(i)%norbitals
-        enddo
-        ! allocate stuff
-        allocate(etb%tau_cart(3,etb%natoms))
-        allocate(etb%tau_frac(3,etb%natoms))
-        allocate(etb%m(etb%natoms))
-        allocate(etb%n(etb%natoms))
-        allocate(etb%i(etb%natoms))
-        allocate(etb%j(etb%natoms))
-        allocate(etb%nVs(etb%natoms))
-        allocate(etb%dims(2,etb%natoms))
-        allocate(etb%V(maxorbitals**2,etb%natoms))
-        allocate(etb%Dm(maxorbitals**2,etb%natoms))
-        allocate(etb%Dn(maxorbitals**2,etb%natoms))
-        ! initializ stuff
-        etb%tau_cart = 1234
-        etb%tau_frac = 1234
-        etb%m        = 1234
-        etb%n        = 1234
-        etb%i        = 1234
-        etb%j        = 1234
-        etb%nVs      = 1234
-        etb%dims     = 1234
-        etb%V        = 1234
-        etb%Dm       = 1234
-        etb%Dn       = 1234
-        ! transfer stuff
-        z = 0
-        do k = 1, pp%nshells
-            m = pp%shell(k)%m
-            n = pp%shell(k)%n
-            i = pp%shell(k)%i
-            j = pp%shell(k)%j
-        do p = 1, pp%shell(k)%natoms
-            z=z+1
-            Dm => wrktbpg(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p) )
-            Dn => wrktbpg(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
-            etb%tau_cart(1:3,z)          = pp%shell(k)%tau_cart(1:3,p)
-            etb%tau_frac(1:3,z)          = pp%shell(k)%tau_frac(1:3,p)
-            etb%m(z)                     = m
-            etb%n(z)                     = n
-            etb%i(z)                     = i
-            etb%j(z)                     = j
-            etb%dims(1:2,z)              = [E(m)-S(m)+1, E(n)-S(n)+1]
-            etb%nVs(z)                   = product(etb%dims(1:2,z))
-            etb%V(1:etb%nVs(z),z)        = reshape( matmul(matmul(transpose(Dm), get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))), Dn), [etb%nVs(z)] )
-            etb%Dm(1:etb%dims(1,z)**2,z) = reshape(Dm,[etb%dims(1,z)**2])
-            etb%Dn(1:etb%dims(2,z)**2,z) = reshape(Dn,[etb%dims(2,z)**2])
-        enddo
-        enddo
-    end subroutine get_explicit_tb
-
-    subroutine     write_explicit_tb(etb)
-        ! 
-        implicit none
-        !
-        class(am_class_explicit_tb), intent(in) :: etb
+        real(dp), pointer :: Hsub(:,:)
         integer :: fid
-        integer :: z
+        integer :: k,p, i,j, m,n
+        !
+        ! allocate space for vectors demarking start and end of Hamiltonian subsection
+        allocate(Hsub_target(tbpg%nbases,tbpg%nbases))
+        allocate(pg_target, source=tbpg%sym)
+        allocate(S, source=tbpg%H_start)
+        allocate(E, source=tbpg%H_end)
         !
         fid = 1
         open(unit=fid,file='outfile.tb_matrix_elements',status='replace',action='write')
-            write(fid,*) etb%natoms
-            do z = 1, etb%natoms
-                write(fid,*) '-------------------------------------------------------------------------------'
-                write(fid,*) 'primitive indices:'
-                call disp(unit=fid,X=[etb%m(z), etb%n(z)]                             ,orient='row',fmt='i10'  ,trim='no')
-                write(fid,*) 'irreducible indices:'
-                call disp(unit=fid,X=[etb%i(z), etb%j(z)]                             ,orient='row',fmt='i10'  ,trim='no')
-                write(fid,*) "R-R' [cart]:"
-                call disp(unit=fid,X=etb%tau_cart(1:3,z)                              ,orient='row',fmt='f10.4',trim='no')
-                write(fid,*) 'matrix elements ('//tostring(etb%dims(1,z))//' x '//tostring(etb%dims(2,z))//'):'
-                call disp(unit=fid,X=reshape(etb%V(1:etb%nVs(z),z), [etb%dims(1,z), etb%dims(2,z)]),fmt='f10.4',trim='no',zeroas='0')
-                write(fid,*) 'Dm ('//tostring(etb%dims(1,z))//' x '//tostring(etb%dims(1,z))//'):'
-                call disp(unit=fid,X=reshape(etb%Dm(1:etb%dims(1,z)**2,z), [etb%dims(1,z), etb%dims(1,z)]),fmt='f10.4',trim='no',zeroas='0')
-                write(fid,*) 'Dn ('//tostring(etb%dims(2,z))//' x '//tostring(etb%dims(2,z))//'):'
-                call disp(unit=fid,X=reshape(etb%Dn(1:etb%dims(2,z)**2,z), [etb%dims(2,z), etb%dims(2,z)]),fmt='f10.4',trim='no',zeroas='0')
+            ! print stuff
+            write(fid,'(a,a)')                 tostring(pp%nshells), ' primitive shells'
+            write(fid,'(a,a)')                          tostring(S), ' subregion start'
+            write(fid,'(a,a)')                          tostring(E), ' subregion end'
+            do k = 1, pp%nshells
+            ! abbreviations
+            m = pp%shell(k)%m
+            n = pp%shell(k)%n
+            i = pp%shell(k)%i
+            j = pp%shell(k)%j
+            ! print stuff
+            write(fid,'(a,a)')                       repeat('=',79), repeat('=',79)
+            write(fid,'(a,a)')              centertitle(tostring(k)//' shell',158)
+            write(fid,'(a,a)')                          tostring(m), ' primitive m'
+            write(fid,'(a,a)')                          tostring(n), ' primitive n'
+            write(fid,'(a,a)')         tostring(pp%shell(k)%natoms), ' atoms in shell'
+            do p = 1, pp%shell(k)%natoms
+            ! abbreviations
+            Dm   => pg_target(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p) )
+            Dn   => pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
+            Hsub => Hsub_target(S(m):E(m), S(n):E(n))
+            ! print stuff
+            Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))
+            call disp(unit=fid, fmt='f18.10',X=matmul(matmul(transpose(Dm), Hsub), Dn),title=tostring(pp%shell(k)%tau_cart(1:3,p),fmt='f10.5')//' [cart.]',style='above')
             enddo
-        close(unit=fid)
-    end subroutine write_explicit_tb
+            enddo
+        close(fid)
+        !
+    end subroutine write_tb_explicit
+
 
 
 
