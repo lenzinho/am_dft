@@ -138,7 +138,7 @@ contains
                         endif
                     enddo search
                 enddo
-                if (any(pp%shell(k)%pg_id.eq.0)) stop 'pg_id = 0'
+                if (any(pp%shell(k)%pg_id.eq.0)) stop 'ERROR: Unable to identify a symmetry operation in the shell (at least one pg_id(:) = 0)!'
                 ! get irreducible atom indices
                 pp%shell(k)%i = pc%ic_id(i)
                 pp%shell(k)%j = pp%shell(k)%ic_id(1)
