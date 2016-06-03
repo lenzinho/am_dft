@@ -45,7 +45,6 @@ module am_brillouin_zone
     ! PATH 
 
 
-
 contains
 
     ! create
@@ -233,25 +232,9 @@ contains
         end function   kpoint_orbit
     end subroutine get_weights
 
-!     subroutine     sort(bz,sort_parameter)
-!         !
-!         use am_rank_and_sort
-!         !
-!         implicit none
-!         ! sort
-!         allocate(sorted_indices(fbz%nkpts))
-!         allocate(sort_parameter(fbz%nkpts))
-!         do i = 1, 3
-!             sort_parameter = fbz%kpt(i,:)
-!             call rank(sort_parameter,sorted_indices)
-!             fbz%w=fbz%w(sorted_indices)
-!             fbz%kpt=fbz%kpt(:,sorted_indices)
-!         enddo
-!     end subroutine
-   
     ! goal: start with fbz (monkhorst-pack mesh) => generate ibz, done.
     !       alternatively, load vasp directly into fbz and reduce to ibz, or directly into ibz.
-    
+
     subroutine     get_fbz(fbz,uc,n,s,opts)
         !
         implicit none

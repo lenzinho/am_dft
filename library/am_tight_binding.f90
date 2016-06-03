@@ -9,6 +9,7 @@ module am_tight_binding
     use am_prim_cell
     use am_symmetry
     use am_symmetry_rep
+    use am_symmetry_relations
     use am_mkl
     use dispmodule
 
@@ -32,17 +33,15 @@ module am_tight_binding
     type, public :: am_class_tight_binding
         integer :: nshells                     ! how many shells irreducible atoms
         type(am_class_tens_tb), allocatable :: tbvsk(:)  ! tbvsk(nshells)
-    end type am_class_tight_binding
-
-    type, public, extends(am_class_tight_binding) :: am_class_irre_tight_binding
         integer, allocatable :: nVs            ! number of irreducible matrix element values
         integer, allocatable :: V(:)           ! their values
         integer, allocatable :: V_ind(:,:)     ! their indices V_ind( [i,j], nVs); j = compound [alpha x beta index, see initialize_tb subroutine]
         contains
-            procedure :: initialize_tb
-            procedure :: get_hamiltonian
-            procedure :: write_tb_explicit
-    end type am_class_irre_tight_binding
+        procedure :: initialize_tb
+        procedure :: get_hamiltonian
+        procedure :: write_tb_explicit
+        procedure :: export_tb2matlab
+    end type am_class_tight_binding
 
 contains
 
@@ -50,7 +49,7 @@ contains
         !
         implicit none
         !
-        class(am_class_irre_tight_binding), intent(out) :: tb   ! tight binding parameters
+        class(am_class_tight_binding), intent(out) :: tb   ! tight binding parameters
         type(am_class_point_group)        , intent(in)  :: pg   ! seitz point group
         type(am_class_prim_cell)          , intent(in)  :: pc   ! primitive cell
         type(am_class_irre_cell)          , intent(in)  :: ic   ! irreducible cell
@@ -185,7 +184,7 @@ contains
                 ! determine intrinsic symmetries (if both irreducible atoms are of the same irreducible type)
                 ! Interchange of indices: (l,l',m) = (-1)^(l+l') * (l',l,m), due to parity of wavefunction. (s,d are even under inversion, p,f are odd)
                 ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245. Also see R. Martin.
-                ! NOTE: FOR SOME REASON, MUST CALL atom_m with shell%j and atom_n with shell%i (INDICES FLIPPED)
+                ! NOTE: FOR SOME REASON, MUST CALL atom_m with shell%j and atom_n with shell%i (INDICES FLIPPED) - probably has to do with reshape and column-major ordering
                 call flat_ig%get_flat_intrinsic_group(tens=tbvsk, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i) )
                 ! determine stabilizers relations
                 call stab%get_stabilizer_group(pg=pg, v=shell%tau_cart(1:3,1), opts=opts, flags='cart')
@@ -204,7 +203,7 @@ contains
         ! 
         implicit none
         !
-        class(am_class_irre_tight_binding), intent(in) :: tb     ! tight binding matrix elements
+        class(am_class_tight_binding), intent(in) :: tb     ! tight binding matrix elements
         type(am_class_tb_group)      , intent(in) :: tbpg   ! point group in tight binding representation
         type(am_class_irre_cell)     , intent(in) :: ic     ! irreducible cell
         type(am_class_prim_pair)     , intent(in) :: pp     ! primitive pairs
@@ -281,7 +280,7 @@ contains
         ! makes sure Hamiltonian at Gamma commutes with all point symmetry operations
         implicit none
         !
-        type(am_class_irre_tight_binding), intent(in) :: tb   ! tight binding matrix elements
+        type(am_class_tight_binding), intent(in) :: tb   ! tight binding matrix elements
         type(am_class_tb_group)          , intent(in) :: tbpg ! point group in tight binding representation
         type(am_class_irre_cell)         , intent(in) :: ic   ! irreducible cell
         type(am_class_prim_pair)         , intent(in) :: pp   ! primitive pairs
@@ -335,7 +334,7 @@ contains
         !
         implicit none
         !
-        class(am_class_irre_tight_binding), intent(in) :: tb
+        class(am_class_tight_binding), intent(in) :: tb
         type(am_class_atom), intent(in) :: atom_m
         type(am_class_atom), intent(in) :: atom_n
         integer , intent(in) :: ip_id
@@ -374,7 +373,7 @@ contains
         ! flags = seq/rand
         implicit none
         !
-        class(am_class_irre_tight_binding), intent(inout) :: tb
+        class(am_class_tight_binding), intent(inout) :: tb
         character(*), intent(in) :: flags
         integer :: i, j, k, alpha, beta
         !
@@ -426,7 +425,7 @@ contains
         !
         implicit none
         !
-        class(am_class_irre_tight_binding), intent(in) :: tb
+        class(am_class_tight_binding), intent(in) :: tb
         integer :: k ! shell index
         integer :: alpha
         integer :: beta
@@ -447,7 +446,7 @@ contains
         !
         implicit none
         !
-        class(am_class_irre_tight_binding), intent(in) :: tb    ! irreducible tight binding matrix elements
+        class(am_class_tight_binding), intent(in) :: tb    ! irreducible tight binding matrix elements
         type(am_class_tb_group)           , intent(in) :: tbpg  ! point group in tight binding representation
         type(am_class_irre_cell)          , intent(in) :: ic    ! irreducible cell
         type(am_class_prim_pair)          , intent(in) :: pp    ! primitive pairs
@@ -498,6 +497,89 @@ contains
         close(fid)
         !
     end subroutine write_tb_explicit
+
+    subroutine     export_tb2matlab(tb,tbpg,ip,pp)
+        ! 
+        ! Get tight binding Hamiltonian at kpt.
+        ! The only reason ip is included is for the mask.
+        ! 
+        implicit none
+        !
+        class(am_class_tight_binding), intent(in) :: tb     ! tight binding matrix elements
+        type(am_class_tb_group)      , intent(in) :: tbpg   ! point group in tight binding representation
+        type(am_class_prim_pair)     , intent(in) :: pp     ! primitive pairs
+        type(am_class_irre_pair)     , intent(in) :: ip     ! irreducible pairs
+        integer, allocatable :: Sv(:) ! start and end if irreducible vector
+        integer, allocatable :: Ev(:) ! start and end if irreducible vector
+        integer, allocatable :: S(:)  ! start and end of hamiltonian subsection
+        integer, allocatable :: E(:)  ! start and end of hamiltonian subsection
+        integer :: i,j,l,k,p,m,n, fid
+        ! parameters
+        character(100) :: H_fnc_name
+        character(100) :: V_fnc_name
+        character(100) :: str_H
+        character(100) :: str_Dm
+        character(100) :: str_Dn
+        character(100) :: str_tau
+        character(100) :: str_Vab
+        !
+        H_fnc_name = 'getH'
+        V_fnc_name = 'getV'
+        !
+        ! create abbreviations
+        allocate(S, source=tbpg%H_start)
+        allocate(E, source=tbpg%H_end)
+        !
+        ! export symmetry relations for each irreducible pair
+        !
+        allocate(Sv(ip%nshells))
+        allocate(Ev(ip%nshells))
+        j = 1
+        do i = 1, ip%nshells
+            Sv(i) = j
+            call export_relations2matlab(relations=tb%tbvsk(i)%relations, dims=tb%tbvsk(i)%dims, fnc_name=trim(V_fnc_name)//tostring(i))
+            j = j + count(get_independent(tb%tbvsk(i)%relations)) - 1
+            Ev(i) = j
+        enddo
+        !
+        fid = 1
+        open(unit=fid,file=trim(H_fnc_name)//'.m',status='replace',action='write')
+            !
+            write(fid,'(a,a,a)') 'function [H] = ', trim(H_fnc_name), '(pg,v,kpt)'
+            write(fid,'(a)') 'i2pi = 2*sqrt(-1)*pi;'
+            write(fid,'(a)') 'H(1:'//tostring(E(ip%nshells))//',1:'//tostring(E(ip%nshells))//') = 0;'
+                !
+                ! construct Hamiltonian
+                do l = 1, ip%nshells
+                do k = 1, pp%nshells
+                if (abs(pp%ip_id(k)).eq.l) then
+                    !
+                    write(fid,'(a)') '% irreducible shell '//tostring(l)
+                    ! compute bloch sum by loop over atoms in shell
+                    do p = 1, pp%shell(k)%natoms
+                        ! primitive atom indicies
+                        m = pp%shell(k)%m
+                        n = pp%shell(k)%n
+                        str_H  =      'H('//tostring(S(m))//':'//tostring(E(m))//','//tostring(S(n))//':'//tostring(E(n))//')'
+                        str_Dm = 'pg.sym('//tostring(S(m))//':'//tostring(E(m))//','//tostring(S(m))//':'//tostring(E(m))//','//tostring(pp%shell(k)%pg_id(p))//')'
+                        str_Dn = 'pg.sym('//tostring(S(n))//':'//tostring(E(n))//','//tostring(S(n))//':'//tostring(E(n))//','//tostring(pp%shell(k)%pg_id(p))//')'
+                        str_tau= '['//tostring(pp%shell(k)%tau_cart(1:3,p),fmt='SP,f10.5')//']'
+                        str_Vab= trim(V_fnc_name)//tostring(abs(pp%ip_id(k)))//'(v('//tostring(Sv(abs(pp%ip_id(k))))//':'//tostring(Ev(abs(pp%ip_id(k))))//'))'
+                        if (pp%ip_id(k).lt.0) str_Vab=trim(str_Vab)//"'" ! transpose
+                        !
+                        write(fid,'(a)',advance='no') trim(str_H)//' = '//trim(str_H)//' + '
+                        write(fid,'(a)',advance='no') trim(str_Dm)//"' * "//trim(str_Vab)//" * "//trim(str_Dn)
+                        write(fid,'(a)',advance='no') ' * exp(i2pi*dot(kpt,'//trim(str_tau)//'));'
+                        write(fid,*)
+                        !
+                    enddo
+                endif
+                enddo
+                enddo
+                !
+            write(fid,'(a)') 'end'
+        close(fid)
+    end subroutine export_tb2matlab
 
 
 

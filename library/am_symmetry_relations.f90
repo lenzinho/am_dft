@@ -3,6 +3,7 @@ module am_symmetry_relations
     use am_mkl
     use am_matlab
     use am_stdout
+    use dispmodule
 
 	implicit none
 
@@ -112,6 +113,48 @@ module am_symmetry_relations
         !
     end function   get_depenent
 
+    function       get_basis_label(dims,ind,flags) result(str)
+        !
+        implicit none
+        !
+        integer     , intent(in) :: dims(:)
+        integer     , intent(in) :: ind
+        character(*), intent(in) :: flags
+        character(:), allocatable :: str
+        integer     , allocatable :: sub(:)
+        integer :: i, n
+        !
+        allocate(character(100) :: str)
+        !
+        n = size(dims)
+        !
+        sub = ind2sub(dims=dims,ind=ind)
+        !
+        i = 1
+        if     (index(flags,'bra').ne.0) then
+            str = '<'//trim(int2char(sub(i)))
+        elseif (index(flags,'ket').ne.0) then
+            str = '|'//trim(int2char(sub(i)))
+        else
+            str = 'a('//trim(int2char(sub(i)))
+        endif
+        !
+        if (n.ge.2) then
+        do i = 2, n
+            str = trim(str)//','//trim(int2char(sub(i)))
+        enddo
+        endif
+        !
+        if     (index(flags,'bra').ne.0) then
+            str = trim(str)//'|'
+        elseif (index(flags,'ket').ne.0) then
+            str = trim(str)//'>'
+        else
+            str = trim(str)//')'
+        endif
+        !
+    end function   get_basis_label
+
     subroutine     print_relations(relations,dims,flags)
         !
         ! flags - null, dependent, independent, header
@@ -189,48 +232,6 @@ module am_symmetry_relations
             endif
         endif
         !
-        contains
-            function     get_basis_label(dims,ind,flags) result(str)
-                !
-                implicit none
-                !
-                integer     , intent(in) :: dims(:)
-                integer     , intent(in) :: ind
-                character(*), intent(in) :: flags
-                character(:), allocatable :: str
-                integer     , allocatable :: sub(:)
-                integer :: i, n
-                !
-                allocate(character(100) :: str)
-                !
-                n = size(dims)
-                !
-                sub = ind2sub(dims=dims,ind=ind)
-                !
-                i = 1
-                if     (index(flags,'bra').ne.0) then
-                    str = '<'//trim(int2char(sub(i)))
-                elseif (index(flags,'ket').ne.0) then
-                    str = '|'//trim(int2char(sub(i)))
-                else
-                    str = 'a('//trim(int2char(sub(i)))
-                endif
-                !
-                if (n.ge.2) then
-                do i = 2, n
-                    str = trim(str)//','//trim(int2char(sub(i)))
-                enddo
-                endif
-                !
-                if     (index(flags,'bra').ne.0) then
-                    str = trim(str)//'|'
-                elseif (index(flags,'ket').ne.0) then
-                    str = trim(str)//'>'
-                else
-                    str = trim(str)//')'
-                endif
-                !
-            end function get_basis_label
     end subroutine print_relations
 
     subroutine     dump_relations(relations,iopt_filename)
@@ -264,5 +265,70 @@ module am_symmetry_relations
         close(fid)
         !
     end subroutine dump_relations
+
+    subroutine     export_relations2matlab(relations,dims,fnc_name)
+        !
+        ! creates .m file based on relations
+        !
+        implicit none
+        !
+        real(dp),           intent(in) :: relations(:,:)
+        integer , optional, intent(in) :: dims(:)
+        character(*),       intent(in) :: fnc_name
+        integer :: fid
+        integer :: i, j 
+        logical, allocatable :: is_null(:)
+        logical, allocatable :: is_independent(:)
+        logical, allocatable :: is_dependent(:)
+        character(:), allocatable :: str
+        integer :: nterms
+        !
+        ! get terms
+        nterms         = size(relations,1)
+        is_null        = get_null(relations)
+        is_independent = get_independent(relations)
+        is_dependent   = get_depenent(relations)
+        !
+        !
+        fid = 1
+        open(unit=fid,file=trim(fnc_name)//'.m',status='replace',action='write')
+            !
+            write(fid,'(a,a,a)') 'function [a] = ', trim(fnc_name), '(v)'
+                ! write the independent terms
+                j = 0
+                do i = 1, nterms
+                    if (is_independent(i)) then
+                        j=j+1
+                        str = get_basis_label(dims=dims, ind=i ,flags='')
+                        write(fid,'(a)',advance='no') trim(str)//' = v('//tostring(j)//');'
+                        write(fid,*)
+                    endif
+                enddo
+                ! write the dependent terms
+                do i = 1,nterms
+                    if (is_dependent(i)) then
+                        str = get_basis_label(dims=dims, ind=i ,flags='')
+                        write(fid,'(a)',advance='no') trim(str)//' = '
+                        do j = 1,nterms
+                            if (abs(relations(i,j)).gt.tiny) then
+                                str = get_basis_label(dims=dims, ind=j ,flags='')
+                                write(fid,'(a)',advance='no') tostring(relations(i,j),fmt='SP,f10.5')//'*'//trim(str)//';'
+                            endif
+                        enddo
+                        write(fid,*)
+                    endif
+                enddo
+                ! write null terms
+                do i = 1, nterms
+                    if (is_null(i)) then
+                        str = get_basis_label(dims=dims, ind=i ,flags='')
+                        write(fid,'(a)',advance='no') trim(str)//' = 0;'
+                        write(fid,*)
+                    endif
+                enddo
+                !
+            write(fid,'(a)') 'end'
+        close(fid)
+    end subroutine export_relations2matlab
 
 end module am_symmetry_relations
