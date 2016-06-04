@@ -580,7 +580,7 @@ module am_vasp_io
             if (present(kpt)) allocate(kpt(3,internal_nkpts))
             if (present(w))   allocate(w(internal_nkpts))
             !
-            do i = 1, nkpts
+            do i = 1, internal_nkpts
                 ! (LINE 7) skip
                 read(fid,*)
                 ! (LINE 8)   0.0000000E+00  0.0000000E+00  0.0000000E+00  0.3356718E-04

@@ -11,7 +11,6 @@ module am_dispersion
     implicit none
 
     type, public :: am_class_dr
-        !
         real(dp), allocatable :: E(:,:)            ! E(nbands,nkpts) energies
         real(dp), allocatable :: lmproj(:,:,:,:,:) ! lmproj(nspins,norbitals,nions,nbands,nkpts) band character weights
         !
@@ -23,59 +22,32 @@ module am_dispersion
         integer :: nkpts
         character(:), allocatable :: orbitals(:) ! orbitals(norbitals) names of orbitals
     contains
-        procedure :: load_procar
-        procedure :: load_eigenval
+        procedure :: load
         procedure :: write_bandcharacter ! requires load_eigenval or load_procar
         ! 
     end type am_class_dr
 
 contains
 
-    subroutine     load_procar(dr,opts)
-        ! 
-        ! Reads the PROCAR file.
+    subroutine     load(dr,opts,flags)
         !
         implicit none
         !
-        class(am_class_dr), intent(out) :: dr
-        type(am_class_options), intent(in) :: opts
+        class(am_class_dr)    , intent(out) :: dr
+        type(am_class_options), intent(in)  :: opts
+        character(*)          , intent(in)  :: flags
         !
-        call read_procar(nkpts    = dr%nkpts,&
-                         nbands   = dr%nbands,&
-                         nions    = dr%nions,&
-                         nspins   = dr%nspins,&
-                         norbitals= dr%norbitals,&
-                         orbitals = dr%orbitals,&
-                         lmproj   = dr%lmproj,&
-                         E        = dr%E,&
-                         iopt_filename =opts%procar,&
-                         iopt_verbosity=opts%verbosity)
+        if     (index(flags,'eigenval')) then
+            call read_eigenval(E=dr%E, iopt_filename=opts%eigenval, iopt_verbosity=opts%verbosity, &
+                nbands=dr%nbands, nspins=dr%nspins, lmproj=dr%lmproj)
+        elseif (index(flags,'procar')) then
+            call read_procar(E=dr%E, iopt_filename=opts%eigenval, iopt_verbosity=opts%verbosity, &
+                nbands=dr%nbands, nions=dr%nions, nspins=dr%nspins, norbitals=dr%norbitals, orbitals=dr%orbitals, lmproj=dr%lmproj)
+        else
+            stop 'Unknown flag. Nothing read.'
+        endif
         !
-    end subroutine load_procar
-
-    subroutine     load_eigenval(dr,opts)
-        ! 
-        ! Reads the eigenval file.
-        !
-        implicit none
-        !
-        class(am_class_dr), intent(out) :: dr
-        type(am_class_options), intent(in) :: opts
-        !
-        call read_eigenval(nkpts  = dr%nkpts,&
-                           nbands = dr%nbands,&
-                           nspins = dr%nspins,&
-                           E      = dr%E,&
-                           lmproj = dr%lmproj,&
-                           iopt_filename=opts%eigenval,&
-                           iopt_verbosity=opts%verbosity)
-        !
-        dr%nions=1
-        dr%norbitals=1
-        allocate(character(15) :: dr%orbitals(1))
-        dr%orbitals='tot'
-        !
-    end subroutine load_eigenval
+    end subroutine load
 
     subroutine     write_bandcharacter(dr,bz,uc,opts)
         ! 
@@ -154,12 +126,12 @@ contains
                     if (i .eq. 1) then
                         kdiff = 0
                     else
-                        k1=bz%kpt(:,i-1)
-                        k2=bz%kpt(:,i)
+                        k1=bz%kpt_frac(:,i-1)
+                        k2=bz%kpt_frac(:,i)
                         kdiff = kdiff + norm2( abs(k1-k2) )
                     endif
                     !
-                    write(fid,'(100f13.5)',advance='no') kdiff, bz%kpt(1:3,i), dr%E(j,i)
+                    write(fid,'(100f13.5)',advance='no') kdiff, bz%kpt_frac(1:3,i), dr%E(j,i)
                     do m = 1, dr%nions
                     do l = 1, dr%norbitals
                     do n = 1, dr%nspins

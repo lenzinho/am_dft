@@ -668,6 +668,39 @@ contains
         end if
     end subroutine am_zheev
 
+    subroutine     am_zheev_eig(A,D)
+        !
+        implicit none
+        !
+        complex(dp), intent(in)  :: A(:,:)
+        real(dp)   , intent(out) :: D(:)   ! eigenvalues of the matrix A in ascending order
+        complex(dp), allocatable :: V(:,:) ! orthonormal eigenvectors of the matrix A
+        complex(dp), allocatable :: WORK(:)
+        real(dp)   , allocatable :: RWORK(:)
+        integer :: n
+        integer :: lda
+        integer :: info
+        integer :: lwork
+        !
+        ! initialize variables
+        lda = size(A,1)
+        n   = size(A,2)
+        allocate(D(n))
+        allocate(RWORK(3*n-2))
+        ! copy variables
+        allocate(V, source=A)
+        ! query the optimal workspace
+        allocate(WORK(lwmax))
+        lwork = -1
+        call zheev( 'N', 'U', n, V, lda, D, WORK, lwork, RWORK, info )
+        lwork = min( lwmax, int( WORK( 1 ) ) )
+        ! solve eigenproblem
+        call zheev( 'N', 'U', n, V, lda, D, WORK, lwork, RWORK, info )
+        ! check for convergence.
+        if( info.gt.0 ) stop 'ERROR: ZHEEV failed to compute eigenvalues'
+        !
+    end subroutine am_zheev_eig
+
     ! diagonalize banded complex hermitian matrix
 
     subroutine     am_zhbev(A_b,V,D)

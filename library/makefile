@@ -2,41 +2,42 @@ include makefile.inc
 
 LIBS  = libam.a
 
-OBJS  = dispmodule.o 				   \
-		am_constants.o                 \
-		am_mkl.o                       \
-		am_matlab.o                    \
-		am_stdout.o                    \
-		am_histogram.o                 \
-		am_rank_and_sort.o             \
-		am_options.o                   \
-		am_vasp_io.o                   \
-		am_atom.o                      \
-		am_unit_cell.o                 \
-		am_prim_cell.o                 \
-		am_conv_cell.o                 \
-		am_symmetry_tables.o  		   \
-		am_symmetry.o                  \
-		am_irre_cell.o                 \
-		am_shells.o                    \
-		am_symmetry_relations.o 	   \
-		am_symmetry_rep.o 			   \
-		am_tight_binding.o             \
-		am_tet_mesh.o                  
+OBJS  = dispmodule.o 					\
+		am_constants.o              	\
+		am_mkl.o                    	\
+		am_matlab.o                 	\
+		am_stdout.o                 	\
+		am_histogram.o              	\
+		am_rank_and_sort.o          	\
+		am_options.o                	\
+		am_vasp_io.o                	\
+		am_atom.o                   	\
+		am_unit_cell.o              	\
+		am_prim_cell.o              	\
+		am_conv_cell.o              	\
+		am_symmetry_tables.o  			\
+		am_symmetry.o               	\
+		am_irre_cell.o              	\
+		am_shells.o                 	\
+		am_symmetry_relations.o 		\
+		am_symmetry_rep.o 				\
+		am_dispersion.o                 \
+		am_brillouin_zone.o             \
+		am_tight_binding.o          	
 
-		# am_brillouin_zone.o            \
-		# am_tetrahedra.o                \
-		# am_dispersion.o                \
-		# am_dos.o                       \
-		# am_wannier.o                   \
+		# am_tet_mesh.o                   \
+		# am_tetrahedra.o                 \
+		# am_dos.o                        \
+		# am_wannier.o                    \
 
 all: $(LIBS)
 	@echo > /dev/null
 
 $(LIBS): $(OBJS)
-	-rm libam.a
+	rm libam.a
 	ar rcv libam.a $(OBJS)
 	ranlib libam.a
+	# rm *.mod *.i90
 
 clean:
 	rm -f $(OBJS) *.mod *.o *.i90
@@ -51,3 +52,22 @@ clean:
 	$(FC) $(FFLAGS) $(LFLAGS) $(DEBUG) -c $<
 
 .PHONY: all
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
