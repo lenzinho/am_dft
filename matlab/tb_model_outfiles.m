@@ -19,7 +19,9 @@ for i = 1:pg.nsyms
         fprintf('ERROR: [H,R] ~= 0!\n')
     end
 end
-fprintf('ERROR: %i symmetry operations found to not commute with H.\n',j)
+if (j~=0)
+    fprintf('ERROR: %i symmetry operations found to not commute with H.\n',j)
+end
 
 
 %%

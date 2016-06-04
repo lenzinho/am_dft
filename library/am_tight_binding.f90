@@ -631,7 +631,7 @@ contains
         if (opts%verbosity.ge.1) call print_title('Optimizing matrix elements')
         !
         call initialize_optimizer(ft=ft, tb=tb, bz=bz, dr=dr, ip=ip, tbpg=tbpg, &
-        E_lower=0.D0 , maxiter=1000)
+        E_lower=opts%Erange(1) , maxiter=1000)
         !
         write(*,'(a5,a,a)') ' ... ', 'irreducible matrix elements = ', tostring(ft%nVs)
         write(*,'(a5,a,a)') ' ... ', 'k-points = '                   , tostring(ft%nkpts)

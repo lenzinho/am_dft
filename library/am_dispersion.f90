@@ -63,8 +63,12 @@ contains
         if (opts%verbosity.ge.1) then
             write(*,'(a5,a,a)') ' ... ', 'bands = ', tostring(dr%nbands)
             write(*,'(a5,a,a)') ' ... ', 'spins = ', tostring(dr%nspins)
+            write(*,'(a5,a)  ') ' ... ', 'band energy statistics = '
+            write(*,'(5x,a,a)')          'lowest = ', tostring(minval(pack(dr%E,.true.)))
+            write(*,'(5x,a,a)')          'highest = ', tostring(maxval(pack(dr%E,.true.)))
+            write(*,'(5x,a,a)')          'mean = ', tostring( sum(pack(dr%E,.true.))/size(pack(dr%E,.true.)) )
             ! make nice dos histogram
-            write(*,'(a5,a)') ' ... ', 'density of states = '
+            write(*,'(a5,a)') ' ... ', 'density of states'
             call plot_histogram(binned_data=histogram(x=pack(dr%E,.true.),m=98)) 
             ! make nice plot
             ! write(*,'(a5,a)') ' ... ', 'band ranges = '

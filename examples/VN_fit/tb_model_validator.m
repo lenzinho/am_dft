@@ -15,11 +15,15 @@ kend=[
     0.000000   0.500000   0.000000
     ]';
 
-v=[ 1 1 10 ];
+v=[ 1 1 1 ];
 
 [pg] = load_tb_point_group();
 [pc] = load_poscar('outfile.supercell');
 [bz] = get_kpoint_path(pc.bas,kstart,kend,40);
+
+if (~tb_check_hamiltonian_at_gamma(pg)) 
+    fprintf('WARNING: HAMILTONIAN DOES NOT COMMUTE WITH POINT SYMMETRIES AT GAMMA!\n')
+end
 
 for i = 1:bz.npaths
 for j = 1:bz.ndivs

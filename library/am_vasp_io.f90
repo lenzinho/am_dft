@@ -613,9 +613,9 @@ module am_vasp_io
                     word = strsplit(buffer,delimiter=' ')
                     if ( (i .eq. 1) .and. (j .eq. 1) ) then
                         !> nspins number of spins
-                        internal_nspins = size(word)-1
+!                         internal_nspins = size(word)-1
                         ! <ORIGINAL>
-                        ! internal_nspins = size(word)-2
+                        internal_nspins = size(word)-2
                         ! </ORIGINAL>
                         if (verbosity.ge.1) write(*,'(a5,a,a)') ' ... ', 'spins = ', tostring(internal_nspins)
                         if (present(nspins)) then
