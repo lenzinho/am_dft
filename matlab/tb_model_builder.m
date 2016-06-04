@@ -29,9 +29,13 @@ kend=[
 klabel={'L','G','X','G'};
 
 v=zeros(7,1);
-v=rand(100,1);
-% v(2)=[1];
-% v(5)=[-0.1];
+v(1)=-4.2
+v(2)=10
+v(3)=1
+v(4)=0.8
+v(5)=-1
+v(6)=1.4
+
 
 [pg] = load_tb_point_group();
 [pc] = load_poscar('outfile.primitive');
