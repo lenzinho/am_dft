@@ -572,8 +572,9 @@ contains
         ! export symmetry relations for each irreducible pair
         allocate(Sv(ip%nshells))
         allocate(Ev(ip%nshells))
-        j = 1
+        j = 0
         do i = 1, ip%nshells
+            j = j + 1
             Sv(i) = j
             call export_relations2matlab(relations=tb%tbvsk(i)%relations, dims=tb%tbvsk(i)%dims, fnc_name=trim(V_fnc_name)//tostring(i))
             j = j + count(get_independent(tb%tbvsk(i)%relations)) - 1
