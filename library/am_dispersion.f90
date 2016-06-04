@@ -1,5 +1,6 @@
 module am_dispersion
 
+    use dispmodule
     use am_brillouin_zone
     use am_unit_cell
     use am_constants
@@ -7,6 +8,7 @@ module am_dispersion
     use am_vasp_io
     use am_mkl
     use am_options
+    use am_histogram
 
     implicit none
 
@@ -30,20 +32,57 @@ contains
 
     subroutine     load(dr,opts,flags)
         !
+        ! use text_viz
+        !
         implicit none
         !
         class(am_class_dr)    , intent(out) :: dr
         type(am_class_options), intent(in)  :: opts
         character(*)          , intent(in)  :: flags
+        ! integer, allocatable :: canvas(:,:)
+        ! integer :: i, height
+        ! integer :: minmin
+        ! integer :: maxmax
+        ! integer :: minmax
+        !
+        !
+        if (opts%verbosity.ge.1) call print_title('Input electronic band dispersion')
         !
         if     (index(flags,'eigenval')) then
-            call read_eigenval(E=dr%E, iopt_filename=opts%eigenval, iopt_verbosity=opts%verbosity, &
+            write(*,'(a5,a,a)') ' ... ', 'file = ', 'eigenval'
+            call read_eigenval(E=dr%E, iopt_filename=opts%eigenval, iopt_verbosity=0, &
                 nbands=dr%nbands, nspins=dr%nspins, lmproj=dr%lmproj)
         elseif (index(flags,'procar')) then
-            call read_procar(E=dr%E, iopt_filename=opts%eigenval, iopt_verbosity=opts%verbosity, &
+            write(*,'(a5,a,a)') ' ... ', 'file = ', 'procar'
+            call read_procar(E=dr%E, iopt_filename=opts%procar, iopt_verbosity=0, &
                 nbands=dr%nbands, nions=dr%nions, nspins=dr%nspins, norbitals=dr%norbitals, orbitals=dr%orbitals, lmproj=dr%lmproj)
         else
-            stop 'Unknown flag. Nothing read.'
+            stop 'ERROR: eigenval/procar flag required.'
+        endif
+        !
+        if (opts%verbosity.ge.1) then
+            write(*,'(a5,a,a)') ' ... ', 'bands = ', tostring(dr%nbands)
+            write(*,'(a5,a,a)') ' ... ', 'spins = ', tostring(dr%nspins)
+            ! make nice dos histogram
+            write(*,'(a5,a)') ' ... ', 'density of states = '
+            call plot_histogram(binned_data=histogram(x=pack(dr%E,.true.),m=98)) 
+            ! make nice plot
+            ! write(*,'(a5,a)') ' ... ', 'band ranges = '
+            ! height = 98
+            ! allocate(canvas(dr%nbands,height))
+            ! canvas = 0
+            ! minmin = minval(pack(dr%E,.true.))
+            ! maxmax = maxval(pack(dr%E,.true.))
+            ! minmax = maxmax-minmin
+            ! do i = 1, dr%nbands
+            ! canvas(i,min(max(nint((minval(dr%E(i,:))-minmin)/real(minmax,dp)*height),1),height)) = -1
+            ! canvas(i,min(max(nint((maxval(dr%E(i,:))-minmin)/real(minmax,dp)*height),1),height)) = +1
+            ! enddo
+            ! ! make nice pot
+            ! call viz_init(height,dr%nbands)
+            ! call viz_clear
+            ! call viz_plot(transpose(real(canvas)),height,dr%nbands)
+            ! call viz_done
         endif
         !
         if (dr%nbands.eq.0) stop 'ERROR: nbands = 0'

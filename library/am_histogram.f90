@@ -17,12 +17,10 @@ module am_histogram
     contains
 
     pure function   histogram_double(x,m) result(binned_data)
-        ! --------------------------------------------------------------------
-        ! subroutine  distribute() :
-        !    this subroutine receives a score array and a range array, binned_datas
-        ! the number of each scores in each range, and calls plot() to print
-        ! a histogram.
-        ! --------------------------------------------------------------------
+        !
+        ! m number of bins
+        ! x vector to be binned
+        !
         implicit none
         real(dp), intent(in) :: x(:) ! data to convert to histogram
         integer , intent(in) :: m ! number of divisors
@@ -100,15 +98,20 @@ module am_histogram
         integer, intent(in) :: binned_data(:)
         integer :: m ! size(binned_data)
         character(len=1), allocatable :: line(:)
-        character(len=1), parameter :: division  = "-" ! = "-+"
-        character(len=1), parameter :: empty     = " "  ! = "  "
-        character(len=1), parameter :: datahas   = "*"  ! = "* "
-        character(len=1), parameter :: last      = "|" ! = "*|"
-        integer                     :: i, j, maximum
-        character(len=100) :: fmt
+        character(len=1) :: division
+        character(len=1) :: empty
+        character(len=1) :: datahas
+        character(len=1) :: last
+        integer          :: i, j, maximum
+        character(len=99):: fmt
         !
         m = size(binned_data)+1
         allocate(line(m))
+        !
+        division  = "-" ! = "-+"
+        empty     = " " ! = "  "
+        datahas   = "*" ! = "* "
+        last      = "|" ! = "*|"
         !
         maximum = binned_data(1) ! find the maximum of the binned_data
         line(1) = division ! clear the print line
@@ -145,5 +148,7 @@ module am_histogram
         end do
         write(*,fmt) "+", line
     end subroutine  plot_histogram
+
+
 
 end module am_histogram

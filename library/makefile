@@ -3,6 +3,7 @@ include makefile.inc
 LIBS  = libam.a
 
 OBJS  = mkl_rci.o 						\
+		text_viz.o 						\
 		dispmodule.o 					\
 		am_constants.o              	\
 		am_mkl.o                    	\

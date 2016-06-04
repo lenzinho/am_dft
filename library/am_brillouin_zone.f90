@@ -143,12 +143,18 @@ contains
         real(dp), allocatable :: kpt(:,:) ! kpoint coordinates
         real(dp), allocatable :: w(:) ! normalized weights
         !
+        !
+        if (opts%verbosity.ge.1) call print_title('Input kpoints')
+        !
         if     (index(flags,'ibzkpt')) then
-            call read_ibzkpt(  kpt=kpt, w=w, iopt_filename=opts%ibzkpt  , iopt_verbosity=opts%verbosity)
+            write(*,'(a5,a,a)') ' ... ', 'file = ', 'ibzkpt'
+            call read_ibzkpt(  kpt=kpt, w=w, iopt_filename=opts%ibzkpt  , iopt_verbosity=0)
         elseif (index(flags,'procar')) then
-            call read_procar(  kpt=kpt, w=w, iopt_filename=opts%procar  , iopt_verbosity=opts%verbosity)
+            write(*,'(a5,a,a)') ' ... ', 'file = ', 'procar'
+            call read_procar(  kpt=kpt, w=w, iopt_filename=opts%procar  , iopt_verbosity=0)
         elseif (index(flags,'eigenval')) then
-            call read_eigenval(kpt=kpt, w=w, iopt_filename=opts%eigenval, iopt_verbosity=opts%verbosity)
+            write(*,'(a5,a,a)') ' ... ', 'file = ', 'eigenval'
+            call read_eigenval(kpt=kpt, w=w, iopt_filename=opts%eigenval, iopt_verbosity=0)
         else
             stop 'Unknown flag. Nothing read.'
         endif
@@ -157,6 +163,10 @@ contains
         !
         ! call bz%get_weights(pg=pg, opts=opts)
         ! if (.not.isequal(bz%w,w)) stop 'Computed weights do not match vasp input'
+        !
+        if (opts%verbosity.ge.1) then
+            write(*,'(a5,a,a)') ' ... ', 'kpoints = ', tostring(bz%nkpts)
+        endif
         !
     end subroutine load
 
