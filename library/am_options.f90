@@ -7,6 +7,7 @@ module am_options
         real(dp) :: prec
         integer  :: n(3) ! monkhorst pack mesh grid dimensions
         real(dp) :: s(3) ! monkhorst pack mesh grid shift
+        character(max_argument_length) :: flags
         character(max_argument_length) :: tbf
         character(max_argument_length) :: ibzkpt
         character(max_argument_length) :: procar
@@ -43,6 +44,7 @@ module am_options
         opts%prec     = 1.0D-5  ! this is ultimately limited by the input
         opts%n        = [9,9,9] ! monkhorst pack mesh grid dimensions
         opts%s        = real([0,0,0],dp) ! monkhorst pack mesh grid shift
+        opts%flags    = ''
         opts%ibzkpt   = 'IBZKPT'
         opts%procar   = 'PROCAR'
         opts%prjcar   = 'PRJCAR'
@@ -54,13 +56,10 @@ module am_options
         opts%wan_eig  = 'wannier90.eig'
         opts%tbf      = 'infile.tightbinding'
         opts%supercell        = [1,1,1] ! no supercell
-        opts%primitive        = .false. ! reduces unit cell to primitive cel
-        opts%conventional     = .false. ! centers unit cell
-        opts%deformation      = .false.
         opts%deformation_code = -1000
         opts%maxstrain        = -1000
         opts%nstrains         = -1000
-        opts%pair_cutoff      = 1000
+        opts%pair_cutoff      =  1000
         !
     end subroutine  defaults
 
@@ -89,61 +88,16 @@ module am_options
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*) opts%verbosity
+                case('-baseline')
+                    opts%flags = trim(opts%flags)//' baseline'
+                case('-query')
+                    opts%flags = trim(opts%flags)//' query'
                 case('-prec')
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*) opts%prec
-                case('-conventional') ! convertes the unit cell from primitive to conventional
-                    opts%conventional  = .true.
-                case('-primitive') ! convertes the unit cell from primitive to conventional
-                    opts%primitive = .true.
-                !
-                ! second order force constants 
-                !
-                case('-pair_cutoff')
-                    i=i+1
-                    call get_command_argument(i,argument)
-                    read(argument,*) opts%pair_cutoff
-                !
-                ! deformations
-                !
-                case('-strain')
-                    i=i+1
-                    call get_command_argument(i,argument)
-                    read(argument,*) opts%deformation_code
-                    i=i+1
-                    call get_command_argument(i,argument)
-                    read(argument,*) opts%maxstrain
-                    i=i+1
-                    call get_command_argument(i,argument)
-                    read(argument,*) opts%nstrains
-                    opts%deformation = .true.
-                !
-                ! supercell
-                !
-                case('-supercell')
-                    do j = 1,3
-                        i=i+1
-                        call get_command_argument(i,argument)
-                        read(argument,*) opts%supercell(j)
-                    enddo
-                !
-                ! monkhorst pack mesh
-                !
-                case('-s')
-                    do j = 1,3
-                        i=i+1
-                        call get_command_argument(i,argument)
-                        read(argument,*) opts%s(j)
-                    enddo
-                case('-n')
-                    do j = 1,3
-                        i=i+1
-                        call get_command_argument(i,argument)
-                        read(argument,*) opts%n(j)
-                    enddo
-                !
-                ! vasp
+                ! ************************************************
+                ! vasp input parameters
                 ! 
                 case('-ibzkpt')
                     i=i+1
@@ -165,13 +119,62 @@ module am_options
                     i=i+1
                     call get_command_argument(i,opts%poscar)
                     opts%poscar = trim(opts%poscar)
-                !
-                ! tight binding
-                !
-                case('-tb')
+                ! ************************************************
+                ! prog_tb parameters
+                case('-pair_cutoff')
                     i=i+1
-                    call get_command_argument(i,opts%tbf)
-                    opts%tbf = trim(opts%tbf)
+                    call get_command_argument(i,argument)
+                    read(argument,*) opts%pair_cutoff
+                case('-tbfit')
+                    opts%flags = trim(opts%flags)//' tbfit:'
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    if     (index(argument,'eigenval').ne.0) then
+                        opts%flags = trim(opts%flags)//'eigenval'
+                    elseif (index(argument,'procar').ne.0) then
+                        opts%flags = trim(opts%flags)//'procar'
+                    else
+                        stop '-tbfit /= eigenval or procar!'
+                    endif
+                ! ************************************************
+                ! prog_uc parameters
+                case('-conventional') 
+                    opts%flags = trim(opts%flags)//' conv'
+                case('-primitive') 
+                    opts%flags = trim(opts%flags)//' prim'
+                case('-supercell')
+                    opts%flags = trim(opts%flags)//' supercell'
+                    do j = 1,3
+                        i=i+1
+                        call get_command_argument(i,argument)
+                        read(argument,*) opts%supercell(j)
+                    enddo
+                case('-strain')
+                    opts%flags = trim(opts%flags)//' def'
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*) opts%deformation_code
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*) opts%maxstrain
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*) opts%nstrains
+                !
+                ! monkhorst pack mesh
+                !
+                case('-s')
+                    do j = 1,3
+                        i=i+1
+                        call get_command_argument(i,argument)
+                        read(argument,*) opts%s(j)
+                    enddo
+                case('-n')
+                    do j = 1,3
+                        i=i+1
+                        call get_command_argument(i,argument)
+                        read(argument,*) opts%n(j)
+                    enddo
                 !
                 ! wannier
                 !
@@ -206,20 +209,23 @@ module am_options
         write(*,'(5x,a)') '-verbosity <int>'
         write(*,'(5x,a)') '     Controls output: (0) supress output, (1) normal, (2) verbose.'
         write(*,'(5x,a)') ''
+        write(*,'(5x,a)') '-baseline'
+        write(*,'(5x,a)') '     Generates baseline output for benchmarking.'
+        write(*,'(5x,a)') ''
+        write(*,'(5x,a)') '-query'
+        write(*,'(5x,a)') '     Query structure.'
+        write(*,'(5x,a)') ''
         write(*,'(5x,a)') '-prec <dbl>'
         write(*,'(5x,a)') '     Controls precision used for symmetry determination and calculation. Default = tiny.'
-        write(*,'(5x,a)') ''
-        write(*,'(5x,a)') '-conventional'
-        write(*,'(5x,a)') '     Converts cell to conventional setting.'
-        write(*,'(5x,a)') ''
+        write(*,'(5x,a)') '' ! PROG_TB STUFF BEGINS HERE
+        write(*,'(5x,a)') '-pair_cutoff <dbl>'
+        write(*,'(5x,a)') '     Realspace cutoff for second order force constants.'
+        write(*,'(5x,a)') '' ! PROG_UC STUFF BEGINS HERE
         write(*,'(5x,a)') '-primitive'
         write(*,'(5x,a)') '     Converts cell to primitive cell.'
         write(*,'(5x,a)') ''
-        write(*,'(5x,a)') '-supercell <a:int> <b:int> <c:int>'
-        write(*,'(5x,a)') '     Creates supercell of dimesnions a,b,c based on input structure.'
-        write(*,'(5x,a)') ''
-        write(*,'(5x,a)') '-pair_cutoff <dbl>'
-        write(*,'(5x,a)') '     Realspace cutoff for second order force constants.'
+        write(*,'(5x,a)') '-conventional'
+        write(*,'(5x,a)') '     Converts cell to conventional setting.'
         write(*,'(5x,a)') ''
         write(*,'(5x,a)') '-strain <defcode:int> <eta:dbl> <strains:int>'
         write(*,'(5x,a)') '     Applies elastic deformation to cell. Deformation code species type of deformation. eta'
@@ -247,6 +253,9 @@ module am_options
         write(*,'(5x,a)') '     20     [   0,    0,    0,  eta,  eta,    0]      yz zx shear'
         write(*,'(5x,a)') '     40     [ eta,  eta,  -2e,    0,    0,    0]      tetragonal for 3/2(c11-c12)'
         write(*,'(5x,a)') '     41     [ eta, -eta,    0,    0,    0,    0]      orthorhombic for (c11-c12)'
+        write(*,'(5x,a)') '-supercell <a:int> <b:int> <c:int>'
+        write(*,'(5x,a)') '     Creates supercell of dimesnions a,b,c based on input structure.'
+        write(*,'(5x,a)') ''
 
 
 !                 !

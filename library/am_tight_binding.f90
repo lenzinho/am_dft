@@ -599,7 +599,7 @@ contains
                         str_Dm = 'pg.sym('//tostring(S(m))//':'//tostring(E(m))//','//tostring(S(m))//':'//tostring(E(m))//','//tostring(pp%shell(k)%pg_id(p))//')'
                         str_Dn = 'pg.sym('//tostring(S(n))//':'//tostring(E(n))//','//tostring(S(n))//':'//tostring(E(n))//','//tostring(pp%shell(k)%pg_id(p))//')'
                         str_tau= '['//tostring(pp%shell(k)%tau_cart(1:3,p),fmt='SP,f10.5')//']'
-                        str_Vab= trim(V_fnc_name)//tostring(abs(pp%ip_id(k)))//'(v('//tostring(Sv(abs(pp%ip_id(k))))//':'//tostring(Ev(abs(pp%ip_id(k))))//'))'
+                        str_Vab= trim(V_fnc_name)//tostring(l)//'(v('//tostring(Sv(l))//':'//tostring(Ev(l))//'))'
                         if (pp%ip_id(k).lt.0) str_Vab=trim(str_Vab)//"'" ! transpose
                         ! write stuff
                         write(fid,'(a)',advance='no') trim(str_H)//' = '//trim(str_H)//' + '
