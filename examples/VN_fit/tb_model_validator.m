@@ -15,7 +15,7 @@ kend=[
     0.000000   0.500000   0.000000
     ]';
 
-v=[ +2.88154  +0.00000  +4.51881];
+v=[ 1 1 10 ];
 
 [pg] = load_tb_point_group();
 [pc] = load_poscar('outfile.supercell');
