@@ -46,6 +46,8 @@ contains
             stop 'Unknown flag. Nothing read.'
         endif
         !
+        if (dr%nbands.eq.0) stop 'ERROR: nbands = 0'
+        !
     end subroutine load
 
     subroutine     write_bandcharacter(dr,bz,uc,opts)

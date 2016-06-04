@@ -1,5 +1,6 @@
 module am_vasp_io
     !
+    use dispmodule
     use am_constants
     use am_stdout
     !
@@ -61,8 +62,6 @@ module am_vasp_io
         if ( present(iopt_filename) ) fname = iopt_filename
         verbosity = 1
         if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
-        !
-        !
         !
         if (verbosity.ge.1) call print_title('Reading IBZKPT')
         !
@@ -564,18 +563,19 @@ module am_vasp_io
             read(unit=fid,fmt='(a)') buffer
             word = strsplit(buffer,delimiter=' ')
             !> nelects number of electrons
+            write(*,'(a5,a,a)') ' ... ', 'electrons = ', trim(word(1))
             if (present(nelecs)) then
                 read(word(1),*) nelecs
-                if (verbosity.ge.1) call am_print('number of electrons',nelecs,' ... ')
             endif
             !> nkpts number of kpoints
             read(word(2),*) internal_nkpts
+            write(*,'(a5,a,a)') ' ... ', 'kpoints = ', trim(word(2))
             if (present(nkpts)) then
                 nkpts = internal_nkpts
-                if (verbosity.ge.1) call am_print('number of kpoints',internal_nkpts,' ... ')
             endif
             !> nbands number of bands
             read(word(3),*) nbands_without_spin
+            write(*,'(a5,a,a)') ' ... ', 'bands (neglecting spin) = ', trim(word(3))
             !
             if (present(kpt)) allocate(kpt(3,internal_nkpts))
             if (present(w))   allocate(w(internal_nkpts))
@@ -604,15 +604,18 @@ module am_vasp_io
                     word = strsplit(buffer,delimiter=' ')
                     if ( (i .eq. 1) .and. (j .eq. 1) ) then
                         !> nspins number of spins
-                        internal_nspins = size(word)-2
+                        internal_nspins = size(word)-1
+                        ! <ORIGINAL>
+                        ! internal_nspins = size(word)-2
+                        ! </ORIGINAL>
+                        write(*,'(a5,a,a)') ' ... ', 'spins = ', tostring(internal_nspins)
                         if (present(nspins)) then
                             nspins = internal_nspins
-                            if (verbosity.ge.1) call am_print('number of spins',nspins,' ... ')
                         endif
                         internal_nbands = nbands_without_spin*internal_nspins
+                        write(*,'(a5,a,a)') ' ... ', 'bands (with spin) = ', tostring(internal_nbands)
                         if (present(nbands)) then 
                             nbands = internal_nbands
-                            if (verbosity.ge.1) call am_print('number of bands',nbands,' ... ')
                         endif
                         if (present(E)) allocate(E(internal_nbands,internal_nkpts))
                         !> lmproj(nspins,norbitals,nions,nbands,nkpts) projections for spins

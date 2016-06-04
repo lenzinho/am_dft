@@ -162,12 +162,23 @@ contains
             ! read it
             call read_orbital_basis(ic,fname,opts%verbosity)
         else
+            if (opts%verbosity.ge.1) write(*,'(a5,a)') ' ... ', trim(fname)//' not found.'
             ! create basis on each irreducible atoms
             allocate(ic%atom(ic%natoms))
             do i = 1, ic%natoms
                 call ic%atom(i)%gen_orbitals(orbital_flags='2s,2p')
             enddo
             call write_orbital_basis(ic)
+            !
+            if (opts%verbosity.ge.1)  then
+                write(*,'(a5,a)') ' ... ', 'Template produced: outfile.tb_orbitals'
+                call print_title('Done!')
+            endif
+            !
+            stop 
+            !************************************************************************************
+            ! END PROGRAM HERE IF INFILE.TB_ORBITALS DOES NOT EXIST!
+            !************************************************************************************
         endif
         !
         do i = 1, ic%natoms
