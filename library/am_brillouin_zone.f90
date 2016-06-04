@@ -167,7 +167,6 @@ contains
         class(am_class_bz), intent(in) :: bz
         character(*)      , intent(in) :: fname
         integer :: fid
-        integer :: i
         !
         fid = 1
         open(unit=fid,file=trim(fname),status='replace',action='write')

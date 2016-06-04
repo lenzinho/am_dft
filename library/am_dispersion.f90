@@ -19,7 +19,6 @@ module am_dispersion
         integer :: norbitals
         integer :: nions
         integer :: nbands
-        integer :: nkpts
         character(:), allocatable :: orbitals(:) ! orbitals(norbitals) names of orbitals
     contains
         procedure :: load

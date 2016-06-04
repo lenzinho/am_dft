@@ -2,7 +2,8 @@ include makefile.inc
 
 LIBS  = libam.a
 
-OBJS  = dispmodule.o 					\
+OBJS  = mkl_rci.o 						\
+		dispmodule.o 					\
 		am_constants.o              	\
 		am_mkl.o                    	\
 		am_matlab.o                 	\

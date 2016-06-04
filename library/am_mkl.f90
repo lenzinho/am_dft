@@ -28,6 +28,7 @@ module am_mkl
 
 contains
 
+
     ! random number
 
     function       rand(seed) result(a)
@@ -673,7 +674,7 @@ contains
         implicit none
         !
         complex(dp), intent(in)  :: A(:,:)
-        real(dp)   , intent(out) :: D(:)   ! eigenvalues of the matrix A in ascending order
+        real(dp)   , allocatable, intent(out) :: D(:)   ! eigenvalues of the matrix A in ascending order
         complex(dp), allocatable :: V(:,:) ! orthonormal eigenvectors of the matrix A
         complex(dp), allocatable :: WORK(:)
         real(dp)   , allocatable :: RWORK(:)
@@ -681,6 +682,7 @@ contains
         integer :: lda
         integer :: info
         integer :: lwork
+        !
         !
         ! initialize variables
         lda = size(A,1)
