@@ -38,8 +38,9 @@ module am_symmetry_rep
     end type am_class_regular_group
 
     type, public, extends(am_class_symrep_group) :: am_class_tb_group
-        integer, allocatable :: H_start(:) ! Hstart(m) start of hamiltonian section corresponding to atom m
-        integer, allocatable :: H_end(:)   ! Hend(m)   end of hamiltonian section corresponding to atom m
+        integer, allocatable :: H_start(:)      ! Hstart(m) start of hamiltonian section corresponding to atom m
+        integer, allocatable :: H_end(:)        ! Hend(m)   end of hamiltonian section corresponding to atom m
+        integer, allocatable :: parity(:,:)     ! correct wave function parity, take element-wise product with Hamiltonian.
         contains
         procedure :: get_tight_binding_point_group
     end type am_class_tb_group
@@ -122,7 +123,7 @@ module am_symmetry_rep
         class(am_class_point_group), intent(in)  :: pg   ! seitz point group (rev stab rot groups as well)
         type(am_class_prim_cell)   , intent(in)  :: pc   ! primitive cell
         type(am_class_irre_cell)   , intent(in)  :: ic   ! irreducible cell
-        integer  :: i
+        integer  :: i,m,n
         !
         ! get number of bases functions in representation (see below) ...
         tbpg%nbases = 0
@@ -133,6 +134,17 @@ module am_symmetry_rep
             tbpg%H_start(i) = tbpg%nbases + 1
             tbpg%nbases     = tbpg%nbases + ic%atom(pc%ic_id(i))%norbitals
             tbpg%H_end(i)   = tbpg%nbases
+        enddo
+        ! get wave function parity
+        allocate(tbpg%parity(tbpg%nbases,tbpg%nbases))
+        tbpg%parity = 1
+        ! update lower triangular part of matrix
+        do m = 1, pc%natoms
+        do n = 1, pc%natoms
+            if (n.lt.m) then
+                tbpg%parity(tbpg%H_start(m):tbpg%H_end(m),tbpg%H_start(n):tbpg%H_end(n)) = transp_parity_sign(atom_m=ic%atom(pc%ic_id(m)), atom_n=ic%atom(pc%ic_id(n)))
+            endif
+        enddo
         enddo
         ! number of symmetries
         tbpg%nsyms = pg%nsyms

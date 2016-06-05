@@ -279,8 +279,8 @@ contains
                 do p = 1, pp%shell(k)%natoms
                     ! set pointers
                     Hsub => Hsub_target(S(m):E(m), S(n):E(n))
-                    Dm   => pg_target(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p) )
-                    Dn   => pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
+                    Dm   => pg_target(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p))
+                    Dn   => pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p))
                     ! get matrix elements (initialize Hsub)
                     Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))
                     ! rotate matrix elements as needed to get from the tau_frac(:,1) => tau_frac(:,x)
@@ -530,7 +530,10 @@ contains
             Dn   => pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
             Hsub => Hsub_target(S(m):E(m), S(n):E(n))
             ! print stuff
-            Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))
+            Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j)) 
+            ! multiply to correct parity
+            Hsub = Hsub * tbpg%parity(tbpg%H_start(m):tbpg%H_end(m),tbpg%H_start(n):tbpg%H_end(n))
+            ! print
             call disp(unit=fid, fmt='f18.10',X=matmul(matmul(transpose(Dm), Hsub), Dn),title=tostring(pp%shell(k)%tau_cart(1:3,p),fmt='f10.5')//' [cart.]',style='above')
             enddo
             enddo
@@ -586,7 +589,7 @@ contains
         allocate(S, source=tbpg%H_start)
         allocate(E, source=tbpg%H_end)
         end = size(tbpg%H_end)
-        ! allocat estart and end vectors
+        ! allocate start and end vectors
         allocate(Sv(ip%nshells))
         allocate(Ev(ip%nshells))
         j = 0
@@ -651,6 +654,8 @@ contains
                 endif
                 enddo
                 enddo
+                ! correct parity for cases in which irredcubiel pair was flipped.
+                write(fid,'(a)') 'H = H .* parity();'
             write(fid,'(a)') 'end'
             !
             ! export symmetry relations for each irreducible pair (append to the same file)
@@ -658,8 +663,14 @@ contains
                 call export_relations2matlab(relations=tb%tbvsk(i)%relations, dims=tb%tbvsk(i)%dims, fnc_name=trim(V_fnc_name)//tostring(i), fid_append=fid, flags='append')
             enddo
             !
+            ! export orbital parity
+            write(fid,'(a)') 'function [P] = parity()'
+            do i = 1, tbpg%nbases
+                write(fid,'(a,a,a)') 'P('//tostring(i)//',1:'//tostring(tbpg%nbases)//') = [', tostring(tbpg%parity(i,:),fmt='SP,i2'), '];'
+            enddo
+            write(fid,'(a)') 'end'
+            !
         close(fid)
-        !
     end subroutine export_to_matlab
 
     subroutine     optimize_matrix_elements(tb,tbpg,bz,dr,ip,ic,pp,opts)
