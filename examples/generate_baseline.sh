@@ -11,7 +11,7 @@ for d in ${dlist}
 do
 	echo ${odir}/${d}
 	cd ${d}
-	sym -poscar outfile.supercell | tee baseline.sym
-	tb  -poscar outfile.supercell | tee baseline.tb
+	sym -poscar outfile.supercell -baseline | tee baseline.sym
+	tb  -poscar outfile.supercell -baseline | tee baseline.tb
 	cd ${odir}
 done

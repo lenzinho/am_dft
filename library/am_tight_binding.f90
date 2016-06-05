@@ -563,10 +563,6 @@ contains
         character(100) :: str_Dn
         character(100) :: str_tau
         character(100) :: str_Vab
-        ! character(3)   :: str_symb(500)
-        ! real(dp)       :: dbl_symb(500)
-        ! integer        :: symb_start
-        ! symb_start = 96 ! 97 = a
         !
         ! st function names
         if     (index(flags, 'symbolic').ne.0) then
@@ -599,25 +595,6 @@ contains
             j = j + count(get_independent(tb%tbvsk(i)%relations)) - 1
             Ev(i) = j
         enddo
-        ! ! set symbol for each atomic positions
-        ! if     (index(flags, 'symbolic').ne.0) then
-        ! j = 0
-        ! do k = 1, pp%nshells
-        ! do p = 1, pp%shell(k)%natoms
-        !     do i = 1, 3
-        !     do m = 1, j
-        !         if ( abs(pp%shell(k)%tau_cart(i,p) - abs(dbl_symb(m))).gt.tiny )
-        !             j = j + 1
-        !             str_symb(j) = 't'/achar()
-        !             dbl_symb(j) = abs(pp%shell(k)%tau_cart(i,p))
-        !             ! pp%shell(k)%tau_cart(1:3,p)
-
-        !         else
-        !     enddo
-        !     enddo
-        ! enddo
-        ! enddo
-        ! endif
         ! export hamiltonian
         fid = 1
         open(unit=fid,file=trim(H_fnc_name)//'.m',status='replace',action='write')

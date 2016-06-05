@@ -40,7 +40,6 @@ v(9) = 5.375; % V(s*a,pc)
 v(10)= 4.575; % V(x,y)
 v(11)= 1.715; % V(x,x)
 
-
 [pg] = load_tb_point_group();
 [pc] = load_poscar('outfile.primitive');
 [bz] = get_kpoint_path(pc.bas,kstart,kend,40);
@@ -48,12 +47,12 @@ v(11)= 1.715; % V(x,x)
 if (~tb_check_hamiltonian_at_gamma(pg)) 
     fprintf('WARNING: HAMILTONIAN DOES NOT COMMUTE WITH POINT SYMMETRIES AT GAMMA!\n')
 end
-    
 
 for i = 1:bz.npaths
 for j = 1:bz.ndivs
-    H = getH(pg, v, bz.path(i).kpt_cart(:,j));
-%     H = getH_explicit_corrected_signs(v,bz.path(i).kpt_cart(:,j));
+%     H = getH(pg, v, bz.path(i).kpt_cart(:,j));
+%     H = getH_explicit(v,bz.path(i).kpt_cart(:,j));
+    H = getH_explicit_corrected_signs(v,bz.path(i).kpt_cart(:,j));
     bz.path(i).D(:,j) = sort(real(eig(H)));
 end
 end
@@ -62,14 +61,12 @@ for i = 1:bz.npaths
     plot(bz.path(i).x,bz.path(i).D,'-')
     hold on;
 end
-hold off;
-axis tight;
-box on;
+hold off; axis tight; box on;
 
 % get ticks
 ticks(1) = 0;
 for i = 1:bz.npaths
     ticks(i+1) = bz.path(i).x(end);
 end
-set(gca,'XTick',ticks)
-set(gca,'Xticklabel',klabel)
+set(gca,'XTick',ticks);
+set(gca,'Xticklabel',klabel);

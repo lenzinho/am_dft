@@ -522,8 +522,6 @@ contains
                 endif
                 ! record stabilzier group
                 s(k) = point_group_schoenflies( pp%shell(k)%rotg%ps_id )
-                ! possible write shell for debuging
-                ! call pair%shell(i,j)%write_poscar(file_output_poscar='shell_'//trim(int2char(i))//'_'//trim(int2char(j)))
             enddo
             !
             ! compare all the prerequisists listed above (distances, atom types, and bond stabilizer) to figure out which pairs are irreducible
