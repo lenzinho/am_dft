@@ -43,12 +43,16 @@ kend=[
 
 [pg] = load_tb_point_group();
 [pp] = load_tb_matrix_elements();
-[pc] = load_poscar('outfile.POSCAR.primitive');
+[pc] = load_poscar('outfile.primitive');
 [bz] = get_kpoint_path(pc.bas,kstart,kend,40);
 
 for i = 1:bz.npaths
 for j = 1:bz.ndivs
     H = get_tb_hamiltonian(pp, bz.path(i).kpt_cart(:,j));
+    if (abs(norm(H-H'))>tiny) 
+        fprintf('H is not hermitian\n')
+        return
+    end
     bz.path(i).D(:,j) = sort(real(eig(H)));
 end
 end
