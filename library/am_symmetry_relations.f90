@@ -266,15 +266,17 @@ module am_symmetry_relations
         !
     end subroutine dump_relations
 
-    subroutine     export_relations2matlab(relations,dims,fnc_name)
+    subroutine     export_relations2matlab(relations,dims,fnc_name,fid_append,flags)
         !
         ! creates .m file based on relations
-        !
+        ! flags = append/standalone
         implicit none
         !
         real(dp),           intent(in) :: relations(:,:)
         integer , optional, intent(in) :: dims(:)
         character(*),       intent(in) :: fnc_name
+        character(*),       intent(in) :: flags
+        integer, optional , intent(in) :: fid_append
         integer :: fid
         integer :: i, j 
         logical, allocatable :: is_null(:)
@@ -289,9 +291,15 @@ module am_symmetry_relations
         is_independent = get_independent(relations)
         is_dependent   = get_depenent(relations)
         !
-        !
-        fid = 1
-        open(unit=fid,file=trim(fnc_name)//'.m',status='replace',action='write')
+        if     (index(flags,'append').ne.0) then
+            if (.not.present(fid_append)) stop 'ERROR [export_relations2matlab]: fid_append required.'
+            fid = (fid_append)
+        elseif (index(flags,'standalone').ne.0) then
+            fid = 1
+            open(unit=fid,file=trim(fnc_name)//'.m',status='replace',action='write')
+        else
+            stop 'ERROR [export_relations2matlab]: flags != standalone/append.'
+        endif
             !
             write(fid,'(a,a,a)') 'function [a] = ', trim(fnc_name), '(v)'
                 ! write the independent terms
@@ -328,7 +336,11 @@ module am_symmetry_relations
                 enddo
                 !
             write(fid,'(a)') 'end'
+            !
+        ! only close file if standalone
+        if (index(flags,'standalone').ne.0) then
         close(fid)
+        endif
     end subroutine export_relations2matlab
 
 end module am_symmetry_relations

@@ -126,13 +126,13 @@ contains
                 call pp%shell(k)%sort_atoms(criterion=pp%shell(k)%tau_cart(1,:),flags='descend')
                 call pp%shell(k)%sort_atoms(criterion=pp%shell(k)%tau_cart(2,:),flags='descend')
                 call pp%shell(k)%sort_atoms(criterion=pp%shell(k)%tau_cart(3,:),flags='descend')
-                ! take note of point symmetry which takes atom tau_frac(:,1) to atom tau_frac(:,i)
+                ! take note of point symmetry which takes atom tau_frac(:,m) to atom tau_frac(:,1)
                 ! should use cart here because a unitary transformation is necessary
                 allocate(pp%shell(k)%pg_id(pp%shell(k)%natoms))
                 pp%shell(k)%pg_id = 0
                 do m = 1, pp%shell(k)%natoms
                     search : do n = 1, pg%nsyms
-                        if (isequal(pp%shell(k)%tau_cart(:,m), matmul(pg%seitz_cart(1:3,1:3,n),pp%shell(k)%tau_cart(:,1)))) then
+                        if (isequal(pp%shell(k)%tau_cart(:,1), matmul(pg%seitz_cart(1:3,1:3,n),pp%shell(k)%tau_cart(:,m)))) then
                             pp%shell(k)%pg_id(m) = n
                             exit search
                         endif

@@ -538,16 +538,15 @@ contains
         !
     end subroutine write_matrix_elements_full
 
-    subroutine     export_to_matlab(tb,ip,tbpg,pp)
-        ! 
-        ! Get tight binding Hamiltonian at kpt.
-        ! 
+    subroutine     export_to_matlab(tb,ip,tbpg,pp,flags)
+        ! flags = symbolic/numerical cart/frac
         implicit none
         !
         class(am_class_tight_binding), intent(in) :: tb     ! tight binding matrix elements
         type(am_class_tb_group)      , intent(in) :: tbpg   ! point group in tight binding representation
         type(am_class_prim_pair)     , intent(in) :: pp     ! primitive pairs
         type(am_class_irre_pair)     , intent(in) :: ip     ! irreducible pairs
+        character(*)                 , intent(in) :: flags  ! symbolic/numerical cart/frac
         integer, allocatable :: Sv(:) ! start and end if irreducible vector
         integer, allocatable :: Ev(:) ! start and end if irreducible vector
         integer, allocatable :: S(:)  ! start and end of hamiltonian subsection
@@ -561,31 +560,68 @@ contains
         character(100) :: str_Dn
         character(100) :: str_tau
         character(100) :: str_Vab
+        ! character(3)   :: str_symb(500)
+        ! real(dp)       :: dbl_symb(500)
+        ! integer        :: symb_start
+        ! symb_start = 96 ! 97 = a
         !
         ! st function names
-        H_fnc_name = 'getH'
+        if     (index(flags, 'symbolic').ne.0) then
+            H_fnc_name = 'getH_symb'
+        elseif (index(flags,'numerical').ne.0) then
+            H_fnc_name = 'getH'
+        else
+            stop 'ERROR [export_to_matlab]: flags != symbolic/numerical'
+        endif
+        !
+        if     (index(flags,'cart').ne.0) then
+            H_fnc_name=trim(H_fnc_name) ! default, no addition
+        elseif (index(flags,'frac').ne.0) then
+            H_fnc_name=trim(H_fnc_name)//'_frac'
+        else
+            stop 'ERROR [export_to_matlab]: flags != cart/frac'
+        endif
         V_fnc_name = 'getV'
         ! create abbreviations
         allocate(S, source=tbpg%H_start)
         allocate(E, source=tbpg%H_end)
         end = size(tbpg%H_end)
-        ! export symmetry relations for each irreducible pair
+        ! allocat estart and end vectors
         allocate(Sv(ip%nshells))
         allocate(Ev(ip%nshells))
         j = 0
         do i = 1, ip%nshells
             j = j + 1
             Sv(i) = j
-            call export_relations2matlab(relations=tb%tbvsk(i)%relations, dims=tb%tbvsk(i)%dims, fnc_name=trim(V_fnc_name)//tostring(i))
             j = j + count(get_independent(tb%tbvsk(i)%relations)) - 1
             Ev(i) = j
         enddo
+        ! ! set symbol for each atomic positions
+        ! if     (index(flags, 'symbolic').ne.0) then
+        ! j = 0
+        ! do k = 1, pp%nshells
+        ! do p = 1, pp%shell(k)%natoms
+        !     do i = 1, 3
+        !     do m = 1, j
+        !         if ( abs(pp%shell(k)%tau_cart(i,p) - abs(dbl_symb(m))).gt.tiny )
+        !             j = j + 1
+        !             str_symb(j) = 't'/achar()
+        !             dbl_symb(j) = abs(pp%shell(k)%tau_cart(i,p))
+        !             ! pp%shell(k)%tau_cart(1:3,p)
+
+        !         else
+        !     enddo
+        !     enddo
+        ! enddo
+        ! enddo
+        ! endif
         ! export hamiltonian
         fid = 1
         open(unit=fid,file=trim(H_fnc_name)//'.m',status='replace',action='write')
             write(fid,'(a,a,a)') 'function [H] = ', trim(H_fnc_name), '(pg,v,kpt)'
             write(fid,'(a)') 'i2pi = 2*sqrt(-1)*pi;'
             write(fid,'(a)') 'H(1:'//tostring(E(end))//',1:'//tostring(E(end))//') = 0;'
+            if (index(flags,'symb').ne.0) write(fid,'(a)') 'H = sym(H);'
                 ! construct Hamiltonian
                 do l = 1, ip%nshells
                 do k = 1, pp%nshells
@@ -599,20 +635,31 @@ contains
                         str_H  =      'H('//tostring(S(m))//':'//tostring(E(m))//','//tostring(S(n))//':'//tostring(E(n))//')'
                         str_Dm = 'pg.sym('//tostring(S(m))//':'//tostring(E(m))//','//tostring(S(m))//':'//tostring(E(m))//','//tostring(pp%shell(k)%pg_id(p))//')'
                         str_Dn = 'pg.sym('//tostring(S(n))//':'//tostring(E(n))//','//tostring(S(n))//':'//tostring(E(n))//','//tostring(pp%shell(k)%pg_id(p))//')'
-                        str_tau= '['//tostring(pp%shell(k)%tau_cart(1:3,p),fmt='SP,f10.5')//']'
+                        if     (index(flags,'cart').ne.0) then
+                            str_tau= '['//tostring(pp%shell(k)%tau_cart(1:3,p),fmt='SP,f10.5')//']'
+                        elseif (index(flags,'frac').ne.0) then
+                            str_tau= '['//tostring(pp%shell(k)%tau_frac(1:3,p),fmt='SP,f10.5')//']'
+                        endif
                         str_Vab= trim(V_fnc_name)//tostring(l)//'(v('//tostring(Sv(l))//':'//tostring(Ev(l))//'))'
                         if (pp%ip_id(k).lt.0) str_Vab=trim(str_Vab)//"'" ! transpose
                         ! write stuff
-                        write(fid,'(a)',advance='no') trim(str_H)//' = '//trim(str_H)//' + '
-                        write(fid,'(a)',advance='no') trim(str_Dm)//"' * "//trim(str_Vab)//" * "//trim(str_Dn)
-                        write(fid,'(a)',advance='no') ' * exp(i2pi*dot(kpt,'//trim(str_tau)//'));'
+                        write(fid,'(a)',advance='no') trim(str_H)       // ' = ' // trim(str_H)   // ' + '
+                        write(fid,'(a)',advance='no') trim(str_Dm)//"'" // ' * ' // trim(str_Vab) // ' * ' // trim(str_Dn)
+                        write(fid,'(a)',advance='no')     ' * exp(i2pi*dot(kpt,' // trim(str_tau) // '));'
                         write(fid,*)
                     enddo
                 endif
                 enddo
                 enddo
             write(fid,'(a)') 'end'
+            !
+            ! export symmetry relations for each irreducible pair (append to the same file)
+            do i = 1, ip%nshells
+                call export_relations2matlab(relations=tb%tbvsk(i)%relations, dims=tb%tbvsk(i)%dims, fnc_name=trim(V_fnc_name)//tostring(i), fid_append=fid, flags='append')
+            enddo
+            !
         close(fid)
+        !
     end subroutine export_to_matlab
 
     subroutine     optimize_matrix_elements(tb,tbpg,bz,dr,ip,ic,pp,opts)
