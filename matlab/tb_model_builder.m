@@ -4,7 +4,7 @@ tiny=1.0E-6;
 %% ------------------------------------------------------------------------
 % set options (works best with frac)
 maxvars = 1000;
-flags = 'frac';x
+flags = 'frac';
 
 
 

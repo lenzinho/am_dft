@@ -15,7 +15,6 @@ kend=[
     ]';
 klabel={'L','G','X','G'};
 
-
 v(1) = -4.2 ; % E(s,a)
 v(2) = 0    ; % 0
 v(3) = 6.685; % E(s*,a)
@@ -34,9 +33,7 @@ v(11)= 1.715; % V(x,x)
 
 for i = 1:bz.npaths
 for j = 1:bz.ndivs
-    % WHY IS THIS FACTOR OF TWO NEEDED HRE?!
-%     H = get_H_model_frac(v,bz.path(i).kpt_frac(:,j)*2);
-    H = get_H_numeric_cart(pg,v,bz.path(i).kpt_cart(:,j));
+    H = get_H_model_frac(v, bz.path(i).kpt_frac(:,j)*2);
     if (abs(norm(H-H'))>tiny) 
         fprintf('H is not hermitian\n')
         return
