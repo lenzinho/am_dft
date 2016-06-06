@@ -20,6 +20,7 @@ function [pp] = load_tb_matrix_elements()
         end
     end
     fprintf(' ... done\n');
+    fclose(fid);
 end
 
 

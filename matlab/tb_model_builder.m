@@ -4,7 +4,7 @@ tiny=1.0E-6;
 %% ------------------------------------------------------------------------
 % set options (works best with frac)
 maxvars = 1000;
-flags = 'frac';
+flags = 'frac';x
 
 
 
@@ -34,9 +34,9 @@ for nVs = 1:maxvars
     v = sym('v%d',[1,nVs],'real');
     try 
         if     ~isempty(strfind(flags,'frac'))
-            H = getH_symb_frac(pg, v, k);
+            H = get_H_symbolic_frac(pg, v, k);
         elseif ~isempty(strfind(flags,'cart'))
-            H = getH_symb(pg, v, k);
+            H = get_H_symbolic_cart(pg, v, k);
         else
             fprintf('ERROR: frac/cart?\n')
             return
@@ -100,13 +100,13 @@ end
 end
 %% ------------------------------------------------------------------------
 if     ~isempty(strfind(flags,'frac'))
-    fprintf(' ... writting getH_model_frac.m\n');
-    fid = fopen('getH_model_frac.m','w');
-    fprintf(fid,'function [H] = getH_model_frac(v,k)\n');
+    fprintf(' ... writting get_H_model_frac.m\n');
+    fid = fopen('get_H_model_frac.m','w');
+    fprintf(fid,'function [H] = get_H_model_frac(v,k)\n');
 elseif ~isempty(strfind(flags,'cart'))
-    fprintf(' ... writting getH_model_cart.m\n');
-    fid = fopen('getH_model_cart.m','w');
-    fprintf(fid,'function [H] = getH_model_cart(v,k)\n');
+    fprintf(' ... writting get_H_model_cart.m\n');
+    fid = fopen('get_H_model_cart.m','w');
+    fprintf(fid,'function [H] = get_H_model_cart(v,k)\n');
 else
     fprintf('ERROR: frac/cart?\n')
     return

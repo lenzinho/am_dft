@@ -18,6 +18,7 @@ function [pg] = load_tb_point_group()
             fprintf('\n');
         end
     end
+    fclose(fid);
 end
 
 

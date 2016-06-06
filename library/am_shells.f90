@@ -82,8 +82,8 @@ contains
         integer , allocatable :: ind(:)
         integer  :: nshells ! number of shells
         real(dp) :: D(3) ! center of sphere in fractional coordinates
-        integer  :: k,i,j
-        integer  :: m,n
+        integer  :: k,i,j,m,n
+        integer  :: s
         !
         ! print title
         if (opts%verbosity.ge.1) call print_title('Primitive neighbor pairs')
@@ -122,12 +122,23 @@ contains
                 call pp%shell(k)%filter(ind=ind)
                 ! record of shell center
                 pp%shell(k)%center = pc%tau_cart(:,i)
+                ! get irreducible atom indices
+                pp%shell(k)%i = pc%ic_id(i)
+                pp%shell(k)%j = pp%shell(k)%ic_id(1)
+                ! get primitive atom indices
+                pp%shell(k)%m = pc%pc_id(i)
+                pp%shell(k)%n = pp%shell(k)%pc_id(1)
+                ! fix sign before sorting to handle nonsymorphic space group cases
+                s = 1
+                if (pp%shell(k)%m .lt. pp%shell(k)%n) s = -s
                 ! this sort below is absolutely necessary, othewise there will be problems later when pg_id is called when building the tb hamiltonian
-                call pp%shell(k)%sort_atoms(criterion=pp%shell(k)%tau_cart(1,:),flags='descend')
-                call pp%shell(k)%sort_atoms(criterion=pp%shell(k)%tau_cart(2,:),flags='descend')
-                call pp%shell(k)%sort_atoms(criterion=pp%shell(k)%tau_cart(3,:),flags='descend')
+                call pp%shell(k)%sort_atoms(criterion=s*pp%shell(k)%tau_cart(1,:),flags='descend')
+                call pp%shell(k)%sort_atoms(criterion=s*pp%shell(k)%tau_cart(2,:),flags='descend')
+                call pp%shell(k)%sort_atoms(criterion=s*pp%shell(k)%tau_cart(3,:),flags='descend')
                 ! take note of point symmetry which takes atom tau_frac(:,m) to atom tau_frac(:,1)
                 ! should use cart here because a unitary transformation is necessary
+                ! NOTE: THIS SECTION ON FINDING THE POINT SYMMETRY MUST STRICTLY COME AFTER THE SORT
+                ! ABOVE, BECAUSE THE SORT ABOVE DOES NOT REARRANGE pg_id!
                 allocate(pp%shell(k)%pg_id(pp%shell(k)%natoms))
                 pp%shell(k)%pg_id = 0
                 do m = 1, pp%shell(k)%natoms
@@ -139,12 +150,6 @@ contains
                     enddo search
                 enddo
                 if (any(pp%shell(k)%pg_id.eq.0)) stop 'ERROR: Unable to identify a symmetry operation in the shell (at least one pg_id(:) = 0)!'
-                ! get irreducible atom indices
-                pp%shell(k)%i = pc%ic_id(i)
-                pp%shell(k)%j = pp%shell(k)%ic_id(1)
-                ! get primitive atom indices
-                pp%shell(k)%m = pc%pc_id(i)
-                pp%shell(k)%n = pp%shell(k)%pc_id(1)
                 ! determine stabilizers of a prototypical bond in shell (vector v)
                 call pp%shell(k)%stab%get_stabilizer_group(pg=pg, v=pp%shell(k)%tau_cart(1:3,1), opts=opts, flags='cart')
                 ! determine rotations which leaves shell invariant

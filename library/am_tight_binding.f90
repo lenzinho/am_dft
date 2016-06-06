@@ -41,6 +41,7 @@ module am_tight_binding
         procedure :: get_hamiltonian
         procedure :: test_hamiltonian
         procedure :: export_to_matlab
+        procedure :: read_matrix_elements_irr
         procedure :: write_matrix_elements_irr
         procedure :: write_matrix_elements_full
         procedure :: optimize_matrix_elements
@@ -150,6 +151,25 @@ contains
                 write(*,'(a5,a)') ' ... ', 'shell '//trim(int2char(i))//' irreducible symmetry relations:'
                 call print_relations(relations=tb%tbvsk(i)%relations, dims=tb%tbvsk(i)%dims, flags='print:dependent,independent')
             enddo
+        endif
+        !
+        ! write template for irreducible matrix elements
+        if (fexists('infile.tb_matrix_elements_irreducible').ne.0) then 
+            ! read matrix elements
+            call print_title('Input tight-binding matrix elements')
+            !
+            call tb%read_matrix_elements_irr()
+            !
+            call disp(X=[0],zeroas=' ',advance='no')
+            call disp(X=tb%V,title='V',style='underline',advance='no')
+            call disp(X=tb%V_ind(1,:),title='shell',style='underline',advance='no')
+            call disp(X=tb%V_ind(2,:),title='alpha',style='underline',advance='no')
+            call disp(X=tb%V_ind(3,:),title='beta',style='underline',advance='yes')
+        else
+            !
+            call tb%set_Vsk(flags='seq')
+            !
+            call tb%write_matrix_elements_irr()
         endif
         !
         contains
@@ -292,6 +312,7 @@ contains
                 enddo
             endif
             enddo
+            if (.not.ishermitian(H)) stop 'ERROR [get_hamiltonian]: H is not Hermitian!'
         endif
         enddo
     end function   get_hamiltonian
@@ -329,9 +350,9 @@ contains
             H = tb%get_hamiltonian(tbpg=tbpg, ic=ic, pp=pp, kpt=real([0,0,0],dp),iopt_mask=mask)
             !
             ! check that H is hermitian
-            if ( .not. isequal(H,adjoint(H)) ) then
+            if (.not.ishermitian(H)) then
                 call disp('H',H)
-                stop 'H is not Hermitian.'
+                stop 'ERROR [test_hamiltonian]: H is not Hermitian!'
             endif
             !
             ! check that H commutes with all point symmetries
@@ -342,7 +363,7 @@ contains
                     call disp('R',R,style='above')
                     call disp('[H,R]',matmul(H,R)-matmul(R,H),style='above')
                     call disp("R'*H*R - H",matmul(matmul(transpose(R),H),R)-H,style='above')
-                    stop 'H does not commute with symmetry.'
+                    stop 'ERROR [test_hamiltonian]: H does not commute with point symmetries.'
                 endif
             enddo
             !
@@ -364,7 +385,6 @@ contains
         type(am_class_atom), intent(in) :: atom_n
         integer , intent(in) :: ip_id
         real(dp), allocatable :: V(:,:)
-        real(dp), allocatable :: S(:,:)
         integer :: id
         integer :: m,n
         !
@@ -376,16 +396,7 @@ contains
         ! if irreducible pair id is negative, it means the pair was flipped
         if (ip_id.lt.0) then
             allocate(V(n,m))
-            allocate(S(n,m))
             V = adjoint( reshape(tb%tbvsk(id)%V, [m,n]) )
-            ! atom_m and atom_n are taken from pp on input, as a result they are already in the correct order (no need to flip them)
-            ! m and n are taken from ip on input, thus, they need to be flipped.
-            S = transp_parity_sign(atom_m=atom_m, atom_n=atom_n)
-            ! if (.not.isequal(shape(S),shape(V))) stop 'S * V : dimension mismatch'
-            ! Adding the sign flip here seems to cause H to not be Hermitian...
-            ! Looking at Chadi/Cohen and Vogl. There doesn't seem to be a sign flip.
-            ! The sign flip is probably only used in determining the irreducible matrix elements.
-            V = V ! * S
         else
             if (.not.isequal(tb%tbvsk(id)%dims,[atom_m%norbitals,atom_n%norbitals])) stop 'dims /= norbitals'
             allocate(V(m,n))
@@ -469,6 +480,7 @@ contains
         fid = 1
         open(unit=fid,file='outfile.tb_matrix_elements_irreducible',status='replace',action='write')
             !
+            write(fid,'(a5,a16,3a6)') '#', 'V', 'shell', 'alpha', 'beta'
             do i = 1, tb%nVs
                 ! get shell index
                 k     = tb%V_ind(1,i)
@@ -476,11 +488,51 @@ contains
                 alpha = tb%V_ind(2,i)
                 beta  = tb%V_ind(3,i)
                 ! write 
-                write(fid,'(f10.5,4i5)') tb%V(i), k, alpha, beta, i
+                write(fid,'(i5,f16.8,3i6)') i, tb%V(i), k, alpha, beta
             enddo
             !
         close(fid)
     end subroutine write_matrix_elements_irr
+
+    subroutine     read_matrix_elements_irr(tb)
+        !
+        implicit none
+        !
+        class(am_class_tight_binding), intent(inout) :: tb
+        character(maximum_buffer_size) :: buffer ! read buffer
+        character(len=:), allocatable :: word(:) ! read buffer
+        integer :: fid
+        real(dp), allocatable :: V(:)
+        integer :: k
+        integer :: alpha
+        integer :: beta
+        integer :: i
+        integer :: j
+        !
+        allocate(V(tb%nVs))
+        !
+        fid = 1
+        open(unit=fid,file='infile.tb_matrix_elements_irreducible',status="old",action='read')
+            ! skip header
+            read(fid,*)
+            ! read matrix elements
+            do j = 1, tb%nVs
+                read(unit=fid,fmt='(a)') buffer
+                word = strsplit(buffer,delimiter=' ')
+                !
+                read(word(1),*) i
+                read(word(2),*) V(i)
+                read(word(3),*) k
+                read(word(4),*) alpha
+                read(word(5),*) beta
+                !
+                if (.not.isequal(    k,tb%V_ind(1,i))) stop 'ERROR [read_matrix_elements_irr]: k /= V_ind(1,i)'
+                if (.not.isequal(alpha,tb%V_ind(2,i))) stop 'ERROR [read_matrix_elements_irr]: alpha /= V_ind(2,i)'
+                if (.not.isequal( beta,tb%V_ind(3,i))) stop 'ERROR [read_matrix_elements_irr]: beta /= V_ind(3,i)'
+            enddo
+            call tb%set_Vsk(V)
+        close(fid)
+    end subroutine read_matrix_elements_irr
 
     subroutine     write_matrix_elements_full(tb,tbpg,ic,pp)
         !
@@ -531,8 +583,6 @@ contains
             Hsub => Hsub_target(S(m):E(m), S(n):E(n))
             ! print stuff
             Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j)) 
-            ! multiply to correct parity
-            Hsub = Hsub * tbpg%parity(tbpg%H_start(m):tbpg%H_end(m),tbpg%H_start(n):tbpg%H_end(n))
             ! print
             call disp(unit=fid, fmt='f18.10',X=matmul(matmul(transpose(Dm), Hsub), Dn),title=tostring(pp%shell(k)%tau_cart(1:3,p),fmt='f10.5')//' [cart.]',style='above')
             enddo
@@ -566,15 +616,15 @@ contains
         !
         ! st function names
         if     (index(flags, 'symbolic').ne.0) then
-            H_fnc_name = 'getH_symb'
-        elseif (index(flags,'numerical').ne.0) then
-            H_fnc_name = 'getH'
+            H_fnc_name = 'get_H_symbolic'
+        elseif (index(flags,  'numeric').ne.0) then
+            H_fnc_name = 'get_H_numeric'
         else
-            stop 'ERROR [export_to_matlab]: flags != symbolic/numerical'
+            stop 'ERROR [export_to_matlab]: flags != symbolic/numeric'
         endif
         !
         if     (index(flags,'cart').ne.0) then
-            H_fnc_name=trim(H_fnc_name) ! default, no addition
+            H_fnc_name=trim(H_fnc_name)//'_cart'
         elseif (index(flags,'frac').ne.0) then
             H_fnc_name=trim(H_fnc_name)//'_frac'
         else
@@ -631,22 +681,11 @@ contains
                 endif
                 enddo
                 enddo
-                ! correct parity for cases in which irredcubiel pair was flipped.
-                write(fid,'(a)') 'H = H .* parity();'
             write(fid,'(a)') 'end'
-            !
             ! export symmetry relations for each irreducible pair (append to the same file)
             do i = 1, ip%nshells
                 call export_relations2matlab(relations=tb%tbvsk(i)%relations, dims=tb%tbvsk(i)%dims, fnc_name=trim(V_fnc_name)//tostring(i), fid_append=fid, flags='append')
             enddo
-            !
-            ! export orbital parity
-            write(fid,'(a)') 'function [P] = parity()'
-            do i = 1, tbpg%nbases
-                write(fid,'(a,a,a)') 'P('//tostring(i)//',1:'//tostring(tbpg%nbases)//') = [', tostring(tbpg%parity(i,:),fmt='SP,i2'), '];'
-            enddo
-            write(fid,'(a)') 'end'
-            !
         close(fid)
     end subroutine export_to_matlab
 

@@ -1202,6 +1202,21 @@ module am_matlab
 
     ! matrix properties
 
+    pure function ishermitian(X) result(bool)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: x(:,:)
+        logical :: bool
+        !
+        if (isequal(X,adjoint(X))) then
+            bool = .true.
+        else
+            bool = .false.
+        endif
+        !        
+    end function  ishermitian
+
     pure function zadjoint(A) result(adj)
         !
         implicit none
@@ -1974,7 +1989,15 @@ module am_matlab
             prec = tiny
         endif
         !
-        bool = d_isequal(real(x),real(y),iopt_prec) * d_isequal(aimag(x),aimag(y),iopt_prec)
+        if (d_isequal( real(x), real(y),iopt_prec)) then
+            if (d_isequal(aimag(x),aimag(y),iopt_prec)) then
+                bool = .true.
+            else
+                bool = .false.
+            endif
+        else
+            bool = .false.
+        endif
         !
     end function  z_isequal
 
@@ -1993,8 +2016,15 @@ module am_matlab
             prec = tiny
         endif
         !
-        bool = dv_isequal(real(x),real(y),iopt_prec) * dv_isequal(aimag(x),aimag(y),iopt_prec)
-        !
+        if (dv_isequal( real(x), real(y),iopt_prec)) then
+            if (dv_isequal(aimag(x),aimag(y),iopt_prec)) then
+                bool = .true.
+            else
+                bool = .false.
+            endif
+        else
+            bool = .false.
+        endif
     end function  zv_isequal
 
     pure function zm_isequal(x,y,iopt_prec) result(bool)
@@ -2012,7 +2042,15 @@ module am_matlab
             prec = tiny
         endif
         !
-        bool = dm_isequal(real(x),real(y),iopt_prec) * dm_isequal(aimag(x),aimag(y),iopt_prec)
+        if (dm_isequal( real(x), real(y),iopt_prec)) then
+            if (dm_isequal(aimag(x),aimag(y),iopt_prec)) then
+                bool = .true.
+            else
+                bool = .false.
+            endif
+        else
+            bool = .false.
+        endif
         !
     end function  zm_isequal
 

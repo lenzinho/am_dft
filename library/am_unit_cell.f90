@@ -678,17 +678,15 @@ contains
         character(*), intent(in) :: flags
         integer , allocatable ::  inds(:)
         !
+        if (size(criterion).ne.uc%natoms) stop 'ERROR [sort_atoms]: size(criterion) /= number of atoms?'
+        !
         allocate(inds(uc%natoms))
-        call rank(criterion,inds)
-        !
-        if (size(criterion).ne.uc%natoms) stop 'size(criterion) /= number of atoms'
-        !
         if     (index(flags,'descend').ne.0) then
-            inds = inds(uc%natoms:1:-1)
+            call rank(-criterion,inds)
         elseif (index(flags,'ascend' ).ne.0) then
-            ! do nothing
+            call rank(criterion,inds)
         else
-            stop 'sort_atoms: ascend/descend?'
+            stop 'ERROR [sort_atoms]: ascend/descend?'
         endif
         !
         ! sort stuff
