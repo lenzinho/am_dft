@@ -87,17 +87,6 @@ module am_options
                     read(argument,*) opts%verbosity
                 case('-baseline')
                     opts%flags = trim(opts%flags)//' baseline'
-                case('-template')
-                    opts%flags = trim(opts%flags)//' template:'
-                    i=i+1
-                    call get_command_argument(i,argument)
-                    if     (index(argument,'orbitals').ne.0) then
-                        opts%flags = trim(opts%flags)//'tb_orbitals'
-                    elseif (index(argument,'matrix_elements').ne.0) then
-                        opts%flags = trim(opts%flags)//'tb_matrix_elements'
-                    else
-                        stop '-template /= orbitals/matrix_elements'
-                    endif
                 case('-prec')
                     i=i+1
                     call get_command_argument(i,argument)
@@ -130,6 +119,19 @@ module am_options
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*) opts%pair_cutoff
+                case('-matlab')
+                    opts%flags = trim(opts%flags)//' export2matlab'
+                case('-template')
+                    opts%flags = trim(opts%flags)//' template:'
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    if     (index(argument,'orbitals').ne.0) then
+                        opts%flags = trim(opts%flags)//'tb_orbitals'
+                    elseif (index(argument,'matrix_elements').ne.0) then
+                        opts%flags = trim(opts%flags)//'tb_matrix_elements'
+                    else
+                        stop '-template /= orbitals/matrix_elements'
+                    endif
                 case('-Erange')
                     i=i+1
                     call get_command_argument(i,argument)
