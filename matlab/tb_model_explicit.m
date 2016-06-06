@@ -20,7 +20,7 @@ kend=[
 
 for i = 1:bz.npaths
 for j = 1:bz.ndivs
-    H = get_H_explicit(pp, bz.path(i).kpt_cart(:,j));
+    H = get_H_explicit(pp, bz.path(i).kpt_cart(:,j));l
     bz.path(i).D(:,j) = sort(real(eig(H)));
 end
 end

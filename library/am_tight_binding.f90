@@ -835,8 +835,8 @@ contains
             successful = 0
             i = 0
             ! write header
-            write(*,'(5x,a8,a10,a)') 'iter', 'res', centertitle('parameters',ft%nVs*10)
-            write(*,'(5x,a8,a10,a)') ' '//repeat('-',8-1), ' '//repeat('-',10-1), ' '//repeat('-',ft%nVs*10-1)
+            write(*,'(5x,a8,a10,a10,a)') 'i iter.', 'R res.', 'log(dR)',centertitle('parameters',ft%nVs*10)
+            write(*,'(5x,a8,a10,a10,a)') ' '//repeat('-',8-1), ' '//repeat('-',10-1), ' '//repeat('-',10-1), ' '//repeat('-',ft%nVs*10-1)
             ! enter optimization loop
             do while (successful == 0)
                 ! handle        in/out: tr solver handle
@@ -859,7 +859,11 @@ contains
                     ! increase counter
                     i = i + 1
                     ! print results
-                    write(*,'(5x,i8,f10.5,SP,1000f10.5)') i, norm2(FVEC), X
+                    if (i.eq.1) then
+                        write(*,'(5x,i8,f10.2,10x,SP,1000f10.2)')   i, norm2(FVEC), X
+                    else
+                        write(*,'(5x,i8,f10.2,f10.2,SP,1000f10.2)') i, norm2(FVEC), log10(abs(norm(FVEC-ft%R(:,i-1)))), X 
+                    endif
                     ! save results
                     ft%V(:,i) = X
                     ft%R(:,i) = FVEC 
