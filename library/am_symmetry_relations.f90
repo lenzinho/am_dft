@@ -320,7 +320,12 @@ module am_symmetry_relations
                         do j = 1,nterms
                             if (abs(relations(i,j)).gt.tiny) then
                                 str = get_basis_label(dims=dims, ind=j ,flags='')
-                                write(fid,'(a)',advance='no') tostring(relations(i,j),fmt='SP,f10.5')//'*'//trim(str)//';'
+                                if (present(fid_append)) then
+                                    ! HIGH PRECISION
+                                    write(fid,'(a)',advance='no') tostring(relations(i,j),fmt='SP,f24.16')//'*'//trim(str)//';'
+                                else
+                                    write(fid,'(a)',advance='no') tostring(relations(i,j),fmt='SP,f10.5')//'*'//trim(str)//';'
+                                endif
                             endif
                         enddo
                         write(fid,*)
@@ -344,3 +349,14 @@ module am_symmetry_relations
     end subroutine export_relations2matlab
 
 end module am_symmetry_relations
+
+
+
+
+
+
+
+
+
+
+

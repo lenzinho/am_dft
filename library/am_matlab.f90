@@ -454,6 +454,32 @@ module am_matlab
 
     ! rotation functions
 
+    elemental subroutine correct_rounding_error(sym)
+        !
+        implicit none
+        !
+        real(dp), intent(inout) :: sym
+        !
+        ! correct rounding error in cart
+        ! Possible values are: cos(pi/n), sin(pi/n) for n = 1, 2, 3, 6
+        ! Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. 
+        ! Cambridge, UK ; New York: Cambridge University Press, 2008. page 275.
+        !           n  =      1         2         3         6
+        !    sin(pi/n) =   0.0000    1.0000    0.8660    0.5000
+        !    cos(pi/n) =  -1.0000    0.0000    0.5000    0.8660 - sqrt(3)/2
+        if    (abs(sym - nint(sym)           ).lt.tiny) then; sym = nint(sym)            ! +1,-1,0
+        elseif(abs(sym + 0.500000000000000_dp).lt.tiny) then; sym =-0.500000000000000_dp ! -0.5
+        elseif(abs(sym - 0.500000000000000_dp).lt.tiny) then; sym = 0.500000000000000_dp ! +0.5
+        elseif(abs(sym + 1.154700538379252_dp).lt.tiny) then; sym =-1.154700538379252_dp ! -sqrt(3)*(2/3)
+        elseif(abs(sym - 1.154700538379252_dp).lt.tiny) then; sym = 1.154700538379252_dp ! +sqrt(3)*(2/3)
+        elseif(abs(sym + 0.866025403784439_dp).lt.tiny) then; sym =-0.866025403784439_dp ! -sqrt(3)*(1/2)
+        elseif(abs(sym - 0.866025403784439_dp).lt.tiny) then; sym = 0.866025403784439_dp ! +sqrt(3)*(1/2)
+        elseif(abs(sym + 1.732050807568877_dp).lt.tiny) then; sym =-1.732050807568877_dp ! -sqrt(3)
+        elseif(abs(sym - 1.732050807568877_dp).lt.tiny) then; sym = 1.732050807568877_dp ! +sqrt(3)
+        endif
+        !
+    end subroutine       correct_rounding_error
+
     pure function vec2dcosines(vec) result(dcosines)
         !
         implicit none

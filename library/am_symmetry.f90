@@ -169,8 +169,8 @@ contains
                 call dump_sym_to_file(fid=fid, sym=grp%sym, header='')
             class is (am_class_seitz_group)
                 ! symmerties [cart./frac.]
-                call dump_sym_to_file(fid=fid, sym=grp%seitz_cart,    header='[cart.]')
-                call dump_sym_to_file(fid=fid, sym=grp%seitz_frac,    header='[frac.]')
+                call dump_sym_to_file(fid=fid, sym=grp%seitz_cart, header='[cart.]')
+                call dump_sym_to_file(fid=fid, sym=grp%seitz_frac, header='[frac.]')
                 ! call dump_sym_to_file(fid=fid, sym=grp%seitz_recfrac, header='[rec. frac.]')
             class default
                 stop 'Class unknown!'
@@ -189,7 +189,7 @@ contains
             integer :: i,j,k
             !
             do i = 1, size(sym,3)
-                call disp(unit=fid,title=tostring(i)//' '//trim(header),style='underline',X=sym(:,:,i),fmt='f18.10')
+                call disp(unit=fid,title=tostring(i)//' '//trim(header),style='underline',X=sym(:,:,i),fmt='f20.16')
             enddo
             !
         end subroutine dump_sym_to_file
@@ -200,23 +200,15 @@ contains
         implicit none
         !
         class(am_class_group), intent(inout) :: grp
-        character(100) :: flags
-        !
-        select type(grp)
-        class is(am_class_seitz_group)
-            flags='seitz'
-        class default
-            flags=''
-        end select
         !
         ! get multiplication table
         select type (grp)
         class is (am_class_symrep_group)
             ! [unitless]  
-            grp%mt%multab = get_multab(sym=grp%sym, flags=flags) !//'prog')
+            grp%mt%multab = get_multab(sym=grp%sym, flags='') !//'prog')
         class is (am_class_seitz_group)
             ! symmerties [frac.]
-            grp%mt%multab = get_multab(sym=grp%seitz_frac, flags=flags) !//'prog')
+            grp%mt%multab = get_multab(sym=grp%seitz_frac, flags='seitz') !//'prog')
         class default
             stop 'unkown class'
         end select
@@ -445,9 +437,10 @@ contains
         do i = 1, sg%nsyms
             sg%seitz_recfrac(:,:,i) = seitz_cart2recfrac(seitz_cart=sg%seitz_cart(:,:,i), bas=sg%bas, recbas=sg%recbas)
         enddo
-        ! correct rounding error
+        ! correct rounding error in frac
         where(abs(sg%seitz_frac).lt.tiny) sg%seitz_frac = 0
-        where(abs(sg%seitz_cart).lt.tiny) sg%seitz_cart = 0
+        ! correct rounding error in cart
+        call correct_rounding_error(sg%seitz_cart)
         ! identify point symmetries
         allocate(sg%ps_id(sg%nsyms))
         do i = 1, sg%nsyms
@@ -1485,8 +1478,6 @@ contains
             write(*,'(5x,a5,i5)') 's_3', ns3
             stop
     end function   point_group_schoenflies
-
-    ! needed
 
     subroutine     put_identity_first(seitz)
         !

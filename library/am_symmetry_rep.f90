@@ -134,17 +134,6 @@ module am_symmetry_rep
             tbpg%nbases     = tbpg%nbases + ic%atom(pc%ic_id(i))%norbitals
             tbpg%H_end(i)   = tbpg%nbases
         enddo
-        ! ! get wave function parity
-        ! allocate(tbpg%parity(tbpg%nbases,tbpg%nbases))
-        ! tbpg%parity = 1
-        ! ! update lower triangular part of matrix
-        ! do m = 1, pc%natoms
-        ! do n = 1, pc%natoms
-        !     if (n.lt.m) then
-        !         tbpg%parity(tbpg%H_start(m):tbpg%H_end(m),tbpg%H_start(n):tbpg%H_end(n)) = transp_parity_sign(atom_m=ic%atom(pc%ic_id(m)), atom_n=ic%atom(pc%ic_id(n)))
-        !     endif
-        ! enddo
-        ! enddo
         ! number of symmetries
         tbpg%nsyms = pg%nsyms
         ! generate intrinsic symmetries
@@ -156,13 +145,14 @@ module am_symmetry_rep
             tbpg%sym(:,:,i) = ps2tb_H(R_cart=pg%seitz_cart(1:3,1:3,i), pc=pc, ic=ic)
         enddo
         ! correct basic rounding errors
-        where (abs(nint(tbpg%sym)-tbpg%sym).lt.tiny) tbpg%sym = nint(tbpg%sym)
+        call correct_rounding_error(tbpg%sym)
         ! copy symmetry ids
         allocate(tbpg%ps_id, source=pg%ps_id)
         ! copy classes
         allocate(tbpg%cc%id, source=pg%cc%id)
-        ! copy multiplication table
-        tbpg%mt = pg%mt
+        ! check that multiplication table is identical to pg%mt
+        call tbpg%get_multiplication_table()
+        if (.not.isequal(tbpg%mt%multab,pg%mt%multab)) stop 'ERROR [get_tight_binding_point_group]: Multiplication table mismatch.'
         ! copy character table
         tbpg%ct = pg%ct
         ! check that identity is first
@@ -392,12 +382,12 @@ module am_symmetry_rep
         call rref(A)
         ! correct basic rounding error
         where (abs(nint(A)-A).lt.tiny) A = nint(A)
+        ! correct basic rounding errors
         ! At this point, A = [ LHS | RHS ], in which LHS = E, identity matrix; A completely specifies all relationships between variables: LHS = RHS.
         allocate(LHS(flat%nbases,flat%nbases))
         allocate(RHS(flat%nbases,flat%nbases))
         LHS = A(0*flat%nbases+indices,0*flat%nbases+indices)
         RHS = A(0*flat%nbases+indices,1*flat%nbases+indices)
-        !
         ! checks
         if (.not.isequal(LHS,eye(flat%nbases))) then
             stop 'Failed to reduce matrix to row echlon form.'

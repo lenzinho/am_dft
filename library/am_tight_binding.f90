@@ -92,6 +92,7 @@ contains
             call initialize_tbvsk(tbvsk=tb%tbvsk(k), pc=pc, ic=ic, shell=ip%shell(k))
             ! get relations
             call get_shell_relations(tbvsk=tb%tbvsk(k), pg=pg, ic=ic, shell=ip%shell(k), opts=opts)
+            !
         enddo
         ! get number of independent (irreducible) matrix elements
         tb%nVs = 0
@@ -230,6 +231,8 @@ contains
                 call flat_pg%get_flat_point_group(tens=tbvsk, pg=stab, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i))
                 ! get combined relations
                 tbvsk%relations = combine_relations(relationsA=flat_pg%relations, relationsB=flat_ig%relations)
+                ! correct rounding error
+                call correct_rounding_error(tbvsk%relations)
                 ! 
         end subroutine get_shell_relations
     end subroutine initialize_tb
@@ -244,7 +247,7 @@ contains
         type(am_class_tb_group)      , intent(in) :: tbpg   ! point group in tight binding representation
         type(am_class_irre_cell)     , intent(in) :: ic     ! irreducible cell
         type(am_class_prim_pair)     , intent(in) :: pp     ! primitive pairs
-        real(dp)                     , intent(in) :: kpt(3) ! fractional
+        real(dp)                     , intent(in) :: kpt(3) ! cart
         logical, optional            , intent(in) :: iopt_mask(:)
         logical    , allocatable :: mask(:)
         integer    , allocatable :: S(:),E(:)
@@ -299,8 +302,8 @@ contains
                 do p = 1, pp%shell(k)%natoms
                     ! set pointers
                     Hsub => Hsub_target(S(m):E(m), S(n):E(n))
-                    Dm   => pg_target(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p))
-                    Dn   => pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p))
+                    Dm   =>   pg_target(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p))
+                    Dn   =>   pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p))
                     ! get matrix elements (initialize Hsub)
                     Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))
                     ! rotate matrix elements as needed to get from the tau_frac(:,1) => tau_frac(:,x)
@@ -310,9 +313,25 @@ contains
                     ! this pair's contribution to the Hamiltonian
                     H(S(m):E(m), S(n):E(n)) = H(S(m):E(m), S(n):E(n)) + Hsub
                 enddo
+
+                write(*,*) k
+                call disp(style='underline',title='H',X=H)
+
+                !
+                ! shell 9 does not match 4
+                ! 9 /= adjoint(4)
+                !
+                if (k.eq.9) stop
             endif
             enddo
-            if (.not.ishermitian(H)) stop 'ERROR [get_hamiltonian]: H is not Hermitian!'
+            !
+            if (.not.ishermitian(H)) then
+                call disp(X=l,style='underline',title='l')
+                call disp(X=pp%ip_id,style='underline',title='pp%ip_id')
+                call disp(style='underline',title='H',X=H)
+                call disp(style='underline',title='H-H^\dag',X=H-adjoint(H))
+                stop 'ERROR [get_hamiltonian]: H is not Hermitian!'
+            endif
         endif
         enddo
     end function   get_hamiltonian
@@ -328,8 +347,9 @@ contains
         complex(dp), allocatable :: H(:,:)
         real(dp)   , allocatable :: R(:,:)
         logical    , allocatable :: mask(:) ! mask the irreducible shells which are considered in construction of the hamiltonin
-        integer :: i, j
+        integer :: i, j, k
         integer :: ip_nshells
+        real(dp):: kpt(3,1)
         !
         call print_title('Checking Hamiltonian at Gamma')
         !
@@ -349,12 +369,6 @@ contains
             !
             H = tb%get_hamiltonian(tbpg=tbpg, ic=ic, pp=pp, kpt=real([0,0,0],dp),iopt_mask=mask)
             !
-            ! check that H is hermitian
-            if (.not.ishermitian(H)) then
-                call disp('H',H)
-                stop 'ERROR [test_hamiltonian]: H is not Hermitian!'
-            endif
-            !
             ! check that H commutes with all point symmetries
             do i = 1, tbpg%nsyms
                 R = tbpg%sym(:,:,i)
@@ -368,6 +382,23 @@ contains
             enddo
             !
             write(*,'(a5,a)') ' ... ' ,'shell '//tostring(j)//': OK!'
+        enddo
+        !
+        call print_title('Checking Hamiltonian at arbitrary k-points')
+        !
+        do k = 1, 10
+            kpt = reshape([rand(),rand(),rand()],[3,1])
+            ! kpt = matmul(uc%recbas,kpt), ideally... it should be in cart.
+            write(*,'(a5,a)',advance='no') ' ... ', 'k-point '//tostring(k)//' = '//tostring(pack(kpt,.true.))
+        do j = 1, ip_nshells
+            ! ignore all irreducible shells, except j
+            mask    = .false.
+            mask(j) = .true.
+            !
+            H = tb%get_hamiltonian(tbpg=tbpg, ic=ic, pp=pp, kpt=real([0,0,0],dp),iopt_mask=mask)
+            !
+            write(*,'(a)') ' OK!'
+        enddo
         enddo
         ! reset tb matrix elments to zero
         call tb%set_Vsk(flags='zero')
