@@ -323,10 +323,10 @@ contains
             enddo
             !
             if (.not.ishermitian(H)) then
-                call disp(X=l,style='underline',title='l')
-                call disp(X=pp%ip_id,style='underline',title='pp%ip_id')
-                call disp(style='underline',title='H',X=H)
-                call disp(style='underline',title='H-H^\dag',X=H-adjoint(H))
+                ! call disp(X=l,style='underline',title='l')
+                ! call disp(X=pp%ip_id,style='underline',title='pp%ip_id')
+                ! call disp(style='underline',title='H',X=H)
+                ! call disp(style='underline',title='H-H^\dag',X=H-adjoint(H))
                 stop 'ERROR [get_hamiltonian]: H is not Hermitian!'
             endif
         endif
@@ -385,16 +385,20 @@ contains
         do k = 1, 10
             kpt = reshape([rand(),rand(),rand()],[3,1])
             ! kpt = matmul(uc%recbas,kpt), ideally... it should be in cart.
-            write(*,'(a5,a)',advance='no') ' ... ', 'k-point '//tostring(k)//' = '//tostring(pack(kpt,.true.))
-        do j = 1, ip_nshells
-            ! ignore all irreducible shells, except j
-            mask    = .false.
-            mask(j) = .true.
-            !
-            H = tb%get_hamiltonian(tbpg=tbpg, pp=pp, kpt=real([0,0,0],dp),iopt_mask=mask)
-            !
-            write(*,'(a)') ' OK!'
-        enddo
+            write(*,'(a5,a)') ' ... ', 'k-point '//tostring(k)//' = '//tostring(pack(kpt,.true.),fmt='f18.10')
+            do j = 1, ip_nshells
+                write(*,'(a5,a)',advance='no') ' ... ', 'shell '//tostring(j)//' '
+                ! ignore all irreducible shells, except j
+                mask    = .false.
+                mask(j) = .true.
+                !
+                H = tb%get_hamiltonian(tbpg=tbpg, pp=pp, kpt=real([0,0,0],dp),iopt_mask=mask)
+                !
+                if (.not.ishermitian(H)) then
+                    stop 'ERROR [test_hamiltonian]: H is not Hermitian'
+                endif
+                write(*,*) 'OK!'
+            enddo
         enddo
         ! reset tb matrix elments to zero
         call tb%set_Vsk(flags='zero')

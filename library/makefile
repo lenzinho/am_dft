@@ -39,7 +39,7 @@ $(LIBS): $(OBJS)
 	rm libam.a
 	ar rcv libam.a $(OBJS)
 	ranlib libam.a
-	# rm *.mod *.i90
+	rm *.i90
 
 clean:
 	rm -f $(OBJS) *.mod *.o *.i90

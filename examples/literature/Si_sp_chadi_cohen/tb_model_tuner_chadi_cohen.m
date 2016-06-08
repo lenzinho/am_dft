@@ -15,12 +15,22 @@ kend=[
     ]';
 klabel={'L','G','X','G'};
 
+% Si
 v(1) = +0.00; % Es
 v(2) = +7.20; % Ep
 v(3) = -8.13; % Vss
 v(4) = +5.88; % Vsp
-v(6) = +1.71; % Vxx
+v(6) = +3.17; % Vxx
 v(5) = +7.51; % Vxy
+
+% % C
+% v(1) = +0.00; % Es
+% v(2) = +7.40; % Ep
+% v(3) =-15.20; % Vss
+% v(4) = 10.50; % Vsp
+% v(6) = +3.00; % Vxx
+% v(5) = +8.30; % Vxy
+
 
 [pg] = load_tb_point_group();
 [pc] = load_poscar('outfile.primitive');
@@ -28,6 +38,7 @@ v(5) = +7.51; % Vxy
 
 for i = 1:bz.npaths
 for j = 1:bz.ndivs
+%     H = get_H_numeric_cart(pg,v,bz.path(i).kpt_cart(:,j));
     H = get_H_model_frac(v, bz.path(i).kpt_frac(:,j)*2);
     if (abs(norm(H-H'))>tiny) 
         fprintf('H is not hermitian\n')

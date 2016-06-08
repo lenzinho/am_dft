@@ -12,10 +12,10 @@ clc;
 % X = zeros(18,1);
 mask = false(bz.nkpts);
 mask([1,20,50]) = true;
-X = zeros(18,1);
+ft_ = zeros(18,1);
 fun = @(x)tb_model_fitter_compute_residual(bz,dr,pg,x,mask);
 opts= optimoptions('lsqnonlin','Display','iter');
-X = lsqnonlin(fun,X,[],[],opts);
+ft_ = lsqnonlin(fun,ft_,[],[],opts);
 
 %% genetic algorithm
 nvars = 18;
