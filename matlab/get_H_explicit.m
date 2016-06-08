@@ -1,4 +1,4 @@
-function [H] = get_tb_hamiltonian(pp,kpt)
+function [H] = get_H_explicit(pp,kpt)
     minS = min(pp.S);
     maxE = max(pp.E);
     H(minS:maxE,minS:maxE) = 0;

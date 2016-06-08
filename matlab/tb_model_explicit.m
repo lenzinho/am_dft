@@ -20,8 +20,13 @@ kend=[
 
 for i = 1:bz.npaths
 for j = 1:bz.ndivs
-    H = get_H_explicit(pp, bz.path(i).kpt_cart(:,j));l
+    H = get_H_explicit(pp, bz.path(i).kpt_cart(:,j));
     bz.path(i).D(:,j) = sort(real(eig(H)));
+    
+    if (abs(norm(H-H'))>tiny) 
+        fprintf('H is not hermitian\n')
+        return
+    end
 end
 end
 
