@@ -15,18 +15,13 @@ kend=[
     ]';
 klabel={'L','G','X','G'};
 
-v(1:11) = 0;
-v(1) = -4.2 ; % E(s,a)
-v(2) = 0    ; % 0
-v(3) = 6.685; % E(s*,a)
-v(4) = 1.715; % E(p,a)
-v(5) =-8.300; % V(s,s)
-v(6) = 0 	; % 0
-v(7) = 0 	; % V(s*,s*) ??? did not find it in table
-v(8) = 5.729; % V(sa,pc)
-v(9) = 5.375; % V(s*a,pc)
-v(10)= 4.575; % V(x,y)
-v(11)= 1.715; % V(x,x)
+v(1) = 1;
+v(2) = 2;
+v(3) = 0.1;
+v(4) = 0.5;
+v(5) = 0.5;
+v(6) = 3; % shell 3
+v(7) = 4; % shell 3
 
 [pg] = load_tb_point_group();
 [pc] = load_poscar('outfile.primitive');
@@ -34,7 +29,8 @@ v(11)= 1.715; % V(x,x)
 
 for i = 1:bz.npaths
 for j = 1:bz.ndivs
-    H = get_H_model_frac(v, bz.path(i).kpt_frac(:,j));
+%     H = get_H_numeric_cart(pg, v, bz.path(i).kpt_cart(:,j));
+    H = get_H_model_frac(v, bz.path(i).kpt_frac(:,j)*2);
     if (abs(norm(H-H'))>tiny) 
         fprintf('H is not hermitian\n')
         return
