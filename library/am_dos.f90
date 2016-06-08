@@ -32,7 +32,7 @@ contains
         implicit none
         !
         class(am_class_dos)      , intent(out) :: dos
-        type(am_class_dr)        , intent(in)  :: dr
+        type(am_class_dispersion)        , intent(in)  :: dr
         type(am_class_bz)        , intent(in)  :: bz
         type(am_class_tetrahedra), intent(in)  :: tet
         type(am_class_options)   , intent(in)  :: opts
@@ -114,7 +114,7 @@ contains
         implicit none
         !
         class(am_class_dos)   , intent(in) :: dos
-        type(am_class_dr)     , intent(in)  :: dr
+        type(am_class_dispersion)     , intent(in)  :: dr
         type(am_class_options), intent(in) :: opts
         integer :: fid
         integer :: i, l, m, n ! loop variables

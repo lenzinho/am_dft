@@ -13,6 +13,7 @@ module am_tight_binding
     use am_symmetry_relations
     use am_mkl
     use am_dispersion
+    use am_brillouin_zone
 
     implicit none
 
@@ -61,6 +62,12 @@ module am_tight_binding
         real(dp), allocatable :: R(:,:)   ! R(maxiter,nRs)
         integer , allocatable :: L_ind(:) ! L_ind(nkpts) index of lowest band above E_lower
     end type am_class_tb_optimizer
+
+    type, public, extends(am_class_dispersion) :: am_class_dispersion_tb
+        complex(dp), allocatable :: C(:,:,:) ! tight binding coefficients
+    contains
+        procedure :: get_dispersion
+    end type am_class_dispersion_tb
 
 contains
 
@@ -237,7 +244,7 @@ contains
         end subroutine get_shell_relations
     end subroutine initialize_tb
 
-    function       get_hamiltonian(tb,tbpg,ic,pp,kpt,iopt_mask) result(H)
+    function       get_hamiltonian(tb,tbpg,pp,kpt,iopt_mask) result(H)
         ! 
         ! Get tight binding Hamiltonian at kpt.
         ! 
@@ -245,7 +252,6 @@ contains
         !
         class(am_class_tight_binding), intent(in) :: tb     ! tight binding matrix elements
         type(am_class_tb_group)      , intent(in) :: tbpg   ! point group in tight binding representation
-        type(am_class_irre_cell)     , intent(in) :: ic     ! irreducible cell
         type(am_class_prim_pair)     , intent(in) :: pp     ! primitive pairs
         real(dp)                     , intent(in) :: kpt(3) ! cart
         logical, optional            , intent(in) :: iopt_mask(:)
@@ -305,7 +311,7 @@ contains
                     Dm   =>   pg_target(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p))
                     Dn   =>   pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p))
                     ! get matrix elements (initialize Hsub)
-                    Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j))
+                    Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k))
                     ! rotate matrix elements as needed to get from the tau_frac(:,1) => tau_frac(:,x)
                     Hsub = matmul(matmul(transpose(Dm), Hsub), Dn)
                     ! multiply exponential factor from Bloch sum
@@ -313,15 +319,6 @@ contains
                     ! this pair's contribution to the Hamiltonian
                     H(S(m):E(m), S(n):E(n)) = H(S(m):E(m), S(n):E(n)) + Hsub
                 enddo
-
-                write(*,*) k
-                call disp(style='underline',title='H',X=H)
-
-                !
-                ! shell 9 does not match 4
-                ! 9 /= adjoint(4)
-                !
-                if (k.eq.9) stop
             endif
             enddo
             !
@@ -336,13 +333,12 @@ contains
         enddo
     end function   get_hamiltonian
 
-    subroutine     test_hamiltonian(tb,tbpg,ic,pp)
+    subroutine     test_hamiltonian(tb,tbpg,pp)
         ! makes sure Hamiltonian at Gamma commutes with all point symmetry operations
         implicit none
         !
         class(am_class_tight_binding), intent(inout) :: tb   ! tight binding matrix elements
         type(am_class_tb_group)      , intent(in)    :: tbpg ! point group in tight binding representation
-        type(am_class_irre_cell)     , intent(in)    :: ic   ! irreducible cell
         type(am_class_prim_pair)     , intent(in)    :: pp   ! primitive pairs
         complex(dp), allocatable :: H(:,:)
         real(dp)   , allocatable :: R(:,:)
@@ -367,7 +363,7 @@ contains
             mask    = .false.
             mask(j) = .true.
             !
-            H = tb%get_hamiltonian(tbpg=tbpg, ic=ic, pp=pp, kpt=real([0,0,0],dp),iopt_mask=mask)
+            H = tb%get_hamiltonian(tbpg=tbpg, pp=pp, kpt=real([0,0,0],dp),iopt_mask=mask)
             !
             ! check that H commutes with all point symmetries
             do i = 1, tbpg%nsyms
@@ -395,7 +391,7 @@ contains
             mask    = .false.
             mask(j) = .true.
             !
-            H = tb%get_hamiltonian(tbpg=tbpg, ic=ic, pp=pp, kpt=real([0,0,0],dp),iopt_mask=mask)
+            H = tb%get_hamiltonian(tbpg=tbpg, pp=pp, kpt=real([0,0,0],dp),iopt_mask=mask)
             !
             write(*,'(a)') ' OK!'
         enddo
@@ -404,16 +400,13 @@ contains
         call tb%set_Vsk(flags='zero')
     end subroutine test_hamiltonian
 
-    function       get_Vsk(tb,atom_m,atom_n,ip_id) result(V)
+    function       get_Vsk(tb,ip_id) result(V)
         ! irreducible pair (ip_id), can be negative (corresponds to pair n-m rathet than m-n, on the
         ! opposite [upper/lower] side of the Hamiltonian), in which case adjoint of V is returned
-        use am_atom
         !
         implicit none
         !
         class(am_class_tight_binding), intent(in) :: tb
-        type(am_class_atom), intent(in) :: atom_m
-        type(am_class_atom), intent(in) :: atom_n
         integer , intent(in) :: ip_id
         real(dp), allocatable :: V(:,:)
         integer :: id
@@ -426,12 +419,9 @@ contains
         n = tb%tbvsk(id)%dims(2)
         ! if irreducible pair id is negative, it means the pair was flipped
         if (ip_id.lt.0) then
-            allocate(V(n,m))
-            V = adjoint( reshape(tb%tbvsk(id)%V, [m,n]) )
+            allocate(V, source=adjoint(reshape(tb%tbvsk(id)%V,[m,n])) )
         else
-            if (.not.isequal(tb%tbvsk(id)%dims,[atom_m%norbitals,atom_n%norbitals])) stop 'dims /= norbitals'
-            allocate(V(m,n))
-            V = reshape(tb%tbvsk(id)%V, [m,n])
+            allocate(V, source=        reshape(tb%tbvsk(id)%V,[m,n])  )
         endif
         !
     end function   get_Vsk
@@ -565,13 +555,12 @@ contains
         close(fid)
     end subroutine read_matrix_elements_irr
 
-    subroutine     write_matrix_elements_full(tb,tbpg,ic,pp)
+    subroutine     write_matrix_elements_full(tb,tbpg,pp)
         !
         implicit none
         !
         class(am_class_tight_binding)     , intent(in) :: tb    ! irreducible tight binding matrix elements
         type(am_class_tb_group)           , intent(in) :: tbpg  ! point group in tight binding representation
-        type(am_class_irre_cell)          , intent(in) :: ic    ! irreducible cell
         type(am_class_prim_pair)          , intent(in) :: pp    ! primitive pairs
         real(dp), allocatable, target :: Hsub_target(:,:)
         real(dp), allocatable, target :: pg_target(:,:,:)
@@ -613,7 +602,7 @@ contains
             Dn   => pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
             Hsub => Hsub_target(S(m):E(m), S(n):E(n))
             ! print stuff
-            Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k), atom_m=ic%atom(i), atom_n=ic%atom(j)) 
+            Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k)) 
             ! print
             call disp(unit=fid, fmt='f18.10',X=matmul(matmul(transpose(Dm), Hsub), Dn),title=tostring(pp%shell(k)%tau_cart(1:3,p),fmt='f10.5')//' [cart.]',style='above')
             enddo
@@ -702,7 +691,7 @@ contains
                             str_tau= '['//tostring(pp%shell(k)%tau_frac(1:3,p),fmt='SP,f10.5')//']'
                         endif
                         str_Vab= trim(V_fnc_name)//tostring(l)//'(v('//tostring(Sv(l))//':'//tostring(Ev(l))//'))'
-                        if (pp%ip_id(k).lt.0) str_Vab=trim(str_Vab)//"'" ! transpose
+                        if (pp%ip_id(k).lt.0) str_Vab=trim(str_Vab)//"'" ! adjoint
                         ! write stuff
                         write(fid,'(a)',advance='no') trim(str_H)       // ' = ' // trim(str_H)   // ' + '
                         write(fid,'(a)',advance='no') trim(str_Dm)//"'" // ' * ' // trim(str_Vab) // ' * ' // trim(str_Dn)
@@ -720,18 +709,17 @@ contains
         close(fid)
     end subroutine export_to_matlab
 
-    subroutine     optimize_matrix_elements(tb,tbpg,bz,dr,ip,ic,pp,opts)
+    subroutine     optimize_matrix_elements(tb,tbpg,bz,dr,ip,pp,opts)
         !
         implicit none
         !   
-        class(am_class_tight_binding), intent(inout) :: tb
-        type(am_class_tb_group)      , intent(in) :: tbpg
-        type(am_class_bz)            , intent(in) :: bz
-        type(am_class_dr)            , intent(in) :: dr
-        type(am_class_irre_pair)     , intent(in) :: ip
-        type(am_class_irre_cell)     , intent(in) :: ic
-        type(am_class_prim_pair)     , intent(in) :: pp
-        type(am_class_options)       , intent(in) :: opts
+        class(am_class_tight_binding) , intent(inout) :: tb
+        type(am_class_tb_group)       , intent(in) :: tbpg
+        type(am_class_bz)             , intent(in) :: bz
+        type(am_class_dispersion_vasp), intent(in) :: dr
+        type(am_class_irre_pair)      , intent(in) :: ip
+        type(am_class_prim_pair)      , intent(in) :: pp
+        type(am_class_options)        , intent(in) :: opts
         type(am_class_tb_optimizer) :: ft
         !
         if (opts%verbosity.ge.1) call print_title('Optimizing matrix elements')
@@ -745,21 +733,21 @@ contains
         write(*,'(a5,a,a)') ' ... ', 'residual vector length = '     , tostring(ft%nRs)
         write(*,'(a5,a,a)') ' ... ', 'low energy cutoff = '          , tostring(ft%E_lower)
         !
-        call perform_optimization(ft=ft, tb=tb, bz=bz, dr=dr, ip=ip, ic=ic, pp=pp)
+        call perform_optimization(ft=ft, tb=tb, tbpg=tbpg, bz=bz, dr=dr, ip=ip, pp=pp)
         !
         contains
         subroutine     initialize_optimizer(ft,tb,tbpg,bz,dr,ip,E_lower,maxiter)
             !
             implicit none
             !
-            class(am_class_tb_optimizer), intent(out):: ft
-            type(am_class_tight_binding), intent(in) :: tb
-            type(am_class_tb_group)     , intent(in) :: tbpg
-            type(am_class_bz)           , intent(in) :: bz
-            type(am_class_dr)           , intent(in) :: dr
-            type(am_class_irre_pair)    , intent(in) :: ip
-            real(dp)                    , intent(in) :: E_lower
-            integer                     , intent(in) :: maxiter
+            class(am_class_tb_optimizer)  , intent(out):: ft
+            type(am_class_tight_binding)  , intent(in) :: tb
+            type(am_class_tb_group)       , intent(in) :: tbpg
+            type(am_class_bz)             , intent(in) :: bz
+            type(am_class_dispersion_vasp), intent(in) :: dr
+            type(am_class_irre_pair)      , intent(in) :: ip
+            real(dp)                      , intent(in) :: E_lower
+            integer                       , intent(in) :: maxiter
             integer :: i, j
             !
             ! set maximum number of iterations
@@ -795,20 +783,20 @@ contains
             ft%V = 0
             !
         end subroutine initialize_optimizer
-        subroutine     perform_optimization(ft,tb,bz,dr,ic,pp,ip)
+        subroutine     perform_optimization(ft,tb,tbpg,bz,dr,pp,ip)
             !
             use mkl_rci
             use mkl_rci_type
             !
             implicit none
             !
-            class(am_class_tb_optimizer), intent(inout) :: ft
-            type(am_class_tight_binding), intent(inout) :: tb
-            type(am_class_bz)           , intent(in) :: bz
-            type(am_class_dr)           , intent(in) :: dr
-            type(am_class_irre_pair)    , intent(in) :: ip
-            type(am_class_irre_cell)    , intent(in) :: ic
-            type(am_class_prim_pair)    , intent(in) :: pp
+            class(am_class_tb_optimizer)  , intent(inout) :: ft
+            type(am_class_tight_binding)  , intent(inout) :: tb
+            type(am_class_tb_group)       , intent(in) :: tbpg
+            type(am_class_bz)             , intent(in) :: bz
+            type(am_class_dispersion_vasp), intent(in) :: dr
+            type(am_class_irre_pair)      , intent(in) :: ip
+            type(am_class_prim_pair)      , intent(in) :: pp
             real(dp), allocatable :: FVEC(:)
             real(dp), allocatable :: FJAC(:,:)
             real(dp), allocatable :: X(:)
@@ -886,7 +874,7 @@ contains
                     ! update X in tb model
                     call tb%set_Vsk(V=X)
                     ! recalculate function
-                    call compute_residual(ft=ft, tb=tb, bz=bz, dr=dr, ic=ic, pp=pp, R=FVEC)
+                    call compute_residual(ft=ft, tb=tb, tbpg=tbpg, bz=bz, dr=dr, pp=pp, R=FVEC)
                     ! increase counter
                     i = i + 1
                     ! print results
@@ -902,7 +890,7 @@ contains
                     ! update X in tb model
                     call tb%set_Vsk(V=X)
                     ! compute jacobian matrix (uses central difference)
-                    call compute_jacobian(ft=ft, tb=tb, bz=bz, dr=dr, ic=ic, pp=pp, FJAC=FJAC)
+                    call compute_jacobian(ft=ft, tb=tb, tbpg=tbpg, bz=bz, dr=dr,  pp=pp, FJAC=FJAC)
                 end select
             end do
             ! clean up
@@ -914,54 +902,48 @@ contains
                 call mkl_free_buffers
             endif
         end subroutine perform_optimization
-        subroutine     compute_residual(ft,tb,bz,dr,ic,pp,R)
+        subroutine     compute_residual(ft,tb,tbpg,bz,dr,pp,R)
             !
             implicit none
             !
-            class(am_class_tb_optimizer)   , intent(in) :: ft
-            type(am_class_tight_binding), intent(in) :: tb
-            type(am_class_bz)           , intent(in) :: bz
-            type(am_class_dr)           , intent(in) :: dr
-            type(am_class_irre_cell)    , intent(in) :: ic
-            type(am_class_prim_pair)    , intent(in) :: pp
-            real(dp), allocatable       , intent(out):: R(:)
-            complex(dp), allocatable :: H(:,:)
-            real(dp)   , allocatable :: D(:)
-            integer :: i,j,k
-            integer :: Sj, Ej
-            !
+            class(am_class_tb_optimizer)  , intent(in) :: ft
+            type(am_class_tight_binding)  , intent(in) :: tb
+            type(am_class_tb_group)       , intent(in) :: tbpg
+            type(am_class_bz)             , intent(in) :: bz
+            type(am_class_dispersion_vasp), intent(in) :: dr 
+            type(am_class_prim_pair)      , intent(in) :: pp
+            real(dp), allocatable         , intent(out):: R(:)
+            type(am_class_dispersion_tb) :: dr_tb 
+            integer, allocatable :: inds(:)
+            integer :: i
+            ! index vector
+            allocate(inds(tbpg%nbases))
             ! create residual vector
             allocate(R(ft%nRs))
+            ! get tb dispersion 
+            call dr_tb%get_dispersion(tb=tb,tbpg=tbpg,bz=bz,pp=pp)
             ! loop over kpoints
-            j = 0
             do i = 1, bz%nkpts
-                ! get residual vector indices
-                j  = j+1
-                Sj = j
-                j  = j+ft%nbands-1
-                Ej = j
-                ! construct hamiltonian
-                H = tb%get_hamiltonian(tbpg=tbpg, ic=ic, pp=pp, kpt=bz%kpt_cart(:,i))
-                ! diagonalize hamiltonian
-                call am_zheev_eig(A=H,D=D)
+                ! get indices
+                inds = [(i*tbpg%nbases):((i+1)*tbpg%nbases-1)]
                 ! calculate residual vector indices
-                R(Sj:Ej) = dr%E( [ft%L_ind(i):(ft%L_ind(i)+ft%nbands)], i ) - D
+                R(inds) = dr%E( [ft%L_ind(i):(ft%L_ind(i)+ft%nbands)], i ) - dr_tb%E(:,i)
             enddo
             !
         end subroutine compute_residual
-        subroutine     compute_jacobian(ft,tb,bz,dr,ic,pp,FJAC)
+        subroutine     compute_jacobian(ft,tb,tbpg,bz,dr,pp,FJAC)
             !
             use mkl_rci
             !
             implicit none 
             !
-            class(am_class_tb_optimizer)   , intent(in) :: ft
-            type(am_class_tight_binding), intent(inout) :: tb
-            type(am_class_bz)           , intent(in) :: bz
-            type(am_class_dr)           , intent(in) :: dr
-            type(am_class_irre_cell)    , intent(in) :: ic
-            type(am_class_prim_pair)    , intent(in) :: pp
-            real(dp), allocatable       , intent(out):: FJAC(:,:) ! fjac(m,n) jacobian matrix
+            class(am_class_tb_optimizer)  , intent(in) :: ft
+            type(am_class_tight_binding)  , intent(inout) :: tb
+            type(am_class_tb_group)       , intent(in) :: tbpg
+            type(am_class_bz)             , intent(in) :: bz
+            type(am_class_dispersion_vasp), intent(in) :: dr
+            type(am_class_prim_pair)      , intent(in) :: pp
+            real(dp), allocatable         , intent(out):: FJAC(:,:) ! fjac(m,n) jacobian matrix
             real(dp), allocatable :: f1(:)     ! f1(m)     residual vector
             real(dp), allocatable :: f2(:)     ! f1(m)     residual vector
             real(dp), allocatable :: X(:)      ! X(n)      parameter vector
@@ -995,12 +977,12 @@ contains
                     ! update X in TB model
                     call tb%set_Vsk(V=X)
                     ! compute jacobian
-                    call compute_residual(ft=ft,tb=tb,bz=bz,dr=dr,ic=ic,pp=pp,R=f1)
+                    call compute_residual(ft=ft,tb=tb,tbpg=tbpg,bz=bz,dr=dr,pp=pp,R=f1)
                 else if (rci_request .eq. 2) then
                     ! update X in TB model
                     call tb%set_Vsk(V=X)
                     ! compute jacobian
-                    call compute_residual(ft=ft,tb=tb,bz=bz,dr=dr,ic=ic,pp=pp,R=f2)
+                    call compute_residual(ft=ft,tb=tb,tbpg=tbpg,bz=bz,dr=dr,pp=pp,R=f2)
                 else if (rci_request .eq. 0) then
                     successful = 1 
                 end if
@@ -1015,7 +997,34 @@ contains
         end subroutine compute_jacobian
     end subroutine optimize_matrix_elements
 
-
+    subroutine     get_dispersion(dr,tb,tbpg,bz,pp)
+        !
+        implicit none
+        !
+        class(am_class_dispersion_tb), intent(out) :: dr
+        type(am_class_tb_group)      , intent(in) :: tbpg ! point group in tight binding representation
+        type(am_class_tight_binding) , intent(in) :: tb
+        type(am_class_bz)            , intent(in) :: bz
+        type(am_class_prim_pair)     , intent(in) :: pp
+        complex(dp), allocatable :: H(:,:), V(:,:)
+        real(dp)   , allocatable :: D(:)
+        integer :: i
+        !
+        ! tight binding coefficients
+        allocate(dr%C(tbpg%nbases,tbpg%nbases,bz%nkpts))
+        ! eigenvalues
+        allocate(dr%E(tbpg%nbases,bz%nkpts))
+        ! loop over kpoints
+        do i = 1, bz%nkpts
+            ! construct hamiltonian
+            H = tb%get_hamiltonian(tbpg=tbpg, pp=pp, kpt=bz%kpt_cart(:,i))
+            ! diagonalize hamiltonian
+            call am_zheev(A=H,V=V,D=D)
+            V = dr%C(:,:,i)
+            D = dr%E(:,i)
+        enddo
+        !
+    end subroutine get_dispersion
 
 
 

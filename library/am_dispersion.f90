@@ -12,21 +12,26 @@ module am_dispersion
 
     implicit none
 
-    type, public :: am_class_dr
-        real(dp), allocatable :: E(:,:)            ! E(nbands,nkpts) energies
+    private
+
+    type, public :: am_class_dispersion
+        integer :: nbands
+        real(dp), allocatable :: E(:,:) ! E(nbands,nkpts) energies
+    end type am_class_dispersion
+
+   type, public, extends(am_class_dispersion) :: am_class_dispersion_vasp
         real(dp), allocatable :: lmproj(:,:,:,:,:) ! lmproj(nspins,norbitals,nions,nbands,nkpts) band character weights
-        !
         ! projection information:
         integer :: nspins
         integer :: norbitals
         integer :: nions
-        integer :: nbands
         character(:), allocatable :: orbitals(:) ! orbitals(norbitals) names of orbitals
     contains
         procedure :: load
         procedure :: write_bandcharacter ! requires load_eigenval or load_procar
-        ! 
-    end type am_class_dr
+    end type am_class_dispersion_vasp
+
+
 
 contains
 
@@ -36,9 +41,9 @@ contains
         !
         implicit none
         !
-        class(am_class_dr)    , intent(out) :: dr
-        type(am_class_options), intent(in)  :: opts
-        character(*)          , intent(in)  :: flags
+        class(am_class_dispersion_vasp), intent(out) :: dr
+        type(am_class_options)         , intent(in)  :: opts
+        character(*)                   , intent(in)  :: flags
         ! integer, allocatable :: canvas(:,:)
         ! integer :: i, height
         ! integer :: minmin
@@ -101,10 +106,10 @@ contains
         !
         implicit none
         !
-        class(am_class_dr), intent(in) :: dr ! dispersion relations
-        class(am_class_bz), intent(in) :: bz ! brillouin zone class
-        class(am_class_unit_cell), intent(in) :: uc
-        type(am_class_options), intent(in) :: opts
+        class(am_class_dispersion_vasp), intent(in) :: dr ! dispersion relations
+        class(am_class_bz)             , intent(in) :: bz ! brillouin zone class
+        class(am_class_unit_cell)      , intent(in) :: uc
+        type(am_class_options)         , intent(in) :: opts
         real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
         real(dp) :: k1(3) ! point for kdiff
         real(dp) :: k2(3) ! point for kdiff

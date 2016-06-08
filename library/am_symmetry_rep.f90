@@ -51,8 +51,6 @@ module am_symmetry_rep
         integer , allocatable :: dims(:)        ! tensor dimensions
         real(dp), allocatable :: relations(:,:) ! relations connecting tensor elements
         real(dp), allocatable :: V(:)           ! the value of the tensor, use reshape(V,dims)
-                                                ! to apply symmetry operations: V_symmetrized = matmul(relations,V); computes dependent from independent parameters
-        contains
     end type am_class_tensor
 
     type, public, extends(am_class_tensor) :: am_class_property

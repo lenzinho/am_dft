@@ -322,13 +322,13 @@ module am_symmetry_relations
                                 str = get_basis_label(dims=dims, ind=j ,flags='')
                                 if (present(fid_append)) then
                                     ! HIGH PRECISION
-                                    write(fid,'(a)',advance='no') tostring(relations(i,j),fmt='SP,f24.16')//'*'//trim(str)//';'
+                                    write(fid,'(a)',advance='no') tostring(relations(i,j),fmt='SP,f24.16')//'*'//trim(str)
                                 else
-                                    write(fid,'(a)',advance='no') tostring(relations(i,j),fmt='SP,f10.5')//'*'//trim(str)//';'
+                                    write(fid,'(a)',advance='no') tostring(relations(i,j),fmt='SP,f10.5')//'*'//trim(str)
                                 endif
                             endif
                         enddo
-                        write(fid,*)
+                        write(fid,*) ';'
                     endif
                 enddo
                 ! write null terms

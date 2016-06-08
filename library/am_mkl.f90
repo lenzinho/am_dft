@@ -647,7 +647,6 @@ contains
         !
         ! copy variables
         !
-
         allocate(V, source=A)
         !
         ! query the optimal workspace
