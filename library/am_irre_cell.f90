@@ -171,7 +171,7 @@ contains
             call write_orbital_basis(ic)
             !
             if (opts%verbosity.ge.1)  then
-                write(*,'(a5,a)') ' ... ', 'Template produced: outfile.tb_orbitals'
+                write(*,'(a5,a)') ' ... ', 'Template produced: '//trim(outfile_dir_tb)//'/'//'infile.tb_orbitals'
                 call print_title('Done!')
             endif
             !
@@ -195,9 +195,11 @@ contains
             class(am_class_irre_cell), intent(inout) :: ic
             integer :: i, j
             integer :: fid
-            !
+            ! create tb dir
+            call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
+            ! export file
             fid = 1
-            open(unit=fid,file='outfile.tb_orbitals',status='replace',action='write')
+            open(unit=fid,file=trim(outfile_dir_tb)//'/'//'infile.tb_orbitals',status='replace',action='write')
                 ! spin polarized?
                 write(fid,'(a)') 'spin: off'
                 ! irreducible atoms

@@ -155,8 +155,10 @@ module am_symmetry_rep
         tbpg%ct = pg%ct
         ! check that identity is first
         if (.not.isequal(tbpg%sym(:,:,1),eye(tbpg%nbases))) stop 'tbpg: Identity is not first.'
-        !
-        call tbpg%write_outfile(iopt_filename='outfile.tb_pointgroup')
+        ! create tb dir
+        call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
+        ! write point group
+        call tbpg%write_outfile(fname=trim(outfile_dir_tb)//'/'//'outfile.tb_pointgroup')
         !
         contains
         function       ps2tb_H(R_cart,pc,ic) result(H)

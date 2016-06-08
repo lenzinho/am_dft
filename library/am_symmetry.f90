@@ -144,21 +144,16 @@ contains
         !
     end subroutine sort_symmetries
 
-    subroutine     write_outfile(grp,iopt_filename)
+    subroutine     write_outfile(grp,fname)
         !
         implicit none
         !
         class(am_class_group), intent(in) :: grp
-        character(*), intent(in), optional :: iopt_filename
-        character(100) :: fname
+        character(*), intent(in) :: fname
         integer :: fid
         !
-        ! set default
-        fname = 'dump.symmetries'
-        if (present(iopt_filename)) fname = iopt_filename
-        !
         fid = 1
-        open(unit=fid,file=trim(iopt_filename),status="replace",action='write')
+        open(unit=fid,file=trim(fname),status="replace",action='write')
             !
             write(fid,'(a,a)') tostring(grp%nsyms),  ' symmetries'
             write(fid,'(a,a)') tostring(grp%nbases), ' dimensions'
@@ -541,9 +536,12 @@ contains
             call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
             call disp(X=sg%mt%multab,advance='yes',trim='yes')
         endif
+        ! create folder
+        call execute_command_line ('mkdir -p '//trim(outfile_dir_sym))
         ! write to write_outfile and to file
-        call sg%write_outfile(iopt_filename=trim('outfile.spacegroup'))
-        call sg%write_action_table(uc=pc,fname='outfile.space_group_action',opts=opts)
+        call sg%write_outfile(fname=trim(outfile_dir_sym)//'/'//'outfile.spacegroup')
+        ! write action table
+        call sg%write_action_table(uc=pc,fname=trim(outfile_dir_sym)//'/'//'outfile.space_group_action',opts=opts)
         !
         contains
         function        space_symmetries_from_basis(bas,tau,Z,prec) result(seitz)
@@ -771,10 +769,12 @@ contains
             call print_title('Point group character table')
             call pg%print_character_table()
         endif
-        !
-        call pg%write_outfile(iopt_filename='outfile.pointgroup')
-        !
-        call pg%write_action_table(uc=pc,fname='outfile.point_group_action',opts=opts)
+        ! make output folder
+        call execute_command_line ('mkdir -p '//trim(outfile_dir_sym))
+        ! write outfile
+        call pg%write_outfile(fname=trim(outfile_dir_sym)//'/'//'outfile.pointgroup')
+        ! write action table
+        call pg%write_action_table(uc=pc,fname=trim(outfile_dir_sym)//'/'//'outfile.point_group_action',opts=opts)
         !
     end subroutine get_point_group
 

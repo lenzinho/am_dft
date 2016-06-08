@@ -20,6 +20,10 @@ module am_constants
     integer    , parameter :: string_length_schoenflies = 6
     integer    , parameter :: max_argument_length = 500
     integer    , parameter :: maximum_buffer_size = 500
-    
+    !
+    character(100), parameter :: outfile_dir     = './out'
+    character(100), parameter :: outfile_dir_tb  = trim(outfile_dir)//'/tb'
+    character(100), parameter :: outfile_dir_sym = trim(outfile_dir)//'/sym'
+    character(100), parameter :: outfile_dir_uc  = trim(outfile_dir)//'/uc'
     
 end module am_constants

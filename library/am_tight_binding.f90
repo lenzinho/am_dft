@@ -501,9 +501,11 @@ contains
         integer :: beta
         integer :: i
         integer :: fid
-        !
+        ! create tb dir
+        call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
+        ! write point group
         fid = 1
-        open(unit=fid,file='outfile.tb_matrix_elements_irreducible',status='replace',action='write')
+        open(unit=fid,file=trim(outfile_dir_tb)//'/'//'outfile.tb_matrix_elements_irreducible',status='replace',action='write')
             !
             write(fid,'(a5,a16,3a6)') '#', 'V', 'shell', 'alpha', 'beta'
             do i = 1, tb%nVs
@@ -581,37 +583,41 @@ contains
         allocate(E, source=tbpg%H_end)
         !
         call tostring_set(sep=' ')
-        !
-        fid = 1
-        open(unit=fid,file='outfile.tb_matrix_elements',status='replace',action='write')
-            ! print stuff
-            write(fid,'(a,a)')                 tostring(pp%nshells), ' primitive shells'
-            write(fid,'(a,a)')                          tostring(S), ' subregion start'
-            write(fid,'(a,a)')                          tostring(E), ' subregion end'
-            do k = 1, pp%nshells
-            ! abbreviations
-            m = pp%shell(k)%m
-            n = pp%shell(k)%n
-            i = pp%shell(k)%i
-            j = pp%shell(k)%j
-            ! print stuff
-            write(fid,'(a,a)')                       repeat('=',79), repeat('=',79)
-            write(fid,'(a,a)')              centertitle(tostring(k)//' shell',158)
-            write(fid,'(a,a)')                          tostring(m), ' primitive m'
-            write(fid,'(a,a)')                          tostring(n), ' primitive n'
-            write(fid,'(a,a)')         tostring(pp%shell(k)%natoms), ' atoms in shell'
-            do p = 1, pp%shell(k)%natoms
-            ! abbreviations
-            Dm   => pg_target(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p) )
-            Dn   => pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
-            Hsub => Hsub_target(S(m):E(m), S(n):E(n))
-            ! print stuff
-            Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k)) 
-            ! print
-            call disp(unit=fid, fmt='f18.10',X=matmul(matmul(transpose(Dm), Hsub), Dn),title=tostring(pp%shell(k)%tau_cart(1:3,p),fmt='f10.5')//' [cart.]',style='above')
-            enddo
-            enddo
-        close(fid)
+            ! create directory
+            call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
+            ! export symmetry
+            fid = 1
+            open(unit=fid,file=trim(outfile_dir_tb)//'/'//'outfile.tb_matrix_elements',status='replace',action='write')
+                ! print stuff
+                write(fid,'(a,a)')                 tostring(pp%nshells), ' primitive shells'
+                write(fid,'(a,a)')                          tostring(S), ' subregion start'
+                write(fid,'(a,a)')                          tostring(E), ' subregion end'
+                do k = 1, pp%nshells
+                ! abbreviations
+                m = pp%shell(k)%m
+                n = pp%shell(k)%n
+                i = pp%shell(k)%i
+                j = pp%shell(k)%j
+                ! print stuff
+                write(fid,'(a,a)')                       repeat('=',79), repeat('=',79)
+                write(fid,'(a,a)')              centertitle(tostring(k)//' shell',158)
+                write(fid,'(a,a)')                          tostring(m), ' primitive m'
+                write(fid,'(a,a)')                          tostring(n), ' primitive n'
+                write(fid,'(a,a)')         tostring(pp%shell(k)%natoms), ' atoms in shell'
+                do p = 1, pp%shell(k)%natoms
+                ! abbreviations
+                Dm   => pg_target(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p) )
+                Dn   => pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
+                Hsub => Hsub_target(S(m):E(m), S(n):E(n))
+                ! print stuff
+                Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k)) 
+                ! print
+                call disp(unit=fid, fmt='f18.10',X=matmul(matmul(transpose(Dm), Hsub), Dn),title=tostring(pp%shell(k)%tau_cart(1:3,p),fmt='f10.5')//' [cart.]',style='above')
+                enddo
+                enddo
+            close(fid)
+        ! return delimiter to ","
+        call tostring_set(sep=',')
         !
     end subroutine write_matrix_elements_full
 
@@ -641,7 +647,7 @@ contains
         ! integer :: ntaus
         ! real(dp), allocatable :: taus(:)
         !
-        ! st function names
+        ! set function names
         if     (index(flags,'symbolic').ne.0) then
             H_fnc_name = 'get_H_symbolic'
         elseif (index(flags, 'numeric').ne.0) then
@@ -693,7 +699,10 @@ contains
         enddo
         ! export hamiltonian
         fid = 1
-        open(unit=fid,file=trim(H_fnc_name)//'.m',status='replace',action='write')
+        ! create directory
+        call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
+        ! export file
+        open(unit=fid,file=trim(outfile_dir_tb)//'/'//trim(H_fnc_name)//'.m',status='replace',action='write')
             write(fid,'(a,a,a)') 'function [H] = ', trim(H_fnc_name), '(pg,v,kpt)'
             write(fid,'(a)') 'i2pi = 2*sqrt(-1)*pi;'
             write(fid,'(a)') 'H(1:'//tostring(E(end))//',1:'//tostring(E(end))//') = 0;'
