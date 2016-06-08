@@ -637,6 +637,9 @@ contains
         character(100) :: str_Dn
         character(100) :: str_tau
         character(100) :: str_Vab
+        ! tau substitution
+        ! integer :: ntaus
+        ! real(dp), allocatable :: taus(:)
         !
         ! st function names
         if     (index(flags, 'symbolic').ne.0) then
@@ -654,6 +657,25 @@ contains
         else
             stop 'ERROR [export_to_matlab]: flags != cart/frac'
         endif
+        !
+        ! get number of unique coordinates
+        ! if     (index(flags, 'symbolic').ne.0) then
+        ! allocate(taus( pp%nshells * maxval(pp%shell(:)%natoms)))
+        ! ntaus = 0
+        ! do i = 1, pp%nshells
+        ! do j = 1, pp%shell(k)%natoms
+        ! do k = 1, 3
+        !     if (abs(pp%shell(i)%tau_frac(k,j))).gt.opts%prec) then
+        !     if (.not.issubset(taus(1:k),pp%shell(i)%tau_frac(k,j))) then
+        !         ntaus = ntaus+1
+        !         tau(ntaus) = pp%shell(i)%tau_frac(k,j)
+        !     endif
+        !     endif
+        ! enddo
+        ! enddo
+        ! enddo
+        ! endif
+        !
         V_fnc_name = 'getV'
         ! create abbreviations
         allocate(S, source=tbpg%H_start)

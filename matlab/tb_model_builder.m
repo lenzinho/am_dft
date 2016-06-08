@@ -47,7 +47,9 @@ end
 fprintf(' ... length of H = %i \n',size(char(H),2));
 %% ------------------------------------------------------------------------
 fprintf(' ... writing hamiltonian in terms of trigonometric functions \n');
-H=simplify(rewrite(H,'sin'),'steps',100);
+H=collect(H,'pi*2*i');
+%%
+H=simplify(rewrite(H,'sin'),'steps',50);
 fprintf(' ... length of H = %i \n',size(char(H),2));
 %% ------------------------------------------------------------------------
 fprintf(' ... substituting exponents in hamiltonian \n');
@@ -104,6 +106,10 @@ for i = 1:maxvars
 end
 fprintf(' ... length of H = %i \n',size(char(H),2));
 %% ------------------------------------------------------------------------
+fprintf(' ... performing final simplification \n');
+H=simplify(rewrite(H,'sin'),'steps',300);
+fprintf(' ... length of H = %i \n',size(char(H),2));
+%% ------------------------------------------------------------------------
 fprintf(' ... converting symbolic array k to accept numerical vectors\n');
 for i = 1:amax
 for j = 1:3
@@ -131,10 +137,6 @@ H(i,j) = subs(H(i,j),v(m),sprintf('v(%i)',m));
 end
 end
 end
-%% ------------------------------------------------------------------------
-fprintf(' ... performing final simplification \n');
-H=simplify(rewrite(H,'sin'),'steps',300);
-fprintf(' ... length of H = %i \n',size(char(H),2));
 % ------------------------------------------------------------------------
 if     ~isempty(strfind(flags,'frac'))
     fprintf(' ... writting get_H_model_frac.m\n');

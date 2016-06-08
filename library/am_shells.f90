@@ -132,9 +132,9 @@ contains
                 s = 1
                 if (pp%shell(k)%m .lt. pp%shell(k)%n) s = -s
                 ! this sort below is absolutely necessary, othewise there will be problems later when pg_id is called when building the tb hamiltonian
-                call pp%shell(k)%sort_atoms(criterion=s*pp%shell(k)%tau_cart(1,:),flags='descend')
-                call pp%shell(k)%sort_atoms(criterion=s*pp%shell(k)%tau_cart(2,:),flags='descend')
-                call pp%shell(k)%sort_atoms(criterion=s*pp%shell(k)%tau_cart(3,:),flags='descend')
+                call pp%shell(k)%sort_atoms(criterion=s*real(nint(pp%shell(k)%tau_cart(1,:)*1.0D3),dp),flags='descend')
+                call pp%shell(k)%sort_atoms(criterion=s*real(nint(pp%shell(k)%tau_cart(2,:)*1.0D3),dp),flags='descend')
+                call pp%shell(k)%sort_atoms(criterion=s*real(nint(pp%shell(k)%tau_cart(3,:)*1.0D3),dp),flags='descend')
                 ! take note of point symmetry which takes atom tau_frac(:,m) to atom tau_frac(:,1)
                 ! should use cart here because a unitary transformation is necessary
                 ! NOTE: THIS SECTION ON FINDING THE POINT SYMMETRY MUST STRICTLY COME AFTER THE SORT

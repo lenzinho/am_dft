@@ -328,7 +328,7 @@ module am_symmetry_relations
                                 endif
                             endif
                         enddo
-                        write(fid,*) ';'
+                        write(fid,'(a)') ';'
                     endif
                 enddo
                 ! write null terms
