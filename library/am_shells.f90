@@ -383,32 +383,56 @@ contains
         do i = 1,ip%nshells
             ip%shell(i) = pp%shell( ip%pp_id(i) )
         enddo
-        ! ! sort irreducible pair shells based on distance
-        ! allocate(d(ip%nshells))
-        ! do i = 1, ip%nshells
-        !     d(i) = norm2(ip%shell(i)%tau_cart(:,1))
-        ! enddo
-        ! allocate( ind(ip%nshells))
+        ! sort irreducible pair shells based on distance
+        allocate(d(ip%nshells))
+        do i = 1, ip%nshells
+            d(i) = norm2(ip%shell(i)%tau_cart(:,1))
+        enddo
+        allocate( ind(ip%nshells))
         ! allocate(rind(ip%nshells))
-        ! call rank(d,ind)
-        ! rind(ind)= [1:ip%nshells]
-        ! ip%shell = ip%shell(ind)
-        ! ip%pp_id = ip%pp_id(ind)
-        ! THIS LAST PART SEEMS TO NOT BE WORKING
-        ! do i = 1, pp%nshells
-        !     pp%ip_id(i) = pp%ip_id(ind(i))
-        ! enddo
-        ! ANSWER SHOULD BE:
-        !  shell Zi-Zj   i-j   m-n    m   stab.    rot.    rev. |v(cart)|           v(cart)             |v(frac)|           v(frac)
-        !  ----- ----- ----- ----- ---- ------- ------- ------- --------- ----------------------------- --------- -----------------------------
-        !      1 Ga-Ga   1-1   1-1    1     t_d     t_d     t_d     0.000     0.000     0.000     0.000     0.000     0.000     0.000     0.000
-        !      2 As-As   2-2   2-2    1     t_d     t_d     t_d     0.000     0.000     0.000     0.000     0.000     0.000     0.000     0.000
-        !      3 Ga-As   1-2   1-2    4    c_3v     t_d    c_3v     2.490     1.438     1.438    -1.438     0.153     0.062     0.062    -0.125
-        !      4 Ga-Ga   1-1   1-1   12    c_1h     t_d    c_1h     4.066     2.875     2.875     0.000     0.177     0.125     0.125     0.000
-        !      5 As-As   2-2   2-1    4    c_1h     t_d    c_1h     4.066     2.875     2.875     0.000     0.177     0.125     0.125     0.000
-        !      6 Ga-As   1-2   1-2   12    c_1h     t_d    c_1h     4.768     4.313     1.438     1.438     0.234     0.187     0.062     0.125
+        call rank(real(nint(d*1.0D5)),ind)
+        call disp(ind)
         !
+        ip%shell = ip%shell(ind)
+        ip%pp_id = ip%pp_id(ind)
+        ! 
+        allocate(rind(ip%nshells))
+        rind(ind) = [1:ip%nshells]
+        do i = 1, pp%nshells
+            pp%ip_id(i) = rind(abs(pp%ip_id(i))) * sign(1,pp%ip_id(i))
+        enddo
+        !
+        ! CURRENTLY:
+        !
+        !  ... irreducible pair shells = 5
+        !      shell Zi-Zj   i-j   m-n    m   stab.    rot.    rev. |v(cart)|           v(cart)             |v(frac)|           v(frac)
+        !      ----- ----- ----- ----- ---- ------- ------- ------- --------- ----------------------------- --------- -----------------------------
+        !          1   V-V   1-1   1-1    1     o_h     o_h     o_h     0.000     0.000     0.000     0.000     0.000     0.000     0.000     0.000
+        !          2   V-N   1-2   1-2    6    c_4v     o_h    c_4v     2.035     0.000     0.000    -2.035     0.289    -0.167    -0.167     0.167
+        !          3   V-V   1-1   1-1   12    c_2v     o_h    c_2v     2.878     0.000     2.035     2.035     0.333     0.333     0.000     0.000
+        !          4   N-N   2-2   2-2    1     o_h     o_h     o_h     0.000     0.000     0.000     0.000     0.000     0.000     0.000     0.000
+        !          5   N-N   2-2   2-2   12    c_2v     o_h    c_2v     2.878     0.000     2.035     2.035     0.333     0.333     0.000     0.000
+        !  ... pair mapping (to irreducible: pp->ip)
+        !          1->1    2->2    3->3    4->4   5->-2    6->5
+        !  ... pair mapping (to primitive: ip->pp)
+        !          1->1    2->2    3->3    4->4    5->6
+        !
+        ! SHOULD BE:
+        !
+        !  ... irreducible pair shells = 5
+        !      shell Zi-Zj   i-j   m-n    m   stab.    rot.    rev. |v(cart)|           v(cart)             |v(frac)|           v(frac)
+        !      ----- ----- ----- ----- ---- ------- ------- ------- --------- ----------------------------- --------- -----------------------------
+        !          1   V-V   1-1   1-1    1     o_h     o_h     o_h     0.000     0.000     0.000     0.000     0.000     0.000     0.000     0.000  1 -> 1
+        !          4   N-N   2-2   2-2    1     o_h     o_h     o_h     0.000     0.000     0.000     0.000     0.000     0.000     0.000     0.000  4 -> 2
+        !          2   V-N   1-2   1-2    6    c_4v     o_h    c_4v     2.035     0.000     0.000    -2.035     0.289    -0.167    -0.167     0.167  2 -> 3
+        !          3   V-V   1-1   1-1   12    c_2v     o_h    c_2v     2.878     0.000     2.035     2.035     0.333     0.333     0.000     0.000  3 -> 4
+        !          5   N-N   2-2   2-2   12    c_2v     o_h    c_2v     2.878     0.000     2.035     2.035     0.333     0.333     0.000     0.000  5 -> 5
+        !  ... pair mapping (to irreducible: pp->ip)
+        !          1->1    2->3    3->4    4->2   5->-3    6->5
+        !  ... pair mapping (to primitive: ip->pp)
+        !          1->1    2->4    3->2    4->3    5->6
         ! write to stdout
+        !
         if (opts%verbosity.ge.1) then
             write(*,'(a5,a,a)') ' ... ', 'primitive pair shells = '  , tostring(pp%nshells)
             write(*,'(a5,a,a)') ' ... ', 'irreducible pair shells = ', tostring(ip%nshells)
@@ -473,6 +497,17 @@ contains
             write(*,'(5x,a)') ' - reversal   (rev) : (im)proper rotational parts of space symmetries which flip bond endpoints'
             write(*,'(5x,a)') ' - negative mappings indicate that endpoints have been flipped'
         endif
+
+
+
+
+
+
+
+
+        stop
+
+
         !
         contains
         function       identify_irreducible(pp,pg,ic,opts) result(ip_id)

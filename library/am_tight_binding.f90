@@ -907,7 +907,7 @@ contains
                     if (i.eq.1) then
                         write(*,'(5x,i8,f10.2,10x,SP,1000f10.2)')   i, norm2(FVEC), X
                     else
-                        write(*,'(5x,i8,f10.2,f10.2,SP,1000f10.2)') i, norm2(FVEC), log10(abs(norm(FVEC-ft%R(:,i-1)))), X 
+                        write(*,'(5x,i8,f10.2,f10.2,SP,1000f10.2)') i, norm2(FVEC), log10(abs(norm(1.0D-14+FVEC-ft%R(:,i-1)))), X 
                     endif
                     ! save results
                     ft%V(:,i) = X
@@ -943,15 +943,16 @@ contains
             integer, allocatable :: inds(:)
             integer :: i
             ! index vector
-            allocate(inds(tbpg%nbases))
+            allocate(inds(ft%nbands))
             ! create residual vector
             allocate(R(ft%nRs))
+            R = 0
             ! get tb dispersion 
             call dr_tb%get_dispersion(tb=tb,tbpg=tbpg,bz=bz,pp=pp)
             ! loop over kpoints
             do i = 1, bz%nkpts
                 ! get indices
-                inds = [(i*tbpg%nbases):((i+1)*tbpg%nbases-1)]
+                inds = [1:ft%nbands] + (i-1)*ft%nbands
                 ! calculate residual vector indices
                 R(inds) = dr%E( [ft%L_ind(i):(ft%L_ind(i)+ft%nbands)], i ) - dr_tb%E(:,i)
             enddo
@@ -1046,8 +1047,8 @@ contains
             H = tb%get_hamiltonian(tbpg=tbpg, pp=pp, kpt=bz%kpt_cart(:,i))
             ! diagonalize hamiltonian
             call am_zheev(A=H,V=V,D=D)
-            V = dr%C(:,:,i)
-            D = dr%E(:,i)
+            dr%C(:,:,i) = V
+            dr%E(:,i) = D
         enddo
         !
     end subroutine get_dispersion
