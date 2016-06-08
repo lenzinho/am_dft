@@ -642,9 +642,9 @@ contains
         ! real(dp), allocatable :: taus(:)
         !
         ! st function names
-        if     (index(flags, 'symbolic').ne.0) then
+        if     (index(flags,'symbolic').ne.0) then
             H_fnc_name = 'get_H_symbolic'
-        elseif (index(flags,  'numeric').ne.0) then
+        elseif (index(flags, 'numeric').ne.0) then
             H_fnc_name = 'get_H_numeric'
         else
             stop 'ERROR [export_to_matlab]: flags != symbolic/numeric'
