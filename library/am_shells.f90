@@ -383,26 +383,7 @@ contains
         do i = 1,ip%nshells
             ip%shell(i) = pp%shell( ip%pp_id(i) )
         enddo
-        ! sort irreducible pair shells based on distance
-        allocate(d(ip%nshells))
-        do i = 1, ip%nshells
-            d(i) = norm2(ip%shell(i)%tau_cart(:,1))
-        enddo
-        allocate( ind(ip%nshells))
-        ! allocate(rind(ip%nshells))
-        call rank(real(nint(d*1.0D5)),ind)
-        call disp(ind)
-        !
-        ip%shell = ip%shell(ind)
-        ip%pp_id = ip%pp_id(ind)
-        ! 
-        allocate(rind(ip%nshells))
-        rind(ind) = [1:ip%nshells]
-        do i = 1, pp%nshells
-            pp%ip_id(i) = rind(abs(pp%ip_id(i))) * sign(1,pp%ip_id(i))
-        enddo
-        !
-        ! CURRENTLY:
+        ! sort irreducible pair shells based on distance by converting ....
         !
         !  ... irreducible pair shells = 5
         !      shell Zi-Zj   i-j   m-n    m   stab.    rot.    rev. |v(cart)|           v(cart)             |v(frac)|           v(frac)
@@ -417,7 +398,7 @@ contains
         !  ... pair mapping (to primitive: ip->pp)
         !          1->1    2->2    3->3    4->4    5->6
         !
-        ! SHOULD BE:
+        ! into: 
         !
         !  ... irreducible pair shells = 5
         !      shell Zi-Zj   i-j   m-n    m   stab.    rot.    rev. |v(cart)|           v(cart)             |v(frac)|           v(frac)
@@ -431,7 +412,22 @@ contains
         !          1->1    2->3    3->4    4->2   5->-3    6->5
         !  ... pair mapping (to primitive: ip->pp)
         !          1->1    2->4    3->2    4->3    5->6
-        ! write to stdout
+        !
+        allocate(d(ip%nshells))
+        do i = 1, ip%nshells
+            d(i) = norm2(ip%shell(i)%tau_cart(:,1))
+        enddo
+        allocate( ind(ip%nshells))
+        call rank(real(nint(d*1.0D5)),ind)
+        !
+        ip%shell = ip%shell(ind)
+        ip%pp_id = ip%pp_id(ind)
+        ! 
+        allocate(rind(ip%nshells))
+        rind(ind) = [1:ip%nshells]
+        do i = 1, pp%nshells
+            pp%ip_id(i) = rind(abs(pp%ip_id(i))) * sign(1,pp%ip_id(i))
+        enddo
         !
         if (opts%verbosity.ge.1) then
             write(*,'(a5,a,a)') ' ... ', 'primitive pair shells = '  , tostring(pp%nshells)
@@ -497,17 +493,6 @@ contains
             write(*,'(5x,a)') ' - reversal   (rev) : (im)proper rotational parts of space symmetries which flip bond endpoints'
             write(*,'(5x,a)') ' - negative mappings indicate that endpoints have been flipped'
         endif
-
-
-
-
-
-
-
-
-        stop
-
-
         !
         contains
         function       identify_irreducible(pp,pg,ic,opts) result(ip_id)
