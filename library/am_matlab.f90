@@ -48,7 +48,7 @@ module am_matlab
     end interface ! unique
 
     interface issubset
-        module procedure dm_issubset, im_issubset, dv_issubset, iv_issubset, d_issubset, i_issubset
+        module procedure d_issubset, dv_issubset, dm_issubset, z_issubset, zv_issubset, zm_issubset, i_issubset, im_issubset, iv_issubset
     end interface ! issubset
 
     interface cumsum
@@ -1917,7 +1917,7 @@ module am_matlab
 
     ! isequal
 
-    pure function d_isequal(x,y,iopt_prec) result(bool)
+    pure function  d_isequal(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
@@ -1939,7 +1939,7 @@ module am_matlab
             bool = .false.
         endif
         !        
-    end function  d_isequal
+    end function   d_isequal
 
     pure function dv_isequal(x,y,iopt_prec) result(bool)
         !
@@ -2000,7 +2000,7 @@ module am_matlab
         !        
     end function  dm_isequal
 
-    pure function z_isequal(x,y,iopt_prec) result(bool)
+    pure function  z_isequal(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
@@ -2025,7 +2025,7 @@ module am_matlab
             bool = .false.
         endif
         !
-    end function  z_isequal
+    end function   z_isequal
 
     pure function zv_isequal(x,y,iopt_prec) result(bool)
         !
@@ -2080,7 +2080,7 @@ module am_matlab
         !
     end function  zm_isequal
 
-    pure function i_isequal(x,y) result(bool)
+    pure function  i_isequal(x,y) result(bool)
         !
         implicit none
         !
@@ -2093,7 +2093,7 @@ module am_matlab
             bool = .false.
         endif
         !        
-    end function  i_isequal
+    end function   i_isequal
 
     pure function iv_isequal(x,y) result(bool)
         !
@@ -2140,6 +2140,93 @@ module am_matlab
 
     ! issubset
 
+    pure function zm_issubset(A,B,iopt_prec) result(bool)
+        ! returns true if B(:,:) is a subset of A(:,:,i)
+        implicit none
+        !
+        complex(dp), intent(in) :: A(:,:,:)
+        complex(dp), intent(in) :: B(:,:)
+        logical :: bool
+        integer :: i,n
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp) :: prec
+        !
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        n = size(A,3)
+        !
+        bool = .false.
+        do i = 1, n
+            if (isequal(A(:,:,i),B,iopt_prec=prec)) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function  zm_issubset
+
+    pure function zv_issubset(A,B,iopt_prec) result(bool)
+        ! returns true if B(:,:) is a subset of A(:,:,i)
+        implicit none
+        !
+        complex(dp), intent(in) :: A(:,:)
+        complex(dp), intent(in) :: B(:)
+        logical :: bool
+        integer :: i,n
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp) :: prec
+        !
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        n = size(A,2)
+        !
+        bool = .false.
+        do i = 1, n
+            if (isequal(A(:,i),B,iopt_prec=prec)) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function  zv_issubset
+
+    pure function  z_issubset(A,B,iopt_prec) result(bool)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: A(:)
+        complex(dp), intent(in) :: B
+        logical :: bool
+        integer :: i,n
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp) :: prec
+        !
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        n = size(A,1)
+        !
+        bool = .false.
+        do i = 1, n
+            if (isequal(A(i),B,iopt_prec=prec)) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function   z_issubset
+
     pure function dm_issubset(A,B,iopt_prec) result(bool)
         ! returns true if B(:,:) is a subset of A(:,:,i)
         implicit none
@@ -2168,27 +2255,6 @@ module am_matlab
         enddo
         !
     end function  dm_issubset
-
-    pure function im_issubset(A,B) result(bool)
-        ! returns true if B(:,:) is a subset of A(:,:,i)
-        implicit none
-        !
-        integer, intent(in) :: A(:,:,:)
-        integer, intent(in) :: B(:,:)
-        logical :: bool
-        integer :: i,n
-        !
-        n = size(A,3)
-        !
-        bool = .false.
-        do i = 1, n
-            if (isequal(A(:,:,i),B)) then
-                bool = .true.
-                return 
-            endif
-        enddo
-        !
-    end function  im_issubset
 
     pure function dv_issubset(A,B,iopt_prec) result(bool)
         ! returns true if B(:,:) is a subset of A(:,:,i)
@@ -2219,28 +2285,7 @@ module am_matlab
         !
     end function  dv_issubset
 
-    pure function iv_issubset(A,B) result(bool)
-        ! returns true if B(:,:) is a subset of A(:,:,i)
-        implicit none
-        !
-        integer, intent(in) :: A(:,:)
-        integer, intent(in) :: B(:)
-        logical :: bool
-        integer :: i,n
-        !
-        n = size(A,2)
-        !
-        bool = .false.
-        do i = 1, n
-            if (isequal(A(:,i),B)) then
-                bool = .true.
-                return 
-            endif
-        enddo
-        !
-    end function  iv_issubset
-
-    pure function d_issubset(A,B,iopt_prec) result(bool)
+    pure function  d_issubset(A,B,iopt_prec) result(bool)
         ! returns true if B is a subset of Ai)
         implicit none
         !
@@ -2267,9 +2312,51 @@ module am_matlab
             endif
         enddo
         !
-    end function  d_issubset
+    end function   d_issubset
 
-    pure function i_issubset(A,B) result(bool)
+    pure function im_issubset(A,B) result(bool)
+        ! returns true if B(:,:) is a subset of A(:,:,i)
+        implicit none
+        !
+        integer, intent(in) :: A(:,:,:)
+        integer, intent(in) :: B(:,:)
+        logical :: bool
+        integer :: i,n
+        !
+        n = size(A,3)
+        !
+        bool = .false.
+        do i = 1, n
+            if (isequal(A(:,:,i),B)) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function  im_issubset
+
+    pure function iv_issubset(A,B) result(bool)
+        ! returns true if B(:,:) is a subset of A(:,:,i)
+        implicit none
+        !
+        integer, intent(in) :: A(:,:)
+        integer, intent(in) :: B(:)
+        logical :: bool
+        integer :: i,n
+        !
+        n = size(A,2)
+        !
+        bool = .false.
+        do i = 1, n
+            if (isequal(A(:,i),B)) then
+                bool = .true.
+                return 
+            endif
+        enddo
+        !
+    end function  iv_issubset
+
+    pure function  i_issubset(A,B) result(bool)
         ! returns true if B is a subset of A(i)
         implicit none
         !
@@ -2288,7 +2375,7 @@ module am_matlab
             endif
         enddo
         !
-    end function  i_issubset
+    end function   i_issubset
 
     ! unique
 

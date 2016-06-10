@@ -4,6 +4,7 @@ module am_symmetry_tables
 	use am_matlab
 	use am_mkl
 	use am_stdout
+    use dispmodule
 
 	implicit none
 
@@ -19,14 +20,18 @@ module am_symmetry_tables
 	end type am_class_conjugacy_class
 
     type, public :: am_class_character_table
-        complex(dp), allocatable :: chartab(:,:)    ! character table ( irreps * classes )
-        character(:),allocatable :: irrep_label(:)  ! irrep label
+        integer :: nirreps
+        complex(dp), allocatable :: chartab(:,:)      ! character table ( irreps * classes )
+        character(:),allocatable :: irrep_label(:)    ! irrep label
+        integer ,    allocatable :: irrep_dim(:)      ! irrep dimension
+        real(dp),    allocatable :: irrep(:,:,:)      ! irrep(1:d,1:d,nirreps)
     end type am_class_character_table
 
 	type, public :: am_class_multiplication_table
 		integer, allocatable :: multab(:,:)
 		integer, allocatable :: inv_id(:)
 		integer, allocatable :: order(:)
+        integer, allocatable :: rr(:,:,:) ! regular representation matries
 		contains
 	end type am_class_multiplication_table
 
@@ -37,17 +42,14 @@ contains
     function       get_multab(sym,flags) result(multab)
         !
         ! flag options:
-        !  sort    - sorts rows to put identity along diagonals (useful for constructing regular representation)
         !  seitz   - reduces seitz(1:3,4) to between 0 and 1
         !  prog    - shows progress bar
         !
         implicit none
         !
-        real(dp), intent(in) :: sym(:,:,:) ! list of 2D reps...
+        real(dp)    , intent(in) :: sym(:,:,:) ! list of 2D reps...
         character(*), intent(in) :: flags
         integer, allocatable :: multab(:,:)
-        integer, allocatable :: sortmat(:,:)
-        integer, allocatable :: indices(:)
         real(dp) :: W(size(sym,1),size(sym,2)) ! workspace
         integer :: ref ! used for checking for closure
         integer :: n
@@ -84,23 +86,11 @@ contains
             multab(i,j) = get_matching_element_index_in_list(list=sym,elem=W)
         enddo
         enddo
-        !
-        ! if 'sort' flagged, re-order rows so that identities are along diagonal
-        if (index(flags,'sort').ne.0) then
-            !
-            allocate(sortmat(n,n))
-            allocate(indices(n))
-            indices = [1:n]
-            sortmat = 0
-            where (multab.eq.1) sortmat(:,:) = 1
-            indices = matmul(sortmat(:,:),indices)
-            multab = multab(indices,:)
-        endif
-        !
         ! quick consitency check for closure. not comprehensive
         ref = sum(multab(:,1))
         do i = 1, n
             if (sum(multab(:,i)).ne.ref) then
+                call disp(multab)
                 call am_print('ERROR','multiplication chartab sums along rows/columns are not consistent.')
                 stop
             endif
@@ -169,6 +159,54 @@ contains
         enddo
         !
     end function   get_cyclic_order
+
+    function       get_regular_rep(multab) result(rr)
+        !
+        ! Generates regular representation for each operator
+        !
+        ! For details, see page 73-74, especially Eqs. 4.18 Symmetry and Condensed Matter Physics: A Computational
+        ! Approach. 1 edition. Cambridge, UK; New York: Cambridge  University Press, 2008.
+        !
+        ! Requires identity to be the first element of group. regular representation is built from multiplication table
+        ! by making sure that the identity appears along the diagonal. this sometimes causes the row to be permuted with
+        ! respect to the columns. so, first find the permutation necessary to bring the identities to the center and
+        ! then build regular representations from this new multiplication table.
+        !
+        implicit none
+        !
+        integer, intent(in)  :: multab(:,:)
+        integer, allocatable :: rr(:,:,:)
+        integer, allocatable :: sortmat(:,:)
+        integer, allocatable :: inds(:)
+        integer, allocatable :: multab_sorted(:,:)
+        integer :: nsyms
+        integer :: i
+        !
+        ! get number of symmetries (and size of basis)
+        nsyms = size(multab,1)
+        ! initializ indices
+        allocate(inds, source=[1:nsyms])
+        ! initialize sortmat
+        allocate(sortmat(nsyms,nsyms))
+        where (multab.eq.1)
+            sortmat = 1
+        elsewhere              
+            sortmat = 0
+        endwhere
+        ! re-order rows so that identities are along diagonal
+        allocate(multab_sorted(nsyms,nsyms))
+        inds = matmul(sortmat(:,:),inds)
+        multab_sorted = multab(inds,:)
+        ! construct regular representation from multiplication table
+        allocate(rr(nsyms,nsyms,nsyms))
+        do i = 1, nsyms
+            where (multab_sorted.eq.i) 
+                rr(:,:,i) = 1
+            elsewhere
+                rr(:,:,i) = 0
+            endwhere
+        enddo
+    end function   get_regular_rep
 
     ! conjugacy classes
 
@@ -337,6 +375,8 @@ contains
         integer, intent(in) :: class_nelements(:) ! number of elements in each class
         integer, intent(in) :: class_member(:,:) ! members(nclass,maxval(class_nelements))
         complex(dp), allocatable :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
+        real(dp)   , allocatable :: Re(:,:)
+        real(dp)   , allocatable :: Im(:,:)
         integer :: i, j, k
         integer :: nsyms
         integer :: nirreps  ! just to make things clearer; always equal to nclasses
@@ -346,7 +386,6 @@ contains
         real(dp) :: wrk
         !
         nsyms = size(multab,2)
-        !
         ! get class coefficients (thenumber of times class k appears in the pdocut o class j and k )
         ! Wooten p 35, Eq 2.10; p 40, Example 2.8; p 89, Example 4.6
         allocate(H(nclasses,nclasses,nclasses))
@@ -357,15 +396,12 @@ contains
         enddo
         enddo
         enddo
-        !
         ! chartab(nirreps,nclasses) determine eigenvector which simultaneously diagonalizes i Hjk(:,:) matrices
         chartab = eigenanalysis(cmplx(H,0,dp))
-        !
         ! get dimensions of representations using Eq. 4.53, p 91 of Wooten
         ! Note: The absolute square is the result of the conjugate multiplication
         nirreps = nclasses
         allocate(irrep_dim(nirreps))
-        !
         do i = 1, nirreps
             ! sum on classes
             wrk = 0
@@ -375,17 +411,20 @@ contains
             ! compute irrep dimension
             irrep_dim(i) = nint((nsyms/wrk)**0.5_dp)
         enddo
-        !
         ! convert class constant chartab into character chartab
         do i = 1, nirreps
         do j = 1, nclasses
             chartab(i,j) = irrep_dim(i)/real(class_nelements(j),dp)*chartab(i,j)
         enddo
         enddo
-        !
+        ! correct basic rounding error
+        allocate(Re, source= real(chartab))
+        allocate(Im, source=aimag(chartab))
+        where (abs(nint(Re)-Re).lt.tiny) Re = nint(Re)
+        where (abs(nint(Im)-Im).lt.tiny) Im = nint(Im)
+        chartab = cmplx(Re,Im,dp)
         ! initialize indices sort sorting
         allocate(indices(nirreps))
-        !
         ! sort irreps based on character of class containing identity
         ! find class containing inversion (1 is the ps_id for identity)
         id_search : do i = 1, nclasses
@@ -400,7 +439,6 @@ contains
             endif
         enddo
         enddo id_search
-        !
         ! sort irreps based on character of class containing inversion
         ! find class containing inversion (6 is the ps_id for inversion)
         inv_search : do i = 1, nclasses
@@ -415,8 +453,6 @@ contains
             endif
         enddo
         enddo inv_search
-        !
-        !
         ! check that the number of elements ri in class Ci is a divisor of theorder of the group
         ! Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. Cambridge, UK?; New York: Cambridge University Press, 2008. p 35.
         do i = 1, nclasses
@@ -484,7 +520,7 @@ contains
         end function   eigenanalysis
     end function   get_chartab
 
-    function       get_muliken(chartab,nclasses,class_nelements,class_member,ps_id) result(irrep_label)
+    function       get_muliken_label(chartab,nclasses,class_nelements,class_member,ps_id) result(irrep_label)
         !
         implicit none
         !
@@ -564,7 +600,7 @@ contains
                 ! if not found
                 i = 0
             end function  find_class_containing_ps
-    end function   get_muliken
+    end function   get_muliken_label
 
     subroutine     print_chartab(chartab,nclasses,class_nelements,class_member,irrep_label,ps_id,rep_chi,rep_label)
         !
@@ -825,6 +861,266 @@ contains
             write(*,*)
         end subroutine print_bar
     end subroutine print_chartab
+
+    function       get_irrep_dimension(chartab,nclasses,class_nelements,class_member,ps_id) result(irrep_dim)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: chartab(:,:)
+        integer    , intent(in) :: nclasses
+        integer    , intent(in) :: class_nelements(:)
+        integer    , intent(in) :: class_member(:,:)
+        integer    , intent(in) :: ps_id(:)
+        integer    , allocatable :: irrep_dim(:)
+        integer :: i ! class
+        integer :: j ! irrep
+        integer :: nirreps
+        ! find class containing identity symmetry
+        id_search : do i = 1, nclasses
+        do j = 1, class_nelements(i)
+            if (ps_id(class_member(i,j)).eq.1) then
+                exit id_search
+            endif
+        enddo
+        enddo id_search
+        !
+        nirreps = nclasses
+        allocate(irrep_dim(nirreps))
+        do j = 1, nirreps
+            irrep_dim(j) = nint(real(chartab(j,i)))
+        enddo
+        ! check dimension (for representation which is not seitz)
+        ! if (sum(irrep_dim^2).ne.nbases) stop 'ERROR [get_irrep_dimension]: irrep dimension is not a factor of the group order.'
+    end function   get_irrep_dimension
+
+    function       get_irrep_projection(rr,chartab,irrep_dim,nclasses,class_nelements,class_member) result(irrep_proj)
+        !
+        implicit none
+        !
+        integer    , intent(in) :: rr(:,:,:)
+        complex(dp), intent(in) :: chartab(:,:)
+        integer    , intent(in) :: irrep_dim(:)
+        integer    , intent(in) :: nclasses
+        integer    , intent(in) :: class_nelements(:)
+        integer    , intent(in) :: class_member(:,:)
+        complex(dp),allocatable :: irrep_proj(:,:,:)
+        integer,allocatable :: class_matrices(:,:,:)
+        integer :: i,j
+        integer :: nirreps, nsyms, nbases
+        !
+        ! get number of things
+        nbases  = size(rr,1)
+        nsyms   = nbases
+        nirreps = nclasses
+        ! get class matrices
+        class_matrices = get_class_matrices(rr=rr, nclasses=nclasses, &
+            class_nelements=class_nelements, class_member=class_member)
+        ! allocate space for irrep projection operator
+        allocate(irrep_proj(nbases,nbases,nirreps))
+        irrep_proj = 0
+        ! loop over irreos
+        do j = 1, nirreps
+            ! loop over symmetries (by looping over class and members)
+            do i = 1, nclasses
+                irrep_proj(:,:,j) = irrep_proj(:,:,j) + class_matrices(:,:,i) * chartab(j,i)
+            enddo
+            irrep_proj(:,:,j) = irrep_proj(:,:,j) * irrep_dim(j)/real(nsyms,dp)
+        enddo
+        ! check that each irrep projection operator is hermitian
+        do j = 1, nirreps
+            if (.not.isequal(adjoint(irrep_proj(:,:,j)),irrep_proj(:,:,j))) then
+                stop 'ERROR [get_irrep_projection]: irrep_proj is not hermitian'
+            endif
+        enddo
+        ! check that each irrep projection operator is idempotent (A^2 = A)
+        do j = 1, nirreps
+            if (.not.isequal(matmul(irrep_proj(:,:,j),irrep_proj(:,:,j)),irrep_proj(:,:,j))) then
+                stop 'ERROR [get_irrep_projection]: irrep_proj is not idempotent'
+            endif
+        enddo
+        contains
+        function       get_class_matrices(rr,nclasses,class_nelements,class_member) result(class_matrices)
+            !
+            implicit none
+            !
+            integer, intent(in) :: rr(:,:,:)
+            integer, intent(in) :: nclasses
+            integer, intent(in) :: class_nelements(:)
+            integer, intent(in) :: class_member(:,:)
+            integer,allocatable :: class_matrices(:,:,:)
+            integer :: i,j
+            integer :: nbases
+            !
+            ! get number of things
+            nbases  = size(rr,1)
+            ! class matrices
+            allocate(class_matrices(nbases,nbases,nclasses))
+            class_matrices = 0
+            do i = 1, nclasses
+            do j = 1, class_nelements(i)
+                class_matrices(:,:,i) = class_matrices(:,:,i) + rr(:,:,class_member(i,j))
+            enddo
+            enddo
+            ! check that their sum equals ones() matrix
+            if (.not.isequal( sum(class_matrices,3), nint(ones(nbases)))) then
+                stop 'ERROR [get_class_matrices]: class matrices do not sum to ones matrix'
+            endif
+        end function   get_class_matrices
+    end function   get_irrep_projection
+
+    function       get_block_similarity_transform(rr,irrep_dim,irrep_proj) result(S)
+        !
+        use am_rank_and_sort
+        !
+        implicit none
+        !
+        real(dp)   , intent(in) :: rr(:,:,:)
+        integer    , intent(in) :: irrep_dim(:)
+        complex(dp), intent(in) :: irrep_proj(:,:,:) ! can be complex because of complex characters
+        complex(dp),allocatable :: S(:,:)
+        complex(dp),allocatable :: try(:)
+        complex(dp),allocatable :: wrk(:,:)
+        real(dp), allocatable :: cycle_structure(:,:)
+        real(dp), allocatable :: normcycle(:,:)
+        integer , allocatable :: sort_parameter(:)
+        integer , allocatable :: inds(:)
+        integer :: nbases, nsyms, nirreps, nvecs
+        integer :: basis_counter
+        logical :: found
+        integer :: m ! 
+        integer :: n
+        integer :: i, j, k
+        !
+        ! get bases dimensions
+        nbases = size(rr,1)
+        nsyms  = size(rr,3)
+        nirreps= size(irrep_proj,3)
+        ! allocate and initialize work space
+        allocate(sort_parameter(nsyms*nbases))
+        sort_parameter = 0
+        allocate(normcycle(nbases,nsyms*nbases))
+        normcycle = 0
+        ! initialize counter
+        m  = 0
+        ! loop over symmetries
+        do j = 1, nsyms
+            ! get cycle structures
+            cycle_structure = get_regular_rep_cycle_structure(rr(:,:,j))
+            ! get number of nonzero vectors
+            nvecs = count(any(abs(cycle_structure).gt.tiny,2))
+            ! loop over cycle structure
+            do k = 1, nvecs
+                m  = m + 1
+                ! count number of nonzero elements in vector (corresponds to "smallness" of subspace)
+                sort_parameter(m) = count(abs(cycle_structure).gt.tiny)
+                ! save normalized cycle structure
+                normcycle(:,m) = cycle_structure(1,k)/norm2(cycle_structure(:,k))
+            enddo
+        enddo
+        ! sort normalized cycle structures, placing smallest subspaces last
+        allocate(inds(nsyms*nbases))
+        call rank(-sort_parameter,inds)
+        normcycle = normcycle(:,inds)
+        ! allocate temporary wrk space
+        allocate(wrk(nbases,maxval(irrep_dim)))
+        ! allocate wrk space
+        allocate(try(nbases))
+        try = 0
+        ! initialize similarity transform counter
+        n = 0
+        ! loop over cycle structures
+        do i = 1, nirreps
+            ! find a normalized cycle structure vector that is an eigenvector of an irrep projection operator
+            found = .false.
+            search_first : do j = 1, m
+                try = normcycle(:,j)
+                if (isequal( matmul(irrep_proj(:,:,i),try), try)) then
+                    found = .true.
+                    exit search_first
+                endif
+            enddo search_first
+            if (.not.found) stop 'ERROR [get_block_similarity_transform]: first basis vector not found'
+            ! if dimension of irrep = 1, done. Save basis vector...
+            if     (irrep_dim(i).eq.1) then
+                n = n + 1
+                S(:,n) = try
+            ! if dimension of irrep > 1, use symmetries to generate partner functions (other basis vectors)
+            elseif (irrep_dim(i).gt.1) then
+                ! reset basis counter
+                basis_counter = 0
+                ! reset workspace
+                wrk = 0
+                ! save first basis alreaedy
+                wrk(:,1) = try
+                ! reset found
+                found = .false.
+                ! search for partner functions
+                search_partners : do k = 1, nsyms
+                    try = matmul(rr(:,:,k),wrk(:,1))
+                    if (.not.issubset(wrk(:,1:k),try)) then
+                        ! augment basis counter
+                        basis_counter = basis_counter + 1
+                        ! save new basis/partner-function
+                        wrk(:,basis_counter) = try
+                        if (basis_counter.eq.irrep_dim(i)) then
+                            found = .true.
+                            exit search_partners
+                        endif
+                    endif
+                enddo search_partners
+                ! check completion
+                if (.not.found) stop "ERROR [get_block_similarity_transform]: failed to generate partner symmetry functions"
+                ! transfer bases
+                do k = 1, basis_counter
+                    ! augment similarity transform counter
+                    n = n+1
+                    ! copy bases
+                    S(:,n) = wrk(:,k)
+                enddo
+            endif
+        enddo
+        !
+        contains
+        function       get_regular_rep_cycle_structure(rr) result(cycle_structure)
+            !
+            implicit none
+            !
+            real(dp), intent(in)  :: rr(:,:)
+            real(dp), allocatable :: sym_power(:,:)
+            real(dp), allocatable :: cycle_structure(:,:)
+            real(dp), allocatable :: id(:,:)
+            integer :: nbases
+            integer :: max_evals
+            integer :: i
+            !
+            max_evals = 100
+            ! get bases dimensions
+            nbases = size(rr,1)
+            !
+            allocate(id(nbases,nbases))
+            id = eye(nbases)
+            !
+            allocate(cycle_structure(nbases,nbases))
+            cycle_structure = 0
+            ! 
+            allocate(sym_power(nbases,nbases))
+            sym_power = eye(nbases)
+            !
+            do i = 1, max_evals
+                sym_power = matmul(rr,sym_power)
+                cycle_structure = cycle_structure + sym_power
+                if (isequal(sym_power,id)) exit
+                if (i.eq.max_evals) then
+                    stop 'ERROR [get_regsym_cycle_structure]: maximum evaluations exceeded'
+                endif
+            enddo
+            ! reduce to row echelon form
+            call rref(cycle_structure)
+            ! correct rounding error
+            where (abs(nint(cycle_structure)-cycle_structure).lt.tiny) cycle_structure = nint(cycle_structure)
+            !
+        end function   get_regular_rep_cycle_structure
+    end function   get_block_similarity_transform
 
     ! identifier functions which operate on identifiers
 

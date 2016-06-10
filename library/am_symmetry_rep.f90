@@ -32,11 +32,6 @@ module am_symmetry_rep
         procedure :: get_relations
     end type am_class_flat_group
 
-    type, public, extends(am_class_symrep_group) :: am_class_regular_group
-	    contains
-        procedure :: get_regular_group
-    end type am_class_regular_group
-
     type, public, extends(am_class_symrep_group) :: am_class_tb_group
         integer, allocatable :: H_start(:)      ! Hstart(m) start of hamiltonian section corresponding to atom m
         integer, allocatable :: H_end(:)        ! Hend(m)   end of hamiltonian section corresponding to atom m
@@ -59,56 +54,6 @@ module am_symmetry_rep
     end type am_class_property
 
 	contains
-
-	! procedures which create representations
-
-	subroutine     get_regular_group(rr,sg)
-		!
-		implicit none
-		!
-		class(am_class_regular_group), intent(out) :: rr
-        class(am_class_seitz_group)  , intent(in) :: sg
-		!
-		rr%sym   = rep_regular(seitz_frac=sg%seitz_frac)
-		!
-		rr%nbases= size(rr%sym,1)
-        !
-		rr%nsyms = size(rr%sym,3)
-		!
-        contains
-        function       rep_regular(seitz_frac) result(reg_rep)
-            !
-            ! Generates regular representation for each operator
-            !
-            ! For details, see page 73-74, especially Eqs. 4.18 Symmetry and Condensed Matter Physics: A Computational
-            ! Approach. 1 edition. Cambridge, UK; New York: Cambridge  University Press, 2008.
-            !
-            ! Requires identity to be the first element of group. regular representation is built from multiplication table
-            ! by making sure that the identity appears along the diagonal. this sometimes causes the row to be permuted with
-            ! respect to the columns. so, first find the permutation necessary to bring the identities to the center and
-            ! then build regular representations from this new multiplication table.
-            !
-            implicit none
-            !
-            real(dp), intent(in) :: seitz_frac(:,:,:)
-            integer, allocatable :: reg_rep(:,:,:)
-            integer, allocatable :: multab(:,:)
-            integer :: n
-            integer :: i
-            !
-            ! obtain multiplication table
-            multab = get_multab(sym=seitz_frac,flags='seitz,sort')
-            !
-            ! construct regular representation from multiplication table
-            n = size(seitz_frac,3)
-            allocate(reg_rep(n,n,n))
-            reg_rep = 0
-            do i = 1, n
-                where (multab.eq.i) reg_rep(:,:,i) = 1
-            enddo
-            !
-        end function   rep_regular
-	end subroutine get_regular_group
 
     ! get point group in the hamilonian tight binding basis 
 
@@ -580,8 +525,6 @@ module am_symmetry_rep
         call C%get_character_table()
         !
     end subroutine get_direct_product
-
-    ! write point symmetry operation in tight binding basis ()
 
     ! produces rotation which operates on a subsection of the Hamiltonian (useful for determining symmetry relations)
 

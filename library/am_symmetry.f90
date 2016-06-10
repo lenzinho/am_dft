@@ -86,13 +86,11 @@ contains
         elseif (index(flags,'ascend' ).ne.0) then
             inds = inds(1:grp%nsyms:+1)
         else
-            stop 'sort_symmetries: ascend/descend?'
+            stop 'ERROR [sort_symmetries]: ascend/descend?'
         endif
-        !
         ! get reverse indices
         allocate(rinds(grp%nsyms))
         rinds(inds) = [1:grp%nsyms]
-        !
         ! sort symmetries
         select type (grp)
         class is (am_class_symrep_group)
@@ -106,14 +104,12 @@ contains
             ! symmetries [recfrac]
             grp%seitz_recfrac = grp%seitz_recfrac(:,:,inds)
         class default
-            stop 'Class unknown!'
+            stop 'ERROR [sort_symmetries]: class unknown'
         end select
-        !
         ! symmetry id
         if (allocated(grp%ps_id)) then
             grp%ps_id = grp%ps_id(inds)
         endif
-        !
         ! conjugacy class
         if (allocated(grp%cc%id)) then
             !
@@ -128,18 +124,20 @@ contains
             do i = 1, grp%cc%nclasses
             grp%cc%representative(i) = rinds(grp%cc%representative(i))
             enddo
-            !
         endif
-        !
         ! multiplication table
         if (allocated(grp%mt%multab)) then
             do i = 1, grp%nsyms
             do j = 1, grp%nsyms
                 grp%mt%multab(i,j) = rinds(grp%mt%multab(i,j))
             enddo
-            enddo
+            enddo   
             grp%mt%multab = grp%mt%multab(:,inds)
             grp%mt%multab = grp%mt%multab(inds,:)
+        endif
+        ! regular rep
+        if (allocated(grp%mt%rr)) then
+            grp%mt%rr = grp%mt%rr(:,:,inds)
         endif
         !
     end subroutine sort_symmetries
@@ -211,6 +209,8 @@ contains
         grp%mt%inv_id = get_inverse_indices(multab=grp%mt%multab)
         ! get cyclic order
         grp%mt%order = get_cyclic_order(multab=grp%mt%multab)
+        ! get regular representation
+        grp%mt%rr = get_regular_rep(multab=grp%mt%multab)
         ! 
     end subroutine get_multiplication_table
 
@@ -240,17 +240,47 @@ contains
         implicit none
         !
         class(am_class_group), intent(inout) :: grp
+        complex(dp), allocatable :: irrep_proj(:,:,:) ! complex because character may be complex
+        real(dp)   , allocatable :: S(:,:) 
+        integer :: i
         !
         ! check
-        if (.not.allocated(grp%mt%multab)) stop 'get_character_table: multiplication table is required.'
-        if (.not.allocated(grp%cc%member)) stop 'get_character_table: conjugacy class analyses is required.'
+        if (.not.allocated(grp%mt%multab)) stop 'ERROR [get_character_table]: multiplication table is required'
+        if (.not.allocated(grp%cc%member)) stop 'ERROR [get_character_table]: conjugacy classes are required'
+        ! set number of irreps
+        grp%ct%nirreps = grp%cc%nclasses
         ! get character table (ps_id is required for sorting the irreps: proper before improper)
-        grp%ct%chartab = get_chartab(multab=grp%mt%multab, nclasses=grp%cc%nclasses, &
-            class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
+        grp%ct%chartab = get_chartab(multab=grp%mt%multab,             &
+            nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
         ! get muliken labels for irreps
-        grp%ct%irrep_label = get_muliken(chartab=grp%ct%chartab, nclasses=grp%cc%nclasses, &
-            class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
-        !
+        grp%ct%irrep_label = get_muliken_label(chartab=grp%ct%chartab, &
+            nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
+        ! get irrep dimensions
+        grp%ct%irrep_dim = get_irrep_dimension(chartab=grp%ct%chartab, &
+            nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
+!         ! get irrep projection operators
+        irrep_proj = get_irrep_projection(rr=grp%mt%rr, chartab=grp%ct%chartab, irrep_dim=grp%ct%irrep_dim, &
+            nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, class_member=grp%cc%member)
+
+
+!         do i = 1, size(irrep_proj,3)
+!             call disp(title='A(:,:,'//tostring(i)//') = [',X=real(irrep_proj(:,:,i)))
+!             write(*,*) '];'
+!         enddo
+
+!         stop
+
+
+!         ! get similarity transform for constructing irreps
+!         S = get_block_similarity_transform(rr=real(grp%mt%rr,dp), irrep_dim=grp%ct%irrep_dim, irrep_proj=irrep_proj)
+!         !
+
+
+!         do i = 1, grp%nsyms
+!             call disp(title='A(:,:,'//tostring(i)//') = [',X= matmul(matmul(transpose(S),grp%mt%rr(:,:,i)),S))
+!             write(*,*) '];'
+!         enddo
+!         stop
     end subroutine get_character_table
 
     subroutine     print_character_table(grp)
@@ -502,7 +532,7 @@ contains
         if (opts%verbosity.ge.1) call print_title('Space group symmetries')
         !
         ! determine space symmetries from atomic basis [frac.]
-        seitz_frac = space_symmetries_from_basis(bas=pc%bas, tau=pc%tau_frac,Z=pc%Z, prec=opts%prec)
+        seitz_frac = space_symmetries_from_basis(bas=pc%bas, tau=pc%tau_frac,Z=pc%Z, prec=opts%prec, verbosity=opts%verbosity)
         ! put identity first
         call put_identity_first(seitz=seitz_frac)
         ! create space group instance
@@ -517,14 +547,14 @@ contains
             mpl=2
             do i = 1,sg%nsyms
                 str = tostring(i)//': '//decode_pointsymmetry(sg%ps_id(i))
-                if ((mod(i,mpl).eq.1)) then
-                    call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
-                    call disp(title=trim(str), X=nint(sg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
-                    call disp(title=trim(str), X=(sg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
-                elseif ((mod(i,mpl).eq.0).or.(i.eq.sg%nsyms)) then
+                if     ((mod(i,mpl).eq.0).or.(i.eq.sg%nsyms)) then
                     call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
                     call disp(title=trim(str), X=nint(sg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
                     call disp(title=trim(str), X=(sg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='yes', trim='no')
+                elseif ((mod(i,mpl).eq.1)) then
+                    call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
+                    call disp(title=trim(str), X=nint(sg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
+                    call disp(title=trim(str), X=(sg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
                 else
                     call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
                     call disp(title=trim(str), X=nint(sg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
@@ -544,7 +574,7 @@ contains
         call sg%write_action_table(uc=pc,fname=trim(outfile_dir_sym)//'/'//'outfile.space_group_action',opts=opts)
         !
         contains
-        function        space_symmetries_from_basis(bas,tau,Z,prec) result(seitz)
+        function        space_symmetries_from_basis(bas,tau,Z,prec,verbosity) result(seitz)
             !
             !The program first finds the primitive unit cell by looking for
             !additional lattice vectors within the unit cell given in the input.
@@ -569,6 +599,7 @@ contains
             real(dp), intent(in) :: tau(:,:)
             integer , intent(in) :: Z(:)
             real(dp), intent(in) :: prec
+            integer , intent(in) :: verbosity
             real(dp), allocatable :: seitz(:,:,:)
             real(dp), allocatable :: try(:,:)
             real(dp), allocatable :: T(:,:)
@@ -623,13 +654,13 @@ contains
             seitz = wrkspace(1:4,1:4,1:k)
             !
             ! print stdout
-            if (opts%verbosity.ge.1) then
+            if (verbosity.ge.2) then
                 call am_print('(im-)proper generators',nRs,' ... ')
                 call am_print('translation generators',nTs,' ... ')
-                ! call am_print_two_matrices_side_by_side(name='translations',&
-                !     Atitle='fractional',A=transpose(T),&
-                !     Btitle='cartesian' ,B=transpose(matmul(bas,T)),&
-                !     iopt_emph=' ... ',iopt_teaser=.true.)
+                call am_print_two_matrices_side_by_side(name='translations',&
+                    Atitle='fractional',A=transpose(T),&
+                    Btitle='cartesian' ,B=transpose(matmul(bas,T)),&
+                    iopt_emph=' ... ',iopt_teaser=.true.)
             endif
         end function    space_symmetries_from_basis
         function        lattice_symmetries(bas,prec) result(R_frac)
@@ -747,14 +778,14 @@ contains
             mpl=2 ! matrices per line
             do i = 1,pg%nsyms
                 str = tostring(i)//': '//decode_pointsymmetry(pg%ps_id(i))
-                if ((mod(i,mpl).eq.1)) then
-                    call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
-                    call disp(title=trim(str), X=nint(pg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
-                    call disp(title=trim(str), X=(pg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
-                elseif ((mod(i,mpl).eq.0).or.(i.eq.pg%nsyms)) then
+                if     ((mod(i,mpl).eq.0).or.(i.eq.pg%nsyms)) then
                     call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
                     call disp(title=trim(str), X=nint(pg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
                     call disp(title=trim(str), X=(pg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='yes', trim='no')
+                elseif ((mod(i,mpl).eq.1)) then
+                    call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
+                    call disp(title=trim(str), X=nint(pg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
+                    call disp(title=trim(str), X=(pg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
                 else
                     call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
                     call disp(title=trim(str), X=nint(pg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
