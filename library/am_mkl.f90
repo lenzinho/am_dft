@@ -28,7 +28,6 @@ module am_mkl
 
 contains
 
-
     ! random number
 
     function       rand(seed) result(a)
@@ -450,7 +449,7 @@ contains
         end if
     end subroutine am_dsyev
     
-    ! diagonalize real nonsymmetric square matrix
+    ! diagonalize real general square matrix
 
     subroutine     am_dgeev(A,VL,D,VR)
         !
@@ -468,11 +467,19 @@ contains
         !  The computed eigenvectors are normalized to have Euclidean norm
         !  equal to 1 and largest component real.
         !
+        !  If the j-th eigenvalue is real, then uj = vl(:,j), the j-th column of vl. If the j-th and
+        !  (j+1)-st eigenvalues form a complex conjugate pair, then for i = sqrt(-1), uj = vl(:,j) +
+        !  i*vl(:,j+1) and uj + 1 = vl(:,j)- i*vl(:,j+1).
+        !
+        !  If the j-th eigenvalue is real, then vj = vr(:,j), the j-th column of vr. If the j-th and 
+        !  (j+1)-st eigenvalues form a complex conjugate pair, then for i = sqrt(-1), vj = vr(:,j) + 
+        !  i*vr(:,j+1) and vj + 1 = vr(:,j) - i*vr(:,j+1).
+        !
         implicit none
         !
         real(dp)   , intent(in) :: A(:,:)
-        real(dp)   , intent(out), allocatable, optional :: VR(:,:), VL(:,:) ! right and left eigenvectors
-        complex(dp), intent(out), allocatable, optional :: D(:)
+        complex(dp), intent(out), optional :: VR(:,:), VL(:,:) ! right and left eigenvectors
+        complex(dp), intent(out), optional :: D(:)
         real(dp), allocatable :: CA(:,:)
         real(dp), allocatable :: WR(:), WI(:), WORK(:)
         real(dp), allocatable :: VL_internal(:,:), VR_internal(:,:)
@@ -521,22 +528,49 @@ contains
         end if
         !
         if (present(D)) then
-            allocate(D(n))
+            if (size(D).ne.n) stop 'ERROR [am_dgeev]: D dimension mismatch'
             do i = 1, n
                 D(i) = cmplx(WR(i),WI(i))
             enddo
         endif
         !
         if (present(VR)) then
-            allocate(VR,source=VR_internal)
+            if (size(VR,1).ne.n) stop 'ERROR [am_dgeev]: VR dimension 1 mismatch'
+            if (size(VR,2).ne.n) stop 'ERROR [am_dgeev]: VR dimension 2 mismatch'
+            i = 0
+            do
+                i=i+1
+                if (abs(WI(i)).gt.tiny) then
+                    VR(:,i  ) = cmplx(VR_internal(:,i),+VR_internal(:,i+1),dp)
+                    VR(:,i+1) = cmplx(VR_internal(:,i),-VR_internal(:,i+1),dp)
+                    i=i+1
+                else
+                    VR(:,i  ) = VR_internal(:,i)
+                endif
+                if (i.eq.n) exit
+            enddo
         endif
         !
         if (present(VL)) then
-            allocate(VL,source=VL_internal)
+            if (size(VL,1).ne.n) stop 'ERROR [am_dgeev]: VL dimension 1 mismatch'
+            if (size(VL,2).ne.n) stop 'ERROR [am_dgeev]: VL dimension 2 mismatch'
+            i = 0
+            do
+                i=i+1
+                if (abs(WI(i)).gt.tiny) then
+                    VL(:,i  ) = cmplx(VL_internal(:,i),+VL_internal(:,i+1),dp)
+                    VL(:,i+1) = cmplx(VL_internal(:,i),-VL_internal(:,i+1),dp)
+                    i=i+1
+                else
+                    VL(:,i  ) = VL_internal(:,i)
+                endif
+                if (i.eq.n) exit
+            enddo
         endif
+        !
     end subroutine am_dgeev
 
-    ! diagonalize complex nonsymmetric square matrix
+    ! diagonalize complex general square matrix
 
     subroutine     am_zgeev(A,VL,D,VR)
         !
