@@ -968,59 +968,89 @@ contains
         end function   get_class_matrices
     end function   get_irrep_projection
 
-    function       get_block_similarity_transform(rr,irrep_dim,irrep_proj) result(S)
+    function       get_block_similarity_transform(rr,irrep_dim,irrep_proj,nclasses,class_member) result(phi)
         !
         use am_rank_and_sort
         !
         implicit none
         !
-        real(dp)   , intent(in) :: rr(:,:,:)
+        integer    , intent(in) :: rr(:,:,:)
         integer    , intent(in) :: irrep_dim(:)
         complex(dp), intent(in) :: irrep_proj(:,:,:) ! can be complex because of complex characters
-        complex(dp),allocatable :: S(:,:)
+        integer    , intent(in) :: nclasses
+        integer    , intent(in) :: class_member(:,:)
+        complex(dp),allocatable :: phi(:,:)
+        integer    ,allocatable :: S(:)
+        integer    ,allocatable :: E(:)
+        real(dp)   ,allocatable :: V(:)
+        complex(dp),allocatable :: zeros(:)
         complex(dp),allocatable :: try(:)
-        complex(dp),allocatable :: wrk(:,:)
-        real(dp), allocatable :: cycle_structure(:,:)
-        real(dp), allocatable :: normcycle(:,:)
-        integer , allocatable :: sort_parameter(:)
-        integer , allocatable :: inds(:)
-        integer :: nbases, nsyms, nirreps, nvecs
-        integer :: basis_counter
-        logical :: found
-        integer :: m ! 
-        integer :: n
-        integer :: i, j, k
+        logical :: isorthogonal
+        integer :: nbases
+        integer :: nsyms
+        integer :: nirreps
+        integer :: i
         !
         ! get bases dimensions
         nbases = size(rr,1)
         nsyms  = size(rr,3)
         nirreps= size(irrep_proj,3)
-        ! allocate and initialize work space
-        allocate(sort_parameter(nsyms*nbases))
-        sort_parameter = 0
-        allocate(normcycle(nbases,nsyms*nbases))
-        normcycle = 0
-        ! initialize counter
-        m  = 0
-        ! loop over symmetries
-        do j = 1, nsyms
-            ! get cycle structures
-            cycle_structure = get_regular_rep_cycle_structure(rr(:,:,j))
-            ! get number of nonzero vectors
-            nvecs = count(any(abs(cycle_structure).gt.tiny,2))
-            ! loop over cycle structure
-            do k = 1, nvecs
-                m  = m + 1
-                ! count number of nonzero elements in vector (corresponds to "smallness" of subspace)
-                sort_parameter(m) = count(abs(cycle_structure).gt.tiny)
-                ! save normalized cycle structure
-                normcycle(:,m) = cycle_structure(1,k)/norm2(cycle_structure(:,k))
-            enddo
+        ! allocate space
+        allocate(phi(nbases,sum(irrep_dim)))
+        allocate(S(nirreps))
+        allocate(E(nirreps))
+        ! work space
+        allocate(try(nbases))
+        ! allocate zero vector
+        allocate(zeros(nbases))
+        zeros = 0
+        ! initialize random vector
+        allocate(V(nbases))
+        V = rand(nbases,1)
+        V = V/norm(V)
+        ! loop over irrep projections
+        do i = 1, nirreps
+            i_phi= i_phi + 1
+            S(i) = i_phi
+            E(i) = S(i) + irrep_dim(i) - 1
+            ! save projection
+            phi(:,i_phi) = matmul(P(:,:,i),V)
+            ! search for partners
+            search : do k = 1, nclasses + 1
+                ! exit search when all partners symmetry functions are found 
+                if (i_phi.eq.E(i)) then
+                    exit search
+                endif
+                ! try partner function
+                try = matmul(R(:,:,class_member(k,1)), phi(:,S(i)))
+                ! make sure: non-zero
+                if (.not.isequal(try,zeros)) then
+                    ! make sure: orthogonal to other vectors in the irrep basis
+                    isorthogonal = .true.
+                    search_orthogonal : do j = S(i), i_phi
+                        if (isequal(cross_product(T(1:3,i),T(1:3,j)),zeros)) then
+                            isorthogonal = .false.
+                            exit search_orthogonal
+                        endif
+                    enddo search_orthogonal
+                    if (isorthogonal) then
+                        i_phi = i_phi + 1
+                        phi(:,i_phi) = try/norm(try)
+                    endif 
+                endif
+            enddo search
         enddo
-        ! sort normalized cycle structures, placing smallest subspaces last
-        allocate(inds(nsyms*nbases))
-        call rank(-sort_parameter,inds)
-        normcycle = normcycle(:,inds)
+
+        call dump(A=rr(:,:,class_member(:,1)),fname=trim(outfile_dir_sym)//'/outfile.R')
+        call dump(A=irrep_dim ,fname=trim(outfile_dir_sym)//'/outfile.irrep_dim')
+        call dump(A=irrep_proj,fname=trim(outfile_dir_sym)//'/outfile.P')
+        call dump(A=V         ,fname=trim(outfile_dir_sym)//'/outfile.V')
+        call dump(A=D         ,fname=trim(outfile_dir_sym)//'/outfile.D')
+
+
+
+        stop
+
         ! allocate temporary wrk space
         allocate(wrk(nbases,maxval(irrep_dim)))
         ! allocate wrk space
@@ -1028,45 +1058,54 @@ contains
         try = 0
         ! initialize similarity transform counter
         n = 0
-        ! loop over cycle structures
+        ! loop over irreps
         do i = 1, nirreps
-            ! find a normalized cycle structure vector that is an eigenvector of an irrep projection operator
-            found = .false.
-            search_first : do j = 1, m
-                try = normcycle(:,j)
-                if (isequal( matmul(irrep_proj(:,:,i),try), try)) then
-                    found = .true.
+            ! reset eigeninds
+            eigeninds = 0
+            ! find an eigenvector that is an eigenvector of an irrep projection operator
+            search_first : do j = 1, nclasses
+            do k = 1, nbases
+                ! check that eigenvector does not correspond to null space
+                if (abs(D(k,j)).gt.tiny) then
+                if (isequal( matmul(irrep_proj(:,:,i),V(:,k,j)), V(:,k,j))) then
+                    eigeninds(1) = k ! base index
+                    eigeninds(2) = j ! class index
                     exit search_first
                 endif
+                endif
+            enddo 
             enddo search_first
-            if (.not.found) stop 'ERROR [get_block_similarity_transform]: first basis vector not found'
+            if (any(eigeninds.eq.0)) stop 'ERROR [get_block_similarity_transform]: first basis vector not found'
             ! if dimension of irrep = 1, done. Save basis vector...
             if     (irrep_dim(i).eq.1) then
                 n = n + 1
-                S(:,n) = try
+                S(:,n) = V(:,eigeninds(1),eigeninds(2))
             ! if dimension of irrep > 1, use symmetries to generate partner functions (other basis vectors)
             elseif (irrep_dim(i).gt.1) then
-                ! reset basis counter
-                basis_counter = 0
                 ! reset workspace
                 wrk = 0
                 ! save first basis alreaedy
-                wrk(:,1) = try
+                wrk(:,1) = V(:,eigeninds(1),eigeninds(2))
                 ! reset found
                 found = .false.
+                ! initialize partner basis counter
+                m = 1
                 ! search for partner functions
-                search_partners : do k = 1, nsyms
+                search_partners : do k = 1, nclasses
+                if (k.ne.eigeninds(2)) then
                     try = matmul(rr(:,:,k),wrk(:,1))
-                    if (.not.issubset(wrk(:,1:k),try)) then
-                        ! augment basis counter
-                        basis_counter = basis_counter + 1
+                    if (.not.issubset(wrk(:,1:m),try)) then
+                        ! augment partner basis counter
+                        m = m + 1
                         ! save new basis/partner-function
-                        wrk(:,basis_counter) = try
-                        if (basis_counter.eq.irrep_dim(i)) then
+                        wrk(:,m) = try
+                        !
+                        if (m.eq.irrep_dim(i)) then
                             found = .true.
                             exit search_partners
                         endif
                     endif
+                endif
                 enddo search_partners
                 ! check completion
                 if (.not.found) stop "ERROR [get_block_similarity_transform]: failed to generate partner symmetry functions"
@@ -1080,46 +1119,6 @@ contains
             endif
         enddo
         !
-        contains
-        function       get_regular_rep_cycle_structure(rr) result(cycle_structure)
-            !
-            implicit none
-            !
-            real(dp), intent(in)  :: rr(:,:)
-            real(dp), allocatable :: sym_power(:,:)
-            real(dp), allocatable :: cycle_structure(:,:)
-            real(dp), allocatable :: id(:,:)
-            integer :: nbases
-            integer :: max_evals
-            integer :: i
-            !
-            max_evals = 100
-            ! get bases dimensions
-            nbases = size(rr,1)
-            !
-            allocate(id(nbases,nbases))
-            id = eye(nbases)
-            !
-            allocate(cycle_structure(nbases,nbases))
-            cycle_structure = 0
-            ! 
-            allocate(sym_power(nbases,nbases))
-            sym_power = eye(nbases)
-            !
-            do i = 1, max_evals
-                sym_power = matmul(rr,sym_power)
-                cycle_structure = cycle_structure + sym_power
-                if (isequal(sym_power,id)) exit
-                if (i.eq.max_evals) then
-                    stop 'ERROR [get_regsym_cycle_structure]: maximum evaluations exceeded'
-                endif
-            enddo
-            ! reduce to row echelon form
-            call rref(cycle_structure)
-            ! correct rounding error
-            where (abs(nint(cycle_structure)-cycle_structure).lt.tiny) cycle_structure = nint(cycle_structure)
-            !
-        end function   get_regular_rep_cycle_structure
     end function   get_block_similarity_transform
 
     ! identifier functions which operate on identifiers
