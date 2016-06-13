@@ -324,7 +324,7 @@ module am_symmetry_rep
             call lu(A)
         enddo
         ! Apply Gram-Schmidt orthogonalization to obtain A in reduced row echelon form
-        call rref(A)
+        A = rref(A)
         ! correct basic rounding error
         where (abs(nint(A)-A).lt.tiny) A = nint(A)
         ! correct basic rounding errors

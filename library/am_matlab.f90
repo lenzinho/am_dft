@@ -2,11 +2,18 @@ module am_matlab
 
     use am_constants
     use am_mkl, only : am_zheev
+    use dispmodule ! for dump 
 
     implicit none
     
     public
 
+#ifdef COLOR
+    logical, private :: use_escape_codes = .true.
+#else
+    logical, private :: use_escape_codes = .false.
+#endif
+    
     interface adjoint
         module procedure zadjoint, dadjoint
     end interface ! adjoint
@@ -31,12 +38,18 @@ module am_matlab
         module procedure zeros_nxm, zeros
     end interface ! zeros
 
+    interface cross_product
+        module procedure :: d_cross_product, z_cross_product
+    end interface ! cross_product
+
     interface meshgrid
         module procedure dmeshgrid, imeshgrid
     end interface ! meshgrid
 
     interface isequal
-        module procedure d_isequal, dv_isequal, dm_isequal, z_isequal, zv_isequal, zm_isequal, i_isequal, iv_isequal, im_isequal
+        module procedure d_isequal, dv_isequal, dm_isequal, &
+                         z_isequal, zv_isequal, zm_isequal, &
+                         i_isequal, iv_isequal, im_isequal
     end interface ! isequal
 
     interface trace
@@ -48,7 +61,9 @@ module am_matlab
     end interface ! unique
 
     interface issubset
-        module procedure d_issubset, dv_issubset, dm_issubset, z_issubset, zv_issubset, zm_issubset, i_issubset, im_issubset, iv_issubset
+        module procedure d_issubset, dv_issubset, dm_issubset, &
+                         z_issubset, zv_issubset, zm_issubset, &
+                         i_issubset, im_issubset, iv_issubset
     end interface ! issubset
 
     interface cumsum
@@ -58,6 +73,20 @@ module am_matlab
     interface cumprod
         module procedure dcumprod, icumprod
     end interface ! cumprod
+
+    interface dump
+        module procedure dv_dump, dm_dump, dt_dump, &
+                         zv_dump, zm_dump, zt_dump, &
+                         iv_dump, im_dump, it_dump
+    end interface ! dump
+
+    interface orthonormalize
+        module procedure :: d_orthonormalize, z_orthonormalize
+    end interface ! orthonormalize
+
+    interface rref
+        module procedure :: z_rref, d_rref
+    end interface ! rref
 
     contains
 
@@ -98,11 +127,207 @@ module am_matlab
         !
         fid = 6
         !
-        write(unit=fid,fmt='(a,a,a)') "+", repeat("-",column_width-2), "+"
-        write(unit=fid,fmt='(a,a,a)') "|",  centertitle(title,column_width-2), "|" 
-        write(unit=fid,fmt='(a,a,a)') "+", repeat("-",column_width-2), "+"
+        write(unit=fid,fmt='(a,a,a)') style('reserve,bright,txt:blue')// "+", repeat("-",column_width-2), "+"
+        write(unit=fid,fmt='(a,a,a)') "|", style('bright,txt:yellow')//centertitle(title,column_width-2)//style('bright,txt:blue'), "|"
+        write(unit=fid,fmt='(a,a,a)') "+", repeat("-",column_width-2), "+"// style('clear')
         !
     end subroutine print_title
+
+    function       style(fmt) result(seq_out)
+        !
+        implicit none
+        !
+        character(*), intent(in) :: fmt
+        character(:), allocatable :: seq_out
+        character(256) :: seq
+        ! start sequence with command to clear any previous attributes
+        if (use_escape_codes) then
+            seq = char(27)//'[0'
+            if (index(fmt,'clear')      .ne.0) seq = trim(seq)//';0'
+            if (index(fmt,'bright')     .ne.0) seq = trim(seq)//';1'
+            if (index(fmt,'faint')      .ne.0) seq = trim(seq)//';2'
+            if (index(fmt,'italic')     .ne.0) seq = trim(seq)//';3'
+            if (index(fmt,'underline')  .ne.0) seq = trim(seq)//';4'
+            if (index(fmt,'blink_slow') .ne.0) seq = trim(seq)//';5'
+            if (index(fmt,'blink_fast') .ne.0) seq = trim(seq)//';6'
+            if (index(fmt,'txt:black')  .ne.0) seq = trim(seq)//';30'
+            if (index(fmt,'txt:red')    .ne.0) seq = trim(seq)//';31'
+            if (index(fmt,'txt:green')  .ne.0) seq = trim(seq)//';32'
+            if (index(fmt,'txt:yellow') .ne.0) seq = trim(seq)//';33'
+            if (index(fmt,'txt:blue')   .ne.0) seq = trim(seq)//';34'
+            if (index(fmt,'txt:magenta').ne.0) seq = trim(seq)//';35'
+            if (index(fmt,'txt:cyan')   .ne.0) seq = trim(seq)//';36'
+            if (index(fmt,'txt:white')  .ne.0) seq = trim(seq)//';37'
+            if (index(fmt,'bg:black')   .ne.0) seq = trim(seq)//';40'
+            if (index(fmt,'bg:red')     .ne.0) seq = trim(seq)//';41'
+            if (index(fmt,'bg:green')   .ne.0) seq = trim(seq)//';42'
+            if (index(fmt,'bg:yellow')  .ne.0) seq = trim(seq)//';43'
+            if (index(fmt,'bg:blue')    .ne.0) seq = trim(seq)//';44'
+            if (index(fmt,'bg:magenta') .ne.0) seq = trim(seq)//';45'
+            if (index(fmt,'bg:cyan')    .ne.0) seq = trim(seq)//';46'
+            if (index(fmt,'bg:white')   .ne.0) seq = trim(seq)//';47'
+            ! append end of sequence marker
+            seq = trim(seq)//'m'
+            allocate(seq_out, source=trim(seq))
+        else 
+            allocate(seq_out, source='')
+        endif
+    end function   style
+
+    ! basic file io
+
+    subroutine     dt_dump(A,fname)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:,:)
+        character(*) :: fname
+        integer :: fid
+        integer :: i
+        !
+        fid = 1
+        open(unit=fid,file=trim(fname),status='replace',action='write')
+            write(fid,*) shape(A)
+            do i = 1, size(A,3)
+                call disp(unit=fid,X=A(:,:,i))
+            enddo
+        close(fid)
+        !
+    end subroutine dt_dump
+
+    subroutine     dm_dump(A,fname)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:)
+        character(*) :: fname
+        integer :: fid
+        !
+        fid = 1
+        open(unit=fid,file=trim(fname),status='replace',action='write')
+            write(fid,*) shape(A)
+            call disp(unit=fid,X=A)
+        close(fid)
+        !
+    end subroutine dm_dump
+
+    subroutine     dv_dump(A,fname)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: A(:)
+        character(*) :: fname
+        integer :: fid
+        !
+        fid = 1
+        open(unit=fid,file=trim(fname),status='replace',action='write')
+            write(fid,*) shape(A)
+            call disp(unit=fid,X=A)
+        close(fid)
+        !
+    end subroutine dv_dump
+
+    subroutine     zt_dump(A,fname)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: A(:,:,:)
+        character(*) :: fname
+        integer :: fid
+        integer :: i
+        !
+        fid = 1
+        open(unit=fid,file=trim(fname),status='replace',action='write')
+            write(fid,*) shape(A)
+            do i = 1, size(A,3)
+                call disp(unit=fid,X=A(:,:,i))
+            enddo
+        close(fid)
+        !
+    end subroutine zt_dump
+
+    subroutine     zm_dump(A,fname)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: A(:,:)
+        character(*) :: fname
+        integer :: fid
+        !
+        fid = 1
+        open(unit=fid,file=trim(fname),status='replace',action='write')
+            write(fid,*) shape(A)
+            call disp(unit=fid,X=A)
+        close(fid)
+        !
+    end subroutine zm_dump
+
+    subroutine     zv_dump(A,fname)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: A(:)
+        character(*) :: fname
+        integer :: fid
+        !
+        fid = 1
+        open(unit=fid,file=trim(fname),status='replace',action='write')
+            write(fid,*) shape(A)
+            call disp(unit=fid,X=A)
+        close(fid)
+        !
+    end subroutine zv_dump
+
+    subroutine     it_dump(A,fname)
+        !
+        implicit none
+        !
+        integer, intent(in) :: A(:,:,:)
+        character(*) :: fname
+        integer :: fid
+        integer :: i
+        !
+        fid = 1
+        open(unit=fid,file=trim(fname),status='replace',action='write')
+            write(fid,*) shape(A)
+            do i = 1, size(A,3)
+                call disp(unit=fid,X=A(:,:,i))
+            enddo
+        close(fid)
+        !
+    end subroutine it_dump
+
+    subroutine     im_dump(A,fname)
+        !
+        implicit none
+        !
+        integer, intent(in) :: A(:,:)
+        character(*) :: fname
+        integer :: fid
+        !
+        fid = 1
+        open(unit=fid,file=trim(fname),status='replace',action='write')
+            write(fid,*) shape(A)
+            call disp(unit=fid,X=A)
+        close(fid)
+        !
+    end subroutine im_dump
+
+    subroutine     iv_dump(A,fname)
+        !
+        implicit none
+        !
+        integer, intent(in) :: A(:)
+        character(*) :: fname
+        integer :: fid
+        !
+        fid = 1
+        open(unit=fid,file=trim(fname),status='replace',action='write')
+            write(fid,*) shape(A)
+            call disp(unit=fid,X=A)
+        close(fid)
+        !
+    end subroutine iv_dump
 
     ! progress bar
 
@@ -1077,7 +1302,7 @@ module am_matlab
         !
     end function  strsplit
     
-    pure function cross_product(a,b) result(c)
+    pure function d_cross_product(a,b) result(c)
         !
         implicit none
         !
@@ -1088,7 +1313,20 @@ module am_matlab
         c(2) = a(3) * b(1) - a(1) * b(3)
         c(3) = a(1) * b(2) - a(2) * b(1)
         !
-    end function  cross_product
+    end function  d_cross_product
+
+    pure function z_cross_product(a,b) result(c)
+        !
+        implicit none
+        !
+        complex(dp), INTENT(IN) :: a(3), b(3)
+        complex(dp) :: c(3)
+        !
+        c(1) = a(2) * b(3) - a(3) * b(2)
+        c(2) = a(3) * b(1) - a(1) * b(3)
+        c(3) = a(1) * b(2) - a(2) * b(1)
+        !
+    end function  z_cross_product
 
     pure function lcm(a,b)
         !
@@ -1297,7 +1535,7 @@ module am_matlab
         !
     end function  ztrace
 
-    pure subroutine rref(matrix)
+    pure function d_rref(A) result(matrix)
         !
         ! note: algorithm on roseta code is broken.
         ! this has been fixed by:
@@ -1306,10 +1544,13 @@ module am_matlab
         !
         implicit none
         !
-        real(dp), intent(inout) :: matrix(:,:)
-        real(dp), allocatable :: temp(:)
+        real(dp), intent(in) :: A(:,:)
+        real(dp),allocatable :: matrix(:,:)
+        real(dp),allocatable :: temp(:)
         integer :: pivot, m, n
         integer :: r, i
+        !
+        allocate(matrix,source=A)
         !
         pivot = 1
         m=size(matrix,1)
@@ -1318,29 +1559,132 @@ module am_matlab
         allocate(temp(n))
         !
         do r = 1, m
-        if (n.lt.pivot) exit
-        i = r
-        do while (abs(matrix(i,pivot)).lt.tiny)
-            i=i+1
-            if (i.gt.m) then
-                i=r
-                pivot=pivot+1
-                if (pivot.gt.n) return
-            end if
-        end do
-        ! swap rows i and r
-        temp = matrix(i,:)
-        matrix(i,:) = matrix(r,:)
-        matrix(r,:) = temp
-        !
-        matrix(r,:) = matrix(r,:)/matrix(r,pivot)
-        do i = 1, m
-            if (i.ne.r) matrix(i,:)=matrix(i,:)-matrix(r,:)*matrix(i,pivot)
-        end do
-        pivot = pivot + 1
-        end do
+            if (n.lt.pivot) exit
+            i = r
+            do while (abs(matrix(i,pivot)).lt.tiny)
+                i=i+1
+                if (i.gt.m) then
+                    i=r
+                    pivot=pivot+1
+                    if (pivot.gt.n) return
+                endif
+            enddo
+            ! swap rows i and r
+            temp = matrix(i,:)
+            matrix(i,:) = matrix(r,:)
+            matrix(r,:) = temp
+            !
+            matrix(r,:) = matrix(r,:)/matrix(r,pivot)
+            do i = 1, m
+                if (i.ne.r) matrix(i,:)=matrix(i,:)-matrix(r,:)*matrix(i,pivot)
+            enddo
+            pivot = pivot + 1
+        enddo
         deallocate(temp)
-    end subroutine  rref
+    end function  d_rref
+
+    pure function z_rref(A) result(matrix)
+        !
+        ! note: algorithm on roseta code is broken.
+        ! this has been fixed by:
+        ! 1) changed: "(n.lt.pivot)" and "(pivot.gt.n)"
+        ! 2) changed: "(i.gt.m)"
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: A(:,:)
+        complex(dp),allocatable :: matrix(:,:)
+        complex(dp),allocatable :: temp(:)
+        integer :: pivot, m, n
+        integer :: r, i
+        !
+        allocate(matrix,source=A)
+        !
+        pivot = 1
+        m=size(matrix,1)
+        n=size(matrix,2)
+        !
+        allocate(temp(n))
+        !
+        do r = 1, m
+            if (n.lt.pivot) exit
+            i = r
+            do while (abs(matrix(i,pivot)).lt.tiny)
+                i=i+1
+                if (i.gt.m) then
+                    i=r
+                    pivot=pivot+1
+                    if (pivot.gt.n) return
+                endif
+            enddo
+            ! swap rows i and r
+            temp = matrix(i,:)
+            matrix(i,:) = matrix(r,:)
+            matrix(r,:) = temp
+            !
+            matrix(r,:) = matrix(r,:)/matrix(r,pivot)
+            do i = 1, m
+                if (i.ne.r) matrix(i,:)=matrix(i,:)-matrix(r,:)*matrix(i,pivot)
+            enddo
+            pivot = pivot + 1
+        enddo
+        deallocate(temp)
+    end function  z_rref
+
+    pure function   d_orthonormalize(V) result(U)
+        !
+        ! orthonormalizes columns of V(:,:)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: V(:,:)
+        real(dp),allocatable :: U(:,:)
+        integer :: n, m, k, j
+        !        !
+        m = size(V,1)
+        n = size(V,2)
+        !
+        allocate(U(m,n))
+        U = 0
+        !
+        do k = 1, n
+            U(:,k) = V(:,k)
+            do j = 1, k-1
+                U(:,k) = U(:,k) - dot_product(U(:,j),V(:,k)) * U(:,j)
+            enddo
+            U(:,k) = U(:,k)/norm2(U(:,k))
+        enddo
+        !
+    end function    d_orthonormalize
+
+    function   z_orthonormalize(V) result(U)
+        !
+        ! orthonormalizes columns of V(:,:)
+        !
+        use am_mkl, only : am_dznrm2
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: V(:,:)
+        complex(dp),allocatable :: U(:,:)
+        integer :: n, m, k, j
+        !
+        m = size(V,1)
+        n = size(V,2)
+        !
+        allocate(U(m,n))
+        U = 0
+        !
+        do k = 1, n
+            U(:,k) = V(:,k)
+            do j = 1, k-1
+                U(:,k) = U(:,k) - dot_product(U(:,j),V(:,k)) * U(:,j)
+            enddo
+            U(:,k) = U(:,k)/am_dznrm2(U(:,k))
+            ! U(:,k) = U(:,k)/sqrt(dot_product(conjg(U(:,k)),U(:,k)))
+        enddo
+        !
+    end function    z_orthonormalize
 
     ! matrix indexing
 
@@ -2015,8 +2359,8 @@ module am_matlab
             prec = tiny
         endif
         !
-        if (d_isequal( real(x), real(y),iopt_prec)) then
-            if (d_isequal(aimag(x),aimag(y),iopt_prec)) then
+        if     (d_isequal( real(x), real(y),prec)) then
+            if (d_isequal(aimag(x),aimag(y),prec)) then
                 bool = .true.
             else
                 bool = .false.
@@ -2042,8 +2386,8 @@ module am_matlab
             prec = tiny
         endif
         !
-        if (dv_isequal( real(x), real(y),iopt_prec)) then
-            if (dv_isequal(aimag(x),aimag(y),iopt_prec)) then
+        if     (dv_isequal( real(x), real(y),prec)) then
+            if (dv_isequal(aimag(x),aimag(y),prec)) then
                 bool = .true.
             else
                 bool = .false.
@@ -2068,8 +2412,8 @@ module am_matlab
             prec = tiny
         endif
         !
-        if (dm_isequal( real(x), real(y),iopt_prec)) then
-            if (dm_isequal(aimag(x),aimag(y),iopt_prec)) then
+        if     (dm_isequal( real(x), real(y),prec)) then
+            if (dm_isequal(aimag(x),aimag(y),prec)) then
                 bool = .true.
             else
                 bool = .false.

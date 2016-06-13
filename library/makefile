@@ -45,13 +45,13 @@ clean:
 	rm -f $(OBJS) *.mod *.o *.i90
 
 %: %.o
-	$(FC) $(FFLAGS) $(LFLAGS) $(DEBUG) -o $@ $^ $(LDFLAGS)
+	$(FC) $(FFLAGS) $(LFLAGS) $(DEBUG) $(OPTS) -o $@ $^ $(LDFLAGS)
 
 %.o: %.f90
-	$(FC) $(FFLAGS) $(LFLAGS) $(DEBUG) -c $<
+	$(FC) $(FFLAGS) $(LFLAGS) $(DEBUG) $(OPTS) -c $<
 
 %.o: %.F90
-	$(FC) $(FFLAGS) $(LFLAGS) $(DEBUG) -c $<
+	$(FC) $(FFLAGS) $(LFLAGS) $(DEBUG) $(OPTS) -c $<
 
 .PHONY: all
 

@@ -41,7 +41,7 @@ contains
         integer, allocatable :: ind(:)
         integer :: i,j,k
         !
-        if (opts%verbosity.ge.1) call print_title('Reducing to irreducible cell')
+        if (opts%verbosity.ge.1) call print_title('Irreducible cell')
         !
         ! get primitive basis
         ic%bas = pc%bas

@@ -26,26 +26,76 @@ module am_mkl
         module procedure am_zinv, am_dinv
     end interface ! det
 
+    interface rand
+        module procedure :: d_rand, dv_rand, dm_rand
+    end interface ! rand
+
 contains
 
     ! random number
 
-    function       rand(seed) result(a)
+    function       d_rand() result(a)
         !
         use ifport, only : rand_interal => rand
         !
         implicit none
         !
-        integer, intent(in), optional :: seed
         real(dp) :: a
         !
-        if (present(seed)) then
-            a = rand_interal(seed)
-        else
-            a = rand_interal()
-        endif
+        a = rand_interal()
         !
-    end function   rand
+    end function   d_rand
+
+    function       dv_rand(n) result(a)
+        !
+        use ifport, only : rand_interal => rand
+        !
+        implicit none
+        !
+        integer, intent(in) :: n
+        real(dp) :: a(n)
+        integer :: i
+        !
+        do i = 1,n
+            a(i) = rand_interal()
+        enddo
+        !
+    end function   dv_rand
+
+    function       dm_rand(n) result(a)
+        !
+        use ifport, only : rand_interal => rand
+        !
+        implicit none
+        !
+        integer, intent(in) :: n(2)
+        real(dp) :: a(n(1),n(2))
+        integer :: i,j
+        !
+        do i = 1,n(1)
+        do j = 1,n(2)
+            a(i,j) = rand_interal()
+        enddo
+        enddo
+        !
+    end function   dm_rand
+
+!     function       rand(seed) result(a)
+!         !
+!         use ifport, only : rand_interal => rand
+!         !
+!         implicit none
+!         !
+!         integer, intent(in), optional :: seed
+!         real(dp) :: a
+!         !
+!         if (present(seed)) then
+!             a = rand_interal(seed)
+!         else
+!             a = rand_interal()
+!         endif
+!         !
+!     end function   rand
 
     ! eucledian norm of vector
 

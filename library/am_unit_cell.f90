@@ -297,7 +297,7 @@ contains
         endif
        !
     end function    permutation_rep
-    
+
     function        permutation_map(P) result(PM)
         !
         ! PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation

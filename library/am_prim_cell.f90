@@ -31,7 +31,7 @@ contains
         real(dp) :: uc2prim(3,3)
         integer  :: i
         !
-        if (opts%verbosity.ge.1) call print_title('Reducing to primitive cell')
+        if (opts%verbosity.ge.1) call print_title('Primitive cell')
         !
         ! get primitive cell basis from translations which leave unit cell invariant
         pc%bas = get_primitive_basis(bas=uc%bas,tau_frac=uc%tau_frac,Z=uc%Z,prec=opts%prec)
@@ -125,14 +125,14 @@ contains
             ! ... selecting smallest pritimive vector which is noncollinear to the first (non-zero cross product) as second vector
             do j = nTs,1,-1
                 if ( any(cross_product(T(1:3,i),T(1:3,j)) .gt. tiny) ) exit
-            enddo
-            if (any([i,j].eq.0)) stop 'No pair of non-collinear lattice vectors found'
+                enddo
+            if (any([i,j].eq.0)) stop 'ERROR [get_primitive_basis]: No pair of non-collinear lattice vectors found'
             ! ... selecting smallest primitive vector which produces a non-zero cell volume as third vector
             do k = nTs,1,-1
                 ! regularization added to prevent division by zero
                 if ( abs( det( T(1:3,[i,j,k])+eye(3)*1.0D-14 ) ) .gt. tiny ) exit
             enddo
-            if (any([i,j,k].eq.0)) stop 'No primitive basis found'
+            if (any([i,j,k].eq.0)) stop 'ERROR [get_primitive_basis]: No primitive basis found'
             !
             pc_bas = T(1:3,[i,j,k])
         end function   get_primitive_basis

@@ -55,7 +55,7 @@ module am_symmetry_relations
         ! incorporate symmetry via lu factorization (equivalent to applying rref)
         call lu(A)
         ! Apply Gram-Schmidt orthogonalization to obtain A in reduced row echelon form
-        call rref(A)
+        A = rref(A)
         ! correct basic rounding error
         where (abs(nint(A)-A).lt.tiny) A = nint(A)
         ! At this point, A = [ LHS | RHS ], in which LHS = E, identity matrix; A completely specifies all relationships between variables: LHS = RHS.
