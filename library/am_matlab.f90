@@ -1,7 +1,7 @@
 module am_matlab
 
     use am_constants
-    use am_mkl, only : am_zheev
+    use am_mkl, only : am_zheev, inv, rand, am_zgeev, am_dgeev
     use dispmodule ! for dump 
 
     implicit none
@@ -57,7 +57,7 @@ module am_matlab
     end interface ! trace
     
     interface unique
-        module procedure dv_unique, dm_unique, iv_unique, i_unique
+        module procedure dt_unique, dm_unique, zm_unique, zv_unique, im_unique, iv_unique
     end interface ! unique
 
     interface issubset
@@ -87,6 +87,10 @@ module am_matlab
     interface rref
         module procedure :: z_rref, d_rref
     end interface ! rref
+
+    interface eigenspace
+        module procedure :: z_eigenspace, d_eigenspace
+    end interface ! eigenspace
 
     contains
 
@@ -1535,6 +1539,72 @@ module am_matlab
         !
     end function  ztrace
 
+    function      z_eigenspace(A) result(V)
+        ! Determine eigenvectors which simultaneously diagonalize n square matrices A(:,:,i)
+        ! Note: only possible if A(:,:,i) commute with each other.
+        implicit none
+        !
+        complex(dp), intent(in)  :: A(:,:,:)
+        complex(dp), allocatable :: V(:,:)
+        complex(dp), allocatable :: Q(:,:)
+        integer :: m, n, i
+        ! get dimensions
+        n = size(A,1)
+        m = size(A,3)
+        if (m.eq.0) stop 'ERROR [eigenanalysis]: m = 0'
+        ! allocate space
+        allocate(V(n,n))
+        ! use matrix pencil approach to lift the degeneracy of eigenvalues
+        allocate(Q(n,n))
+        Q = 0
+        do i = 1,m
+            Q = Q + rand() * A(:,:,i)
+        enddo
+        ! get eigenvectors
+        call am_zgeev(A=Q,VR=V)
+        ! check that matrices have been diagonalized properly and save eigenvalues
+        do i = 1, m
+            ! get Q
+            Q = matmul(inv(V),matmul(A(:,:,i),V))
+            ! test Q
+            if (.not.isequal(diag(diag(Q)),Q,tiny*m**2)) stop 'ERROR [eigenanalysis]: simultaneous matrix diagonalization failed.'
+        enddo
+        !
+    end function  z_eigenspace
+
+    function      d_eigenspace(A) result(V)
+        ! Determine eigenvectors which simultaneously diagonalize n square matrices A(:,:,i)
+        ! Note: only possible if A(:,:,i) commute with each other.
+        implicit none
+        !
+        real(dp), intent(in)  :: A(:,:,:)
+        complex(dp), allocatable :: V(:,:)
+        real(dp), allocatable :: Q(:,:)
+        integer :: m, n, i
+        ! get dimensions
+        n = size(A,1)
+        m = size(A,3)
+        if (m.eq.0) stop 'ERROR [eigenanalysis]: m = 0'
+        ! allocate space
+        allocate(V(n,n))
+        ! use matrix pencil approach to lift the degeneracy of eigenvalues
+        allocate(Q(n,n))
+        Q = 0
+        do i = 1,m
+            Q = Q + rand() * A(:,:,i)
+        enddo
+        ! get eigenvectors
+        call am_dgeev(A=Q,VR=V)
+        ! check that matrices have been diagonalized properly and save eigenvalues
+        do i = 1, m
+            ! get Q
+            Q = matmul(inv(V),matmul(A(:,:,i),V))
+            ! test Q
+            if (.not.isequal(diag(diag(Q)),Q,tiny*m**2)) stop 'ERROR [eigenanalysis]: simultaneous matrix diagonalization failed.'
+        enddo
+        !
+    end function  d_eigenspace
+
     pure function d_rref(A) result(matrix)
         !
         ! note: algorithm on roseta code is broken.
@@ -1631,7 +1701,7 @@ module am_matlab
         deallocate(temp)
     end function  z_rref
 
-    pure function   d_orthonormalize(V) result(U)
+    pure function d_orthonormalize(V) result(U)
         !
         ! orthonormalizes columns of V(:,:)
         !
@@ -1655,9 +1725,9 @@ module am_matlab
             U(:,k) = U(:,k)/norm2(U(:,k))
         enddo
         !
-    end function    d_orthonormalize
+    end function  d_orthonormalize
 
-    function   z_orthonormalize(V) result(U)
+    function      z_orthonormalize(V) result(U)
         !
         ! orthonormalizes columns of V(:,:)
         !
@@ -1684,7 +1754,7 @@ module am_matlab
             ! U(:,k) = U(:,k)/sqrt(dot_product(conjg(U(:,k)),U(:,k)))
         enddo
         !
-    end function    z_orthonormalize
+    end function  z_orthonormalize
 
     ! matrix indexing
 
@@ -2723,7 +2793,7 @@ module am_matlab
 
     ! unique
 
-    pure function dm_unique(A,iopt_prec) result(B)
+    pure function dt_unique(A,iopt_prec) result(B)
         !> returns unique matrices of A(:,:,i) within numerical precision
         implicit none
         !
@@ -2753,9 +2823,9 @@ module am_matlab
         !
         allocate(B,source=wrk(:,:,1:k))
         !
-    end function  dm_unique
+    end function  dt_unique
 
-    pure function dv_unique(A,iopt_prec) result(B)
+    pure function dm_unique(A,iopt_prec) result(B)
         !> returns unique columns of double matrix A(:,i) within numerical precision
         implicit none
         !
@@ -2785,9 +2855,73 @@ module am_matlab
         !
         allocate(B,source=wrk(:,1:k))
         !
-    end function  dv_unique
+    end function  dm_unique
 
-    pure function iv_unique(A) result(B)
+    pure function zm_unique(A,iopt_prec) result(B)
+        !> returns unique columns of double matrix A(:,i) within numerical precision
+        implicit none
+        !
+        complex(dp), intent(in) :: A(:,:)
+        complex(dp), intent(in), optional :: iopt_prec
+        complex(dp), allocatable :: B(:,:)
+        complex(dp) :: wrk(size(A,1),size(A,2))
+        integer :: i,j,k
+        real(dp) :: prec
+        !
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        k=1
+        wrk(:,1) = A(:,1)
+        !
+        try_loop : do i = 1, size(A,2)
+            do j = 1, k
+                if ( isequal(A(:,i),wrk(:,j),prec) ) cycle try_loop
+            enddo
+            k = k + 1
+            wrk(:,k) = A(:,i)
+        enddo try_loop
+        !
+        allocate(B,source=wrk(:,1:k))
+        !
+    end function  zm_unique
+
+    pure function zv_unique(A,iopt_prec) result(B)
+        !> returns unique columns of double matrix A(:,i) within numerical precision
+        implicit none
+        !
+        complex(dp), intent(in) :: A(:)
+        complex(dp), intent(in), optional :: iopt_prec
+        complex(dp), allocatable :: B(:)
+        complex(dp) :: wrk(size(A))
+        integer :: i,j,k
+        real(dp) :: prec
+        !
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        k=1
+        wrk(1) = A(1)
+        !
+        try_loop : do i = 1, size(A,1)
+            do j = 1, k
+                if ( isequal(A(i),wrk(j),prec) ) cycle try_loop
+            enddo
+            k = k + 1
+            wrk(k) = A(i)
+        enddo try_loop
+        !
+        allocate(B,source=wrk(1:k))
+        !
+    end function  zv_unique
+
+    pure function im_unique(A) result(B)
         !> returns unique columns of double matrix A(:,i) within numerical precision
         implicit none
         !
@@ -2809,9 +2943,9 @@ module am_matlab
         !
         allocate(B,source=wrk(:,1:k))
         !
-    end function  iv_unique
+    end function  im_unique
 
-    pure function i_unique(A) result(B)
+    pure function iv_unique(A) result(B)
         !> returns unique columns of double matrix A(:,i) within numerical precision
         implicit none
         !
@@ -2833,7 +2967,7 @@ module am_matlab
         !
         allocate(B,source=wrk(1:k))
         !
-    end function  i_unique
+    end function  iv_unique
 
     ! pure function dv_isequal(a) result(bool)
     ! !

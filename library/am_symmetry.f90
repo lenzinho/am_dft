@@ -77,6 +77,7 @@ contains
         integer , allocatable ::  inds(:)
         integer , allocatable :: rinds(:) ! reverse inds
         integer :: i, j
+        integer :: n
         !
         allocate(inds(grp%nsyms))
         call rank(criterion,inds)
@@ -127,17 +128,45 @@ contains
         endif
         ! multiplication table
         if (allocated(grp%mt%multab)) then
+            grp%mt%multab = grp%mt%multab(inds,inds)
             do i = 1, grp%nsyms
             do j = 1, grp%nsyms
                 grp%mt%multab(i,j) = rinds(grp%mt%multab(i,j))
             enddo
-            enddo   
-            grp%mt%multab = grp%mt%multab(:,inds)
-            grp%mt%multab = grp%mt%multab(inds,:)
+            enddo
         endif
         ! regular rep
-        if (allocated(grp%mt%rr)) then
-            grp%mt%rr = grp%mt%rr(:,:,inds)
+        if (allocated(grp%mt%multab)) then
+            grp%mt%rr = grp%mt%rr(inds,inds,inds)
+        endif
+        ! symmetry order
+        if (allocated(grp%mt%order)) then
+            grp%mt%order = grp%mt%order(inds)
+        endif
+        ! group generators
+        if (allocated(grp%mt%gen)) then
+            grp%mt%gen = rinds(grp%mt%gen)
+        endif
+        ! symmetry generators
+        if (allocated(grp%mt%gen_id)) then
+            ! faster to just revaluate than sort
+            grp%mt%gen_id = get_generator_id(multab=grp%mt%multab)
+            ! for some reason this sort does not work...
+            ! grp%mt%gen_id = grp%mt%gen_id(inds,:)
+            ! do i = 1, grp%nsyms
+            !     n = count(grp%mt%gen_id(i,:).ne.0)
+            !     grp%mt%gen_id(i,1:n) = grp%mt%gen_id(i,1:n)
+            ! enddo
+        endif
+        ! symmetry commutators
+        if (allocated(grp%mt%commutator_id)) then
+            grp%mt%commutator_id = get_commutator_id(multab=grp%mt%multab)
+            ! for some reason this sort does not work...
+            ! grp%mt%commutator_id = grp%mt%commutator_id(inds,:)
+            ! do i = 1, grp%nsyms
+            !     n = count(grp%mt%commutator_id(i,:).ne.0)
+            !     grp%mt%commutator_id(i,1:n) = rinds(grp%mt%commutator_id(i,1:n))
+            ! enddo
         endif
         !
     end subroutine sort_symmetries
@@ -211,7 +240,13 @@ contains
         grp%mt%order = get_cyclic_order(multab=grp%mt%multab)
         ! get regular representation
         grp%mt%rr = get_regular_rep(multab=grp%mt%multab)
-        ! 
+        ! get generator id
+        grp%mt%gen_id = get_generator_id(multab=grp%mt%multab)
+        ! get generators
+        allocate(grp%mt%gen, source=pack(grp%mt%gen_id,grp%mt%gen_id.ne.0) )
+        grp%mt%gen = nint(sort(real(unique(grp%mt%gen),dp)))
+        ! identifty commutators
+        grp%mt%commutator_id = get_commutator_id(multab=grp%mt%multab)
     end subroutine get_multiplication_table
 
     subroutine     get_conjugacy_classes(grp)
@@ -242,7 +277,7 @@ contains
         class(am_class_group), intent(inout) :: grp
         complex(dp), allocatable :: irrep_proj(:,:,:) ! complex because character may be complex
         real(dp)   , allocatable :: S(:,:) 
-        integer :: i
+        integer :: i, j
         !
         ! check
         if (.not.allocated(grp%mt%multab)) stop 'ERROR [get_character_table]: multiplication table is required'
@@ -258,22 +293,16 @@ contains
         ! get irrep dimensions
         grp%ct%irrep_dim = get_irrep_dimension(chartab=grp%ct%chartab, &
             nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
-!         ! get irrep projection operators
+        ! get irrep projection operators
         irrep_proj = get_irrep_projection(rr=grp%mt%rr, chartab=grp%ct%chartab, irrep_dim=grp%ct%irrep_dim, &
             nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, class_member=grp%cc%member)
+        ! get similarity transform for constructing irreps
+        S = get_block_similarity_transform(rr=grp%mt%rr, irrep_dim=grp%ct%irrep_dim, irrep_proj=irrep_proj, &
+            commutator_id=grp%mt%commutator_id, &
+            nclasses=grp%cc%nclasses,                                   class_member=grp%cc%member)
+        !
 
 
-!         do i = 1, size(irrep_proj,3)
-!             call disp(title='A(:,:,'//tostring(i)//') = [',X=real(irrep_proj(:,:,i)))
-!             write(*,*) '];'
-!         enddo
-
-!         stop
-
-
-!         ! get similarity transform for constructing irreps
-!         S = get_block_similarity_transform(rr=real(grp%mt%rr,dp), irrep_dim=grp%ct%irrep_dim, irrep_proj=irrep_proj)
-!         !
 
 
 !         do i = 1, grp%nsyms
@@ -291,7 +320,7 @@ contains
         integer :: nreps
         complex(dp) , allocatable :: rep_chi(:,:)
         character(7), allocatable :: rep_label(:)
-        !
+        !   
         select type (grp)
         class is (am_class_point_group) 
             nreps = 15
@@ -524,7 +553,8 @@ contains
         class(am_class_space_group), intent(inout) :: sg
         class(am_class_unit_cell)  , intent(in) :: pc ! space groups are tabulated in the litearture for conventional cells, but primitive or arbitrary cell works just as well.
         type(am_class_options)     , intent(in) :: opts
-        real(dp), allocatable  :: seitz_frac(:,:,:)
+        character(:), allocatable :: disp_str(:)
+        real(dp)    , allocatable :: seitz_frac(:,:,:)
         character(20) :: str
         integer :: mpl
         integer :: i
@@ -561,10 +591,47 @@ contains
                     call disp(title=trim(str), X=(sg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
                 endif
             enddo
+
+
+
+            ! TURN ALL THIS STUFF INTO FILE IO
+            ! TURN ALL THIS STUFF INTO FILE IO
+            ! TURN ALL THIS STUFF INTO FILE IO
+
+
             ! print multiplication table
             call print_title('Space group multiplication table')
             call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
             call disp(X=sg%mt%multab,advance='yes',trim='yes')
+            ! print regular rep loop structure
+            call print_title('Space group regular representation loop structures')
+            call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
+            call disp(X=[1:sg%nsyms],advance='no',title='#',style='underline')
+            !
+            allocate(character(5) :: disp_str(sg%nsyms))
+            do i = 1, sg%nsyms
+                disp_str(i) = trim(decode_pointsymmetry(sg%ps_id(i)))
+            enddo
+            call disp(X=disp_str,advance='no',title='sf.',style='underline',fmt='a5')
+            deallocate(disp_str)
+            !
+            call disp(X=sg%mt%order ,advance='no',title='order',style='underline')
+            disp_str = get_cycle_structure_str(rr=sg%mt%rr,order=sg%mt%order)
+            call disp(X=disp_str,advance='yes',fmt=tostring(len(disp_str(1)))//'s',title='regular representation cycle structure',style='underline')
+            stop
+            ! generators
+            call print_title('Space group generators')
+            write(*,'(a,a)',advance='no') ' ... ', 'group generators = ' 
+            call disp(X=sg%mt%gen,orient='row')
+            call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
+            call disp(X=[1:sg%nsyms],advance='no' ,trim='yes',title='sym',style='underline')
+            call disp(X=sg%mt%gen_id(:,1:maxval(count(sg%mt%gen_id.ne.0,2))),trim='yes',zeroas=' ',title='symmetry generators',style='underline',advance='yes')
+            ! commutators
+            call print_title('Space group symmetry commutators')
+            call disp(X=sg%mt%commutator_id,trim='yes',zeroas=' ',title='symmetry commutators',style='underline',advance='yes')
+
+
+
         endif
         ! create folder
         call execute_command_line ('mkdir -p '//trim(outfile_dir_sym))
@@ -655,8 +722,8 @@ contains
             !
             ! print stdout
             if (verbosity.ge.2) then
-                call am_print('(im-)proper generators',nRs,' ... ')
-                call am_print('translation generators',nTs,' ... ')
+                call am_print('possible (im-)propers',nRs,' ... ')
+                call am_print('possible translations',nTs,' ... ')
                 call am_print_two_matrices_side_by_side(name='translations',&
                     Atitle='fractional',A=transpose(T),&
                     Btitle='cartesian' ,B=transpose(matmul(bas,T)),&
@@ -722,11 +789,9 @@ contains
                     do i31 = -1,1
                     do i32 = -1,1
                     do i33 = -1,1
-                        !
                         o(1,1:3)=real([i11,i12,i13],dp)
                         o(2,1:3)=real([i21,i22,i23],dp)
                         o(3,1:3)=real([i31,i32,i33],dp)
-                        !
                         ! Check that metric is left unchanged by symmetry opreation in fractional coordinates.
                         ! i.e. that metric tensor commutes with point symmetry.
                         if ( all( abs(matmul(transpose(o),matmul(metric,o))-metric) .lt. prec ) ) then
@@ -796,6 +861,16 @@ contains
             call print_title('Point group multiplication table')
             call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
             call disp(X=pg%mt%multab,advance='yes',trim='yes')
+            ! generators
+            call print_title('Point group symmetry generators')
+            write(*,'(a,a)',advance='no') ' ... ', 'group generators = ' 
+            call disp(X=pg%mt%gen,orient='row')
+            call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
+            call disp(X=[1:pg%nsyms],advance='no' ,trim='yes',title='sym',style='underline')
+            call disp(X=pg%mt%gen_id(:,1:maxval(count(pg%mt%gen_id.ne.0,2))),advance='yes',trim='yes',zeroas=' ' ,title='symmetry generators',style='underline')
+            ! commutators
+            call print_title('Point group symmetry commutators')
+            call disp(X=pg%mt%commutator_id,trim='yes',zeroas=' ',title='symmetry commutators',style='underline',advance='yes')
             ! print character table
             call print_title('Point group character table')
             call pg%print_character_table()

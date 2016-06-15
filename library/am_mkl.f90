@@ -27,7 +27,7 @@ module am_mkl
     end interface ! det
 
     interface rand
-        module procedure :: d_rand, dv_rand, dm_rand
+        module procedure :: d_rand, dv_rand, dm_rand, dt_rand
     end interface ! rand
 
 contains
@@ -62,40 +62,43 @@ contains
         !
     end function   dv_rand
 
-    function       dm_rand(n) result(a)
+    function       dm_rand(n,m) result(a)
         !
         use ifport, only : rand_interal => rand
         !
         implicit none
         !
-        integer, intent(in) :: n(2)
-        real(dp) :: a(n(1),n(2))
+        integer, intent(in) :: n,m
+        real(dp) :: a(n,m)
         integer :: i,j
         !
-        do i = 1,n(1)
-        do j = 1,n(2)
+        do i = 1,n
+        do j = 1,m
             a(i,j) = rand_interal()
         enddo
         enddo
         !
     end function   dm_rand
 
-!     function       rand(seed) result(a)
-!         !
-!         use ifport, only : rand_interal => rand
-!         !
-!         implicit none
-!         !
-!         integer, intent(in), optional :: seed
-!         real(dp) :: a
-!         !
-!         if (present(seed)) then
-!             a = rand_interal(seed)
-!         else
-!             a = rand_interal()
-!         endif
-!         !
-!     end function   rand
+    function       dt_rand(n,m,o) result(a)
+        !
+        use ifport, only : rand_interal => rand
+        !
+        implicit none
+        !
+        integer, intent(in) :: n,m,o
+        real(dp) :: a(n,m,o)
+        integer :: i,j,k
+        !
+        do i = 1,n
+        do j = 1,m
+        do k = 1,o
+            a(i,j,k) = rand_interal()
+        enddo
+        enddo
+        enddo
+        !
+    end function   dt_rand
 
     ! eucledian norm of vector
 
@@ -155,27 +158,32 @@ contains
 
     ! sort array in increasing order
     
-    subroutine     sort(d,flags)
+    function     sort(A,flags) result(d)
         !
         implicit none
         !
-        real(dp), intent(inout) :: d(:)
+        real(dp), intent(in) :: A(:)
         character(*), intent(in), optional :: flags
+        real(dp), allocatable :: d(:)
         character(1) :: id
         integer :: info
         !
+        ! copy input 
+        allocate(d,source=A)
         ID = 'I'
         if (present(flags)) then
-            if (index(flags,'ascend')) then 
+            if     (index(flags,'ascend')) then 
                 id = 'I'
             elseif (index(flags,'descend')) then
                 id = 'D'
+            else
+                stop 'ERROR [sort]: flags /= I or D'
             endif
         endif
         !
         call dlasrt( id, size(d), d, info )
         !
-    end subroutine sort 
+    end function sort 
     
     ! get determinant by LU facorization
 

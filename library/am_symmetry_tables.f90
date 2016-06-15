@@ -1,23 +1,23 @@
 module am_symmetry_tables
 
-	use am_constants
-	use am_matlab
-	use am_mkl
-	use am_stdout
+    use am_constants
+    use am_matlab
+    use am_mkl
+    use am_stdout
     use dispmodule
 
-	implicit none
+    implicit none
 
-	public
+    public
 
-	type, public :: am_class_conjugacy_class
-		integer :: nclasses							! nclasses number of classes
-		integer, allocatable :: id(:)				! class_id(nsyms) identify conjugacy classes
-		integer, allocatable :: nelements(:)		! class_nelements(nclasses) get number of elements in each class
-		integer, allocatable :: member(:,:)			! members(nclass,maxval(class_nelements)) record indicies of each class_member element for each class 
-		integer, allocatable :: representative(:)	! class_nelements(nclasses) get number of elements in each class
-		contains
-	end type am_class_conjugacy_class
+    type, public :: am_class_conjugacy_class
+        integer :: nclasses                         ! nclasses number of classes
+        integer, allocatable :: id(:)               ! class_id(nsyms) identify conjugacy classes
+        integer, allocatable :: nelements(:)        ! class_nelements(nclasses) get number of elements in each class
+        integer, allocatable :: member(:,:)         ! members(nclass,maxval(class_nelements)) record indicies of each class_member element for each class 
+        integer, allocatable :: representative(:)   ! class_nelements(nclasses) get number of elements in each class
+        contains
+    end type am_class_conjugacy_class
 
     type, public :: am_class_character_table
         integer :: nirreps
@@ -27,17 +27,20 @@ module am_symmetry_tables
         real(dp),    allocatable :: irrep(:,:,:)      ! irrep(1:d,1:d,nirreps)
     end type am_class_character_table
 
-	type, public :: am_class_multiplication_table
-		integer, allocatable :: multab(:,:)
-		integer, allocatable :: inv_id(:)
-		integer, allocatable :: order(:)
-        integer, allocatable :: rr(:,:,:) ! regular representation matries
-		contains
-	end type am_class_multiplication_table
+    type, public :: am_class_multiplication_table
+        integer, allocatable :: multab(:,:)   ! multiplication table
+        integer, allocatable :: inv_id(:)     ! index of inverse element
+        integer, allocatable :: order(:)      ! cyclic order of the element
+        integer, allocatable :: gen_id(:,:)   ! gen_id(i,:) identifies generators which produce element i
+        integer, allocatable :: gen(:)        ! complete list of group generators
+        integer, allocatable :: commutator_id(:,:) ! get_commutator_id(i,:) list of group symmetries which commute with symmetry i 
+        integer, allocatable :: rr(:,:,:)     ! regular representation matrices
+        contains
+    end type am_class_multiplication_table
 
 contains
 
-	! multiplication table
+    ! multiplication table
 
     function       get_multab(sym,flags) result(multab)
         !
@@ -141,21 +144,19 @@ contains
         nsyms = size(multab,2)
         !
         allocate(order(nsyms))
+        order = 0
         !
         do i = 1, nsyms
-            ! initialize
-            j = 0
             power = i
             ! apply operation until identity (1) is returned
-            do while (power.ne.1)
-                !
-                j=j+1
+            do j = 1, 100
+                if (power.eq.1) then
+                    order(i) = j
+                    exit
+                endif
                 power = multab(i,power)
-                !
-                if (j.eq.50) stop 'Error: unable to determine symmetry order.'
             enddo
-            !
-            order(i) = j
+            if (order(i).eq.0) stop 'ERROR [get_cyclic_order]: unable to determine symmetry order'
         enddo
         !
     end function   get_cyclic_order
@@ -207,6 +208,82 @@ contains
             endwhere
         enddo
     end function   get_regular_rep
+
+    function       get_generator_id(multab) result(gen_id)
+        !
+        implicit none
+        !
+        integer, intent(in) :: multab(:,:) ! multiplication chartab
+        integer,allocatable, target :: gen_id(:,:) ! which generators does the symmetry belong to
+        integer, pointer :: pntr_i(:)
+        integer, pointer :: pntr_j(:)
+        integer, target  :: fundamental(2)
+        integer,allocatable :: gen_u(:)
+        integer :: i, j
+        integer :: m, n
+        integer :: nsyms
+        !
+        nsyms = size(multab,2)
+        !
+        allocate(gen_id(nsyms,nsyms))
+        gen_id = 0
+        !
+        do i = 1, nsyms
+            ! loop over elements
+        do j = 1, i
+            ! check if generator for the element found
+            if (gen_id(multab(i,j),1).eq.0) then
+                fundamental(1:2) = [i,j]
+                ! check if generator for generator found
+                if (gen_id(i,1).ne.0) then
+                    m = count(gen_id(i,:).ne.0)
+                    pntr_i => gen_id(i,1:m)
+                else
+                    m = 1
+                    pntr_i => fundamental(1:1)
+                endif
+                if (gen_id(i,1).ne.0) then
+                    n = count(gen_id(j,:).ne.0)
+                    pntr_j => gen_id(j,1:n)
+                else
+                    n = 1
+                    pntr_j => fundamental(2:2)
+                endif
+                ! 
+                gen_u = unique([pntr_i,pntr_j])
+                ! save generator
+                gen_id(multab(i,j),1:size(gen_u)) = nint(sort(real(gen_u,dp)))
+            endif
+        enddo
+        enddo
+        !
+    end function   get_generator_id
+
+    function       get_commutator_id(multab) result(commutator_id)
+        !
+        implicit none
+        !
+        integer, intent(in) :: multab(:,:) ! multiplication chartab
+        integer,allocatable :: commutator_id(:,:) ! symmetries which commute with symmetry i
+        integer :: i, j, k
+        integer :: nsyms
+        !
+        nsyms = size(multab,2)
+        !
+        allocate(commutator_id(nsyms,nsyms))
+        commutator_id = 0
+        !
+        do i = 1, nsyms
+            k = 0
+            do j = 1, nsyms
+            if (multab(i,j).eq.multab(j,i)) then
+                k = k + 1
+                commutator_id(i,k) = j
+            endif
+            enddo
+        enddo
+        !
+    end function   get_commutator_id
 
     ! conjugacy classes
 
@@ -270,7 +347,7 @@ contains
         contains
         subroutine     relabel_based_on_occurances(class_id)
             !
-		    use am_rank_and_sort
+            use am_rank_and_sort
             !
             implicit none
             !
@@ -316,7 +393,7 @@ contains
         end subroutine relabel_based_on_occurances
         subroutine     relabel_based_on_ps_id(class_id,ps_id)
             !
-			use am_rank_and_sort
+            use am_rank_and_sort
             !
             implicit none
             !
@@ -463,53 +540,30 @@ contains
         !
         contains
         function       eigenanalysis(A) result(D)
-            !
-            ! determines characters which simultaneously diagonalizes i square matrices A(:,:,i)
-            ! only possible if A(:,:,i) commute with each other. Assumes all dimensions of A are the same.
-            ! 
-            !
+            ! determines characters which simultaneously diagonalizes n square matrices A(:,:,i)
+            ! only possible if A(:,:,i) commute with each other.
             implicit none
             !
             complex(dp), intent(in)  :: A(:,:,:)
             complex(dp), allocatable :: V(:,:) ! these two should match in this particular situation (character chartab determination from class multiplication )
-            complex(dp), allocatable :: D(:,:) ! these two should match in this particular situation (character chartab determination from class multiplication )
-            complex(dp), allocatable :: M(:,:)
-            integer :: n, i
+            complex(dp), allocatable :: D(:,:)
+            integer :: m, n, i
             !
-            n = size(A,3)
-            !
-            if (n.eq.0) stop 'eigenanalysis: n = 0'
-            !
-            ! matrix pencil approach to lift the degeneracy of eigenvalues
-            allocate(M(n,n))
-            M = 0
-            do i = 1,n
-                M = M + rand() * A(:,:,i)
-            enddo
-            !
-            ! get left and right eigenvectors: transpose(VL)*A*VR = D
-            call am_zgeev(A=M,VR=V)
-            !
+            ! get dimensions
+            n = size(A,1)
+            m = size(A,3)
+            ! get similarity transform which simultaneosuly diagolnaizes matrices A
+            V = eigenspace(A)
             ! check that matrices have been diagonalized properly and save eigenvalues
-            allocate(d(n,n))
-            do i = 1, n
-                !
-                M = matmul(inv(V),matmul(A(:,:,i),V))
-                !
-                if (any( abs(diag(diag(M))-M).gt. (tiny*n**2) )) then
-                    ! tiny may be too small a criterion here... should probably use a value which scales with the size of the matrix.
-                    stop 'Unable to perform simultaneous matrix diagonalization. Check that whether they commute.'
-                endif
-                !
-                ! save diagonal elements as row vectors
-                D(:,i) = diag( M )
-                !
+            allocate(D(n,n))
+            do i = 1, m
+                D(:,i) = diag( matmul(inv(V),matmul(A(:,:,i),V)) )
             enddo
             !
             ! should enforce check here...
             !
             ! ! normalize each eigencolumn to the element of the column (that is, the first element, i.e. row, corresponds to the class containing the identity element)
-            ! do i = 1, n
+            ! do i = 1, m
             !     V(:,i)=V(:,i)
             ! enddo
             ! V = transpose(V)
@@ -893,6 +947,8 @@ contains
         ! if (sum(irrep_dim^2).ne.nbases) stop 'ERROR [get_irrep_dimension]: irrep dimension is not a factor of the group order.'
     end function   get_irrep_dimension
 
+    ! regular representation
+
     function       get_irrep_projection(rr,chartab,irrep_dim,nclasses,class_nelements,class_member) result(irrep_proj)
         !
         implicit none
@@ -968,7 +1024,58 @@ contains
         end function   get_class_matrices
     end function   get_irrep_projection
 
-    function       get_block_similarity_transform(rr,irrep_dim,irrep_proj,nclasses,class_member) result(phi)
+    function       get_cycle_structure_str(rr,order) result(cycle_structure_str)
+        !
+        implicit none
+        !
+        integer, intent(in) :: rr(:,:,:)
+        integer, intent(in) :: order(:)
+        character(300), allocatable :: cycle_structure_str(:)
+        integer,allocatable :: R(:,:)
+        integer,allocatable :: P(:,:) ! power of rr
+        logical,allocatable :: T(:)
+        integer,allocatable :: inds(:)
+        integer :: nsyms
+        integer :: nbases
+        integer :: i,j 
+        !
+        nbases = size(rr,1)
+        nsyms = size(rr,3)
+        !
+        allocate(cycle_structure_str(nsyms))
+        allocate(R(nbases,nbases))
+        allocate(P(nbases,nbases))
+        allocate(T(nbases))
+        allocate(inds(nbases))
+        inds = [1:nbases]
+        !
+        do i = 1, nsyms
+            R = 0
+            P = nint(eye(nbases))
+            do j = 1, order(i)
+                P = matmul(rr(:,:,i),P)
+                R = R + P
+            enddo
+            ! reduce to row echelon form
+            P = nint(rref(real(R,dp)))
+            ! initialize cycle strucutre string
+            cycle_structure_str(i)=' '
+            ! write cycle structure
+            do j = 1, nbases
+                where (P(j,:).eq.1) 
+                    T = .true.
+                elsewhere
+                    T = .false.
+                endwhere
+                if (count(T).ge.1) then
+                    cycle_structure_str(i) = trim(cycle_structure_str(i))//' ('//tostring(pack(inds,T))//')'
+                endif
+            enddo
+        enddo
+        !
+    end function   get_cycle_structure_str
+
+    function       get_block_similarity_transform(rr,irrep_dim,irrep_proj,nclasses,commutator_id,class_member) result(phi)
         !
         use am_rank_and_sort
         !
@@ -979,24 +1086,30 @@ contains
         complex(dp), intent(in) :: irrep_proj(:,:,:) ! can be complex because of complex characters
         integer    , intent(in) :: nclasses
         integer    , intent(in) :: class_member(:,:)
+        integer    , intent(in) :: commutator_id(:,:) ! symmetries which commute with symmetry i
         complex(dp),allocatable :: phi(:,:)
         integer    ,allocatable :: S(:)
-        integer    ,allocatable :: E(:)
-        real(dp)   ,allocatable :: V(:)
+        integer    ,allocatable :: E(:) 
+        complex(dp),allocatable :: V(:,:,:) ! eigenvectors
+        complex(dp),allocatable :: D(:,:) ! eigenvalues
+        complex(dp),allocatable :: X(:) !  the nondegenerate eigenvector
         complex(dp),allocatable :: zeros(:)
         complex(dp),allocatable :: try(:)
         logical :: isorthogonal
+        logical :: isfound
         integer :: nbases
         integer :: nsyms
         integer :: nirreps
-        integer :: i
+        integer :: nphis
+        integer :: i, i_phi, j, k
         !
         ! get bases dimensions
         nbases = size(rr,1)
         nsyms  = size(rr,3)
         nirreps= size(irrep_proj,3)
+        nphis  = sum(irrep_dim)
         ! allocate space
-        allocate(phi(nbases,sum(irrep_dim)))
+        allocate(phi(nbases,nphis))
         allocate(S(nirreps))
         allocate(E(nirreps))
         ! work space
@@ -1004,31 +1117,88 @@ contains
         ! allocate zero vector
         allocate(zeros(nbases))
         zeros = 0
-        ! initialize random vector
-        allocate(V(nbases))
-        V = rand(nbases,1)
-        V = V/norm(V)
+        ! find an eigenvector of a regular rep symmetry element that has unique (nondegenerate eigenvalues)
+!         allocate(X(nbases))
+!         allocate(D(nbases,nsyms))
+!         allocate(V(nbases,nbases,nsyms))
+!         search_nondegen : do i = 1, nsyms
+!             ! get eigenvector
+!             call am_dgeev(A=real(rr(:,:,i),dp),VR=V(:,:,i),D=D(:,i))
+!             ! search for nonzero and unique (nondegenerate) eigenvector
+!             do k = 1, nbases
+!                 ! enforce nonzero
+!                 if (abs(D(k,i)).gt.tiny) then
+!                     isfound = .true.
+!                     ! enforce nondegenerate
+!                     check : do j = 1, nbases
+!                         if (j.ne.k) then
+!                         if (abs(D(k,i)-D(j,i)).lt.tiny) then
+!                             isfound = .false.
+!                             exit check 
+!                         endif
+!                         endif
+!                     enddo check 
+!                     if (isfound) then
+!                         ! save the nondegenerate eigenvector
+!                         X = V(:,k,i)
+!                         exit search_nondegen
+!                     endif 
+!                 endif
+!             enddo
+!         enddo search_nondegen
+!         !
+!         call dump(A=V           ,fname=trim(outfile_dir_sym)//'/outfile.V')
+!         call dump(A=D           ,fname=trim(outfile_dir_sym)//'/outfile.D')
+!         call dump(A=class_member,fname=trim(outfile_dir_sym)//'/outfile.class_member')
+!         call dump(A=rr          ,fname=trim(outfile_dir_sym)//'/outfile.rr')
+!         call dump(A=irrep_proj  ,fname=trim(outfile_dir_sym)//'/outfile.irrep_proj')
+!         call dump(A=irrep_dim   ,fname=trim(outfile_dir_sym)//'/outfile.irrep_dim')
+!         ! if caught below, see Blokker-Flodmark for what to for no nondegenerate cases.
+!         if (.not.isfound) stop 'ERROR [get_block_similarity_transform]: no unique eigenvector found.'
+!         call disp(X)
+
+
+
+!         allocate(X(nbases))
+        X = get_starting_eigvec(rr=rr, commutator_id=commutator_id)
+
+        call disp(X)
+
+        ! initialize i_phi
+        i_phi = 0
         ! loop over irrep projections
         do i = 1, nirreps
+            ! save indices
             i_phi= i_phi + 1
             S(i) = i_phi
             E(i) = S(i) + irrep_dim(i) - 1
-            ! save projection
-            phi(:,i_phi) = matmul(P(:,:,i),V)
+            ! project X onto irreducible subspace
+            phi(:,i_phi) = matmul(irrep_proj(:,:,i), X)
+
+            write(*,*) i_phi
+            call disp(phi(:,i_phi))
+            call disp(S)
+            call disp(E)
+            call disp(irrep_dim)
             ! search for partners
-            search : do k = 1, nclasses + 1
+            search : do k = 1, nclasses
                 ! exit search when all partners symmetry functions are found 
                 if (i_phi.eq.E(i)) then
                     exit search
                 endif
                 ! try partner function
-                try = matmul(R(:,:,class_member(k,1)), phi(:,S(i)))
+                try = matmul(rr(:,:,class_member(k,1)), phi(:,S(i)))
                 ! make sure: non-zero
+                ! write(*,*) isequal(try,zeros)
+                ! call disp(X=try,orient='row')
                 if (.not.isequal(try,zeros)) then
                     ! make sure: orthogonal to other vectors in the irrep basis
+                    ! since in the regular rep symmetries have matrix elements (0,1), 
+                    ! it suffices to check whether the vectors are not the same.
+                    ! ideal, a cross product would be taken.
                     isorthogonal = .true.
                     search_orthogonal : do j = S(i), i_phi
-                        if (isequal(cross_product(T(1:3,i),T(1:3,j)),zeros)) then
+                        if (isequal(phi(:,j),try)) then
                             isorthogonal = .false.
                             exit search_orthogonal
                         endif
@@ -1039,87 +1209,178 @@ contains
                     endif 
                 endif
             enddo search
+            ! orthonormalize the basis
+            call disp(phi)
+            phi(:,S(i):E(i)) = orthonormalize( phi(:,S(i):E(i)) )
         enddo
-
-        call dump(A=rr(:,:,class_member(:,1)),fname=trim(outfile_dir_sym)//'/outfile.R')
-        call dump(A=irrep_dim ,fname=trim(outfile_dir_sym)//'/outfile.irrep_dim')
-        call dump(A=irrep_proj,fname=trim(outfile_dir_sym)//'/outfile.P')
-        call dump(A=V         ,fname=trim(outfile_dir_sym)//'/outfile.V')
-        call dump(A=D         ,fname=trim(outfile_dir_sym)//'/outfile.D')
+        if (i_phi.ne.nphis) stop 'ERROR [get_block_similarity_transform]: i_phi /= nirreps'
 
 
+        contains
 
-        stop
+        function       get_starting_eigvec(rr,commutator_id) result(V_start)
+            !
+            implicit none
+            !
+            integer, intent(in) :: rr(:,:,:)
+            integer, intent(in) :: commutator_id(:,:)
+            complex(dp), allocatable :: V_start(:)
+            integer :: ncommutators
+            integer :: x ! index of element which has the least degenerate eigenvector
+            complex(dp) :: D_x ! least degenerate eigenvector
+            complex(dp), allocatable :: V_x(:,:) ! eigenspace corresponding to least degenerate eigenvector
+            complex(dp), allocatable :: try(:,:)
+            complex(dp), allocatable :: D_n(:)   ! eigenvalues of commuting symmtry corresponding to eigenspace V_x
+            integer :: nbases
+            !
+            ! get bases
+            nbases = size(rr,1)
+            ! get least degenerate eigenvabasis Vx
+            ! get least degenerate eigenvalues  Dx
+            ! get index x of symmetry element which gereates V_x and V_d
+            call get_least_degen_eigens(rr, x,V_x,D_x)
+            ! check whether eigenbasis is 1D
+            if (size(V_x,2).eq.1) then
+                allocate(V_start(nbases))
+                V_start = V_x(1:nbases,1)
+                ! DONE.
+            else
+                ! loop over elements which commute with element x
+                ncommutators = count(commutator_id(x,:).ne.0)
+                do i = 1, ncommutators
+                    ! multiply V_x basis by regular rep
+                    try = matmul(rr(:,:,i),V_x)
+                    ! check if symmetry leaves eigenspace invariant (the elements share the same basis)
+                    if (isequal(try,V_x)) then
+                        ! find the eigenvalues of the new operator corresponding to V_x
+                        D_n = diag(matmul(transpose(rr(:,:,i)),try))
 
-        ! allocate temporary wrk space
-        allocate(wrk(nbases,maxval(irrep_dim)))
-        ! allocate wrk space
-        allocate(try(nbases))
-        try = 0
-        ! initialize similarity transform counter
-        n = 0
-        ! loop over irreps
-        do i = 1, nirreps
-            ! reset eigeninds
-            eigeninds = 0
-            ! find an eigenvector that is an eigenvector of an irrep projection operator
-            search_first : do j = 1, nclasses
-            do k = 1, nbases
-                ! check that eigenvector does not correspond to null space
-                if (abs(D(k,j)).gt.tiny) then
-                if (isequal( matmul(irrep_proj(:,:,i),V(:,k,j)), V(:,k,j))) then
-                    eigeninds(1) = k ! base index
-                    eigeninds(2) = j ! class index
-                    exit search_first
-                endif
-                endif
-            enddo 
-            enddo search_first
-            if (any(eigeninds.eq.0)) stop 'ERROR [get_block_similarity_transform]: first basis vector not found'
-            ! if dimension of irrep = 1, done. Save basis vector...
-            if     (irrep_dim(i).eq.1) then
-                n = n + 1
-                S(:,n) = V(:,eigeninds(1),eigeninds(2))
-            ! if dimension of irrep > 1, use symmetries to generate partner functions (other basis vectors)
-            elseif (irrep_dim(i).gt.1) then
-                ! reset workspace
-                wrk = 0
-                ! save first basis alreaedy
-                wrk(:,1) = V(:,eigeninds(1),eigeninds(2))
-                ! reset found
-                found = .false.
-                ! initialize partner basis counter
-                m = 1
-                ! search for partner functions
-                search_partners : do k = 1, nclasses
-                if (k.ne.eigeninds(2)) then
-                    try = matmul(rr(:,:,k),wrk(:,1))
-                    if (.not.issubset(wrk(:,1:m),try)) then
-                        ! augment partner basis counter
-                        m = m + 1
-                        ! save new basis/partner-function
-                        wrk(:,m) = try
-                        !
-                        if (m.eq.irrep_dim(i)) then
-                            found = .true.
-                            exit search_partners
-                        endif
+
+                        ! orthonormalize V_x
+                        ! V_x = orthonormalize(V_x)
+                        ! find the intersection of the Vx and the eigenspace of the commuting matrix rr(:,:,i)
+                        ! set the intersection as the new Vx and repeat... unitl 
+                            ! STOPPED HERE
+                            ! STOPPED HERE
+                            ! STOPPED HERE
                     endif
-                endif
-                enddo search_partners
-                ! check completion
-                if (.not.found) stop "ERROR [get_block_similarity_transform]: failed to generate partner symmetry functions"
-                ! transfer bases
-                do k = 1, basis_counter
-                    ! augment similarity transform counter
-                    n = n+1
-                    ! copy bases
-                    S(:,n) = wrk(:,k)
                 enddo
             endif
-        enddo
-        !
+        end function   get_starting_eigvec
+
+        subroutine     get_least_degen_eigens(rr, x,V_x,D_x)
+            !
+            implicit none
+            !
+            integer    , intent(in) :: rr(:,:,:)
+            integer    ,intent(out) :: X                     ! index of element which has the least degenerate eigenvector
+            complex(dp),intent(out) :: D_x                   ! least degenerate eigenvalue
+            complex(dp),intent(out), allocatable :: V_x(:,:) ! eigenspace corresponding to least degenerate eigenvector
+            complex(dp),allocatable :: V(:,:) ! eigenvectors
+            complex(dp),allocatable :: D(:)   ! eigenvalues
+            complex(dp),allocatable :: V_least(:,:)
+            complex(dp) :: D_least
+            integer :: nsubdims ! subspace dimensions
+            integer :: nbases
+            integer :: nsyms
+            integer :: nirreps
+            integer :: nphis
+            integer :: i, j, k
+            !
+            nbases = size(rr,1)
+            nsyms  = size(rr,3)
+            ! find an eigenvector of a regular rep symmetry element that has unique (nondegenerate eigenvalues)
+            allocate(D(nbases))
+            allocate(V(nbases,nbases))
+            ! initialize nsubdims
+            nsubdims = nbases
+            ! loop over regular rep symmetries
+            do i = 1, nsyms
+                ! getting eigenvector and eigenvalues
+                call am_dgeev(A=real(rr(:,:,i),dp),VR=V,D=D)
+                ! get least degenerate eigenvalue
+                D_least = get_least_degen_eigval(D)
+                ! get eigenspace corresponding to the least degeernate eigenvalue
+                V_least = get_least_degen_eigvec(D=D_least,Dref=D,Vref=V)
+                ! check if a nondegerate space (1D space) is found.
+                if (size(V_least,2).eq.1) then
+                    ! if it is, the routine is done.
+                    if (allocated(V_x)) deallocate(V_x)
+                    allocate(V_x(nbases,1))
+                    V_x = V_least(:,1:1)
+                    ! DONE (IN THIS CASE)
+                    return
+                else
+                    ! if a 2D space or greater is found...
+                    ! check whether it is the smallest subspace found thus far
+                    if (size(V_least,2).lt.nsubdims) then
+                        ! save space dimension
+                        nsubdims = size(V_least,2)
+                        ! save eigenspace
+                        if (allocated(V_x)) deallocate(V_x)
+                        allocate(V_x,source=V_least)
+                        ! save eigenvalue
+                        D_x = D_least
+                        ! save index of element
+                        x = i
+                    endif
+                endif
+            enddo
+            ! 
+        end subroutine get_least_degen_eigens
+
+        function       get_least_degen_eigval(D) result(least_degen_eigenval)
+            ! return the value of the least degerenate eigenvalue
+            complex(dp), intent(in) :: D(:)
+            complex(dp) :: least_degen_eigenval
+            complex(dp),allocatable :: unique_D(:)
+            integer    ,allocatable :: degeneracies(:)
+            integer :: nuniques
+            ! 
+            ! save unique and exclude null space
+            unique_D = unique(pack(D,abs(D).gt.tiny))
+            !get number of unique eigenvalues
+            nuniques = size(unique_D)
+            ! record the number of degeneracies
+            allocate(degeneracies(nuniques))
+            do i = 1, nuniques
+                degeneracies(i) = count( abs(unique_D(i)-D).lt.tiny )
+            enddo
+            ! find eigenvalue with the lowest degeneracy
+            unique_D(1:1) = unique_D(minloc(degeneracies))
+            least_degen_eigenval = unique_D(1)
+            ! 
+        end function   get_least_degen_eigval
+
+        function       get_least_degen_eigvec(D,Dref,Vref) result(V_D)
+            ! 
+            implicit none
+            !
+            complex(dp), intent(in) :: D
+            complex(dp), intent(in) :: Dref(:)
+            complex(dp), intent(in) :: Vref(:,:)
+            complex(dp),allocatable :: V_D(:,:)
+            integer, allocatable :: inds(:)
+            integer :: i
+            integer :: nbases
+            ! get bases
+            nbases = size(Dref)
+            ! allocate space
+            allocate(inds(nbases))
+            ! figure out which eigenvectors share the smae eigenvalues as D
+            j = 0
+            do i = 1, nbases
+                if (abs(D-Dref(i)).lt.tiny) then
+                    j = j + 1
+                    inds(j) = i
+                endif
+            enddo
+            ! return the eigenspace corresponding to eigenvalue D
+            allocate(V_D(nbases,j))
+            V_D = Vref(:,inds(1:j))
+        end function   get_least_degen_eigvec
     end function   get_block_similarity_transform
+
 
     ! identifier functions which operate on identifiers
 
