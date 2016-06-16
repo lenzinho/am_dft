@@ -30,6 +30,10 @@ module am_mkl
         module procedure :: d_rand, dv_rand, dm_rand, dt_rand
     end interface ! rand
 
+    interface null_space
+        module procedure null_space_zgesvd, null_space_dgesvd
+    end interface ! null_space
+
 contains
 
     ! random number
@@ -158,7 +162,7 @@ contains
 
     ! sort array in increasing order
     
-    function     sort(A,flags) result(d)
+    function       sort(A,flags) result(d)
         !
         implicit none
         !
@@ -183,7 +187,7 @@ contains
         !
         call dlasrt( id, size(d), d, info )
         !
-    end function sort 
+    end function   sort 
     
     ! get determinant by LU facorization
 
@@ -361,7 +365,7 @@ contains
         !
     end function   am_dinv
 
-    ! inverse of complex square matrix
+    ! inverse of complex square matrixg
 
     function       am_zinv(A) result(Ainv)
         !
@@ -845,7 +849,7 @@ contains
 
     ! perform svd decomposition on real general rectangular matrix
 
-    subroutine     am_dgesvd(A,U,S,VT)
+    subroutine     am_dgesvd(A,U,S,V)
         !
         !  The routine computes the singular value decomposition (SVD) of a real
         !  m-by-n matrix A, optionally computing the left and/or right singular
@@ -860,11 +864,13 @@ contains
         !  returned in descending order. The first min(m, n) columns of U and V are
         !  the left and right singular vectors of A.
         !
-        !  Note that the routine returns VT, not V.
         real(dp), intent(in)  :: A(:,:)
-        real(dp), intent(out), allocatable :: U(:,:)
-        real(dp), intent(out), allocatable :: S(:)
-        real(dp), intent(out), allocatable :: VT(:,:)
+        real(dp), intent(out), allocatable, optional :: S(:)
+        real(dp), intent(out), allocatable, optional :: U(:,:)
+        real(dp), intent(out), allocatable, optional :: V(:,:)
+        real(dp), allocatable ::  S_internal(:)
+        real(dp), allocatable ::  U_internal(:,:)
+        real(dp), allocatable :: VT_internal(:,:)
         real(dp), allocatable :: CA(:,:)
         real(dp), allocatable :: WORK(:)
         integer :: m, n
@@ -877,37 +883,137 @@ contains
         lda  = m
         ldu  = m
         ldvt = n
-        !
-        allocate(U(ldu,m))
-        allocate(VT(ldvt,n))
-        allocate(S(n))
+        ! allocate space
+        allocate( S_internal(n))
+        allocate( U_internal(ldu,m))
+        allocate(VT_internal(ldvt,n))
         allocate(WORK(lwmax))
-        !
         ! copy variables
-        !
         allocate(CA, source=A)
-        !
         ! query the optimal workspace
-        !
         lwork = -1
-        call dgesvd( 'all', 'all', m, n, CA, lda, S, U, ldu, VT, ldvt, WORK, lwork, info )
+        call dgesvd( 'all', 'all', m, n, CA, lda, S_internal, U_internal, ldu, VT_internal, ldvt, WORK, lwork, info )
         lwork = min( lwmax, int( WORK( 1 ) ) )
-        !
         ! solve eigenproblem
-        !
-        call dgesvd( 'all', 'all', m, n, CA, lda, S, U, ldu, VT, ldvt, WORK, lwork, info )
-        !
+        call dgesvd( 'all', 'all', m, n, CA, lda, S_internal, U_internal, ldu, VT_internal, ldvt, WORK, lwork, info )
         ! check for convergence
-        !
-        if( info.gt.0 ) then
-            write(*,*) 'the algorithm computing svd failed to converge.'
-            stop
-        end if
+        if( info.gt.0 ) stop 'ERROR [am_dgesvd]: SVD failed to converge'
+        ! output
+        if (present(S)) allocate(S,source=S_internal)
+        if (present(U)) allocate(U,source=U_internal)
+        if (present(V)) allocate(V,source=transpose(VT_internal))
     end subroutine am_dgesvd
+
+    subroutine     am_zgesvd(A,U,S,V)
+        !
+        !  The routine computes the singular value decomposition (SVD) of a real
+        !  m-by-n matrix A, optionally computing the left and/or right singular
+        !  vectors. The SVD is written as
+        !
+        !  A = U*S*VT
+        !
+        !  where S is an m-by-n matrix which is zero except for its min(m,n)
+        !  diagonal elements, U is an m-by-m orthogonal matrix and VT (V transposed)
+        !  is an n-by-n orthogonal matrix. The diagonal elements of S
+        !  are the singular values of A; they are real and non-negative, and are
+        !  returned in descending order. The first min(m, n) columns of U and V are
+        !  the left and right singular vectors of A.
+        !
+        complex(dp), intent(in)  :: A(:,:)
+        complex(dp), intent(out), allocatable, optional :: S(:)
+        complex(dp), intent(out), allocatable, optional :: U(:,:)
+        complex(dp), intent(out), allocatable, optional :: V(:,:)
+        complex(dp), allocatable ::  S_internal(:)
+        complex(dp), allocatable ::  U_internal(:,:)
+        complex(dp), allocatable :: VT_internal(:,:)
+        complex(dp), allocatable :: CA(:,:)
+        complex(dp), allocatable :: WORK(:)
+        real(dp)   , allocatable :: RWORK(:)
+        integer :: m, n
+        integer :: lda, ldu, ldvt
+        integer :: info
+        integer :: lwork
+        !
+        m = size(A,1)
+        n = size(A,2)
+        lda  = m
+        ldu  = m
+        ldvt = n
+        ! allocate space
+        allocate( S_internal(n))
+        allocate( U_internal(ldu,m))
+        allocate(VT_internal(ldvt,n))
+        allocate(  WORK(lwmax) )
+        allocate( RWORK(max(1,5*min(m,n))) )
+        ! copy variables
+        allocate(CA, source=A)
+        ! query the optimal workspace
+        lwork = -1
+        call zgesvd( 'all', 'all', m, n, CA, lda, S_internal, U_internal, ldu, VT_internal, ldvt, WORK, lwork, RWORK, info )
+        lwork = min(lwmax,int(WORK(1)))
+        ! solve eigenproblem
+        call zgesvd( 'all', 'all', m, n, CA, lda, S_internal, U_internal, ldu, VT_internal, ldvt, WORK, lwork, RWORK, info )
+        ! check for convergence
+        if( info.gt.0 ) stop 'ERROR [am_dgesvd]: SVD failed to converge'
+        ! output
+        if (present(S)) allocate(S,source=S_internal)
+        if (present(U)) allocate(U,source=U_internal)
+        if (present(V)) allocate(V,source=conjg(transpose((VT_internal))))
+    end subroutine am_zgesvd
+
+    ! get null space using svd decomposition
+
+    function       null_space_dgesvd(A) result(null_space)
+        !
+        real(dp), intent(in)  :: A(:,:)
+        real(dp), allocatable :: null_space(:,:)
+        real(dp), allocatable :: S_internal(:)
+        real(dp), allocatable :: V_internal(:,:)
+        logical , allocatable :: T(:)
+        integer , allocatable :: inds(:)
+        ! perform svd decomposition
+        call am_dgesvd(A=A,S=S_internal,V=V_internal)
+        ! allocate mask
+        allocate(T( size(S_internal) ))
+        ! create mask
+        where (abs(S_internal).lt.tiny)
+            T = .true.
+        elsewhere
+            T = .false.
+        endwhere
+        ! create indices
+        allocate(inds, source = [1:size(V_internal,2)])
+        ! return null_space
+        allocate(null_space, source = V_internal(:, pack(inds,T) ))
+    end function   null_space_dgesvd
+
+    function       null_space_zgesvd(A) result(null_space)
+        !
+        complex(dp), intent(in)  :: A(:,:)
+        complex(dp), allocatable :: null_space(:,:)
+        complex(dp), allocatable :: S_internal(:)
+        complex(dp), allocatable :: V_internal(:,:)
+        logical , allocatable :: T(:)
+        integer , allocatable :: inds(:)
+        ! perform svd decomposition
+        call am_zgesvd(A=A,S=S_internal,V=V_internal)
+        ! allocate mask
+        allocate(T( size(S_internal) ))
+        ! create mask
+        where (abs(S_internal).lt.tiny)
+            T = .true.
+        elsewhere
+            T = .false.
+        endwhere
+        ! create indices
+        allocate(inds, source = [1:size(V_internal,2)])
+        ! return null_space
+        allocate(null_space, source = V_internal(:, pack(inds,T) ))
+    end function   null_space_zgesvd
 
     ! solve Ax = B by QR factorization
 
-    subroutine     am_dgels(A,X,B)
+    function       am_dgels(A,B) result(X)
         ! Program computes the least squares solution to the overdetermined linear
         ! system A*X = B with full rank matrix A using QR factorization,
         !
@@ -923,8 +1029,9 @@ contains
         !
         real(dp), intent(in)  :: A(:,:)
         real(dp), intent(in)  :: B(:,:)
-        real(dp), intent(out), allocatable :: X(:,:)
+        real(dp), allocatable :: X(:,:)
         real(dp), allocatable :: CA(:,:)
+        real(dp), allocatable :: CB(:,:)
         real(dp), allocatable :: WORK(:)
         integer :: m, n, nrhs
         integer :: lda, ldb
@@ -933,30 +1040,28 @@ contains
         !
         ! initialize variables
         !
-        lda = size(A,1)
+        m   = size(A,1)
         n   = size(A,2)
-        ldb = size(B,1)
-        nrhs= size(B,2)
-        allocate(WORK(lwmax))
-        !
+        lda = m          ! at least max(1, m).
+        ldb = max(1,m,n) ! must be at least max(1, m, n).
+        nrhs= size(B,2)  ! The second dimension of b must be at least max(1, nrhs).
+        if (lda.ne.m) stop 'ERROR [am_dgels]: lda /= ldb'
         ! copy variables
-        !
         allocate(CA, source = A)
-        allocate(X , source = B)
-        !
+        allocate(CB(ldb,nrhs))
+        CB = 0
+        CB(1:size(B,1),1:nrhs) = B
         ! query the optimal workspace
-        !
-        allocate(WORK(lwmax))
+        allocate(WORK(1))
         lwork = -1
-        call dgels( 'No transpose', m, n, nrhs, CA, lda, X, ldb, WORK, lwork, info )
-        lwork = min( lwmax, int( WORK( 1 ) ) )
-        !
+        call dgels( 'No transpose', m, n, nrhs, CA, lda, CB, ldb, WORK, lwork, info )
+        lwork = max( min(m,n)+max(1,m,n,nrhs), min( lwmax, int(WORK(1))) )
+        ! reallocate work space
+        deallocate(WORK)
+        allocate(WORK(lwmax))
         ! call solver
-        !
-        call dgels( 'No transpose', m, n, nrhs, CA, lda, X, ldb, WORK, lwork, info )
-        !
+        call dgels( 'No transpose', m, n, nrhs, CA, lda, CB, ldb, WORK, lwork, info )
         ! check for convergence.
-        !
         if( info.gt.0 ) then
             write(*,*) 'The diagonal element ',info,' of the triangular '
             write(*,*) 'factor of a is zero, so that a does not have full '
@@ -964,7 +1069,9 @@ contains
             write(*,*) 'computed.'
             stop
         end if
-    end subroutine am_dgels
+        ! return X
+        allocate(X,source=CB)
+    end function   am_dgels
 
     ! solve Ax = B by SVD decomposition
 

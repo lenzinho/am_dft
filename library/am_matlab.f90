@@ -2079,7 +2079,7 @@ module am_matlab
         implicit none
         !
         integer, intent(in) :: n(2)
-        integer, dimension(:,:), allocatable :: M
+        integer, allocatable :: M(:,:)
         !
         allocate(M(n(1),n(2)))
         M=0.0_dp
