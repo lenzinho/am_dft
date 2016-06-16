@@ -1095,9 +1095,6 @@ contains
         complex(dp),allocatable :: X(:) !  the nondegenerate eigenvector
         complex(dp),allocatable :: zeros(:)
         complex(dp),allocatable :: try(:)
-        real(dp), allocatable :: A_test(:,:)
-        real(dp), allocatable :: S_test(:)
-        real(dp), allocatable :: V_test(:,:)
         logical :: isorthogonal
         logical :: isfound
         integer :: nbases
@@ -1105,7 +1102,16 @@ contains
         integer :: nirreps
         integer :: nphis
         integer :: i, i_phi, j, k
-        !
+        integer :: verbosity
+        ! verbosity for debugging
+        verbosity = 1
+        ! dump input for debugging
+        ! call dump(A=class_member  , fname=trim(outfile_dir_sym)//'/outfile.class_member' )
+        ! call dump(A=rr            , fname=trim(outfile_dir_sym)//'/outfile.rr'           )
+        call dump(A=irrep_proj    , fname=trim(outfile_dir_sym)//'/outfile.irrep_proj'   )
+        call dump(A=get_irrep_proj_eigvec(irrep_proj), fname=trim(outfile_dir_sym)//'/outfile.irrep_proj_eigvec'   )
+        ! call dump(A=irrep_dim     , fname=trim(outfile_dir_sym)//'/outfile.irrep_dim'    )
+        ! call dump(A=commutator_id , fname=trim(outfile_dir_sym)//'/outfile.commutator_id')
         ! get bases dimensions
         nbases = size(rr,1)
         nsyms  = size(rr,3)
@@ -1115,83 +1121,56 @@ contains
         allocate(phi(nbases,nphis))
         allocate(S(nirreps))
         allocate(E(nirreps))
+        ! allocate X
+        allocate(X(nbases))
         ! work space
         allocate(try(nbases))
         ! allocate zero vector
         allocate(zeros(nbases))
         zeros = 0
-!         ! find an eigenvector of a regular rep symmetry element that has unique (nondegenerate eigenvalues)
-!         X = get_nondegenerate_eigenvec(rr=rr)
-!         ! check if something was returned
-!         if (size(X).eq.0) then
-!             ! if it wasn't, deallocate X
-!             deallocate(X)
-!             ! search for lowest degenerate subspace (Blokker-Flodmark procedure)
-!             X = get_starting_eigvec(rr=rr,commutator_id=commutator_id)
-!             !
-!         endif
-
-!         call am_dgels(A=real(irrep_proj(:,:,4),dp), X=test, B=real(zeros([nbases,1]),dp))
-!         call am_dgels(A=real(irrep_proj(:,:,4),dp), X=test, B=real(zeros([nbases,1]),dp))
-
-
-        allocate(A_test(3,5))
-        A_test(1,1:5) = [1,0,1,0,0]
-        A_test(2,1:5) = [0,1,0,1,0]
-        A_test(3,1:5) = [0,0,0,1,1]
-        call am_dgesvd(A=A_test, S=S_test, V=V_test)
-        write(*,*) 'S'
-        call disp(S_test)
-        write(*,*) 'V'
-        call disp(V_test)
-        write(*,*) 'null'
-        call disp(get_null_space(A_test))
-        write(*,*) 'intersection'
-        call disp(subspace_intersection(A_test(1:3,1:3),A_test(1:3,4:5)))
-        !
-
-
-        stop
-
-!         !
-        call dump(A=class_member,fname=trim(outfile_dir_sym)//'/outfile.class_member')
-        call dump(A=rr          ,fname=trim(outfile_dir_sym)//'/outfile.rr')
-        call dump(A=irrep_proj  ,fname=trim(outfile_dir_sym)//'/outfile.irrep_proj')
-        call dump(A=irrep_dim   ,fname=trim(outfile_dir_sym)//'/outfile.irrep_dim')
-        call dump(A=commutator_id   ,fname=trim(outfile_dir_sym)//'/outfile.commutator_id')
-
-
-        stop
-
         ! initialize i_phi
         i_phi = 0
         ! loop over irrep projections
         do i = 1, nirreps
+            if (verbosity.ge.1) write(*,'(a,a)',advance='no') flare, 'irrep '//tostring(i)//': '
             ! save indices
             i_phi= i_phi + 1
             S(i) = i_phi
             E(i) = S(i) + irrep_dim(i) - 1
             if   (irrep_dim(i).eq.1) then
+                if (verbosity.ge.1) write(*,'(a)',advance='no') '1D '
                 ! project a random vector on the irreducible subspace
                 ! since the subspace is 1 dimension, the randomness goes away.
                 phi(:,i_phi) = matmul(irrep_proj(:,:,i), rand(nbases) )
             else 
                 ! if the irrep is two-dimensional or larger...
+                if (verbosity.ge.1) write(*,'(a)',advance='no') tostring(irrep_dim(i))//'D '
+                ! search for an eigenvector of a regular rep symmetry element that has unique (nondegenerate eigenvalues)
+                if (get_nondegenerate_eigenvec_sucessefully(rr=rr, X=X)) then
+                    ! SOMTEHINGE ABOUT get_nondegenerate_eigenvec IS SCREWING UP irrep_proj
+                    ! SOMTEHINGE ABOUT get_nondegenerate_eigenvec IS SCREWING UP irrep_proj
+                    ! SOMTEHINGE ABOUT get_nondegenerate_eigenvec IS SCREWING UP irrep_proj
+
+                    ! project nondegenerate vector onto the irreducible subspace
+                    phi(:,i_phi) = matmul(irrep_proj(:,:,i), X )
+                else
+                    ! search for lowest degenerate subspace (Blokker-Flodmark procedure)
+                    ! X = get_starting_eigvec(rr=rr,commutator_id=commutator_id)
+                    !
+!                     call dis
+
+                    call disp( irrep_proj(:,1,i)  )
+!                     write(*,*)
+!                     call disp( irrep_proj(:,:,i-1)  )
+!                     write(*,*)
+!                     call disp( subspace_intersection(irrep_proj(:,:,i),irrep_proj(:,:,i-1))  )
+                    stop
 
 
 
-                ! 
-                !
-                ! WORKING ON STUFF HERE 
-                ! 
-                ! ! project X onto irreducible subspace
-                ! phi(:,i_phi) = matmul(irrep_proj(:,:,i), X)
 
-                write(*,*) i_phi
-                call disp(phi(:,i_phi))
-                call disp(S)
-                call disp(E)
-                call disp(irrep_dim)
+
+                endif
                 ! search for partners
                 search : do k = 1, nclasses
                     ! exit search when all partners symmetry functions are found 
@@ -1224,20 +1203,20 @@ contains
             endif
             ! orthonormalize the irreducible subspace
             phi(:,S(i):E(i)) = orthonormalize( phi(:,S(i):E(i)) )
+            ! line break
+            if (verbosity.ge.1) write(*,*)
         enddo
         if (i_phi.ne.nphis) stop 'ERROR [get_block_similarity_transform]: i_phi /= nirreps'
 
-
         contains
-
-        function       get_nondegenerate_eigenvec(rr) result(X)
+        function       get_nondegenerate_eigenvec_sucessefully(rr,X) result(isfound)
             !
             implicit none
             !
-            integer    , intent(in) :: rr(:,:,:)
-            complex(dp),allocatable :: X(:) !  the nondegenerate eigenvector
-            complex(dp),allocatable :: V(:,:) ! eigenvectors
-            complex(dp),allocatable :: D(:) ! eigenvalues
+            integer    , intent(in)  :: rr(:,:,:)
+            complex(dp), intent(out) :: X(:) !  the nondegenerate eigenvector
+            complex(dp),allocatable  :: V(:,:) ! eigenvectors
+            complex(dp),allocatable  :: D(:) ! eigenvalues
             integer :: nsyms, nbases
             logical :: isfound
             !
@@ -1265,7 +1244,6 @@ contains
                         enddo check 
                         if (isfound) then
                             ! save the nondegenerate eigenvector
-                            allocate(X(nbases))
                             X = V(:,k)
                             exit search_nondegen
                         endif 
@@ -1273,10 +1251,7 @@ contains
                 enddo
             enddo search_nondegen
             !
-            if (.not.isfound) then
-                allocate(X(0))
-            endif
-        end function   get_nondegenerate_eigenvec
+        end function   get_nondegenerate_eigenvec_sucessefully
 
         function       get_starting_eigvec(rr,commutator_id) result(V_start)
             !
@@ -1439,8 +1414,68 @@ contains
             allocate(V_D(nbases,j))
             V_D = Vref(:,inds(1:j))
         end function   get_least_degen_eigvec
+
+
     end function   get_block_similarity_transform
 
+    function       get_irrep_proj_eigvec(irrep_proj) result(V_proj)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: irrep_proj(:,:,:) ! can be complex because of complex characters
+        complex(dp),allocatable :: V_proj(:,:)
+        integer,    allocatable :: inds(:)
+        complex(dp),allocatable :: P(:,:)
+        complex(dp),allocatable :: D(:,:)
+        integer,    allocatable :: S(:)
+        integer,    allocatable :: E(:)
+        logical,    allocatable :: mask(:)
+        integer,    allocatable :: inds_sorted(:)
+        integer :: i, n, nirreps, nbases
+        ! get number of irreps
+        nbases  = size(irrep_proj,1)
+        nirreps = size(irrep_proj,3)
+        ! allocate/initialize stuff
+        allocate(inds(nbases))
+        inds = [1:nbases]
+        allocate(P(nbases,nbases))
+        P = 0
+        ! loop over irreps
+        do i = 1, nirreps
+            P = P + irrep_proj(:,:,i) * rand()
+        enddo
+        ! eigendecompose
+        call am_zgeev(A=P, VR=V_proj)
+        ! sort sort by V_proj by irrep
+        allocate(inds_sorted(nbases))
+        inds_sorted = 0
+        allocate(S(nirreps))
+        allocate(E(nirreps))
+        allocate(D(nbases,nirreps))
+        allocate(mask(nbases))
+        n = 0
+        do i = 1, nirreps
+            ! create mask identifying vectors in V_proj belonging irrep i
+            D(:,i) = diag(matmul(matmul(adjoint(V_proj),irrep_proj(:,:,i)), V_proj))
+            where (abs( D(:,i) - 1.0_dp ).lt.tiny)
+                mask = .true.
+            elsewhere
+                mask = .false.
+            endwhere
+            ! save indics
+            n = n + 1
+            S(i) = n
+            n = n + count(mask) - 1
+            E(i) = n
+            ! orthonormalize
+            V_proj(:,pack(inds,mask)) = orthonormalize( V_proj(:,pack(inds,mask)) )
+            ! construct sort paramter list
+            inds_sorted(S(i):E(i)) = pack(inds,mask)
+        enddo
+        ! perform sort
+        V_proj = V_proj(:,inds_sorted)
+        !
+    end function   get_irrep_proj_eigvec
 
     ! identifier functions which operate on identifiers
 

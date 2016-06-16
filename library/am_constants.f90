@@ -13,7 +13,6 @@ module am_constants
     real(dp)   , parameter :: fourpi  = 12.566370614359172
     complex(dp), parameter :: cmplx_i = (0.0_dp,1.0_dp)
     complex(dp), parameter :: itwopi  = cmplx_i*twopi
-    !
     ! magic numbers
     integer    , parameter :: default_ps_id_value = 100 ! must be equal to or larger than 11
     integer    , parameter :: column_width = 100
@@ -25,5 +24,9 @@ module am_constants
     character(100), parameter :: outfile_dir_tb  = trim(outfile_dir)//'/tb'
     character(100), parameter :: outfile_dir_sym = trim(outfile_dir)//'/sym'
     character(100), parameter :: outfile_dir_uc  = trim(outfile_dir)//'/uc'
-    
+#ifdef COLOR
+    character(18) , parameter :: flare = char(27)//'[1;31m'//' ... '//char(27)//'[0;0m'
+#else
+    character(5)  , parameter :: flare = ' ... '
+#endif
 end module am_constants

@@ -981,10 +981,14 @@ contains
         elsewhere
             T = .false.
         endwhere
-        ! create indices
-        allocate(inds, source = [1:size(V_internal,2)])
-        ! return null_space
-        allocate(null_space, source = V_internal(:, pack(inds,T) ))
+        if (count(T).ne.0) then
+            ! create indices
+            allocate(inds, source = [1:size(V_internal,2)])
+            ! return null_space
+            allocate(null_space, source = V_internal(:, pack(inds,T) ))
+        else
+            allocate(null_space(0,0))
+        endif
     end function   get_null_space_dgesvd
 
     function       get_null_space_zgesvd(A) result(null_space)
@@ -1005,10 +1009,14 @@ contains
         elsewhere
             T = .false.
         endwhere
-        ! create indices
-        allocate(inds, source = [1:size(V_internal,2)])
-        ! return null_space
-        allocate(null_space, source = V_internal(:, pack(inds,T) ))
+        if (count(T).ne.0) then
+            ! create indices
+            allocate(inds, source = [1:size(V_internal,2)])
+            ! return null_space
+            allocate(null_space, source = V_internal(:, pack(inds,T) ))
+        else
+            allocate(null_space(0,0))
+        endif
     end function   get_null_space_zgesvd
 
     ! solve Ax = B by QR factorization
