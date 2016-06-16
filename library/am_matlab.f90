@@ -1,7 +1,7 @@
 module am_matlab
 
     use am_constants
-    use am_mkl, only : am_zheev, inv, rand, am_zgeev, am_dgeev
+    use am_mkl, only : am_zheev, inv, rand, am_zgeev, am_dgeev, get_null_space
     use dispmodule ! for dump 
 
     implicit none
@@ -91,6 +91,14 @@ module am_matlab
     interface eigenspace
         module procedure :: z_eigenspace, d_eigenspace
     end interface ! eigenspace
+
+    interface trim_null_columns
+        module procedure z_trim_null_columns, d_trim_null_columns        
+    end interface ! trim_null_columns
+
+    interface subspace_intersection
+        module procedure z_subspace_intersection, d_subspace_intersection
+    end interface ! subspace_intersection
 
     contains
 
@@ -1542,6 +1550,7 @@ module am_matlab
     function      z_eigenspace(A) result(V)
         ! Determine eigenvectors which simultaneously diagonalize n square matrices A(:,:,i)
         ! Note: only possible if A(:,:,i) commute with each other.
+        !       only possible if the matrix pencil produces exclusively unique (no nondegenerate) eigenvalues!
         implicit none
         !
         complex(dp), intent(in)  :: A(:,:,:)
@@ -1575,6 +1584,7 @@ module am_matlab
     function      d_eigenspace(A) result(V)
         ! Determine eigenvectors which simultaneously diagonalize n square matrices A(:,:,i)
         ! Note: only possible if A(:,:,i) commute with each other.
+        !       only possible if the matrix pencil produces exclusively unique (no nondegenerate) eigenvalues!
         implicit none
         !
         real(dp), intent(in)  :: A(:,:,:)
@@ -1709,6 +1719,7 @@ module am_matlab
         !
         real(dp), intent(in) :: V(:,:)
         real(dp),allocatable :: U(:,:)
+        real(dp) :: normfac
         integer :: n, m, k, j
         !        !
         m = size(V,1)
@@ -1722,7 +1733,12 @@ module am_matlab
             do j = 1, k-1
                 U(:,k) = U(:,k) - dot_product(U(:,j),V(:,k)) * U(:,j)
             enddo
-            U(:,k) = U(:,k)/norm2(U(:,k))
+            normfac = norm2(U(:,k))
+            if (abs(normfac).gt.tiny) then
+                U(:,k) = U(:,k)/normfac
+            else
+                U(:,k) = 0
+            endif
         enddo
         !
     end function  d_orthonormalize
@@ -1737,6 +1753,7 @@ module am_matlab
         !
         complex(dp), intent(in) :: V(:,:)
         complex(dp),allocatable :: U(:,:)
+        real(dp) :: normfac
         integer :: n, m, k, j
         !
         m = size(V,1)
@@ -1750,11 +1767,143 @@ module am_matlab
             do j = 1, k-1
                 U(:,k) = U(:,k) - dot_product(U(:,j),V(:,k)) * U(:,j)
             enddo
-            U(:,k) = U(:,k)/am_dznrm2(U(:,k))
-            ! U(:,k) = U(:,k)/sqrt(dot_product(conjg(U(:,k)),U(:,k)))
+            normfac = am_dznrm2(U(:,k)) ! sqrt(dot_product(conjg(U(:,k)),U(:,k)))
+            if (abs(normfac).gt.tiny) then
+                U(:,k) = U(:,k)/normfac
+            else
+                U(:,k) = 0
+            endif
         enddo
         !
     end function  z_orthonormalize
+
+    ! get vector subspace intersection 
+
+    function      d_subspace_intersection(A,B) result(C)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:)
+        real(dp), intent(in) :: B(:,:)
+        real(dp),allocatable :: C(:,:)
+        real(dp),allocatable :: ns(:,:)
+        integer :: na,nb,m,n
+        !
+        m = size(A,1)
+        na= size(A,2)
+        nb= size(B,2)
+        n = na+nb
+        if (m.ne.size(B,1)) stop 'ERROR [subspace_intersection]: m /= size(B,1)'
+        !
+        allocate(ns(m,n))
+        ns(1:m,[1:na]   ) = A
+        ns(1:m,[1:nb]+na) = B
+        ! get null space (coefficients)
+        ns = get_null_space(ns)
+        ! check if there is an intersection
+        if (size(ns,1).ne.0) then
+            ! apply coefficients to construct interception subspace
+            allocate(C, source=matmul(A,ns))
+            ! orthonormalize intersection basis vectors
+            C = trim_null_columns(unique(orthonormalize(C)))
+        else
+            allocate(C(0,0))
+        endif
+        !
+    end function  d_subspace_intersection
+
+    function      z_subspace_intersection(A,B) result(C)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: A(:,:)
+        complex(dp), intent(in) :: B(:,:)
+        complex(dp),allocatable :: C(:,:)
+        complex(dp),allocatable :: ns(:,:)
+        integer :: na,nb,m,n
+        !
+        m = size(A,1)
+        na= size(A,2)
+        nb= size(B,2)
+        n = na+nb
+        if (m.ne.size(B,1)) stop 'ERROR [subspace_intersection]: m /= size(B,1)'
+        !
+        allocate(ns(m,n))
+        ns(1:m,[1:na]   ) = A
+        ns(1:m,[1:nb]+na) = B
+        ! get null space (coefficients)
+        ns = get_null_space(ns)
+        ! check if there is an intersection
+        if (size(ns,1).ne.0) then
+            ! apply coefficients to construct interception subspace
+            allocate(C, source=matmul(A,ns))
+            ! orthonormalize intersection basis vectors
+            C = trim_null_columns(unique(orthonormalize(C)))
+        else
+            allocate(C(0,0))
+        endif
+        !
+    end function  z_subspace_intersection
+
+    ! trim columns with zeros
+
+    function      d_trim_null_columns(A) result(B)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:)
+        real(dp), allocatable :: B(:,:)
+        real(dp), allocatable :: zeros(:)
+        logical , allocatable :: mask(:)
+        integer , allocatable :: inds(:)
+        integer :: n, i
+        !
+        n = size(A,2)
+        allocate(inds, source = [1:n] )
+        allocate(zeros(size(A,1)))
+        zeros = 0
+        !
+        allocate(mask(n))
+        do i = 1, n
+            if (isequal( A(:,i) ,zeros)) then
+                mask(i) = .false.
+            else
+                mask(i) = .true.
+            endif
+        enddo
+        !
+        allocate(B, source = A(:,pack(inds,mask)))
+        !
+    end function  d_trim_null_columns
+
+    function      z_trim_null_columns(A) result(B)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: A(:,:)
+        complex(dp), allocatable :: B(:,:)
+        complex(dp), allocatable :: zeros(:)
+        logical , allocatable :: mask(:)
+        integer , allocatable :: inds(:)
+        integer :: n, i
+        !
+        n = size(A,2)
+        allocate(inds, source = [1:n] )
+        allocate(zeros(size(A,1)))
+        zeros = 0
+        !
+        allocate(mask(n))
+        do i = 1, n
+            if (isequal( A(:,i), zeros)) then
+                mask(i) = .false.
+            else
+                mask(i) = .true.
+            endif
+        enddo
+        !
+        allocate(B, source = A(:,pack(inds,mask)))
+        !
+    end function  z_trim_null_columns
 
     ! matrix indexing
 

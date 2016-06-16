@@ -30,9 +30,9 @@ module am_mkl
         module procedure :: d_rand, dv_rand, dm_rand, dt_rand
     end interface ! rand
 
-    interface null_space
-        module procedure null_space_zgesvd, null_space_dgesvd
-    end interface ! null_space
+    interface get_null_space
+        module procedure get_null_space_zgesvd, get_null_space_dgesvd
+    end interface ! get_null_space
 
 contains
 
@@ -963,7 +963,7 @@ contains
 
     ! get null space using svd decomposition
 
-    function       null_space_dgesvd(A) result(null_space)
+    function       get_null_space_dgesvd(A) result(null_space)
         !
         real(dp), intent(in)  :: A(:,:)
         real(dp), allocatable :: null_space(:,:)
@@ -985,9 +985,9 @@ contains
         allocate(inds, source = [1:size(V_internal,2)])
         ! return null_space
         allocate(null_space, source = V_internal(:, pack(inds,T) ))
-    end function   null_space_dgesvd
+    end function   get_null_space_dgesvd
 
-    function       null_space_zgesvd(A) result(null_space)
+    function       get_null_space_zgesvd(A) result(null_space)
         !
         complex(dp), intent(in)  :: A(:,:)
         complex(dp), allocatable :: null_space(:,:)
@@ -1009,7 +1009,7 @@ contains
         allocate(inds, source = [1:size(V_internal,2)])
         ! return null_space
         allocate(null_space, source = V_internal(:, pack(inds,T) ))
-    end function   null_space_zgesvd
+    end function   get_null_space_zgesvd
 
     ! solve Ax = B by QR factorization
 
@@ -1097,31 +1097,19 @@ contains
         ldb  = size(B,1)
         nrhs = size(B,2)
         lda  = m
-        !
         allocate(WORK(lwmax))
         allocate(S(max(1, min(m, n))))
-        !
         ! copy variables
-        !
         allocate(CA, source = A)
         allocate(X , source = B)
-        !
         ! query the optimal workspace
-        !
         lwork = -1
         call dgelss(m, n, nrhs, CA, lda, X, ldb, S, rcond, rank, WORK, lwork, info)
         lwork = min( lwmax, int( WORK( 1 ) ) )
-        !
         ! solve the least squares problem min( norm2(B - Ax) ) for the x of minimum norm.
-        !
         call dgelss(m, n, nrhs, CA, lda, X, ldb, S, rcond, rank, WORK, lwork, info)
-        !
         ! check for convergence
-        !
-        if( info.gt.0 ) then
-            write(*,*) 'the algorithm computing svd failed to converge.'
-            stop
-        end if
+        if( info.gt.0 ) stop 'ERROR [am_dgelss]: SVD convergence failed'
     end subroutine am_dgelss
 
     ! LU decomposition

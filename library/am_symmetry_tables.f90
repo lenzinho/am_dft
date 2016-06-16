@@ -1095,6 +1095,9 @@ contains
         complex(dp),allocatable :: X(:) !  the nondegenerate eigenvector
         complex(dp),allocatable :: zeros(:)
         complex(dp),allocatable :: try(:)
+        real(dp), allocatable :: A_test(:,:)
+        real(dp), allocatable :: S_test(:)
+        real(dp), allocatable :: V_test(:,:)
         logical :: isorthogonal
         logical :: isfound
         integer :: nbases
@@ -1117,52 +1120,48 @@ contains
         ! allocate zero vector
         allocate(zeros(nbases))
         zeros = 0
-        ! find an eigenvector of a regular rep symmetry element that has unique (nondegenerate eigenvalues)
-!         allocate(X(nbases))
-!         allocate(D(nbases,nsyms))
-!         allocate(V(nbases,nbases,nsyms))
-!         search_nondegen : do i = 1, nsyms
-!             ! get eigenvector
-!             call am_dgeev(A=real(rr(:,:,i),dp),VR=V(:,:,i),D=D(:,i))
-!             ! search for nonzero and unique (nondegenerate) eigenvector
-!             do k = 1, nbases
-!                 ! enforce nonzero
-!                 if (abs(D(k,i)).gt.tiny) then
-!                     isfound = .true.
-!                     ! enforce nondegenerate
-!                     check : do j = 1, nbases
-!                         if (j.ne.k) then
-!                         if (abs(D(k,i)-D(j,i)).lt.tiny) then
-!                             isfound = .false.
-!                             exit check 
-!                         endif
-!                         endif
-!                     enddo check 
-!                     if (isfound) then
-!                         ! save the nondegenerate eigenvector
-!                         X = V(:,k,i)
-!                         exit search_nondegen
-!                     endif 
-!                 endif
-!             enddo
-!         enddo search_nondegen
+!         ! find an eigenvector of a regular rep symmetry element that has unique (nondegenerate eigenvalues)
+!         X = get_nondegenerate_eigenvec(rr=rr)
+!         ! check if something was returned
+!         if (size(X).eq.0) then
+!             ! if it wasn't, deallocate X
+!             deallocate(X)
+!             ! search for lowest degenerate subspace (Blokker-Flodmark procedure)
+!             X = get_starting_eigvec(rr=rr,commutator_id=commutator_id)
+!             !
+!         endif
+
+!         call am_dgels(A=real(irrep_proj(:,:,4),dp), X=test, B=real(zeros([nbases,1]),dp))
+!         call am_dgels(A=real(irrep_proj(:,:,4),dp), X=test, B=real(zeros([nbases,1]),dp))
+
+
+        allocate(A_test(3,5))
+        A_test(1,1:5) = [1,0,1,0,0]
+        A_test(2,1:5) = [0,1,0,1,0]
+        A_test(3,1:5) = [0,0,0,1,1]
+        call am_dgesvd(A=A_test, S=S_test, V=V_test)
+        write(*,*) 'S'
+        call disp(S_test)
+        write(*,*) 'V'
+        call disp(V_test)
+        write(*,*) 'null'
+        call disp(get_null_space(A_test))
+        write(*,*) 'intersection'
+        call disp(subspace_intersection(A_test(1:3,1:3),A_test(1:3,4:5)))
+        !
+
+
+        stop
+
 !         !
-!         call dump(A=V           ,fname=trim(outfile_dir_sym)//'/outfile.V')
-!         call dump(A=D           ,fname=trim(outfile_dir_sym)//'/outfile.D')
-!         call dump(A=class_member,fname=trim(outfile_dir_sym)//'/outfile.class_member')
-!         call dump(A=rr          ,fname=trim(outfile_dir_sym)//'/outfile.rr')
-!         call dump(A=irrep_proj  ,fname=trim(outfile_dir_sym)//'/outfile.irrep_proj')
-!         call dump(A=irrep_dim   ,fname=trim(outfile_dir_sym)//'/outfile.irrep_dim')
-!         ! if caught below, see Blokker-Flodmark for what to for no nondegenerate cases.
-!         if (.not.isfound) stop 'ERROR [get_block_similarity_transform]: no unique eigenvector found.'
-!         call disp(X)
+        call dump(A=class_member,fname=trim(outfile_dir_sym)//'/outfile.class_member')
+        call dump(A=rr          ,fname=trim(outfile_dir_sym)//'/outfile.rr')
+        call dump(A=irrep_proj  ,fname=trim(outfile_dir_sym)//'/outfile.irrep_proj')
+        call dump(A=irrep_dim   ,fname=trim(outfile_dir_sym)//'/outfile.irrep_dim')
+        call dump(A=commutator_id   ,fname=trim(outfile_dir_sym)//'/outfile.commutator_id')
 
 
-
-!         allocate(X(nbases))
-        X = get_starting_eigvec(rr=rr, commutator_id=commutator_id)
-
-        call disp(X)
+        stop
 
         ! initialize i_phi
         i_phi = 0
@@ -1172,51 +1171,112 @@ contains
             i_phi= i_phi + 1
             S(i) = i_phi
             E(i) = S(i) + irrep_dim(i) - 1
-            ! project X onto irreducible subspace
-            phi(:,i_phi) = matmul(irrep_proj(:,:,i), X)
+            if   (irrep_dim(i).eq.1) then
+                ! project a random vector on the irreducible subspace
+                ! since the subspace is 1 dimension, the randomness goes away.
+                phi(:,i_phi) = matmul(irrep_proj(:,:,i), rand(nbases) )
+            else 
+                ! if the irrep is two-dimensional or larger...
 
-            write(*,*) i_phi
-            call disp(phi(:,i_phi))
-            call disp(S)
-            call disp(E)
-            call disp(irrep_dim)
-            ! search for partners
-            search : do k = 1, nclasses
-                ! exit search when all partners symmetry functions are found 
-                if (i_phi.eq.E(i)) then
-                    exit search
-                endif
-                ! try partner function
-                try = matmul(rr(:,:,class_member(k,1)), phi(:,S(i)))
-                ! make sure: non-zero
-                ! write(*,*) isequal(try,zeros)
-                ! call disp(X=try,orient='row')
-                if (.not.isequal(try,zeros)) then
-                    ! make sure: orthogonal to other vectors in the irrep basis
-                    ! since in the regular rep symmetries have matrix elements (0,1), 
-                    ! it suffices to check whether the vectors are not the same.
-                    ! ideal, a cross product would be taken.
-                    isorthogonal = .true.
-                    search_orthogonal : do j = S(i), i_phi
-                        if (isequal(phi(:,j),try)) then
-                            isorthogonal = .false.
-                            exit search_orthogonal
-                        endif
-                    enddo search_orthogonal
-                    if (isorthogonal) then
-                        i_phi = i_phi + 1
-                        phi(:,i_phi) = try/norm(try)
-                    endif 
-                endif
-            enddo search
-            ! orthonormalize the basis
-            call disp(phi)
+
+
+                ! 
+                !
+                ! WORKING ON STUFF HERE 
+                ! 
+                ! ! project X onto irreducible subspace
+                ! phi(:,i_phi) = matmul(irrep_proj(:,:,i), X)
+
+                write(*,*) i_phi
+                call disp(phi(:,i_phi))
+                call disp(S)
+                call disp(E)
+                call disp(irrep_dim)
+                ! search for partners
+                search : do k = 1, nclasses
+                    ! exit search when all partners symmetry functions are found 
+                    if (i_phi.eq.E(i)) then
+                        exit search
+                    endif
+                    ! try partner function
+                    try = matmul(rr(:,:,class_member(k,1)), phi(:,S(i)))
+                    ! make sure: non-zero
+                    ! write(*,*) isequal(try,zeros)
+                    ! call disp(X=try,orient='row')
+                    if (.not.isequal(try,zeros)) then
+                        ! make sure: orthogonal to other vectors in the irrep basis
+                        ! since in the regular rep symmetries have matrix elements (0,1), 
+                        ! it suffices to check whether the vectors are not the same.
+                        ! ideal, a cross product would be taken.
+                        isorthogonal = .true.
+                        search_orthogonal : do j = S(i), i_phi
+                            if (isequal(phi(:,j),try)) then
+                                isorthogonal = .false.
+                                exit search_orthogonal
+                            endif
+                        enddo search_orthogonal
+                        if (isorthogonal) then
+                            i_phi = i_phi + 1
+                            phi(:,i_phi) = try/norm(try)
+                        endif 
+                    endif
+                enddo search
+            endif
+            ! orthonormalize the irreducible subspace
             phi(:,S(i):E(i)) = orthonormalize( phi(:,S(i):E(i)) )
         enddo
         if (i_phi.ne.nphis) stop 'ERROR [get_block_similarity_transform]: i_phi /= nirreps'
 
 
         contains
+
+        function       get_nondegenerate_eigenvec(rr) result(X)
+            !
+            implicit none
+            !
+            integer    , intent(in) :: rr(:,:,:)
+            complex(dp),allocatable :: X(:) !  the nondegenerate eigenvector
+            complex(dp),allocatable :: V(:,:) ! eigenvectors
+            complex(dp),allocatable :: D(:) ! eigenvalues
+            integer :: nsyms, nbases
+            logical :: isfound
+            !
+            nbases = size(rr,1)
+            nsyms  = size(rr,3)
+            !
+            allocate(D(nbases))
+            allocate(V(nbases,nbases))
+            search_nondegen : do i = 1, nsyms
+                ! get eigenvector
+                call am_dgeev(A=real(rr(:,:,i),dp),VR=V,D=D)
+                ! search for nonzero and unique (nondegenerate) eigenvector
+                do k = 1, nbases
+                    ! enforce nonzero
+                    if (abs(D(k)).gt.tiny) then
+                        isfound = .true.
+                        ! enforce nondegenerate
+                        check : do j = 1, nbases
+                            if (j.ne.k) then
+                            if (abs(D(k)-D(j)).lt.tiny) then
+                                isfound = .false.
+                                exit check 
+                            endif
+                            endif
+                        enddo check 
+                        if (isfound) then
+                            ! save the nondegenerate eigenvector
+                            allocate(X(nbases))
+                            X = V(:,k)
+                            exit search_nondegen
+                        endif 
+                    endif
+                enddo
+            enddo search_nondegen
+            !
+            if (.not.isfound) then
+                allocate(X(0))
+            endif
+        end function   get_nondegenerate_eigenvec
 
         function       get_starting_eigvec(rr,commutator_id) result(V_start)
             !
