@@ -180,7 +180,7 @@ module am_symmetry_relations
         !
         ! print header
         if (index(flags,'header').ne.0) then
-            write(*,'(a5,a,a)',advance='no') ' ... ', trim(int2char(nterms)), ' terms = '
+            write(*,'(a,a,a)',advance='no') flare, trim(int2char(nterms)), ' terms = '
             write(*,'(i4,a,f5.1,a)',advance='no') count(is_null)       , ' null ('       , count(is_null)       /real(nterms,dp)*100.0_dp , '%) '
             write(*,'(i4,a,f5.1,a)',advance='no') count(is_dependent)  , ' dependent ('  , count(is_dependent)  /real(nterms,dp)*100.0_dp , '%) '
             write(*,'(i4,a,f5.1,a)',advance='no') count(is_independent), ' independent (', count(is_independent)/real(nterms,dp)*100.0_dp , '%) '

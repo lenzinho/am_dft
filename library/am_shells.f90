@@ -161,7 +161,7 @@ contains
         !
         ! print stuff
         if (opts%verbosity.ge.1) then
-            write(*,'(5a,a,a)') ' ... ', 'pair cutoff radius = ', tostring(pair_cutoff)
+            write(*,'(5a,a,a)') flare, 'pair cutoff radius = ', tostring(pair_cutoff)
             ! write the number of shells each primitive cell atom hsa
             do i = 1, pc%natoms
                 D = matmul(matmul(inv(uc%bas),pc%bas),pc%tau_frac(:,i))
@@ -215,7 +215,7 @@ contains
                 endif
                 enddo
             enddo
-            write(*,'(a5,a)') ' ... ', 'Definitions:'
+            write(*,'(a,a)') flare, 'Definitions:'
             write(*,'(5x,a)') ' - i, j             : irreducible indicies'
             write(*,'(5x,a)') ' - m, n             : primitive indicies'
             write(*,'(5x,a)') ' - multiplicity (m) : pair apperences'
@@ -430,8 +430,8 @@ contains
         enddo
         !
         if (opts%verbosity.ge.1) then
-            write(*,'(a5,a,a)') ' ... ', 'primitive pair shells = '  , tostring(pp%nshells)
-            write(*,'(a5,a,a)') ' ... ', 'irreducible pair shells = ', tostring(ip%nshells)
+            write(*,'(a,a,a)') flare, 'primitive pair shells = '  , tostring(pp%nshells)
+            write(*,'(a,a,a)') flare, 'irreducible pair shells = ', tostring(ip%nshells)
             write(*,'(5x)' ,advance='no')
             write(*,'(a5)' ,advance='no') 'shell'
             write(*,'(a6)' ,advance='no') 'Zi-Zj'
@@ -477,14 +477,14 @@ contains
                 write(*,*)
             enddo
             ! write maps
-            write(*,'(a5,a)',advance='no') ' ... ', 'pair mapping (to irreducible: pp->ip)'
+            write(*,'(a,a)',advance='no') flare, 'pair mapping (to irreducible: pp->ip)'
             call id_print_map(pp%ip_id)
             !
-            write(*,'(a5,a)',advance='no') ' ... ', 'pair mapping (to primitive: ip->pp)'
+            write(*,'(a,a)',advance='no') flare, 'pair mapping (to primitive: ip->pp)'
             call id_print_map(ip%pp_id)
             !
             ! write definitions
-            write(*,'(a5,a)') ' ... ', 'Definitions:'
+            write(*,'(a,a)') flare, 'Definitions:'
             write(*,'(5x,a)') ' - i, j             : irreducible indicies'
             write(*,'(5x,a)') ' - m, n             : primitive indicies'
             write(*,'(5x,a)') ' - multiplicity (m) : pair apperences'

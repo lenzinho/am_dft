@@ -54,14 +54,14 @@ contains
         !
         call plot_histogram( histogram(pack(dr%E(:,:),(dr%E(:,:).ge.minE).and.(dr%E(:,:).le.maxE)),column_width) )
         !
-        if (opts%verbosity.ge.1) call am_print('number of bands',           dr%nbands     ,' ... ')
-        if (opts%verbosity.ge.1) call am_print('number of tetrahedra',      tet%ntets     ,' ... ')
-        if (opts%verbosity.ge.1) call am_print('lowest band energy',        minE          ,' ... ')
-        if (opts%verbosity.ge.1) call am_print('highest band energy',       maxE          ,' ... ')
-        if (opts%verbosity.ge.1) call am_print('minimum probing energy',    dos%E(1)      ,' ... ')
-        if (opts%verbosity.ge.1) call am_print('maximum probing energy',    dos%E(dos%nEs),' ... ')
-        if (opts%verbosity.ge.1) call am_print('energy increments dE',      dE            ,' ... ')
-        if (opts%verbosity.ge.1) call am_print('number of probing energies',dos%nEs       ,' ... ')
+        if (opts%verbosity.ge.1) call am_print('number of bands',           dr%nbands     ,flare)
+        if (opts%verbosity.ge.1) call am_print('number of tetrahedra',      tet%ntets     ,flare)
+        if (opts%verbosity.ge.1) call am_print('lowest band energy',        minE          ,flare)
+        if (opts%verbosity.ge.1) call am_print('highest band energy',       maxE          ,flare)
+        if (opts%verbosity.ge.1) call am_print('minimum probing energy',    dos%E(1)      ,flare)
+        if (opts%verbosity.ge.1) call am_print('maximum probing energy',    dos%E(dos%nEs),flare)
+        if (opts%verbosity.ge.1) call am_print('energy increments dE',      dE            ,flare)
+        if (opts%verbosity.ge.1) call am_print('number of probing energies',dos%nEs       ,flare)
         !
         allocate(dos%lmproj(dr%nspins,dr%norbitals,dr%nions,dos%nEs))
         allocate(dos%dos(dos%nEs))
@@ -127,10 +127,10 @@ contains
             ! STDOUT
             !
             if (opts%verbosity.ge.1) write(*,*) ' ... Projection information'
-            if (opts%verbosity.ge.1) call am_print('number of ions',     dr%nions ,' ... ')
-            if (opts%verbosity.ge.1) call am_print('number of orbitals', dr%norbitals ,' ... ')
-            if (opts%verbosity.ge.1) call am_print('number of spins',    dr%nspins ,' ... ')
-            if (opts%verbosity.ge.1) call am_print('number of columns',  dr%nspins*dr%norbitals ,' ... ')
+            if (opts%verbosity.ge.1) call am_print('number of ions',     dr%nions ,flare)
+            if (opts%verbosity.ge.1) call am_print('number of orbitals', dr%norbitals ,flare)
+            if (opts%verbosity.ge.1) call am_print('number of spins',    dr%nspins ,flare)
+            if (opts%verbosity.ge.1) call am_print('number of columns',  dr%nspins*dr%norbitals ,flare)
             !
             ! HEADER (first four lines)
             !

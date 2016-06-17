@@ -229,8 +229,8 @@ contains
         enddo
         !
         if (size(A,1).gt.maximum_lines_to_print) then
-            write(fid,'(5x,a)',advance='no') centertitle(' ... ',n*15)
-            write(fid,'(5x,a)',advance='no') centertitle(' ... ',n*15)
+            write(fid,'(5x,a)',advance='no') centertitle(flare,n*15)
+            write(fid,'(5x,a)',advance='no') centertitle(flare,n*15)
             write(fid,*)
         endif
         !

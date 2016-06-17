@@ -128,7 +128,7 @@ contains
         !
         if (opts%verbosity.ge.1) then
             ! print statistics about parameters
-            write(*,'(a5,2a6,3a14)') ' ... ', 'shell', 'terms', 'null', 'dependent', 'independent'
+            write(*,'(a,2a6,3a14)') flare, 'shell', 'terms', 'null', 'dependent', 'independent'
             write(*,'(5x,a)') repeat(' '//repeat('-',5),2)//repeat(' '//repeat('-',13),3)
             ! print table
             a=0;b=0;c=0;nterms=0
@@ -156,7 +156,7 @@ contains
             write(*,*)
             ! print symmetry relations
             do i = 1, tb%nshells
-                write(*,'(a5,a)') ' ... ', 'shell '//trim(int2char(i))//' irreducible symmetry relations:'
+                write(*,'(a,a)') flare, 'shell '//trim(int2char(i))//' irreducible symmetry relations:'
                 call print_relations(relations=tb%tbvsk(i)%relations, dims=tb%tbvsk(i)%dims, flags='print:dependent,independent')
             enddo
         endif
@@ -377,7 +377,7 @@ contains
                 endif
             enddo
             !
-            write(*,'(a5,a)') ' ... ' ,'shell '//tostring(j)//': OK!'
+            write(*,'(a,a)') flare ,'shell '//tostring(j)//': OK!'
         enddo
         !
         call print_title('Checking Hamiltonian at arbitrary k-points')
@@ -385,9 +385,9 @@ contains
         do k = 1, 10
             kpt = reshape([rand(),rand(),rand()],[3,1])
             ! kpt = matmul(uc%recbas,kpt), ideally... it should be in cart.
-            write(*,'(a5,a)') ' ... ', 'k-point '//tostring(k)//' = '//tostring(pack(kpt,.true.),fmt='f18.10')
+            write(*,'(a,a)') flare, 'k-point '//tostring(k)//' = '//tostring(pack(kpt,.true.),fmt='f18.10')
             do j = 1, ip_nshells
-                write(*,'(a5,a)',advance='no') ' ... ', 'shell '//tostring(j)//' '
+                write(*,'(a,a)',advance='no') flare, 'shell '//tostring(j)//' '
                 ! ignore all irreducible shells, except j
                 mask    = .false.
                 mask(j) = .true.
@@ -507,7 +507,7 @@ contains
         fid = 1
         open(unit=fid,file=trim(outfile_dir_tb)//'/'//'outfile.tb_matrix_elements_irreducible',status='replace',action='write')
             !
-            write(fid,'(a5,a16,3a6)') '#', 'V', 'shell', 'alpha', 'beta'
+            write(fid,'(a,a16,3a6)') '#', 'V', 'shell', 'alpha', 'beta'
             do i = 1, tb%nVs
                 ! get shell index
                 k     = tb%V_ind(1,i)
@@ -762,11 +762,11 @@ contains
         call initialize_optimizer(ft=ft, tb=tb, bz=bz, dr=dr, ip=ip, tbpg=tbpg, &
         E_lower=opts%Erange(1) , maxiter=1000)
         !
-        write(*,'(a5,a,a)') ' ... ', 'irreducible matrix elements = ', tostring(ft%nVs)
-        write(*,'(a5,a,a)') ' ... ', 'k-points = '                   , tostring(ft%nkpts)
-        write(*,'(a5,a,a)') ' ... ', 'bands = '                      , tostring(ft%nbands)
-        write(*,'(a5,a,a)') ' ... ', 'residual vector length = '     , tostring(ft%nRs)
-        write(*,'(a5,a,a)') ' ... ', 'low energy cutoff = '          , tostring(ft%E_lower)
+        write(*,'(a,a,a)') flare, 'irreducible matrix elements = ', tostring(ft%nVs)
+        write(*,'(a,a,a)') flare, 'k-points = '                   , tostring(ft%nkpts)
+        write(*,'(a,a,a)') flare, 'bands = '                      , tostring(ft%nbands)
+        write(*,'(a,a,a)') flare, 'residual vector length = '     , tostring(ft%nRs)
+        write(*,'(a,a,a)') flare, 'low energy cutoff = '          , tostring(ft%E_lower)
         !
         call perform_optimization(ft=ft, tb=tb, tbpg=tbpg, bz=bz, dr=dr, ip=ip, pp=pp)
         !

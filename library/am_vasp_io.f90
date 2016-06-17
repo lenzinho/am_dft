@@ -68,7 +68,7 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if (verbosity.ge.1) call am_print('actual file read is',trim(fname),' ... ')
+            if (verbosity.ge.1) call am_print('actual file read is',trim(fname),flare)
             !
             ! (LINE 1) Automatically generated mesh
             read(fid,'(a)') buffer
@@ -78,7 +78,7 @@ module am_vasp_io
             !> nkpts number of kpoints
             read(word(1),*) nkpts_internal
             if (present(nkpts)) nkpts = nkpts_internal
-            if (verbosity.ge.1) call am_print('number of kpoints',nkpts_internal,' ... ')
+            if (verbosity.ge.1) call am_print('number of kpoints',nkpts_internal,flare)
             !
             if (present(kpt)) allocate(kpt(3,nkpts_internal))
             allocate(w_int(nkpts_internal))
@@ -114,7 +114,7 @@ module am_vasp_io
                     !> ntets number of tetrahedra
                     read(word(1),*) ntets_internal
                     if (present(ntets)) ntets = ntets_internal
-                    if (verbosity.ge.1) call am_print('number of tetrahedra',ntets_internal,' ... ')
+                    if (verbosity.ge.1) call am_print('number of tetrahedra',ntets_internal,flare)
                     !> vtet(ntets) tetrahedron volume
                     read(word(2),*) vtet_tmp
                     if (present(vtet)) then
@@ -122,7 +122,7 @@ module am_vasp_io
                         vtet = vtet_tmp
                     endif
                     !
-                    if (verbosity.ge.1) call am_print('tetrahedron volume (equal for all tetrahedra)',vtet_tmp,' ... ')
+                    if (verbosity.ge.1) call am_print('tetrahedron volume (equal for all tetrahedra)',vtet_tmp,flare)
                     !
                     if (present(tet))  allocate(tet(4,ntets_internal))
                     if (present(wtet)) allocate(wtet(ntets_internal))
@@ -144,8 +144,8 @@ module am_vasp_io
                     enddo
                     if (verbosity.ge.1) then
                         if (present(tet)) then
-                            if (i.gt.10) call am_print('irreducible k-point indicies of first ten tetrahedra',transpose(tet(:,1:10)),' ... ')
-                            if (i.le.10) call am_print('irreducible k-point indicies tetrahedra',transpose(tet),' ... ')
+                            if (i.gt.10) call am_print('irreducible k-point indicies of first ten tetrahedra',transpose(tet(:,1:10)),flare)
+                            if (i.le.10) call am_print('irreducible k-point indicies tetrahedra',transpose(tet),flare)
                         endif
                     endif
                 endif
@@ -214,7 +214,7 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if (verbosity.ge.1) call am_print('actual file read is',trim(fname),' ... ')
+            if (verbosity.ge.1) call am_print('actual file read is',trim(fname),flare)
             ! (LINE 1) PROCAR lm decomposed
             read(fid,'(a)')
             ! (LINE 2) # of kpt-points:  160         # of bands:   8         # of ions:   2
@@ -230,9 +230,9 @@ module am_vasp_io
             read(word(12),*) internal_nions
             if (present(nions)) nions = internal_nions
             !
-            if (verbosity.ge.1) call am_print('number of kpoints',internal_nkpts,' ... ')
-            if (verbosity.ge.1) call am_print('number of bands',internal_nbands,' ... ')
-            if (verbosity.ge.1) call am_print('number of ions',internal_nions,' ... ')
+            if (verbosity.ge.1) call am_print('number of kpoints',internal_nkpts,flare)
+            if (verbosity.ge.1) call am_print('number of bands',internal_nbands,flare)
+            if (verbosity.ge.1) call am_print('number of ions',internal_nions,flare)
             !
             !> E(nbands,nkpts) energies
             !> occ(nbands,nkpts) occupancies
@@ -279,14 +279,14 @@ module am_vasp_io
                         !> norbitals number of orbitals
                         norbitals = size(word)-2 ! minus 2 to account for the ion, which is not an orbital, and the total!
                         if (present(norbitals)) norbitals = internal_norbitals
-                        if (verbosity.ge.1) call am_print('number of orbitals',internal_norbitals,' ... ')
+                        if (verbosity.ge.1) call am_print('number of orbitals',internal_norbitals,flare)
                         !> orbitals(norbitals) names of orbitals
                         if (present(orbitals)) then
                             allocate(character(len=15) :: orbitals(internal_norbitals))
                             do l = 1, internal_norbitals
                                 orbitals(l) = word(l+1)
                             enddo
-                            if (verbosity.ge.1) write(*,'(a5,a,100(x,a))' ) ' ... ', 'orbitals =', ( trim(orbitals(l)), l = 1, norbitals)
+                            if (verbosity.ge.1) write(*,'(a,a,100(x,a))' ) flare, 'orbitals =', ( trim(orbitals(l)), l = 1, norbitals)
                         endif
                         !> lmproj(nspins,norbitals,nions,nbands,nkpts)
                         if (present(lmproj)) allocate(lmproj(internal_nspins,internal_norbitals,internal_nions,internal_nbands,internal_nkpts))
@@ -368,7 +368,7 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if ( verbosity .ge. 1) call am_print('actual file read',trim(fname),' ... ')
+            if ( verbosity .ge. 1) call am_print('actual file read',trim(fname),flare)
             !
             nkpts_prim = 0
             nkpts  = 0
@@ -404,10 +404,10 @@ module am_vasp_io
             !
         close(fid)
         !
-        if (verbosity.ge.1) call am_print('number of kpoints to project onto',nkpts_prim,' ... ')
-        if (verbosity.ge.1) call am_print('number of spin components',nspins,' ... ')
-        if (verbosity.ge.1) call am_print('number of kpoints',nkpts,' ... ')
-        if (verbosity.ge.1) call am_print('number of bands',nbands,' ... ')
+        if (verbosity.ge.1) call am_print('number of kpoints to project onto',nkpts_prim,flare)
+        if (verbosity.ge.1) call am_print('number of spin components',nspins,flare)
+        if (verbosity.ge.1) call am_print('number of kpoints',nkpts,flare)
+        if (verbosity.ge.1) call am_print('number of bands',nbands,flare)
         !> k_prim(3,nkpts_prim) kvector (POSCAR.prim)
         allocate(k_prim(3,nkpts_prim))
         !> w_prim(nkpts_prim) normalized kpoint weights (POSCAR.prim)
@@ -554,7 +554,7 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if (verbosity.ge.1) call am_print('actual file read',trim(fname),' ... ')
+            if (verbosity.ge.1) call am_print('actual file read',trim(fname),flare)
             ! (LINE 1)     2    2    1    1
             read(unit=fid,fmt='(a)') buffer
             word = strsplit(buffer,delimiter=' ')
@@ -572,19 +572,19 @@ module am_vasp_io
             read(unit=fid,fmt='(a)') buffer
             word = strsplit(buffer,delimiter=' ')
             !> nelects number of electrons
-            if (verbosity.ge.1) write(*,'(a5,a,a)') ' ... ', 'electrons = ', trim(word(1))
+            if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'electrons = ', trim(word(1))
             if (present(nelecs)) then
                 read(word(1),*) nelecs
             endif
             !> nkpts number of kpoints
             read(word(2),*) internal_nkpts
-            if (verbosity.ge.1) write(*,'(a5,a,a)') ' ... ', 'kpoints = ', trim(word(2))
+            if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'kpoints = ', trim(word(2))
             if (present(nkpts)) then
                 nkpts = internal_nkpts
             endif
             !> nbands number of bands
             read(word(3),*) nbands_without_spin
-            if (verbosity.ge.1) write(*,'(a5,a,a)') ' ... ', 'bands (neglecting spin) = ', trim(word(3))
+            if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'bands (neglecting spin) = ', trim(word(3))
             !
             if (present(kpt)) allocate(kpt(3,internal_nkpts))
             if (present(w))   allocate(w(internal_nkpts))
@@ -617,12 +617,12 @@ module am_vasp_io
                         ! <ORIGINAL>
                         ! internal_nspins = size(word)-2
                         ! </ORIGINAL>
-                        if (verbosity.ge.1) write(*,'(a5,a,a)') ' ... ', 'spins = ', tostring(internal_nspins)
+                        if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'spins = ', tostring(internal_nspins)
                         if (present(nspins)) then
                             nspins = internal_nspins
                         endif
                         internal_nbands = nbands_without_spin*internal_nspins
-                        if (verbosity.ge.1) write(*,'(a5,a,a)') ' ... ', 'bands (with spin) = ', tostring(internal_nbands)
+                        if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'bands (with spin) = ', tostring(internal_nbands)
                         if (present(nbands)) then 
                             nbands = internal_nbands
                         endif
@@ -672,8 +672,8 @@ module am_vasp_io
         implicit none
         ! subroutine i/o
         real(dp), intent(out) :: bas(3,3) ! column vectors a(1:3,i), a(1:3,j), a(1:3,kpt)
-        integer,intent(out) :: natoms
-        integer,intent(out) :: nspecies
+        integer , intent(out) :: natoms
+        integer , intent(out) :: nspecies
         character(len=:), allocatable, intent(out) :: symb(:) ! 1 symb per species
         integer , allocatable :: natoms_per_species(:) ! number of atoms per species
         real(dp), allocatable, intent(out) :: tau_frac(:,:) ! atomic coordinates tau_frac_read(3,natoms) in fractional
@@ -692,6 +692,8 @@ module am_vasp_io
         character(len=:), allocatable :: word(:)
         ! loop variables
         integer :: i, j, m, n
+        ! output string
+        character(:), allocatable :: disp_str(:)
         ! optional i/o
         character(*), optional :: iopt_filename
         character(max_argument_length) :: fname
@@ -702,14 +704,14 @@ module am_vasp_io
         verbosity = 1
         if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
         !
+        call tostring_set(sep=' ')
         !
-        !
-        if (verbosity.ge.1) call print_title('Reading POSCAR')
+        if (verbosity.ge.1) call print_title('Unit cell')
         !
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if (verbosity.ge.1) call am_print('actual file read',trim(fname),' ... ')
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'file read = '//trim(fname)
             ! (LINE 1) header
              read(unit=fid,fmt='(a)')
             ! (LINE 2) lattice parameter scaling
@@ -734,7 +736,11 @@ module am_vasp_io
                 call am_print("ERROR","Basis vectors are not coplanar!"," >>> ")
                 stop
             endif
-            if (verbosity.ge.1) call am_print( "basis (column vectors)", bas, " ... " )
+            if (verbosity.ge.1) then 
+                write(*,'(a,a)') flare, 'basis (column vectors) = '
+                call disp_indent()
+                call disp(X=bas)
+            endif
             ! get reciprocal basis as column vectors b
             recbas(1,1)=bas(2,2)*bas(3,3)-bas(3,2)*bas(2,3)
             recbas(1,2)=bas(3,2)*bas(1,3)-bas(1,2)*bas(3,3)
@@ -751,16 +757,16 @@ module am_vasp_io
             ! strslplit => allocate internally, character(500)::symb(j)
             symb = strsplit(buffer,delimiter=' ')
             nspecies = size(symb)
-            if (verbosity.ge.1) call am_print( "number of unique atomic species", nspecies, " ... ")
-            if (verbosity.ge.1) write(*,'(" ... ","atomic species =",100a3)') ( symb(i)(1:2), i = 1, nspecies)
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'unique species = '//tostring(nspecies)
+            if (verbosity.ge.1) write(*,'(a,a,100a)') flare, 'atomic species = ', (trim(symb(i)(1:2))//' ', i = 1, nspecies)
             ! (LINE 6) 1  1
             allocate(natoms_per_species(nspecies))
             read(fid,*) natoms_per_species
-            if (verbosity.ge.1) write(*,'(" ... ","number of atoms per species =",100i4)') ( natoms_per_species(i), i = 1, nspecies)
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'atoms per species = '//tostring(natoms_per_species(1:nspecies))
             ! get total number of atoms
             natoms=sum(natoms_per_species)
             ! write the total number of atoms
-            if (verbosity.ge.1) call am_print("total number of atoms", natoms, " ... ")
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'atoms = '//tostring(natoms)
             ! (LINE 8) Direct
             direct = .false.
             cartesian = .false.
@@ -786,13 +792,13 @@ module am_vasp_io
             end select
             !
             if ( selective_dynamics ) then
-                if (verbosity.ge.1) write(*,'(a5,a)') ' ... ', 'selective dynamics'
+                if (verbosity.ge.1) write(*,'(a,a)') flare, 'selective dynamics'
             endif
             if ( direct ) then
-                if (verbosity.ge.1) write(*,'(a5,a)') ' ... ', 'atomic coordinates read in with fractional units and converted to cartesian coordinates'
+                if (verbosity.ge.1) write(*,'(a,a)') flare, 'atomic basis read as [frac]'
             endif
             if ( cartesian ) then
-                if (verbosity.ge.1) write(*,'(a5,a)') ' ... ', 'atomic coordinates read in with cartesian coordinates'
+                if (verbosity.ge.1) write(*,'(a,a)') flare, 'atomic basis read as [cart]'
             endif
             ! (LINE 9-10)   0.1250000000000000  0.1250000000000000  0.1250000000000000
             ! read atomic positions
@@ -822,25 +828,19 @@ module am_vasp_io
                     endif
                 enddo
             enddo
-            !
+            ! write stdout
             if (verbosity.ge.1) then
-                write(*,'(" ... ",a)') "atomic positions (fractional, cartesian)"
-                m = 0
-                do i = 1, nspecies
-                    do j = 1, natoms_per_species(i)
-                        !
-                        m = m + 1
-                        !
-                        if (m.lt.11) then
-                            write(*,'(5x,a5,a3,3f13.8,5x,3f13.8)') int2char(m), symb(atype(m)), tau_frac(1:3,m), matmul(bas,tau_frac(1:3,m))
-                        elseif (m.eq.11) then
-                            write(*,'(5x,a)') repeat(" ... ",15)
-                        endif
-                        !
-                    enddo
+                write(*,'(a,a)') flare, 'atomic basis = '
+                call disp_indent()
+                call disp(X=[1:natoms],style='underline',title='#',advance='no')
+                allocate(character(2) :: disp_str(natoms))
+                do i = 1, natoms
+                    disp_str(i) = symb(atype(i))
                 enddo
+                call disp(X=disp_str                       ,style='underline',title='atom'  ,advance='no',fmt='a3')
+                call disp(X=transpose(tau_frac)            ,style='underline',title='[frac]',advance='no')
+                call disp(X=transpose(matmul(bas,tau_frac)),style='underline',title='[cart]',advance='yes')
             endif
-            !
         close(fid)
     end subroutine read_poscar
 
@@ -877,7 +877,7 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status='replace',action='write')
             !
-            call am_print('file',trim(fname),' ... ')
+            call am_print('file',trim(fname),flare)
             ! (LINE 1) header
             write(unit=fid,fmt='(a)') trim(header)
             ! (LINE 2) lattice parameter scaling
@@ -956,7 +956,7 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if (verbosity.ge.1) call am_print('actual file read is',trim(fname),' ... ')
+            if (verbosity.ge.1) call am_print('actual file read is',trim(fname),flare)
             !
             ! (LINE 1) :File generated by VASP: unknown system
             read(fid,*)
@@ -967,10 +967,10 @@ module am_vasp_io
             read(word(2),*) nkpts
             read(word(3),*) nwanniers
             nwanprojs=nbands*nwanniers*nkpts
-            if (verbosity.ge.1) call am_print('number of bands',nbands,' ... ')
-            if (verbosity.ge.1) call am_print('number of kpoints',nkpts,' ... ')
-            if (verbosity.ge.1) call am_print('number of neighbors',nwanniers,' ... ')
-            if (verbosity.ge.1) call am_print('number of projections',nwanprojs,' ... ')
+            if (verbosity.ge.1) call am_print('number of bands',nbands,flare)
+            if (verbosity.ge.1) call am_print('number of kpoints',nkpts,flare)
+            if (verbosity.ge.1) call am_print('number of neighbors',nwanniers,flare)
+            if (verbosity.ge.1) call am_print('number of projections',nwanprojs,flare)
             ! Read the projections
             allocate(U(nbands,nbands,nkpts))
             do i = 1, nwanprojs
@@ -1023,7 +1023,7 @@ module am_vasp_io
         fid = 1
         open(unit=fid,file=trim(fname),status="old",action='read')
             !
-            if (verbosity.ge.1) call am_print('actual file read is',trim(fname),' ... ')
+            if (verbosity.ge.1) call am_print('actual file read is',trim(fname),flare)
             !
             nkpts  = 0
             nbands = 0
@@ -1050,8 +1050,8 @@ module am_vasp_io
             enddo
         close(fid)
         !
-        if (verbosity.ge.1) call am_print('number of kpoints',nkpts,' ... ')
-        if (verbosity.ge.1) call am_print('number of bands',nbands,' ... ')
+        if (verbosity.ge.1) call am_print('number of kpoints',nkpts,flare)
+        if (verbosity.ge.1) call am_print('number of bands',nbands,flare)
         !
         ! ACTUALLY READ IN THINGS NOW
         !
@@ -1101,7 +1101,7 @@ module am_vasp_io
 !         fid = 1
 !         open(unit=fid,file=trim(fname),status="old",action='read')
 !             !
-!             if (verbosity.ge.1) call am_print('actual file read is',fname,' ... ')
+!             if (verbosity.ge.1) call am_print('actual file read is',fname,flare)
 !             !
 !             ! (LINE 1) :File generated by VASP: unknown system
 !             read(fid,*)
@@ -1112,10 +1112,10 @@ module am_vasp_io
 !             read(word(2),*) nkpts
 !             read(word(3),*) nneighbors
 !             noverlaps=nkpts*nneighbors
-!             if (verbosity.ge.1) call am_print('number of bands',nbands,' ... ')
-!             if (verbosity.ge.1) call am_print('number of kpoints',nkpts,' ... ')
-!             if (verbosity.ge.1) call am_print('number of neighbors',nneighbors,' ... ')
-!             if (verbosity.ge.1) call am_print('number of overlaps',noverlaps,' ... ')
+!             if (verbosity.ge.1) call am_print('number of bands',nbands,flare)
+!             if (verbosity.ge.1) call am_print('number of kpoints',nkpts,flare)
+!             if (verbosity.ge.1) call am_print('number of neighbors',nneighbors,flare)
+!             if (verbosity.ge.1) call am_print('number of overlaps',noverlaps,flare)
 !             !
 !             allocate(mmn_tmp(nbands,nbands))
 !             !

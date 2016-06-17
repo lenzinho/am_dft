@@ -54,11 +54,11 @@ contains
         if (opts%verbosity.ge.1) call print_title('Input electronic band dispersion')
         !
         if     (index(flags,'eigenval')) then
-            write(*,'(a5,a,a)') ' ... ', 'file = ', 'eigenval'
+            write(*,'(a,a,a)') flare, 'file = ', 'eigenval'
             call read_eigenval(E=dr%E, iopt_filename=opts%eigenval, iopt_verbosity=0, &
                 nbands=dr%nbands, nspins=dr%nspins, lmproj=dr%lmproj)
         elseif (index(flags,'procar')) then
-            write(*,'(a5,a,a)') ' ... ', 'file = ', 'procar'
+            write(*,'(a,a,a)') flare, 'file = ', 'procar'
             call read_procar(E=dr%E, iopt_filename=opts%procar, iopt_verbosity=0, &
                 nbands=dr%nbands, nions=dr%nions, nspins=dr%nspins, norbitals=dr%norbitals, orbitals=dr%orbitals, lmproj=dr%lmproj)
         else
@@ -66,17 +66,17 @@ contains
         endif
         !
         if (opts%verbosity.ge.1) then
-            write(*,'(a5,a,a)') ' ... ', 'bands = ', tostring(dr%nbands)
-            write(*,'(a5,a,a)') ' ... ', 'spins = ', tostring(dr%nspins)
-            write(*,'(a5,a)  ') ' ... ', 'band energy statistics = '
+            write(*,'(a,a,a)') flare, 'bands = ', tostring(dr%nbands)
+            write(*,'(a,a,a)') flare, 'spins = ', tostring(dr%nspins)
+            write(*,'(a,a)  ') flare, 'band energy statistics = '
             write(*,'(5x,a,a)')          'lowest = ', tostring(minval(pack(dr%E,.true.)))
             write(*,'(5x,a,a)')          'highest = ', tostring(maxval(pack(dr%E,.true.)))
             write(*,'(5x,a,a)')          'mean = ', tostring( sum(pack(dr%E,.true.))/size(pack(dr%E,.true.)) )
             ! make nice dos histogram
-            write(*,'(a5,a)') ' ... ', 'density of states'
+            write(*,'(a,a)') flare, 'density of states'
             call plot_histogram(binned_data=histogram(x=pack(dr%E,.true.),m=98)) 
             ! make nice plot
-            ! write(*,'(a5,a)') ' ... ', 'band ranges = '
+            ! write(*,'(a,a)') flare, 'band ranges = '
             ! height = 98
             ! allocate(canvas(dr%nbands,height))
             ! canvas = 0
@@ -128,17 +128,17 @@ contains
             !
             ! STDOUT
             !
-            if (opts%verbosity.ge.1) call am_print('kpoints',  bz%nkpts,' ... ')
-            if (opts%verbosity.ge.1) call am_print('bands',    dr%nbands ,' ... ')
-            if (opts%verbosity.ge.1) call am_print('ions',     dr%nions ,' ... ')
-            if (opts%verbosity.ge.1) call am_print('orbitals', dr%norbitals ,' ... ')
-            if (opts%verbosity.ge.1) call am_print('spins',    dr%nspins ,' ... ')
-            if (opts%verbosity.ge.1) call am_print('columns',  dr%nspins*dr%norbitals ,' ... ')
+            if (opts%verbosity.ge.1) call am_print('kpoints',  bz%nkpts,flare)
+            if (opts%verbosity.ge.1) call am_print('bands',    dr%nbands ,flare)
+            if (opts%verbosity.ge.1) call am_print('ions',     dr%nions ,flare)
+            if (opts%verbosity.ge.1) call am_print('orbitals', dr%norbitals ,flare)
+            if (opts%verbosity.ge.1) call am_print('spins',    dr%nspins ,flare)
+            if (opts%verbosity.ge.1) call am_print('columns',  dr%nspins*dr%norbitals ,flare)
             !
             ! HEADER (first three lines)
             !
             write(fid,'(a)')  'Character-projected energy dispersion'
-            write(fid,'(100a13)',advance='no') ' ', ' ',' ',' ','ions'
+            write(fid,'(100a13)',advance='no') ' ', flare,' ','ions'
             do m = 1, dr%nions
                 do l = 1, dr%norbitals
                 do n = 1, dr%nspins
@@ -148,7 +148,7 @@ contains
             enddo
             write(fid,*)
             !
-            write(fid,'(100a13)',advance='no') ' ', ' ',' ',' ','spin'
+            write(fid,'(100a13)',advance='no') ' ', flare,' ','spin'
             do m = 1, dr%nions
                 do l = 1, dr%norbitals
                 do n = 1, dr%nspins

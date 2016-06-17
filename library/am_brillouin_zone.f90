@@ -147,13 +147,13 @@ contains
         if (opts%verbosity.ge.1) call print_title('Input kpoints')
         !
         if     (index(flags,'ibzkpt')) then
-            write(*,'(a5,a,a)') ' ... ', 'file = ', 'ibzkpt'
+            write(*,'(a,a,a)') flare, 'file = ', 'ibzkpt'
             call read_ibzkpt(  kpt=kpt, w=w, iopt_filename=opts%ibzkpt  , iopt_verbosity=0)
         elseif (index(flags,'procar')) then
-            write(*,'(a5,a,a)') ' ... ', 'file = ', 'procar'
+            write(*,'(a,a,a)') flare, 'file = ', 'procar'
             call read_procar(  kpt=kpt, w=w, iopt_filename=opts%procar  , iopt_verbosity=0)
         elseif (index(flags,'eigenval')) then
-            write(*,'(a5,a,a)') ' ... ', 'file = ', 'eigenval'
+            write(*,'(a,a,a)') flare, 'file = ', 'eigenval'
             call read_eigenval(kpt=kpt, w=w, iopt_filename=opts%eigenval, iopt_verbosity=0)
         else
             stop 'Unknown flag. Nothing read.'
@@ -165,7 +165,7 @@ contains
         ! if (.not.isequal(bz%w,w)) stop 'Computed weights do not match vasp input'
         !
         if (opts%verbosity.ge.1) then
-            write(*,'(a5,a,a)') ' ... ', 'kpoints = ', tostring(bz%nkpts)
+            write(*,'(a,a,a)') flare, 'kpoints = ', tostring(bz%nkpts)
         endif
         !
     end subroutine load
@@ -285,7 +285,7 @@ contains
 !             call am_print_two_matrices_side_by_side(name='kpoints',&
 !                 Atitle='fractional',A=transpose(fbz%kpt_frac),&
 !                 Btitle='cartesian' ,B=transpose(fbz%kpt_cart),&
-!                 iopt_emph=' ... ',iopt_teaser=.true.)
+!                 iopt_emph=flare,iopt_teaser=.true.)
 !         endif
 !         !
 !         contains
@@ -375,19 +375,19 @@ contains
 !         ! print stdout
 !         if (opts%verbosity.ge.1) then
 !             !
-!             call am_print('FBZ k-points',fbz%nkpts,' ... ')
+!             call am_print('FBZ k-points',fbz%nkpts,flare)
 !             !
-!             call am_print('IBZ k-points',ibz%nkpts,' ... ')
+!             call am_print('IBZ k-points',ibz%nkpts,flare)
 !             !
 !             call am_print_two_matrices_side_by_side(name='IBZ k-points',&
 !                 Atitle='fractional',A=transpose(ibz%kpt_frac),&
 !                 Btitle='cartesian' ,B=transpose(ibz%kpt_cart),&
-!             iopt_emph=' ... ',iopt_teaser=.true.)
+!             iopt_emph=flare,iopt_teaser=.true.)
 !             !
-!             write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to IBZ: full->irr)'
+!             write(*,'(a,a)',advance='no') flare, 'atomic mapping (to IBZ: full->irr)'
 !             call id_print_map(fbz%ibz_id)
 !             !
-!             write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (from IBZ: irr->full)'
+!             write(*,'(a,a)',advance='no') flare, 'atomic mapping (from IBZ: irr->full)'
 !             call id_print_map(ibz%fbz_id)
 !             !
 !         endif
@@ -409,7 +409,7 @@ contains
 !         !
 !         if (opts%verbosity.ge.1) call print_title('Reducing to IBZ')
 !         ! 
-!         if (opts%verbosity.ge.1) call am_print('number of original kpoints',bz%nkpts,' ... ')
+!         if (opts%verbosity.ge.1) call am_print('number of original kpoints',bz%nkpts,flare)
 !         ! generate voronoi points (cartesian)
 !         grid_points = matmul( inv(pc%bas), meshgrid([-1:1],[-1:1],[-1:1]) )
 !         ! reduce kpoints to ibz
@@ -425,7 +425,7 @@ contains
 !         ibz%kpt = unique(ibz%kpt,opts%prec)
 !         ! get number of unique points
 !         ibz%nkpts = size(ibz%kpt,2)
-!         if (opts%verbosity.ge.1) call am_print('number of irreducible kpoints',ibz%nkpts,' ... ')
+!         if (opts%verbosity.ge.1) call am_print('number of irreducible kpoints',ibz%nkpts,flare)
 !         ! get weights
 !         allocate(ibz%w(ibz%nkpts))
 !         !$OMP PARALLEL PRIVATE(i) SHARED(grid_points,bz,ibz,pc,pg)
@@ -462,7 +462,7 @@ contains
 !             call am_print_two_matrices_side_by_side(name='irreducible kpoints',&
 !                 Atitle='fractional',A=transpose(ibz%kpt),&
 !                 Btitle='cartesian' ,B=transpose(matmul(inv(pc%bas),ibz%kpt)),&
-!                 iopt_emph=' ... ',iopt_teaser=.true.)
+!                 iopt_emph=flare,iopt_teaser=.true.)
 !         endif
 !         !
 !         contains
@@ -511,11 +511,11 @@ contains
 !         class(am_class_bz) :: bz
 !         integer :: i,j
 !         !
-!         call am_print('sum weight',nint(sum(bz%w)),' ... ')
-!         call am_print('min weight',nint(minval(bz%w)),' ... ')
-!         call am_print('max weight',nint(maxval(bz%w)),' ... ')
-!         call am_print('avg weight',sum(bz%w)/real(bz%nkpts,dp),' ... ')
-!         write(*,'(a5,a)') ' ... ', 'histogram of weights'
+!         call am_print('sum weight',nint(sum(bz%w)),flare)
+!         call am_print('min weight',nint(minval(bz%w)),flare)
+!         call am_print('max weight',nint(maxval(bz%w)),flare)
+!         call am_print('avg weight',sum(bz%w)/real(bz%nkpts,dp),flare)
+!         write(*,'(a,a)') flare, 'histogram of weights'
 !         write(*,'(5x,a10,a10)' ) 'weights', '# kpts'
 !         write(*,'(5x,a10,a10)' ) repeat('-',8), repeat('-',8)
 !         do i = minval(bz%w), maxval(bz%w)
@@ -817,13 +817,13 @@ contains
 !         integer :: w
 !         !
 !         if (opts%verbosity.ge.1) call print_title('Expand kpoints to FBZ')
-!         if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,' ... ')
-!         if (opts%verbosity.ge.1) call am_print('number of kpoints in the original bz',bz%nkpts,' ... ')
+!         if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,flare)
+!         if (opts%verbosity.ge.1) call am_print('number of kpoints in the original bz',bz%nkpts,flare)
 !         if (opts%verbosity.ge.1) then
 !             call am_print_two_matrices_side_by_side(name='original kpoints',&
 !                 Atitle='fractional',A=transpose(bz%kpt),&
 !                 Btitle='cartesian' ,B=transpose(matmul(inv(pc%bas),bz%kpt)),&
-!                 iopt_emph=' ... ',iopt_teaser=.true.)
+!                 iopt_emph=flare,iopt_teaser=.true.)
 !         endif
 !         !
 !         allocate(kpoints_fbz(3,bz%nkpts*pg%nsyms)) ! wkrspace
@@ -871,12 +871,12 @@ contains
 !         enddo
 !         !$OMP END DO
 !         !$OMP END PARALLEL
-!         if (opts%verbosity.ge.1) call am_print('number of kpoints in the fbz',fbz%nkpts,' ... ')
+!         if (opts%verbosity.ge.1) call am_print('number of kpoints in the fbz',fbz%nkpts,flare)
 !         if (opts%verbosity.ge.1) then
 !             call am_print_two_matrices_side_by_side(name='full kpoints',&
 !                 Atitle='fractional',A=transpose(fbz%kpt),&
 !                 Btitle='cartesian' ,B=transpose(matmul(inv(pc%bas),fbz%kpt)),&
-!                 iopt_emph=' ... ',iopt_teaser=.true.)
+!                 iopt_emph=flare,iopt_teaser=.true.)
 !         endif
 !         ! set weights
 !         allocate(fbz%w(fbz%nkpts))

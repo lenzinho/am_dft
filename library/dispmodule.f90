@@ -1019,6 +1019,8 @@ MODULE DISPMODULE
   PUBLIC PUTSTR_UNIT          ! Constant to specify the use of subroutines putstr and putnl to display
   PUBLIC NULL_UNIT            ! Constant to specify discarding of all displayed output
 
+  PUBLIC disp_indent ! added by abmei
+
   ! ********************************** INTERFACE DECLARATIONS *************************************
   interface disp_set
     module procedure disp_set, disp_set_ds
@@ -1060,6 +1062,16 @@ MODULE DISPMODULE
   !        cpld = complex double precision
 
 CONTAINS
+
+  ! custom abmei
+
+  subroutine disp_indent()
+    !
+    implicit none
+    !
+    call disp(X=[0],zeroas='  ',advance='no')
+    !
+  end subroutine disp_indent
 
   ! ******************************* SETTING AND GETTING PROCEDURES *************************************
   subroutine disp_set(advance, digmax, matsep, orient, sep, style, unit, zeroas)

@@ -82,7 +82,7 @@ contains
 ! !             conv%centering = eye(3)
 ! !         endif
 ! !         !
-! !         if (opts%verbosity.ge.1) call am_print('centering matrix',conv%centering,' ... ')
+! !         if (opts%verbosity.ge.1) call am_print('centering matrix',conv%centering,flare)
 ! !         !
 ! !         call conv%get_supercell(uc=prim,bscfp=inv(conv%centering),opts=notalk)
 ! !         !
@@ -120,20 +120,20 @@ contains
 ! !         !
 ! !         if (opts%verbosity.ge.1) then
 ! !         select case(lattice_code)
-! !         case(1);  call am_print('lattice','simple cubic cell',' ... ')
-! !         case(2);  call am_print('lattice','body-centered cubic cell',' ... ')
-! !         case(3);  call am_print('lattice','face-centered cubic cell',' ... ')
-! !         case(4);  call am_print('lattice','hexagonal cell',' ... ')
-! !         case(5);  call am_print('lattice','simple tetragonal cell',' ... ')
-! !         case(6);  call am_print('lattice','body-centered tetragonal cell',' ... ')
-! !         case(7);  call am_print('lattice','rhombohedral (trigonal) cell',' ... ')
-! !         case(8);  call am_print('lattice','simple orthorhombic cell',' ... ')
-! !         case(9);  call am_print('lattice','body-centered orthorhombic cell',' ... ')
-! !         case(10); call am_print('lattice','face-centered orthorhombic cell',' ... ')
-! !         case(11); call am_print('lattice','base centered orthorhombic cell',' ... ')
-! !         case(12); call am_print('lattice','simple monoclinic cell',' ... ')
-! !         case(13); call am_print('lattice','base-centered monoclinic cell',' ... ')
-! !         case(14); call am_print('lattice','triclinic cell',' ... ')
+! !         case(1);  call am_print('lattice','simple cubic cell',flare)
+! !         case(2);  call am_print('lattice','body-centered cubic cell',flare)
+! !         case(3);  call am_print('lattice','face-centered cubic cell',flare)
+! !         case(4);  call am_print('lattice','hexagonal cell',flare)
+! !         case(5);  call am_print('lattice','simple tetragonal cell',flare)
+! !         case(6);  call am_print('lattice','body-centered tetragonal cell',flare)
+! !         case(7);  call am_print('lattice','rhombohedral (trigonal) cell',flare)
+! !         case(8);  call am_print('lattice','simple orthorhombic cell',flare)
+! !         case(9);  call am_print('lattice','body-centered orthorhombic cell',flare)
+! !         case(10); call am_print('lattice','face-centered orthorhombic cell',flare)
+! !         case(11); call am_print('lattice','base centered orthorhombic cell',flare)
+! !         case(12); call am_print('lattice','simple monoclinic cell',flare)
+! !         case(13); call am_print('lattice','base-centered monoclinic cell',flare)
+! !         case(14); call am_print('lattice','triclinic cell',flare)
 ! !         case default
 ! !             call am_print('ERROR','Unknown lattice code.')
 ! !             stop
@@ -142,7 +142,7 @@ contains
 ! !         !
 ! !         centering = lattice_centering(lattice_code)
 ! !         !
-! !         if (opts%verbosity.ge.1) call am_print('centering matrix',centering,' ... ')
+! !         if (opts%verbosity.ge.1) call am_print('centering matrix',centering,flare)
 ! !         !
 ! !         call conv%get_supercell(uc=prim,bscfp=inv(centering),opts=opts)
 ! !         !

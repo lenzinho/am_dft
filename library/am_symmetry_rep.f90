@@ -373,7 +373,7 @@ module am_symmetry_rep
         ! print relations
         if (opts%verbosity.ge.1) then
             ! print statistics about parameters
-            write(*,'(a5,2a6,3a14)') ' ... ', 'shell', 'terms', 'null', 'dependent', 'independent'
+            write(*,'(a,2a6,3a14)') flare, 'shell', 'terms', 'null', 'dependent', 'independent'
             write(*,'(5x,a)') repeat(' '//repeat('-',5),2)//repeat(' '//repeat('-',13),3)
             ! intrinsic symmetries
             m = count(get_null(flat_ig%relations))
@@ -410,7 +410,7 @@ module am_symmetry_rep
             write(*,*)
             ! print symmetry relations
             if (m.ne.nterms) then
-                write(*,'(a5,a)') ' ... ', 'irreducible symmetry relations:'
+                write(*,'(a,a)') flare, 'irreducible symmetry relations:'
                 call print_relations(relations=prop%relations, dims=prop%dims, flags='print:dependent,independent')
             endif
         endif

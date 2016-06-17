@@ -109,9 +109,9 @@ contains
         if (opts%verbosity.ge.1) then
             allocate(character(4) :: str(ic%natoms))
             !
-            write(*,'(a5,a,a)') ' ... ', 'input atoms = ', tostring(uc%natoms)
-            write(*,'(a5,a,a)') ' ... ', 'primitive atoms = ', tostring(pc%natoms)
-            write(*,'(a5,a,a)') ' ... ', 'irreducible atoms = ', tostring(ic%natoms)
+            write(*,'(a,a,a)') flare, 'input atoms = ', tostring(uc%natoms)
+            write(*,'(a,a,a)') flare, 'primitive atoms = ', tostring(pc%natoms)
+            write(*,'(a,a,a)') flare, 'irreducible atoms = ', tostring(ic%natoms)
             do i = 1, ic%natoms
                 str(i) = atm_symb(ic%Z(i))
             enddo
@@ -121,17 +121,17 @@ contains
             call disp(title='fractional (primitive)', X=transpose(ic%tau_frac)  , style='underline', fmt='f11.8',advance='no' , trim = 'no')
             call disp(title='cartesian'             , X=transpose(ic%tau_cart)  , style='underline', fmt='f11.8',advance='yes', trim = 'no')
             !
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to input: ic->uc)'
+            write(*,'(a,a)',advance='no') flare, 'atomic mapping (to input: ic->uc)'
             call id_print_map(ic%uc_id)
             !
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to primitive: ic->pc)'
+            write(*,'(a,a)',advance='no') flare, 'atomic mapping (to primitive: ic->pc)'
             call id_print_map(ic%pc_id)
             !
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (from primitive: pc->ic)'
+            write(*,'(a,a)',advance='no') flare, 'atomic mapping (from primitive: pc->ic)'
             call id_print_map(pc%ic_id)
             !
             if (present(uc)) then
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (from input: uc->ic)'
+            write(*,'(a,a)',advance='no') flare, 'atomic mapping (from input: uc->ic)'
             call id_print_map(uc%ic_id)
             endif
             !
@@ -162,7 +162,7 @@ contains
             ! read it
             call read_orbital_basis(ic,fname,opts%verbosity)
         else
-            if (opts%verbosity.ge.1) write(*,'(a5,a)') ' ... ', trim(fname)//' not found.'
+            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, trim(fname)//' not found.'
             ! create basis on each irreducible atoms
             allocate(ic%atom(ic%natoms))
             do i = 1, ic%natoms
@@ -171,7 +171,7 @@ contains
             call write_orbital_basis(ic)
             !
             if (opts%verbosity.ge.1)  then
-                write(*,'(a5,a)') ' ... ', 'Template produced: '//trim(outfile_dir_tb)//'/'//'infile.tb_orbitals'
+                write(*,'(a,a)') flare, 'Template produced: '//trim(outfile_dir_tb)//'/'//'infile.tb_orbitals'
                 call print_title('Done!')
             endif
             !
@@ -235,7 +235,7 @@ contains
             fid = 1
             open(unit=fid,file=trim(fname),status="old",action='read')
                 !
-                write(*,'(a5,a,a)') ' ... ', 'atomic orbitals read = ', trim(fname)
+                write(*,'(a,a,a)') flare, 'atomic orbitals read = ', trim(fname)
                 ! spin polarized?
                 read(unit=fid,fmt='(a)') buffer
                 word = strsplit(buffer,delimiter=' ')
@@ -244,7 +244,7 @@ contains
                 read(unit=fid,fmt='(a)') buffer
                 word = strsplit(buffer,delimiter=' ')
                 read(word(3),*) ic_natoms
-                write(*,'(a5,a,a)') ' ... ', 'irreducible atoms = ', tostring(ic_natoms)
+                write(*,'(a,a,a)') flare, 'irreducible atoms = ', tostring(ic_natoms)
                 ! set irreducible atoms
                 if (ic%natoms.ne.ic_natoms) stop 'number of irreducible atoms input does not match internally calculated.'
                 allocate(ic%atom(ic_natoms))
@@ -255,7 +255,7 @@ contains
                     read(word(1),*) i
                     !
                     nazimuthals = size(word) - 1
-                    write(*,'(a5,a,a,a)', advance='no') ' ... ', 'atom ', tostring(j), ' azimuthals ('//tostring(nazimuthals)//'):'
+                    write(*,'(a,a,a,a)', advance='no') flare, 'atom ', tostring(j), ' azimuthals ('//tostring(nazimuthals)//'):'
                     if (nazimuthals.le.0) stop 'number of azimuthals < 0'
                     !
                     orbital_flags=trim(spin_polarized_flag)
@@ -280,7 +280,7 @@ contains
             integer :: i,j,a
             !
             do i = 1, ic%natoms
-                write(*,'(a5,a)') ' ... ', 'irreducible atom '//tostring(i)//' contributes '//tostring((ic%atom(i)%norbitals))//' orbitals |n,l,m,s> :'
+                write(*,'(a,a)') flare, 'irreducible atom '//tostring(i)//' contributes '//tostring((ic%atom(i)%norbitals))//' orbitals |n,l,m,s> :'
                 do a = 1, ic%atom(i)%nazimuthals
                     write(*,'(5x,a,a)') trim(ic%atom(i)%orbname(a)), ':'
                 do j = 1, ic%atom(i)%norbitals

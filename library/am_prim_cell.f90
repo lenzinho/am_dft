@@ -66,32 +66,32 @@ contains
         !
         ! print stdout
         if (opts%verbosity.ge.1) then
-            allocate(character(4) :: str(pc%natoms))
+            allocate(character(2) :: str(pc%natoms))
             !
-            write(*,'(a5,a)') ' ... ', 'original basis ='
-            call disp(title=' '                     , X=zeros([1,1])            , style='underline', fmt='i2'   ,advance='no' , zeroas=' ' )
+            write(*,'(a,a)') flare, 'original basis ='
+            call disp_indent()
             call disp(title='fractional (primitive)', X=matmul(pc%recbas,uc%bas), style='underline', fmt='f13.8',advance='no' , trim = 'no')
             call disp(title='cartesian'             , X=uc%bas                  , style='underline', fmt='f13.8',advance='yes', trim = 'no')
             !
-            write(*,'(a5,a)') ' ... ', 'primitive basis ='
-            call disp(title=' '                     , X=zeros([1,1])            , style='underline', fmt='i2'   ,advance='no' , zeroas=' ' )
+            write(*,'(a,a)') flare, 'primitive basis ='
+            call disp_indent()
             call disp(title='fractional (input)'    , X=matmul(uc%recbas,pc%bas), style='underline', fmt='f13.8',advance='no' , trim = 'no')
             call disp(title='cartesian'             , X=pc%bas                  , style='underline', fmt='f13.8',advance='yes', trim = 'no')
             !
-            write(*,'(a5,a,a)') ' ... ', 'primitive cell atoms = ', tostring(pc%natoms)
+            write(*,'(a,a,a)') flare, 'primitive cell atoms = ', tostring(pc%natoms)
             do i = 1, pc%natoms
                 str(i) = atm_symb(uc%Z(pc%uc_id(i)))
             enddo
-            call disp(title=' '                     , X=zeros([1,1])            , style='underline', fmt='i2'   ,advance='no' , zeroas=' ' )
-            call disp(title=' id '                  , X=[1:pc%natoms]           , style='underline', fmt='i7'   ,advance='no' , trim = 'yes')
-            call disp(title='atom'                  , X=str                     , style='underline', fmt='a3'   ,advance='no' , trim = 'no')
+            call disp_indent()
+            call disp(title='#'                     , X=[1:pc%natoms]           , style='underline', fmt='i7'   ,advance='no' , trim = 'yes')
+            call disp(title='Z'                     , X=str                     , style='underline', fmt='a3'   ,advance='no' , trim = 'no')
             call disp(title='fractional (primitive)', X=transpose(pc%tau_frac)  , style='underline', fmt='f11.8',advance='no' , trim = 'no')
             call disp(title='cartesian'             , X=transpose(pc%tau_cart)  , style='underline', fmt='f11.8',advance='yes', trim = 'no')
             !
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to primitive: uc->pc)'
+            write(*,'(a,a)',advance='no') flare, 'atomic mapping (to primitive: uc->pc)'
             call id_print_map(uc%pc_id)
             !
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to input: pc->uc)'
+            write(*,'(a,a)',advance='no') flare, 'atomic mapping (to input: pc->uc)'
             call id_print_map(pc%uc_id)
             !
         endif

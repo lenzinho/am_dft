@@ -570,9 +570,9 @@ contains
         ! print stdout
         if (opts%verbosity.ge.1) then
             ! print global information
-            write(*,'(a5,a,a)') ' ... ', 'space symmetries = ' , tostring(sg%nsyms)
-            write(*,'(a5,a,a)') ' ... ', 'conjugacy classes = ', tostring(sg%cc%nclasses)
-            write(*,'(a5,a)')   ' ... ', 'seitz symmetries [frac/cart] = '
+            write(*,'(a,a,a)') flare, 'space symmetries = ' , tostring(sg%nsyms)
+            write(*,'(a,a,a)') flare, 'conjugacy classes = ', tostring(sg%cc%nclasses)
+            write(*,'(a,a)')   flare, 'seitz symmetries [frac/cart] = '
             ! print seitz operators
             mpl=2
             do i = 1,sg%nsyms
@@ -621,7 +621,7 @@ contains
             stop
             ! generators
             call print_title('Space group generators')
-            write(*,'(a,a)',advance='no') ' ... ', 'group generators = ' 
+            write(*,'(a,a)',advance='no') flare, 'group generators = ' 
             call disp(X=sg%mt%gen,orient='row')
             call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
             call disp(X=[1:sg%nsyms],advance='no' ,trim='yes',title='sym',style='underline')
@@ -722,12 +722,12 @@ contains
             !
             ! print stdout
             if (verbosity.ge.2) then
-                call am_print('possible (im-)propers',nRs,' ... ')
-                call am_print('possible translations',nTs,' ... ')
+                call am_print('possible (im-)propers',nRs,flare)
+                call am_print('possible translations',nTs,flare)
                 call am_print_two_matrices_side_by_side(name='translations',&
                     Atitle='fractional',A=transpose(T),&
                     Btitle='cartesian' ,B=transpose(matmul(bas,T)),&
-                    iopt_emph=' ... ',iopt_teaser=.true.)
+                    iopt_emph=flare,iopt_teaser=.true.)
             endif
         end function    space_symmetries_from_basis
         function        lattice_symmetries(bas,prec) result(R_frac)
@@ -836,10 +836,10 @@ contains
         call pg%create_seitz_group(seitz_frac=unique(wrk_frac), bas=pc%bas)
         !
         if (opts%verbosity.ge.1) then
-            write(*,'(a5,a,a)') ' ... ', 'point group = '      , decode_pointgroup(point_group_schoenflies(pg%ps_id))
-            write(*,'(a5,a,a)') ' ... ', 'point symmetries = ' , tostring(pg%nsyms)
-            write(*,'(a5,a,a)') ' ... ', 'conjugacy classes = ', tostring(pg%cc%nclasses)
-            write(*,'(a5,a)')   ' ... ', 'point symmetries [frac/cart] = '
+            write(*,'(a,a,a)') flare, 'point group = '      , decode_pointgroup(point_group_schoenflies(pg%ps_id))
+            write(*,'(a,a,a)') flare, 'point symmetries = ' , tostring(pg%nsyms)
+            write(*,'(a,a,a)') flare, 'conjugacy classes = ', tostring(pg%cc%nclasses)
+            write(*,'(a,a)')   flare, 'point symmetries [frac/cart] = '
             mpl=2 ! matrices per line
             do i = 1,pg%nsyms
                 str = tostring(i)//': '//decode_pointsymmetry(pg%ps_id(i))
@@ -863,7 +863,7 @@ contains
             call disp(X=pg%mt%multab,advance='yes',trim='yes')
             ! generators
             call print_title('Point group symmetry generators')
-            write(*,'(a,a)',advance='no') ' ... ', 'group generators = ' 
+            write(*,'(a,a)',advance='no') flare, 'group generators = ' 
             call disp(X=pg%mt%gen,orient='row')
             call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
             call disp(X=[1:pg%nsyms],advance='no' ,trim='yes',title='sym',style='underline')
@@ -1172,7 +1172,7 @@ contains
                     R=inv(sg%seitz_cart(1:3,1:3,i))
                     ! if statement are for the cases in which output needs to be trimmed
                     if (count(abs(R(j,:)).gt.tiny).gt.3) then
-                        buffer=' ... ' 
+                        buffer=flare 
                     else
                         buffer=''
                         do k = 1,3
@@ -1209,7 +1209,7 @@ contains
                     R = rot2O3(l=1,R=sg%seitz_cart(1:3,1:3,i))
                     ! if statement are for the cases in which output needs to be trimmed
                     if (count(abs(R(j,:)).gt.tiny).gt.3) then
-                        buffer=' ... ' 
+                        buffer=flare 
                     else
                         buffer=''
                         do k = 1, size(xyz)
@@ -1248,7 +1248,7 @@ contains
                     R = rot2O3(l=2,R=sg%seitz_cart(1:3,1:3,i))
                     !
                     if (count(abs(R(j,:)).gt.tiny).gt.3) then
-                        buffer=' ... ' 
+                        buffer=flare 
                     else
                         buffer=''
                         do k = 1,5
@@ -1289,7 +1289,7 @@ contains
                     R = rot2O3(l=3,R=sg%seitz_cart(1:3,1:3,i))
                     !
                     if (count(abs(R(j,:)).gt.tiny).gt.3) then
-                        buffer=' ... ' 
+                        buffer=flare 
                     else
                         buffer=''
                         do k = 1,7

@@ -544,37 +544,37 @@ contains
             call am_print_two_matrices_side_by_side(name='primitive basis',&
                 Atitle='fractional (supercell)',A=inv_bscfp,&
                 Btitle='cartesian'             ,B=uc%bas,&
-                iopt_emph=' ... ',iopt_teaser=.true.)
+                iopt_emph=flare,iopt_teaser=.true.)
             !
             call am_print_two_matrices_side_by_side(name='supercell basis',&
                 Atitle='fractional (primitive)',A=bscfp,&
                 Btitle='cartesian'             ,B=sc%bas,&
-                iopt_emph=' ... ',iopt_teaser=.true.)
+                iopt_emph=flare,iopt_teaser=.true.)
             !
-            call am_print('number of atoms (supercell)',sc%natoms,' ... ')
+            call am_print('number of atoms (supercell)',sc%natoms,flare)
             !
-            call am_print('number of atoms (primitive)',uc%natoms,' ... ')
+            call am_print('number of atoms (primitive)',uc%natoms,flare)
             !
             call am_print_two_matrices_side_by_side(name='primitive atomic basis',&
                 Atitle='fractional (primitive)',A=transpose(uc%tau_frac),&
                 Btitle='cartesian'             ,B=transpose(uc%tau_cart),&
-                iopt_emph=' ... ',iopt_teaser=.true.)
+                iopt_emph=flare,iopt_teaser=.true.)
             !
             call am_print_two_matrices_side_by_side(name='supercell atomic basis',&
                 Atitle='fractional (supercell)',A=transpose(sc%tau_frac),&
                 Btitle='cartesian'             ,B=transpose(sc%tau_cart),&
-                iopt_emph=' ... ',iopt_teaser=.true.)
+                iopt_emph=flare,iopt_teaser=.true.)
             !
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to intput: sc->uc)'
+            write(*,'(a,a)',advance='no') flare, 'atomic mapping (to intput: sc->uc)'
             call id_print_map(sc%uc_id)
             !
             if (allocated(uc%pc_id)) then
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to primitive: sc->pc)'
+            write(*,'(a,a)',advance='no') flare, 'atomic mapping (to primitive: sc->pc)'
             call id_print_map(sc%ic_id)
             endif
             !
             if (allocated(uc%ic_id)) then
-            write(*,'(a5,a)',advance='no') ' ... ', 'atomic mapping (to irreducible: sc->ic)'
+            write(*,'(a,a)',advance='no') flare, 'atomic mapping (to irreducible: sc->ic)'
             call id_print_map(sc%ic_id)
             endif
         endif
@@ -868,7 +868,7 @@ contains
         allocate(bas_def(3,3,nstrains))
         allocate(def_mat(3,3,nstrains))
         !
-        if (verbosity.ge.1) call am_print('Number of deformations',nstrains,' ... ')
+        if (verbosity.ge.1) call am_print('Number of deformations',nstrains,flare)
         !
         do i = 1,nstrains
             ! set deformation magnitude
@@ -944,8 +944,8 @@ contains
         enddo
         !
         if (verbosity.ge.1) then
-            write(*,'(a5,a)') ' ... ', 'Deformation matrices (true strain, Voigt notation)'
-            write(*,'(a5,2x,6a16)') ' ... ', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6'
+            write(*,'(a,a)') flare, 'Deformation matrices (true strain, Voigt notation)'
+            write(*,'(a,2x,6a16)') flare, 'e1', 'e2', 'e3', 'e4', 'e5', 'e6'
             do i = 1,nstrains
                 write(*,'(5x,i2,6f16.10)') i,def_mat(1,1,i),def_mat(2,2,i),def_mat(3,3,i),def_mat(2,3,i),def_mat(1,3,i),def_mat(1,2,i)
             enddo

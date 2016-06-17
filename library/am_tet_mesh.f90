@@ -49,11 +49,11 @@
     ierror = 0
     !
     ndim   = size(kpt,1)
-    if (verbosity .ge. 1) write(*,'(a5,a20,i6)' ) ' ... ', 'spatial dimensions', ndim
+    if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'spatial dimensions', ndim
     nkpts  = size(kpt,2)
-    if (verbosity .ge. 1) write(*,'(a5,a20,i6)' ) ' ... ', 'kpoints', nkpts
+    if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'kpoints', nkpts
     ht_num = (3 * nkpts) / 2  ! size of workspace
-    if (verbosity .ge. 1) write(*,'(a5,a20,i6)' ) ' ... ', 'hash table size', ht_num
+    if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'hash table size', ht_num
     !
     allocate(ht(ht_num))
     allocate(vm(1:nkpts))
@@ -64,14 +64,14 @@
     !
     call dtris3(nkpts,ht_num,bf_max,fc_max,kpt,vm,bf_num,fc_num,face_num,ntets,bf,fc,ht,ierror)
     !
-    if(ierror /= 0) write(*,'(a5,a)' ) ' ERR ', 'Fatal error encounted!'
+    if(ierror /= 0) write(*,'(a,a)' ) flare, 'Fatal error encounted!'
     !
-    ! if (verbosity .ge. 1) write(*,'(a5,a20,i6)' ) ' ... ', 'max number of bf', bf_max
-    if (verbosity .ge. 1) write(*,'(a5,a20,i6)' ) ' ... ', 'boundary faces', bf_num
-    ! if (verbosity .ge. 1) write(*,'(a5,a20,i6)' ) ' ... ', 'max number of fc', fc_max
-    if (verbosity .ge. 1) write(*,'(a5,a20,i6)' ) ' ... ', 'face records', fc_num
+    ! if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'max number of bf', bf_max
+    if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'boundary faces', bf_num
+    ! if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'max number of fc', fc_max
+    if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'face records', fc_num
     !
-    if (verbosity .ge. 1) write(*,'(a5,a20,i6)' ) ' ... ', 'tetrahedra', ntets
+    if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'tetrahedra', ntets
     !
     allocate(corner(1:4,1:ntets))
     !
@@ -85,10 +85,10 @@
          volume(i) = tetrahedron_volume( kpt(1:3,corner(1:4,i)) )
     end do
     !
-    if (verbosity .ge. 1) write(*,'(a5,a20,f6.2)' ) ' ... ', 'maximum volume', maxval(volume)
-    if (verbosity .ge. 1) write(*,'(a5,a20,f6.2)' ) ' ... ', 'minimum volume', minval(volume)
-    if (verbosity .ge. 1) write(*,'(a5,a20,f6.2)' ) ' ... ', 'average volume', sum(volume)/(1.0_dp*ntets)
-    if (verbosity .ge. 1) write(*,'(a5,a20,f6.2)' ) ' ... ', 'total volume', sum(volume)
+    if (verbosity .ge. 1) write(*,'(a,a20,f6.2)' ) flare, 'maximum volume', maxval(volume)
+    if (verbosity .ge. 1) write(*,'(a,a20,f6.2)' ) flare, 'minimum volume', minval(volume)
+    if (verbosity .ge. 1) write(*,'(a,a20,f6.2)' ) flare, 'average volume', sum(volume)/(1.0_dp*ntets)
+    if (verbosity .ge. 1) write(*,'(a,a20,f6.2)' ) flare, 'total volume', sum(volume)
     !
     !
 
