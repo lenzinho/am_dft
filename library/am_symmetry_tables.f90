@@ -1092,12 +1092,13 @@ contains
         integer    ,allocatable :: E(:) 
         complex(dp),allocatable :: V(:,:,:) ! eigenvectors
         complex(dp),allocatable :: D(:,:) ! eigenvalues
-        complex(dp),allocatable :: X(:) !  the nondegenerate eigenvector
         complex(dp),allocatable :: zeros(:)
         complex(dp),allocatable :: try(:)
-        complex(dp),allocatable :: V_proj(:,:)
-        integer,    allocatable :: S_sqr(:)
-        integer,    allocatable :: E_sqr(:)
+        complex(dp),allocatable :: V_least(:,:)
+        ! complex(dp),allocatable :: V_proj(:,:)
+        ! integer,    allocatable :: S_sqr(:)
+        ! integer,    allocatable :: E_sqr(:)
+        complex(dp),allocatable :: V_ij_proj(:,:) ! eigenvectors
         logical :: isorthogonal
         integer :: nbases
         integer :: nsyms
@@ -1123,8 +1124,6 @@ contains
         allocate(phi(nbases,nphis))
         allocate(S(nirreps))
         allocate(E(nirreps))
-        ! allocate X
-        allocate(X(nbases))
         ! work space
         allocate(try(nbases))
         ! allocate zero vector
@@ -1136,8 +1135,12 @@ contains
         do i = 1, nsyms
             call am_dgeev(A=real(rr(:,:,i),dp),VR=V(:,:,i),D=D(:,i))
         enddo
+        ! get least degenerate eigenspace of all symmetries
+        V_least = get_least_degenerate_eigenspace(V=V, D=D)
+        if (verbosity.ge.1) write(*,'(a,a)') flare, 'least degenerate eigenspace dimension = '//tostring(size(V_least,2))
         ! get similarity transform which block diagonalizes irrep projections
-        call get_irrep_proj_eigvec(irrep_proj=irrep_proj, V_proj=V_proj,S=S_sqr,E=E_sqr)
+        ! call get_irrep_proj_eigvec(irrep_proj=irrep_proj, V_proj=V_proj,S=S_sqr,E=E_sqr)
+        ! call dump(A=V_proj, fname=trim(outfile_dir_sym)//'/outfile.V_proj')
         ! initialize i_phi
         i_phi = 0
         ! loop over irrep projections
@@ -1156,39 +1159,25 @@ contains
                 ! if the irrep is two-dimensional or larger...
                 if (verbosity.ge.1) write(*,'(a)',advance='no') tostring(irrep_dim(i))//'D '
                 ! search for an eigenvector of a regular rep symmetry element that has unique (nondegenerate eigenvalues)
+                if    (size(V_least,2).eq.1) then
+                    ! project the nondegenerate vector onto the irreducible subspace
+                    phi(:,i_phi) = matmul(irrep_proj(:,:,i), V_least(:,1) )
+                else 
+                    ! use the lowest degenerate eigenvalue to search for a starting eigensubspace
 
-                write(*,*) i 
 
-                if (sucessefully_get_nondegenerate_eigenvec(V=V, D=D, ki=ki)) then
-                    ! SOMTEHINGE ABOUT get_nondegenerate_eigenvec IS SCREWING UP irrep_proj
-                    ! SOMTEHINGE ABOUT get_nondegenerate_eigenvec IS SCREWING UP irrep_proj
-                    ! SOMTEHINGE ABOUT get_nondegenerate_eigenvec IS SCREWING UP irrep_proj
 
-                    call disp( irrep_proj(:,1,i)  )
-                    ! project nondegenerate vector onto the irreducible subspace
-                    phi(:,i_phi) = matmul(irrep_proj(:,:,i), V(:,ki(1),ki(2)) )
-                else
 
-                    write(*,*) i 
-                    ! search for lowest degenerate subspace (Blokker-Flodmark procedure)
-                    ! X = get_starting_eigvec(rr=rr,commutator_id=commutator_id)
-                    !
-                    
-                    do j = 1, nsyms
-                        write(*,*) i
-                        call disp(V(:,:,i))
-                        write(*,*)
-                        call disp(V_proj(:,S_sqr(i):E_sqr(i)))
-                        write(*,*)
-                        call disp( shape( subspace_intersection( V_proj(:, S_sqr(i):E_sqr(i)) , V(:,:,j)) ) ) 
-                    enddo
 
-                    call disp( irrep_proj(:,1,i)  )
-!                     write(*,*)
-!                     call disp( irrep_proj(:,:,i-1)  )
-!                     write(*,*)
-!                     call disp( subspace_intersection(irrep_proj(:,:,i),irrep_proj(:,:,i-1))  )
+!                     (sucessefully_get_least_degenerate_eigenspace(V=V,D=D,&
+!                     & irrep_proj_i=irrep_proj(:,:,i),irrep_dim_i=irrep_dim(i), V_ij_proj=V_ij_proj)) then
+!                     ! save vector (should already been in the irrep space)
+!                     phi(:,i_phi) = V_ij_proj(:,1)
+!                     call disp( V_ij_proj )
+
                     stop
+
+
                 endif
                 ! search for partners
                 search : do k = 1, nclasses
@@ -1199,8 +1188,6 @@ contains
                     ! try partner function
                     try = matmul(rr(:,:,class_member(k,1)), phi(:,S(i)))
                     ! make sure: non-zero
-                    ! write(*,*) isequal(try,zeros)
-                    ! call disp(X=try,orient='row')
                     if (.not.isequal(try,zeros)) then
                         ! make sure: orthogonal to other vectors in the irrep basis
                         ! since in the regular rep symmetries have matrix elements (0,1), 
@@ -1242,8 +1229,8 @@ contains
         integer,    allocatable, intent(out) :: S(:)
         integer,    allocatable, intent(out) :: E(:)
         integer,    allocatable :: inds(:)
-        complex(dp),allocatable :: P(:,:)
-        complex(dp),allocatable :: D(:,:)
+        complex(dp),allocatable :: D(:)
+        complex(dp),allocatable :: V(:,:)
         logical,    allocatable :: mask(:)
         integer,    allocatable :: inds_sorted(:)
         integer :: i, n, nirreps, nbases
@@ -1253,26 +1240,19 @@ contains
         ! allocate/initialize stuff
         allocate(inds(nbases))
         inds = [1:nbases]
-        allocate(P(nbases,nbases))
-        P = 0
-        ! loop over irreps
-        do i = 1, nirreps
-            P = P + irrep_proj(:,:,i) * rand()
-        enddo
-        ! eigendecompose
-        call am_zgeev(A=P, VR=V_proj)
-        ! sort sort by V_proj by irrep
-        allocate(inds_sorted(nbases))
-        inds_sorted = 0
+        allocate(mask(nbases))
+        allocate(D(nbases))
+        allocate(V(nbases,nbases))
         allocate(S(nirreps))
         allocate(E(nirreps))
-        allocate(D(nbases,nirreps))
-        allocate(mask(nbases))
+        allocate(V_proj(nbases,nbases))
+        !
         n = 0
         do i = 1, nirreps
-            ! create mask identifying vectors in V_proj belonging irrep i
-            D(:,i) = diag(matmul(matmul(adjoint(V_proj),irrep_proj(:,:,i)), V_proj))
-            where (abs( D(:,i) - 1.0_dp ).lt.tiny)
+            ! get eigenvectors/eigenvalues
+            call am_zgeev(A=irrep_proj(:,:,i), VR=V, D=D)
+            ! create mask to exclude nullspace
+            where (abs(D).gt.tiny)
                 mask = .true.
             elsewhere
                 mask = .false.
@@ -1283,55 +1263,178 @@ contains
             n = n + count(mask) - 1
             E(i) = n
             ! orthonormalize
-            V_proj(:,pack(inds,mask)) = orthonormalize( V_proj(:,pack(inds,mask)) )
-            ! construct sort paramter list
-            inds_sorted(S(i):E(i)) = pack(inds,mask)
+            ! V_proj(:,S(i):E(i)) = orthonormalize( V(:,pack(inds,mask)) )
+            V_proj(:,S(i):E(i)) = V(:,pack(inds,mask))
         enddo
-        ! perform sort
-        V_proj = V_proj(:,inds_sorted)
         !
     end subroutine get_irrep_proj_eigvec
 
-    function       sucessefully_get_nondegenerate_eigenvec(V,D,ki) result(isfound)
+    function       get_least_degenerate_eigenspace(V,D) result(V_least)
         !
         implicit none
         !
-        complex(dp), intent(in)  :: V(:,:,:) ! eigenvectors
-        complex(dp), intent(in)  :: D(:,:)   ! eigenvalues
-        integer    , intent(out) :: ki(2)  ! indices of nondegenerte eigenvector
+        complex(dp), intent(in) :: V(:,:,:) ! eigenvectors
+        complex(dp), intent(in) :: D(:,:)   ! eigenvalues
+        complex(dp),allocatable :: V_least(:,:)
+        complex(dp),allocatable :: V_j(:,:) ! eigenvectors
+        complex(dp),allocatable :: D_j(:)   ! eigenvalues
+        complex(dp),allocatable :: D_j_unique(:) ! eigenvalues
+        logical    ,allocatable :: mask(:)
+        integer    ,allocatable :: inds(:)
+        integer :: n_D_j_unique_s
         integer :: nsyms, nbases
-        logical :: isfound
-        integer :: i, j, k
+        integer :: degen_i ! counter
+        integer :: degen_j ! counter
+        integer :: j, k
         !
         nbases = size(V,1)
         nsyms  = size(V,3)
-        !
-        search_nondegen : do i = 1, nsyms
-            ! search for nonzero and unique (nondegenerate) eigenvector
-            do k = 1, nbases
-                ! enforce nonzero
-                if (abs(D(k,i)).gt.tiny) then
-                    isfound = .true.
-                    ! enforce nondegeneracy
-                    check : do j = 1, nbases
-                        if (j.ne.k) then
-                        if (abs(D(k,i)-D(j,i)).lt.tiny) then
-                            isfound = .false.
-                            exit check 
-                        endif
-                        endif
-                    enddo check
-                    !
-                    if (isfound) then
-                        ! save the nondegenerate eigenvector
-                        ki = [k,i]
-                        exit search_nondegen
-                    endif 
+        ! allocate stuff
+        allocate(V_j(nbases,nbases))
+        allocate(D_j(nbases))
+        ! allocate masks
+        allocate(mask(nbases))
+        ! allocate inds
+        allocate(inds(nbases))
+        inds = [1:nbases]
+        ! initialize degeneracy counter
+        degen_i = nbases
+        ! loop over symmetries
+        do j = 1, nsyms
+            ! get eigenvector/values
+            V_j = V(:,:,j)
+            D_j = D(:,j)
+            ! filter eigenvectors belonging to least degenerate eigenvalue
+            D_j_unique = unique(D_j)
+            ! get number of unique eigenvalues
+            n_D_j_unique_s = size(D_j_unique)
+            ! loop over unique eigenvalues
+            do k = 1, n_D_j_unique_s
+                ! mask eigenvalues which match the k-th unique value
+                where (abs(D_j-D_j_unique(k)).lt.tiny)
+                    mask = .true.
+                elsewhere
+                    mask = .false.
+                endwhere
+                ! get numer of eigenvalues matches
+                degen_j = count(mask)
+                ! check if this eigenvalue has fewer matchs than previous ones
+                if (degen_j.lt.degen_i) then
+                    ! updat degeneracy counter to reflect smaller eigenspace
+                    degen_i = degen_j
+                    ! update eigenspace
+                    V_least = orthonormalize( V(:,pack(inds,mask),j) )
+                ! if a 1D space is found return (it doesn't get much smaller than this!)
+                if (degen_j.eq.1) return
                 endif
             enddo
-        enddo search_nondegen
-        !
-    end function   sucessefully_get_nondegenerate_eigenvec
+        enddo
+    end function   get_least_degenerate_eigenspace
+
+!     function       sucessefully_get_least_degenerate_eigenspace(V,D,irrep_proj_i,irrep_dim_i, V_ij_proj) result(isfound)
+!         !
+!         implicit none
+!         !
+!         complex(dp), intent(in) :: V(:,:,:) ! eigenvectors
+!         complex(dp), intent(in) :: D(:,:)   ! eigenvalues
+!         complex(dp), intent(in) :: irrep_proj_i(:,:)
+!         integer    , intent(in) :: irreP_dim_i
+!         complex(dp),allocatable, intent(out) :: V_ij_proj(:,:) ! eigenvectors
+!         logical :: isfound
+!         complex(dp),allocatable :: ns(:,:)  ! eigenvectors
+!         complex(dp),allocatable :: V_k(:,:) ! eigenvectors
+!         complex(dp),allocatable :: V_j(:,:) ! eigenvectors
+!         complex(dp),allocatable :: D_j(:)   ! eigenvalues
+!         complex(dp),allocatable :: D_j_unique(:) ! eigenvalues
+!         logical    ,allocatable :: mask_i(:)
+!         logical    ,allocatable :: mask_j(:)
+!         integer    ,allocatable :: inds(:)
+!         integer :: n_D_j_unique_s
+!         integer :: nsyms, nbases
+!         integer :: degen_i ! counter
+!         integer :: degen_j ! counter
+!         integer :: ns_i
+!         integer :: ns_j
+!         integer :: i, j, k
+!         !
+!         isfound = .false.
+!         !
+!         nbases = size(V,1)
+!         nsyms  = size(V,3)
+!         ! allocate stuff
+!         allocate(V_j(nbases,nbases))
+!         allocate(D_j(nbases))
+!         ! allocate masks
+!         allocate(mask_i(nbases))
+!         allocate(mask_j(nbases))
+!         ! allocate inds
+!         allocate(inds(nbases))
+!         inds = [1:nbases]
+!         !
+!         do j = 1, nsyms
+!             ! get eigenvector/values
+!             V_j = V(:,:,j)
+!             D_j = D(:,j)
+!             ! filter eigenvectors belonging to least degenerate eigenvalue
+!             D_j_unique = unique(D_j)
+!             ! get number of unique eigenvalues
+!             n_D_j_unique_s = size(D_j_unique)
+!             ! initialize degeneracy counter
+!             degen_i = nbases
+!             ! loop over unique eigenvalues
+!             do k = 1, n_D_j_unique_s
+!                 ! mask eigenvalues which match the k-th unique value
+!                 where (abs(D_j-D_j_unique(k)).lt.tiny)
+!                     mask_j = .true.
+!                 elsewhere
+!                     mask_j = .false.
+!                 endwhere
+!                 ! get numer of eigenvalues which match this one
+!                 degen_j = count(mask_j)
+!                 ! check if this eigenvalue has fewer degeneracies than the last
+!                 if (degen_j.lt.degen_i) then
+!                     ! update mask and counter
+!                     degen_i = degen_j
+!                      mask_i =  mask_j
+!                 endif
+!             enddo
+!         enddo
+
+!             ! project least degenerate subspace onto the i-th irreducible space
+!             V_ij_proj = orthonormalize( matmul(irrep_proj_i, V_j(:, pack(inds,mask_i))) )
+!             ! initialize null space dimension counter
+!             ns_i = nbases
+!             ! reduce projected subspace by intsersecting it with eigenspace of regular reps
+!             do k = 1, nsyms
+!                 ! get vectors which do not correspond to null space of rr_k
+!                 V_k = orthonormalize( V(:, pack(inds,abs(D(:,k)).gt.tiny), k) )
+!                 ! get subspace intersection
+!                 ns  = subspace_intersection(V_k, V_ij_proj)
+!                 ! get dimension of intersection
+!                 ns_j = size(ns,2)
+!                 ! check that something was obtained form the intserection
+!                 if (ns_j.ne.0) then
+!                 ! check that the intersection reduced the dimension of the space
+!                 if (ns_j.lt.ns_i) then
+!                     !
+!                     call disp([ j, k, ns_i, ns_j, irrep_dim_i],fmt='i5',orient='row')
+!                     ! deallocate projected basis
+!                     deallocate(V_ij_proj)
+!                     ! reallocate it
+!                     allocate(V_ij_proj, source=ns)
+!                     ! update subspace dimension
+!                     ns_i = ns_j
+!                     ! end if subspace is completely reduced
+!                     if (ns_i.eq.irrep_dim_i) then
+!                         isfound = .true.
+!                         return
+!                     endif
+!                 endif
+!                 endif
+!             enddo
+!         enddo
+!         !
+!     end function   sucessefully_get_least_degenerate_eigenspace
 
     function       get_starting_eigvec(rr,commutator_id) result(V_start)
         !
@@ -1447,23 +1550,23 @@ contains
         ! return the value of the least degerenate eigenvalue
         complex(dp), intent(in) :: D(:)
         complex(dp) :: least_degen_eigenval
-        complex(dp),allocatable :: unique_D(:)
+        complex(dp),allocatable :: D_unique(:)
         integer    ,allocatable :: degeneracies(:)
-        integer :: nuniques
+        integer :: n_D_unique_s
         integer :: i
         ! 
         ! save unique and exclude null space
-        unique_D = unique(pack(D,abs(D).gt.tiny))
-        !get number of unique eigenvalues
-        nuniques = size(unique_D)
+        D_unique = unique(pack(D,abs(D).gt.tiny))
+        ! get number of unique eigenvalues
+        n_D_unique_s = size(D_unique)
         ! record the number of degeneracies
-        allocate(degeneracies(nuniques))
-        do i = 1, nuniques
-            degeneracies(i) = count( abs(unique_D(i)-D).lt.tiny )
+        allocate(degeneracies(n_D_unique_s))
+        do i = 1, n_D_unique_s
+            degeneracies(i) = count( abs(D_unique(i)-D).lt.tiny )
         enddo
         ! find eigenvalue with the lowest degeneracy
-        unique_D(1:1) = unique_D(minloc(degeneracies))
-        least_degen_eigenval = unique_D(1)
+        D_unique(1:1) = D_unique(minloc(degeneracies))
+        least_degen_eigenval = D_unique(1)
         ! 
     end function   get_least_degen_eigval
 

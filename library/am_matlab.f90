@@ -1741,6 +1741,8 @@ module am_matlab
             endif
         enddo
         !
+        U = trim_null_columns(U)
+        !
     end function  d_orthonormalize
 
     function      z_orthonormalize(V) result(U)
@@ -1775,6 +1777,8 @@ module am_matlab
             endif
         enddo
         !
+        U = trim_null_columns(U)
+        !
     end function  z_orthonormalize
 
     ! get vector subspace intersection 
@@ -1801,11 +1805,11 @@ module am_matlab
         ! get null space (coefficients)
         ns = get_null_space(ns)
         ! check if there is an intersection
-        if (size(ns,1).ne.0) then
+        if (size(ns,2).ne.0) then
             ! apply coefficients to construct interception subspace
-            allocate(C, source=matmul(A,ns))
+            allocate(C, source=matmul(A,ns(1:na,:)))
             ! orthonormalize intersection basis vectors
-            C = trim_null_columns(unique(orthonormalize(C)))
+            C = orthonormalize(C)
         else
             allocate(C(0,0))
         endif
@@ -1834,11 +1838,11 @@ module am_matlab
         ! get null space (coefficients)
         ns = get_null_space(ns)
         ! check if there is an intersection
-        if (size(ns,1).ne.0) then
+        if (size(ns,2).ne.0) then
             ! apply coefficients to construct interception subspace
-            allocate(C, source=matmul(A,ns))
+            allocate(C, source=matmul(A,ns(1:na,:)))
             ! orthonormalize intersection basis vectors
-            C = trim_null_columns(unique(orthonormalize(C)))
+            C = orthonormalize(C)
         else
             allocate(C(0,0))
         endif
@@ -1847,7 +1851,7 @@ module am_matlab
 
     ! trim columns with zeros
 
-    function      d_trim_null_columns(A) result(B)
+    pure function  d_trim_null_columns(A) result(B)
         !
         implicit none
         !
@@ -1876,7 +1880,7 @@ module am_matlab
         !
     end function  d_trim_null_columns
 
-    function      z_trim_null_columns(A) result(B)
+    pure function z_trim_null_columns(A) result(B)
         !
         implicit none
         !
