@@ -131,33 +131,36 @@ contains
         !
     end function   get_inverse_indices
 
-    function       get_cyclic_order(multab) result(order)
+    function       get_cyclic_order(multab) result(cyclic_order)
         !
         implicit none
         !
         integer, intent(in) :: multab(:,:)
-        integer, allocatable :: order(:)
+        integer, allocatable :: cyclic_order(:)
         integer :: power
         integer :: i, j
         integer :: nsyms
         !
         nsyms = size(multab,2)
         !
-        allocate(order(nsyms))
-        order = 0
-        !
+        allocate(cyclic_order(nsyms))
+        cyclic_order = 0
         do i = 1, nsyms
             power = i
             ! apply operation until identity (1) is returned
             do j = 1, 100
                 if (power.eq.1) then
-                    order(i) = j
+                    cyclic_order(i) = j
                     exit
                 endif
                 power = multab(i,power)
             enddo
-            if (order(i).eq.0) stop 'ERROR [get_cyclic_order]: unable to determine symmetry order'
+            if (cyclic_order(i).eq.0) stop 'ERROR [get_cyclic_order]: unable to determine symmetry order'
         enddo
+        ! debug
+        if (debug) then
+        call dump(A=cyclic_order, fname=trim(outfile_dir_sym)//'/debug'//'/outfile.cyclic_order')
+        endif
         !
     end function   get_cyclic_order
 
@@ -182,7 +185,6 @@ contains
         integer, allocatable :: multab_sorted(:,:)
         integer :: nsyms
         integer :: i
-        !
         ! get number of symmetries (and size of basis)
         nsyms = size(multab,1)
         ! initializ indices
@@ -207,6 +209,10 @@ contains
                 rr(:,:,i) = 0
             endwhere
         enddo
+        ! debug
+        if (debug) then
+        call dump(A=rr, fname=trim(outfile_dir_sym)//'/debug'//'/outfile.rr')
+        endif
     end function   get_regular_rep
 
     function       get_generator_id(multab) result(gen_id)
@@ -303,14 +309,11 @@ contains
         integer :: nclasses
         !
         nsyms = size(multab,2)
-        !
         ! allocate space for conjugacy class
         allocate(class_id(nsyms))
         class_id = 0
-        !
         ! allocate space for conjugate elements
         allocate(conjugates(nsyms))
-        !
         ! determine conjugacy classes
         k = 0
         do i = 1, nsyms
@@ -326,25 +329,25 @@ contains
             do j = 1, nsyms
                 class_id( conjugates(j) ) = k
             enddo
-            !
         endif
         enddo
         nclasses = k
-        !
         ! relabel based on how many elements each class has
         call relabel_based_on_occurances(class_id)
         ! relabel classes based on point symmetry id of representative class element
         call relabel_based_on_ps_id(class_id,ps_id)
-        !
         ! make sure the identity is in the first class
         ! class_id(i=1) is the class of the first element (the identity); swap it's location with whaterver elements are in the first class
         where (class_id.eq.1) class_id = class_id(1)
         class_id(1)=1
-        !
+        ! debug
+        if (debug) then
+        call dump(A=class_id, fname=trim(outfile_dir_sym)//'/debug'//'/outfile.class_id')
+        endif
         ! check that classes are disjoint and complete
         if (any(class_id.eq.0)) stop 'Not every element in the group has been assigned a conjugacy class.'
         !
-        contains
+        contains        
         subroutine     relabel_based_on_occurances(class_id)
             !
             use am_rank_and_sort
@@ -367,7 +370,6 @@ contains
             enddo
             !
             ! this quick and dirty procedure lifts degeneracies
-            !
             allocate(sorted_indices(nsyms))
             allocate(A_sorted(nsyms))
             call rank((1+maxval(class_id))*occurances+class_id,sorted_indices)
@@ -384,9 +386,7 @@ contains
                 endif
                 list_relabled(i) = j
             enddo
-            !
             ! return everything to the original order at call
-            !
             allocate(reverse_sort(nsyms))
             reverse_sort(sorted_indices)=[1:nsyms]
             class_id=list_relabled(reverse_sort)
@@ -405,36 +405,28 @@ contains
             integer, allocatable :: rinds(:)
             integer, allocatable :: class_member(:,:)
             integer :: nsyms, i, j
-            !
+            ! get dimensions
             nsyms = size(class_id)
-            !
             nclasses = maxval(class_id)
-            !
+            ! create inds
             allocate(inds,source=[1:nclasses])
-            !
             ! identify class members 
             ! members(nclass,maxval(class_nelements))
             class_member = id_member(class_id)
-            !
             ! for each class, identify the representative element
             allocate(s(nclasses))
             do i = 1, nclasses
                 s(i) = ps_id( class_member(i,1) )
             enddo
-            ! 
             ! sort classes based on representative element id
             call rank(s,inds)
-            !
-            !
             allocate(rinds(nclasses))
             rinds(inds) = [1:nclasses] 
-            !
             ! at this point inds contains the new labeling for class_id
             ! [1:nclasses] => inds; relabel according to new labeling
             do i = 1, nsyms
                 class_id(i) = rinds( class_id(i) )
             enddo
-            !
         end subroutine relabel_based_on_ps_id
     end function   get_class_id
 
@@ -530,6 +522,10 @@ contains
             endif
         enddo
         enddo inv_search
+        ! debug
+        if (debug) then
+        call dump(A=chartab, fname=trim(outfile_dir_sym)//'/debug'//'/outfile.chartab')
+        endif
         ! check that the number of elements ri in class Ci is a divisor of theorder of the group
         ! Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. Cambridge, UK?; New York: Cambridge University Press, 2008. p 35.
         do i = 1, nclasses
@@ -937,14 +933,16 @@ contains
             endif
         enddo
         enddo id_search
-        !
+        ! get dimensions
         nirreps = nclasses
         allocate(irrep_dim(nirreps))
         do j = 1, nirreps
             irrep_dim(j) = nint(real(chartab(j,i)))
         enddo
-        ! check dimension (for representation which is not seitz)
-        ! if (sum(irrep_dim^2).ne.nbases) stop 'ERROR [get_irrep_dimension]: irrep dimension is not a factor of the group order.'
+        ! debug
+        if (debug) then
+        call dump(A=irrep_dim, fname=trim(outfile_dir_sym)//'/debug'//'/outfile.irrep_dim')
+        endif
     end function   get_irrep_dimension
 
     ! regular representation
@@ -977,6 +975,10 @@ contains
             enddo
             irrep_proj(:,:,j) = irrep_proj(:,:,j) * irrep_dim(j)/real(nsyms,dp)
         enddo
+        ! debug
+        if (debug) then
+        call dump(A=irrep_proj, fname=trim(outfile_dir_sym)//'/debug'//'/outfile.irrep_proj')
+        endif
         ! check that each irrep projection operator is hermitian
         do j = 1, nirreps
             if (.not.isequal(adjoint(irrep_proj(:,:,j)),irrep_proj(:,:,j))) then
@@ -1013,6 +1015,10 @@ contains
             class_matrices(:,:,i) = class_matrices(:,:,i) + rr(:,:,class_member(i,j))
         enddo
         enddo
+        ! debug
+        if (debug) then
+        call dump(A=class_matrices, fname=trim(outfile_dir_sym)//'/debug'//'/outfile.class_matrices')
+        endif
         ! check that their sum equals ones() matrix
         if (.not.isequal( sum(class_matrices,3), nint(ones(nbases)))) then
             stop 'ERROR [get_class_matrices]: class matrices do not sum to ones matrix'
@@ -1081,8 +1087,7 @@ contains
         integer    , intent(in) :: class_member(:,:)
         complex(dp),allocatable :: irrep_diag(:,:)
         complex(dp),allocatable :: phi(:,:)
-        complex(dp),allocatable :: wrk1(:,:)
-        complex(dp),allocatable :: wrk2(:,:)
+        complex(dp),allocatable :: wrk(:,:)
         complex(dp),allocatable :: tr(:,:)
         complex(dp),allocatable :: Q(:)
         integer    ,allocatable :: S(:)
@@ -1106,10 +1111,11 @@ contains
         allocate(S(nirreps))
         allocate(E(nirreps))
         ! allocate workspace
-        allocate(wrk1(nbases,nsyms))
+        allocate(wrk(nbases,nsyms))
         ! allocate random vector
         allocate(Q(nbases))
-        Q = [1:nbases] ! pack( rand(nbases,1), .true.)
+        ! Q = sqrt(real([1:nbases],dp))
+        Q = pack( rand(nbases,1), .true.)
         ! 
         n = 0
         do j = 1, nirreps
@@ -1119,41 +1125,38 @@ contains
             n = n + irrep_dim(j) - 1 
             E(j) = n
             ! project a random vector onto the j-th irreducible subspace
-            wrk1(:,1) = matmul(irrep_proj(:,:,j), Q )
+            wrk(:,1) = matmul(irrep_proj(:,:,j), Q )
             ! generate partner symmetry functions
-            do i = 1, nsyms
-                wrk1(:,i) = matmul(rr(:,:,i), wrk1(:,1))
-                wrk2 = orthonormalize(wrk1)
-                if (size(wrk2,2).eq.irrep_dim(j)) exit
-            enddo
-            write(*,*) irrep_dim(j)
             if (irrep_dim(j).ge.2) then
-
-
-                call disp(wrk2)
-                stop
-
+                k = 2
+                do i = 2, nsyms
+                    wrk(:,k) = matmul(rr(:,:,i), wrk(:,1))
+                    if (k.eq.rank_svd(wrk(:,1:k))) then
+                    if (k.eq.irrep_dim(j)) then
+                        exit
+                    else
+                        k = k + 1
+                    endif
+                    endif
+                enddo
             endif
-
             ! save phi
-            phi(:,S(j):E(j)) = wrk2
+            phi(:,S(j):E(j)) = orth_svd( wrk(:,1:irrep_dim(j)) )
         enddo
         ! get diagonal symmetry elements
         do i = 1, nsyms
         do j = 1, nirreps
-        do k = 1, irrep_dim(j)
-            irrep_diag(S(j)+k-1,i) = dot_product(matmul( conjg(phi(:,S(j)+k-1)), rr(:,:,i)), phi(:,S(j)+k-1))
-        enddo
+            do k = 1, irrep_dim(j)
+                irrep_diag(S(j)+k-1,i) = dot_product(matmul( conjg(phi(:,S(j)+k-1)), rr(:,:,i)), phi(:,S(j)+k-1))
+            enddo
             tr(j,i) = sum( irrep_diag(S(j):E(j),i) )
         enddo
         enddo
-        !
-        call disp(irrep_dim,advance='no')
-        call disp(real(tr(:,class_member(:,1))),advance='yes')
-        write(*,*) 
-        call disp(irrep_dim,advance='no')
-        call disp(real(chartab))
-        ! check if trace (sum of diagonals matches valeu in character table
+        ! debug
+        if (debug) then
+        call dump(A=irrep_diag, fname=trim(outfile_dir_sym)//'/debug'//'/outfile.irrep_diag')
+        endif
+        ! check that trace matches value in character table
         do j = 1, nirreps
         do i = 1, nclasses
             if ( abs(chartab(j,i)-tr(j,class_member(i,1))) .gt. tiny ) then
@@ -1161,7 +1164,6 @@ contains
             endif
         enddo
         enddo
-        !
     end function   get_irrep_diag
 
     function       get_wigner_projection(rr,irrep_diag,irrep_dim,class_matrices) result(wigner_proj)
@@ -1198,6 +1200,10 @@ contains
                 wigner_proj(:,:,k,j) = wigner_proj(:,:,k,j) * irrep_dim(j)/real(nsyms,dp)
             enddo
         enddo
+        ! debug
+        if (debug) then
+        call dump(A=wigner_proj, fname=trim(outfile_dir_sym)//'/debug'//'/outfile.wigner_proj')
+        endif
         ! check that each wigner projection operator is hermitian
         do j = 1, nirreps
         do k = 1, irrep_dim(j)
@@ -1228,14 +1234,17 @@ contains
         complex(dp),allocatable :: phi(:,:)
         complex(dp),allocatable :: rr_block(:,:,:)
         complex(dp),allocatable :: Q(:)
+        complex(dp),allocatable :: V(:,:)
         integer :: nirreps, nbases, nsyms
+        integer :: sumdim
         integer :: j,k,n, S,E
         ! get dimensions
         nsyms   = size(rr,3)
         nbases  = size(rr,1)
         nirreps = size(wigner_proj,4)
+        sumdim  = sum(irrep_dim)
         ! allocate phi
-        allocate(phi(nbases,nbases))
+        allocate(phi(nbases,sumdim))
         phi = 0
         ! get a random vector
         allocate(Q(nbases))
@@ -1249,18 +1258,24 @@ contains
             E = n
             do k = 1, irrep_dim(j)
                 phi(:,(S-1)+k) = matmul(wigner_proj(:,:,k,j),Q)
+                ! call am_zgeev(A=wigner_proj(:,:,k,j), VR=V, D=Q)
+                ! call disp(X=Q,orient='row')
+                ! phi(:,S-1+k) = V(:,1)
             enddo
-            phi(:,S:E) = orthonormalize(phi(:,S:E))
+            phi(:,S:E) = orth_svd(phi(:,S:E))
+            ! phi(:,S:E) = phi(:,S:E)
         enddo
         !
-        allocate(rr_block(nbases,nbases,nsyms))
+        allocate(rr_block(sumdim,sumdim,nsyms))
         do j = 1, nsyms
             rr_block(:,:,j) = matmul(matmul(adjoint(phi),rr(:,:,j)), phi)
         enddo
         !
+        call disp(rr_block(:,:,5))
+
         call dump(A=rr_block, fname=trim(outfile_dir_sym)//'/debug'//'/outfile.rr_block')
         call dump(A=phi     , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.phi')
-        call dump(A=wigner_proj(:,:,1,:), fname=trim(outfile_dir_sym)//'/debug'//'/outfile.wigner_proj')
+        call dump(A=wigner_proj(:,:,:,5), fname=trim(outfile_dir_sym)//'/debug'//'/outfile.wigner_proj')
 
 
 
@@ -1431,7 +1446,7 @@ contains
         allocate(inds(nbases))
         inds = [1:nbases]
         ! project onto irreducible subspace and orthonormalize
-        V_least_proj = orthonormalize( matmul(irrep_proj_i, V_least) )
+        V_least_proj = orth_svd( matmul(irrep_proj_i, V_least) )
 
 ! something is wrong here... V_least_proj is empty?
             call disp(V_least_proj)
@@ -1444,7 +1459,7 @@ contains
         ! attempt to reduce projected subspace by intsersecting it with eigenspace of regular reps
         reduction_loop : do i = 1, nsyms
             ! get eigenvectors which nonzero eigenvalues
-            V_i = orthonormalize( V(:, pack(inds,abs(D(:,i)).gt.tiny), i) )
+            V_i = orth_svd( V(:, pack(inds,abs(D(:,i)).gt.tiny), i) )
             ! get subspace intersection
             ns  = subspace_intersection(V_i, V_least_proj)
             ! get dimension of intersection
@@ -1454,7 +1469,7 @@ contains
                 ! check that the intersection reduced the dimension of the space
                 if (ns_j.lt.ns_i) then
                     ! update subspace
-                    V_least_proj = orthonormalize(ns)
+                    V_least_proj = orth_svd(ns)
                     ! update subspace dimension
                     ns_i = ns_j
                     ! end if subspace is completely reduced (this is the smallest it will ever get)
@@ -1526,7 +1541,7 @@ contains
                 ! check if this eigenvalue has fewer matchs than previous ones
                 if (degen_j.lt.degen_i) then
                     ! get orthonormalized columns
-                    V_try = orthonormalize( V(:,pack(inds,mask),j) )
+                    V_try = orth_svd( V(:,pack(inds,mask),j) )
                     ! check that this eigenvectors which are not in the null space of the projection oprators
                     pass = .true.
                     ! seems impossible to find a set of vectors that are not simultaenosuly in the null space of at least one irrep.

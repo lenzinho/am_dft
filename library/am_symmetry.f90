@@ -267,7 +267,12 @@ contains
         grp%cc%member = id_member(id=grp%cc%id)
         ! get representatives
         grp%cc%representative = id_representative(id=grp%cc%id)
-        !
+        ! debug
+        if (debug) then
+        call dump(A=grp%cc%nclasses , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.nclasses')
+        call dump(A=grp%cc%nelements, fname=trim(outfile_dir_sym)//'/debug'//'/outfile.class_nelements')
+        call dump(A=grp%cc%member   , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.class_member')
+        endif
     end subroutine get_conjugacy_classes
 
     subroutine     get_character_table(grp)

@@ -1,7 +1,7 @@
 module am_matlab
 
     use am_constants
-    use am_mkl, only : am_zheev, inv, rand, am_zgeev, am_dgeev, null_svd
+    use am_mkl, only : am_zheev, inv, rand, am_zgeev, am_dgeev, null_svd, orth_svd
     use dispmodule ! for dump 
 
     implicit none
@@ -75,9 +75,9 @@ module am_matlab
     end interface ! cumprod
 
     interface dump
-        module procedure dv_dump, dm_dump, dt_dump, &
-                         zv_dump, zm_dump, zt_dump, &
-                         iv_dump, im_dump, it_dump
+        module procedure         dv_dump, dm_dump, dt_dump, &
+                                 zv_dump, zm_dump, zt_dump, zt4_dump, &
+                         i_dump, iv_dump, im_dump, it_dump
     end interface ! dump
 
     interface rref
@@ -95,10 +95,6 @@ module am_matlab
     interface subspace_intersection
         module procedure z_subspace_intersection, d_subspace_intersection
     end interface ! subspace_intersection
-
-    interface orthonormalize
-        module procedure d_orth, z_orth
-    end interface ! orthonormalize
 
     contains
 
@@ -239,6 +235,27 @@ module am_matlab
         !
     end subroutine dv_dump
 
+    subroutine     zt4_dump(A,fname)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: A(:,:,:,:)
+        character(*) :: fname
+        integer :: fid
+        integer :: i, j
+        !
+        fid = 1
+        open(unit=fid,file=trim(fname),status='replace',action='write')
+            write(fid,*) shape(A)
+            do i = 1, size(A,4)
+            do j = 1, size(A,3)
+                call disp(unit=fid,X=A(:,:,j,i))
+            enddo
+            enddo
+        close(fid)
+        !
+    end subroutine zt4_dump
+
     subroutine     zt_dump(A,fname)
         !
         implicit none
@@ -340,6 +357,22 @@ module am_matlab
         close(fid)
         !
     end subroutine iv_dump
+
+    subroutine     i_dump(A,fname)
+        !
+        implicit none
+        !
+        integer, intent(in) :: A
+        character(*) :: fname
+        integer :: fid
+        !
+        fid = 1
+        open(unit=fid,file=trim(fname),status='replace',action='write')
+            write(fid,*) shape(A)
+            call disp(unit=fid,X=A)
+        close(fid)
+        !
+    end subroutine i_dump
 
     ! progress bar
 
@@ -1711,78 +1744,6 @@ module am_matlab
         deallocate(temp)
     end function  z_rref
 
-    ! orthonormalize
-
-    function      d_orth(V) result(U)
-        !
-        ! orths columns of V(:,:)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: V(:,:)
-        real(dp),allocatable :: U(:,:)
-        real(dp) :: normfac
-        integer :: n, m, k, j
-        !
-        m = size(V,1)
-        n = size(V,2)
-        !
-        allocate(U(m,n))
-        U = 0
-        !
-        do k = 1, n
-            U(:,k) = V(:,k)
-            do j = 1, k-1
-                U(:,k) = U(:,k) - dot_product(U(:,j),V(:,k)) * U(:,j)
-            enddo
-            normfac = norm2(U(:,k))
-            if (abs(normfac).gt.tiny) then
-                U(:,k) = U(:,k)/normfac
-            else
-                U(:,k) = 0
-            endif
-        enddo
-        !
-        U = trim_null_columns(U)
-        !
-    end function  d_orth
-
-    function      z_orth(V) result(U)
-        !
-        ! orths columns of V(:,:)
-        !
-        use am_mkl, only : am_dznrm2
-        !
-        implicit none
-        !
-        complex(dp), intent(in) :: V(:,:)
-        complex(dp),allocatable :: U(:,:)
-        real(dp) :: normfac
-        integer :: n, m, k, j
-        !
-        m = size(V,1)
-        n = size(V,2)
-        !
-        allocate(U(m,n))
-        U = 0
-        !
-        do k = 1, n
-            U(:,k) = V(:,k)
-            do j = 1, k-1
-                U(:,k) = U(:,k) - dot_product(U(:,j),V(:,k)) * U(:,j)
-            enddo
-            normfac = am_dznrm2(U(:,k)) ! sqrt(dot_product(conjg(U(:,k)),U(:,k)))
-            if (abs(normfac).gt.tiny) then
-                U(:,k) = U(:,k)/normfac
-            else
-                U(:,k) = 0
-            endif
-        enddo
-        !
-        U = trim_null_columns(U)
-        !
-    end function  z_orth
-
     pure function d_trim_null_columns(A) result(B)
         !
         implicit none
@@ -1867,9 +1828,7 @@ module am_matlab
         ! check if there is an intersection
         if (size(ns,2).ne.0) then
             ! apply coefficients to construct interception subspace
-            allocate(C, source=matmul(A,ns(1:na,:)))
-            ! orthonormalize intersection basis vectors
-            C = orthonormalize(C)
+            C = orth_svd( matmul(A,ns(1:na,:)) )
         else
             allocate(C(0,0))
         endif
@@ -1900,9 +1859,7 @@ module am_matlab
         ! check if there is an intersection
         if (size(ns,2).ne.0) then
             ! apply coefficients to construct interception subspace
-            allocate(C, source=matmul(A,ns(1:na,:)))
-            ! orthonormalize intersection basis vectors
-            C = orthonormalize(C)
+            C = orth_svd( matmul(A,ns(1:na,:)) ) 
         else
             allocate(C(0,0))
         endif

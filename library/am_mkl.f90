@@ -31,13 +31,16 @@ module am_mkl
     end interface ! rand
 
     interface null_svd
-        module procedure null_svd_zgesvd, null_svd_dgesvd
+        module procedure null_zgesvd, null_dgesvd
     end interface ! null_svd
 
     interface orth_svd
         module procedure :: orth_dgesvd, orth_zgesvd
     end interface ! orth_svd
 
+    interface rank_svd
+        module procedure :: rank_dgesvd, rank_zgesvd
+    end interface ! rank_svd
 
 contains
 
@@ -878,6 +881,8 @@ contains
         real(dp), allocatable :: VT_internal(:,:)
         real(dp), allocatable :: CA(:,:)
         real(dp), allocatable :: WORK(:)
+        character(1) :: jobu
+        character(1) :: jobvt
         integer :: m, n
         integer :: lda, ldu, ldvt
         integer :: info
@@ -892,15 +897,27 @@ contains
         allocate( S_internal(n))
         allocate( U_internal(ldu,m))
         allocate(VT_internal(ldvt,n))
+        ! flags
+        if (present(U)) then
+            jobu = 'A'
+        else
+            jobu = 'N'
+        endif
+        if (present(V)) then
+            jobvt= 'A'
+        else
+            jobvt= 'N'
+        endif
+        ! allocate space
         allocate(WORK(lwmax))
         ! copy variables
         allocate(CA, source=A)
         ! query the optimal workspace
         lwork = -1
-        call dgesvd( 'all', 'all', m, n, CA, lda, S_internal, U_internal, ldu, VT_internal, ldvt, WORK, lwork, info )
+        call dgesvd( jobu, jobvt, m, n, CA, lda, S_internal, U_internal, ldu, VT_internal, ldvt, WORK, lwork, info )
         lwork = min( lwmax, int( WORK( 1 ) ) )
         ! solve eigenproblem
-        call dgesvd( 'all', 'all', m, n, CA, lda, S_internal, U_internal, ldu, VT_internal, ldvt, WORK, lwork, info )
+        call dgesvd( jobu, jobvt, m, n, CA, lda, S_internal, U_internal, ldu, VT_internal, ldvt, WORK, lwork, info )
         ! check for convergence
         if( info.gt.0 ) stop 'ERROR [am_dgesvd]: SVD failed to converge'
         ! output
@@ -925,15 +942,17 @@ contains
         !  the left and right singular vectors of A.
         !
         complex(dp), intent(in)  :: A(:,:)
-        complex(dp), intent(out), allocatable, optional :: S(:)
+        real(dp)   , intent(out), allocatable, optional :: S(:)
         complex(dp), intent(out), allocatable, optional :: U(:,:)
         complex(dp), intent(out), allocatable, optional :: V(:,:)
-        complex(dp), allocatable ::  S_internal(:)
+        real(dp)   , allocatable ::  S_internal(:)
         complex(dp), allocatable ::  U_internal(:,:)
         complex(dp), allocatable :: VT_internal(:,:)
         complex(dp), allocatable :: CA(:,:)
         complex(dp), allocatable :: WORK(:)
         real(dp)   , allocatable :: RWORK(:)
+        character(1) :: jobu
+        character(1) :: jobvt
         integer :: m, n
         integer :: lda, ldu, ldvt
         integer :: info
@@ -951,6 +970,17 @@ contains
         U_internal = 0
         allocate(VT_internal(ldvt,n))
         VT_internal = 0
+        ! flags
+        if (present(U)) then
+            jobu = 'A'
+        else
+            jobu = 'N'
+        endif
+        if (present(V)) then
+            jobvt= 'A'
+        else
+            jobvt= 'N'
+        endif
         ! allocate space
         allocate(  WORK(lwmax) )
         allocate( RWORK(max(1,5*min(m,n))) )
@@ -958,12 +988,12 @@ contains
         allocate(CA, source=A)
         ! query the optimal workspace
         lwork = -1
-        call zgesvd( 'all', 'all', m, n, CA, lda, S_internal, U_internal, ldu, VT_internal, ldvt, WORK, lwork, RWORK, info )
+        call zgesvd( jobu, jobvt, m, n, CA, lda, S_internal, U_internal, ldu, VT_internal, ldvt, WORK, lwork, RWORK, info )
         lwork = min(lwmax,int(WORK(1)))
         ! solve eigenproblem
-        call zgesvd( 'all', 'all', m, n, CA, lda, S_internal, U_internal, ldu, VT_internal, ldvt, WORK, lwork, RWORK, info )
+        call zgesvd( jobu, jobvt, m, n, CA, lda, S_internal, U_internal, ldu, VT_internal, ldvt, WORK, lwork, RWORK, info )
         ! check for convergence
-        if( info.gt.0 ) stop 'ERROR [am_dgesvd]: SVD failed to converge'
+        if( info.gt.0 ) stop 'ERROR [am_zgesvd]: SVD failed to converge'
         ! output
         if (present(S)) allocate(S,source=S_internal)
         if (present(U)) allocate(U,source=U_internal)
@@ -972,7 +1002,7 @@ contains
 
     ! get null space using svd decomposition
 
-    function       null_svd_dgesvd(A) result(null_space)
+    function       null_dgesvd(A) result(null_space)
         !
         real(dp), intent(in)  :: A(:,:)
         real(dp), allocatable :: null_space(:,:)
@@ -998,13 +1028,13 @@ contains
         else
             allocate(null_space(0,0))
         endif
-    end function   null_svd_dgesvd
+    end function   null_dgesvd
 
-    function       null_svd_zgesvd(A) result(null_space)
+    function       null_zgesvd(A) result(null_space)
         !
         complex(dp), intent(in)  :: A(:,:)
         complex(dp), allocatable :: null_space(:,:)
-        complex(dp), allocatable :: S_internal(:)
+        real(dp)   , allocatable :: S_internal(:)
         complex(dp), allocatable :: V_internal(:,:)
         logical , allocatable :: mask(:)
         integer , allocatable :: inds(:)
@@ -1026,7 +1056,35 @@ contains
         else
             allocate(null_space(0,0))
         endif
-    end function   null_svd_zgesvd
+    end function   null_zgesvd
+
+    ! get matrix rank using svd decomposition
+
+    function       rank_dgesvd(A) result(matrix_rank)
+        !
+        real(dp), intent(in)  :: A(:,:)
+        integer :: matrix_rank
+        real(dp), allocatable :: S_internal(:)
+        integer , allocatable :: inds(:)
+        ! perform svd decomposition
+        call am_dgesvd(A=A,S=S_internal)
+        ! get matrix rank
+        matrix_rank = count(abs(S_internal).gt.tiny)
+        !
+    end function   rank_dgesvd
+
+    function       rank_zgesvd(A) result(matrix_rank)
+        !
+        complex(dp), intent(in)  :: A(:,:)
+        integer :: matrix_rank
+        real(dp), allocatable :: S_internal(:)
+        integer , allocatable :: inds(:)
+        ! perform svd decomposition
+        call am_zgesvd(A=A,S=S_internal)
+        ! get matrix rank
+        matrix_rank = count(abs(S_internal).gt.tiny)
+        !
+    end function   rank_zgesvd
 
     ! orthonormalize vectors using svd decomposition
 
@@ -1038,19 +1096,23 @@ contains
         real(dp), allocatable :: U_internal(:,:)
         logical , allocatable :: mask(:)
         integer , allocatable :: inds(:)
+        integer :: i,m,n
         ! perform svd decomposition
         call am_dgesvd(A=A,U=U_internal,S=S_internal)
+        ! get dimensions 
+        m = size(U_internal,2)
+        n = size(S_internal)
         ! allocate mask
-        allocate(mask( size(S_internal) ))
+        allocate(mask(m))
         ! create mask
-        where (abs(S_internal).gt.tiny)
-            mask = .true.
-        elsewhere
-            mask = .false.
-        endwhere
+        mask = .false.
+        do i = 1, n
+        if (abs(S_internal(i)).gt.tiny) mask(i) = .true.
+        enddo
+        !
         if (count(mask).ne.0) then
             ! create indices
-            allocate(inds, source = [1:size(U_internal,2)])
+            allocate(inds, source = [1:m])
             ! return orthonoalized vectors
             allocate(A_orth, source = U_internal(:, pack(inds,mask) ))
         else
@@ -1062,23 +1124,27 @@ contains
         !
         complex(dp), intent(in)  :: A(:,:)
         complex(dp), allocatable :: A_orth(:,:)
-        complex(dp), allocatable :: S_internal(:)
+        real(dp)   , allocatable :: S_internal(:)
         complex(dp), allocatable :: U_internal(:,:)
         logical    , allocatable :: mask(:)
         integer    , allocatable :: inds(:)
+        integer :: i,m,n
         ! perform svd decomposition
         call am_zgesvd(A=A,U=U_internal,S=S_internal)
+        ! get dimensions
+        m = size(U_internal,2)
+        n = size(S_internal)
         ! allocate mask
-        allocate(mask( size(S_internal) ))
+        allocate(mask(m))
         ! create mask
-        where (abs(S_internal).gt.tiny)
-            mask = .true.
-        elsewhere
-            mask = .false.
-        endwhere
+        mask = .false.
+        do i = 1, n
+        if (abs(S_internal(i)).gt.tiny) mask(i) = .true.
+        enddo
+        !
         if (count(mask).ne.0) then
             ! create indices
-            allocate(inds, source = [1:size(U_internal,2)])
+            allocate(inds, source = [1:m])
             ! return orthonoalized vectors
             allocate(A_orth, source = U_internal(:, pack(inds,mask) ))
         else
