@@ -30,7 +30,7 @@ module am_constants
 #ifdef COLOR
     character(18) , parameter :: flare = char(27)//'[1;31m'//' ... '//char(27)//'[0;0m'
 #else
-    character(5)  , parameter :: flare = flare
+    character(5)  , parameter :: flare = ' ... '
 #endif
 
     ! DEBUG

@@ -1,7 +1,7 @@
 module am_matlab
 
     use am_constants
-    use am_mkl, only : am_zheev, inv, rand, am_zgeev, am_dgeev, get_null_space
+    use am_mkl, only : am_zheev, inv, rand, am_zgeev, am_dgeev, null_svd
     use dispmodule ! for dump 
 
     implicit none
@@ -80,10 +80,6 @@ module am_matlab
                          iv_dump, im_dump, it_dump
     end interface ! dump
 
-    interface orthonormalize
-        module procedure :: d_orthonormalize, z_orthonormalize
-    end interface ! orthonormalize
-
     interface rref
         module procedure :: z_rref, d_rref
     end interface ! rref
@@ -99,6 +95,10 @@ module am_matlab
     interface subspace_intersection
         module procedure z_subspace_intersection, d_subspace_intersection
     end interface ! subspace_intersection
+
+    interface orthonormalize
+        module procedure d_orth, z_orth
+    end interface ! orthonormalize
 
     contains
 
@@ -1711,9 +1711,11 @@ module am_matlab
         deallocate(temp)
     end function  z_rref
 
-    pure function d_orthonormalize(V) result(U)
+    ! orthonormalize
+
+    function      d_orth(V) result(U)
         !
-        ! orthonormalizes columns of V(:,:)
+        ! orths columns of V(:,:)
         !
         implicit none
         !
@@ -1721,7 +1723,7 @@ module am_matlab
         real(dp),allocatable :: U(:,:)
         real(dp) :: normfac
         integer :: n, m, k, j
-        !        !
+        !
         m = size(V,1)
         n = size(V,2)
         !
@@ -1743,11 +1745,11 @@ module am_matlab
         !
         U = trim_null_columns(U)
         !
-    end function  d_orthonormalize
+    end function  d_orth
 
-    function      z_orthonormalize(V) result(U)
+    function      z_orth(V) result(U)
         !
-        ! orthonormalizes columns of V(:,:)
+        ! orths columns of V(:,:)
         !
         use am_mkl, only : am_dznrm2
         !
@@ -1779,77 +1781,7 @@ module am_matlab
         !
         U = trim_null_columns(U)
         !
-    end function  z_orthonormalize
-
-    ! get vector subspace intersection 
-
-    function      d_subspace_intersection(A,B) result(C)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: A(:,:)
-        real(dp), intent(in) :: B(:,:)
-        real(dp),allocatable :: C(:,:)
-        real(dp),allocatable :: ns(:,:)
-        integer :: na,nb,m,n
-        !
-        m = size(A,1)
-        na= size(A,2)
-        nb= size(B,2)
-        n = na+nb
-        if (m.ne.size(B,1)) stop 'ERROR [subspace_intersection]: m /= size(B,1)'
-        !
-        allocate(ns(m,n))
-        ns(1:m,[1:na]   ) = A
-        ns(1:m,[1:nb]+na) = B
-        ! get null space (coefficients)
-        ns = get_null_space(ns)
-        ! check if there is an intersection
-        if (size(ns,2).ne.0) then
-            ! apply coefficients to construct interception subspace
-            allocate(C, source=matmul(A,ns(1:na,:)))
-            ! orthonormalize intersection basis vectors
-            C = orthonormalize(C)
-        else
-            allocate(C(0,0))
-        endif
-        !
-    end function  d_subspace_intersection
-
-    function      z_subspace_intersection(A,B) result(C)
-        !
-        implicit none
-        !
-        complex(dp), intent(in) :: A(:,:)
-        complex(dp), intent(in) :: B(:,:)
-        complex(dp),allocatable :: C(:,:)
-        complex(dp),allocatable :: ns(:,:)
-        integer :: na,nb,m,n
-        !
-        m = size(A,1)
-        na= size(A,2)
-        nb= size(B,2)
-        n = na+nb
-        if (m.ne.size(B,1)) stop 'ERROR [subspace_intersection]: m /= size(B,1)'
-        !
-        allocate(ns(m,n))
-        ns(1:m,[1:na]   ) = A
-        ns(1:m,[1:nb]+na) = B
-        ! get null space (coefficients)
-        ns = get_null_space(ns)
-        ! check if there is an intersection
-        if (size(ns,2).ne.0) then
-            ! apply coefficients to construct interception subspace
-            allocate(C, source=matmul(A,ns(1:na,:)))
-            ! orthonormalize intersection basis vectors
-            C = orthonormalize(C)
-        else
-            allocate(C(0,0))
-        endif
-        !
-    end function  z_subspace_intersection
-
-    ! trim columns with zeros
+    end function  z_orth
 
     pure function d_trim_null_columns(A) result(B)
         !
@@ -1908,6 +1840,74 @@ module am_matlab
         allocate(B, source = A(:,pack(inds,mask)))
         !
     end function  z_trim_null_columns
+
+    ! get vector subspace intersection 
+
+    function      d_subspace_intersection(A,B) result(C)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:)
+        real(dp), intent(in) :: B(:,:)
+        real(dp),allocatable :: C(:,:)
+        real(dp),allocatable :: ns(:,:)
+        integer :: na,nb,m,n
+        !
+        m = size(A,1)
+        na= size(A,2)
+        nb= size(B,2)
+        n = na+nb
+        if (m.ne.size(B,1)) stop 'ERROR [subspace_intersection]: m /= size(B,1)'
+        !
+        allocate(ns(m,n))
+        ns(1:m,[1:na]   ) = A
+        ns(1:m,[1:nb]+na) = B
+        ! get null space (coefficients)
+        ns = null_svd(ns)
+        ! check if there is an intersection
+        if (size(ns,2).ne.0) then
+            ! apply coefficients to construct interception subspace
+            allocate(C, source=matmul(A,ns(1:na,:)))
+            ! orthonormalize intersection basis vectors
+            C = orthonormalize(C)
+        else
+            allocate(C(0,0))
+        endif
+        !
+    end function  d_subspace_intersection
+
+    function      z_subspace_intersection(A,B) result(C)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: A(:,:)
+        complex(dp), intent(in) :: B(:,:)
+        complex(dp),allocatable :: C(:,:)
+        complex(dp),allocatable :: ns(:,:)
+        integer :: na,nb,m,n
+        !
+        m = size(A,1)
+        na= size(A,2)
+        nb= size(B,2)
+        n = na+nb
+        if (m.ne.size(B,1)) stop 'ERROR [subspace_intersection]: m /= size(B,1)'
+        !
+        allocate(ns(m,n))
+        ns(1:m,[1:na]   ) = A
+        ns(1:m,[1:nb]+na) = B
+        ! get null space (coefficients)
+        ns = null_svd(ns)
+        ! check if there is an intersection
+        if (size(ns,2).ne.0) then
+            ! apply coefficients to construct interception subspace
+            allocate(C, source=matmul(A,ns(1:na,:)))
+            ! orthonormalize intersection basis vectors
+            C = orthonormalize(C)
+        else
+            allocate(C(0,0))
+        endif
+        !
+    end function  z_subspace_intersection
 
     ! matrix indexing
 

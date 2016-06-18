@@ -30,9 +30,14 @@ module am_mkl
         module procedure :: d_rand, dv_rand, dm_rand, dt_rand
     end interface ! rand
 
-    interface get_null_space
-        module procedure get_null_space_zgesvd, get_null_space_dgesvd
-    end interface ! get_null_space
+    interface null_svd
+        module procedure null_svd_zgesvd, null_svd_dgesvd
+    end interface ! null_svd
+
+    interface orth_svd
+        module procedure :: orth_dgesvd, orth_zgesvd
+    end interface ! orth_svd
+
 
 contains
 
@@ -967,61 +972,119 @@ contains
 
     ! get null space using svd decomposition
 
-    function       get_null_space_dgesvd(A) result(null_space)
+    function       null_svd_dgesvd(A) result(null_space)
         !
         real(dp), intent(in)  :: A(:,:)
         real(dp), allocatable :: null_space(:,:)
         real(dp), allocatable :: S_internal(:)
         real(dp), allocatable :: V_internal(:,:)
-        logical , allocatable :: T(:)
+        logical , allocatable :: mask(:)
         integer , allocatable :: inds(:)
         ! perform svd decomposition
         call am_dgesvd(A=A,S=S_internal,V=V_internal)
         ! allocate mask
-        allocate(T( size(S_internal) ))
+        allocate(mask( size(S_internal) ))
         ! create mask
         where (abs(S_internal).lt.tiny)
-            T = .true.
+            mask = .true.
         elsewhere
-            T = .false.
+            mask = .false.
         endwhere
-        if (count(T).ne.0) then
+        if (count(mask).ne.0) then
             ! create indices
             allocate(inds, source = [1:size(V_internal,2)])
             ! return null_space
-            allocate(null_space, source = V_internal(:, pack(inds,T) ))
+            allocate(null_space, source = V_internal(:, pack(inds,mask) ))
         else
             allocate(null_space(0,0))
         endif
-    end function   get_null_space_dgesvd
+    end function   null_svd_dgesvd
 
-    function       get_null_space_zgesvd(A) result(null_space)
+    function       null_svd_zgesvd(A) result(null_space)
         !
         complex(dp), intent(in)  :: A(:,:)
         complex(dp), allocatable :: null_space(:,:)
         complex(dp), allocatable :: S_internal(:)
         complex(dp), allocatable :: V_internal(:,:)
-        logical , allocatable :: T(:)
+        logical , allocatable :: mask(:)
         integer , allocatable :: inds(:)
         ! perform svd decomposition
         call am_zgesvd(A=A,S=S_internal,V=V_internal)
         ! allocate mask
-        allocate(T( size(S_internal) ))
+        allocate(mask( size(S_internal) ))
         ! create mask
         where (abs(S_internal).lt.tiny)
-            T = .true.
+            mask = .true.
         elsewhere
-            T = .false.
+            mask = .false.
         endwhere
-        if (count(T).ne.0) then
+        if (count(mask).ne.0) then
             ! create indices
             allocate(inds, source = [1:size(V_internal,2)])
             ! return null_space
-            allocate(null_space, source = V_internal(:, pack(inds,T) ))
+            allocate(null_space, source = V_internal(:, pack(inds,mask) ))
         else
             allocate(null_space(0,0))
         endif
-    end function   get_null_space_zgesvd
+    end function   null_svd_zgesvd
+
+    ! orthonormalize vectors using svd decomposition
+
+    function       orth_dgesvd(A) result(A_orth)
+        !
+        real(dp), intent(in)  :: A(:,:)
+        real(dp), allocatable :: A_orth(:,:)
+        real(dp), allocatable :: S_internal(:)
+        real(dp), allocatable :: U_internal(:,:)
+        logical , allocatable :: mask(:)
+        integer , allocatable :: inds(:)
+        ! perform svd decomposition
+        call am_dgesvd(A=A,U=U_internal,S=S_internal)
+        ! allocate mask
+        allocate(mask( size(S_internal) ))
+        ! create mask
+        where (abs(S_internal).gt.tiny)
+            mask = .true.
+        elsewhere
+            mask = .false.
+        endwhere
+        if (count(mask).ne.0) then
+            ! create indices
+            allocate(inds, source = [1:size(U_internal,2)])
+            ! return orthonoalized vectors
+            allocate(A_orth, source = U_internal(:, pack(inds,mask) ))
+        else
+            allocate(A_orth(0,0))
+        endif
+    end function   orth_dgesvd    
+
+    function       orth_zgesvd(A) result(A_orth)
+        !
+        complex(dp), intent(in)  :: A(:,:)
+        complex(dp), allocatable :: A_orth(:,:)
+        complex(dp), allocatable :: S_internal(:)
+        complex(dp), allocatable :: U_internal(:,:)
+        logical    , allocatable :: mask(:)
+        integer    , allocatable :: inds(:)
+        ! perform svd decomposition
+        call am_zgesvd(A=A,U=U_internal,S=S_internal)
+        ! allocate mask
+        allocate(mask( size(S_internal) ))
+        ! create mask
+        where (abs(S_internal).gt.tiny)
+            mask = .true.
+        elsewhere
+            mask = .false.
+        endwhere
+        if (count(mask).ne.0) then
+            ! create indices
+            allocate(inds, source = [1:size(U_internal,2)])
+            ! return orthonoalized vectors
+            allocate(A_orth, source = U_internal(:, pack(inds,mask) ))
+        else
+            allocate(A_orth(0,0))
+        endif
+    end function   orth_zgesvd
 
     ! solve Ax = B by QR factorization
 

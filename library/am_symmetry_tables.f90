@@ -949,28 +949,23 @@ contains
 
     ! regular representation
 
-    function       get_irrep_projection(rr,chartab,irrep_dim,nclasses,class_nelements,class_member) result(irrep_proj)
+    function       get_irrep_projection(rr,chartab,irrep_dim,class_matrices) result(irrep_proj)
         !
         implicit none
         !
         integer    , intent(in) :: rr(:,:,:)
         complex(dp), intent(in) :: chartab(:,:)
         integer    , intent(in) :: irrep_dim(:)
-        integer    , intent(in) :: nclasses
-        integer    , intent(in) :: class_nelements(:)
-        integer    , intent(in) :: class_member(:,:)
+        integer    , intent(in) :: class_matrices(:,:,:)
         complex(dp),allocatable :: irrep_proj(:,:,:)
-        integer,allocatable :: class_matrices(:,:,:)
+        integer :: nirreps, nsyms, nbases, nclasses
         integer :: i,j
-        integer :: nirreps, nsyms, nbases
         !
         ! get number of things
         nbases  = size(rr,1)
         nsyms   = nbases
+        nclasses= size(class_matrices,3)
         nirreps = nclasses
-        ! get class matrices
-        class_matrices = get_class_matrices(rr=rr, nclasses=nclasses, &
-            class_nelements=class_nelements, class_member=class_member)
         ! allocate space for irrep projection operator
         allocate(irrep_proj(nbases,nbases,nirreps))
         irrep_proj = 0
@@ -994,35 +989,35 @@ contains
                 stop 'ERROR [get_irrep_projection]: irrep_proj is not idempotent'
             endif
         enddo
-        contains
-        function       get_class_matrices(rr,nclasses,class_nelements,class_member) result(class_matrices)
-            !
-            implicit none
-            !
-            integer, intent(in) :: rr(:,:,:)
-            integer, intent(in) :: nclasses
-            integer, intent(in) :: class_nelements(:)
-            integer, intent(in) :: class_member(:,:)
-            integer,allocatable :: class_matrices(:,:,:)
-            integer :: i,j
-            integer :: nbases
-            !
-            ! get number of things
-            nbases  = size(rr,1)
-            ! class matrices
-            allocate(class_matrices(nbases,nbases,nclasses))
-            class_matrices = 0
-            do i = 1, nclasses
-            do j = 1, class_nelements(i)
-                class_matrices(:,:,i) = class_matrices(:,:,i) + rr(:,:,class_member(i,j))
-            enddo
-            enddo
-            ! check that their sum equals ones() matrix
-            if (.not.isequal( sum(class_matrices,3), nint(ones(nbases)))) then
-                stop 'ERROR [get_class_matrices]: class matrices do not sum to ones matrix'
-            endif
-        end function   get_class_matrices
     end function   get_irrep_projection
+
+    function       get_class_matrices(rr,nclasses,class_nelements,class_member) result(class_matrices)
+        !
+        implicit none
+        !
+        integer, intent(in) :: rr(:,:,:)
+        integer, intent(in) :: nclasses
+        integer, intent(in) :: class_nelements(:)
+        integer, intent(in) :: class_member(:,:)
+        integer,allocatable :: class_matrices(:,:,:)
+        integer :: i,j
+        integer :: nbases
+        !
+        ! get number of things
+        nbases  = size(rr,1)
+        ! class matrices
+        allocate(class_matrices(nbases,nbases,nclasses))
+        class_matrices = 0
+        do i = 1, nclasses
+        do j = 1, class_nelements(i)
+            class_matrices(:,:,i) = class_matrices(:,:,i) + rr(:,:,class_member(i,j))
+        enddo
+        enddo
+        ! check that their sum equals ones() matrix
+        if (.not.isequal( sum(class_matrices,3), nint(ones(nbases)))) then
+            stop 'ERROR [get_class_matrices]: class matrices do not sum to ones matrix'
+        endif
+    end function   get_class_matrices
 
     function       get_cycle_structure_str(rr,order) result(cycle_structure_str)
         !
@@ -1075,137 +1070,338 @@ contains
         !
     end function   get_cycle_structure_str
 
-    function       get_block_similarity_transform(rr,irrep_dim,irrep_proj,nclasses,commutator_id,class_member) result(phi)
+    function       get_irrep_diag(rr,chartab,irrep_proj,irrep_dim,class_member) result(irrep_diag)
         !
-        use am_rank_and_sort
+        implicit none
+        !
+        integer    , intent(in) :: rr(:,:,:)
+        complex(dp), intent(in) :: chartab(:,:)
+        complex(dp), intent(in) :: irrep_proj(:,:,:) ! projection
+        integer    , intent(in) :: irrep_dim(:)
+        integer    , intent(in) :: class_member(:,:)
+        complex(dp),allocatable :: irrep_diag(:,:)
+        complex(dp),allocatable :: phi(:,:)
+        complex(dp),allocatable :: wrk1(:,:)
+        complex(dp),allocatable :: wrk2(:,:)
+        complex(dp),allocatable :: tr(:,:)
+        complex(dp),allocatable :: Q(:)
+        integer    ,allocatable :: S(:)
+        integer    ,allocatable :: E(:)
+        integer :: nirreps, nclasses, nbases, nsyms
+        integer :: i, j, k, n
+        ! get dimensions
+        nsyms   = size(rr,3)
+        nbases  = size(rr,1)
+        nirreps = size(irrep_proj,3)
+        nclasses= nirreps
+        ! allocate phi
+        allocate(phi(nbases,sum(irrep_dim)))
+        phi = 0
+        ! allocate local character table
+        allocate(tr(nirreps,nsyms))
+        ! allocate irrep_diag
+        allocate(irrep_diag(sum(irrep_dim),nsyms))
+        irrep_diag = 0
+        ! allocate start/end
+        allocate(S(nirreps))
+        allocate(E(nirreps))
+        ! allocate workspace
+        allocate(wrk1(nbases,nsyms))
+        ! allocate random vector
+        allocate(Q(nbases))
+        Q = [1:nbases] ! pack( rand(nbases,1), .true.)
+        ! 
+        n = 0
+        do j = 1, nirreps
+            ! start/end
+            n = n + 1
+            S(j) = n
+            n = n + irrep_dim(j) - 1 
+            E(j) = n
+            ! project a random vector onto the j-th irreducible subspace
+            wrk1(:,1) = matmul(irrep_proj(:,:,j), Q )
+            ! generate partner symmetry functions
+            do i = 1, nsyms
+                wrk1(:,i) = matmul(rr(:,:,i), wrk1(:,1))
+                wrk2 = orthonormalize(wrk1)
+                if (size(wrk2,2).eq.irrep_dim(j)) exit
+            enddo
+            write(*,*) irrep_dim(j)
+            if (irrep_dim(j).ge.2) then
+
+
+                call disp(wrk2)
+                stop
+
+            endif
+
+            ! save phi
+            phi(:,S(j):E(j)) = wrk2
+        enddo
+        ! get diagonal symmetry elements
+        do i = 1, nsyms
+        do j = 1, nirreps
+        do k = 1, irrep_dim(j)
+            irrep_diag(S(j)+k-1,i) = dot_product(matmul( conjg(phi(:,S(j)+k-1)), rr(:,:,i)), phi(:,S(j)+k-1))
+        enddo
+            tr(j,i) = sum( irrep_diag(S(j):E(j),i) )
+        enddo
+        enddo
+        !
+        call disp(irrep_dim,advance='no')
+        call disp(real(tr(:,class_member(:,1))),advance='yes')
+        write(*,*) 
+        call disp(irrep_dim,advance='no')
+        call disp(real(chartab))
+        ! check if trace (sum of diagonals matches valeu in character table
+        do j = 1, nirreps
+        do i = 1, nclasses
+            if ( abs(chartab(j,i)-tr(j,class_member(i,1))) .gt. tiny ) then
+                stop 'ERROR [get_irrep_diag]: character table mismatch'
+            endif
+        enddo
+        enddo
+        !
+    end function   get_irrep_diag
+
+    function       get_wigner_projection(rr,irrep_diag,irrep_dim,class_matrices) result(wigner_proj)
+        !
+        implicit none
+        !
+        integer    , intent(in) :: rr(:,:,:)
+        complex(dp), intent(in) :: irrep_diag(:,:)
+        integer    , intent(in) :: irrep_dim(:)
+        integer    , intent(in) :: class_matrices(:,:,:)
+        complex(dp),allocatable :: wigner_proj(:,:,:,:) ! wigner_proj(nbases,nbases, maxval(irrep_dim), nirreps )
+        integer :: nirreps, nsyms, nbases, nclasses
+        integer :: i,j,k,n
+        !
+        ! get number of things
+        nbases  = size(rr,1)
+        nsyms   = nbases
+        nclasses= size(class_matrices,3)
+        nirreps = nclasses
+        ! allocate space for wigner projection operator
+        allocate(wigner_proj(nbases,nbases,maxval(irrep_dim),nirreps))
+        wigner_proj = 0
+        ! loop over irreps
+        n = 0
+        do j = 1, nirreps
+            ! loop over dimensions of irreps
+            do k = 1, irrep_dim(j)
+                ! n is a compound irrep and irrep dim index
+                n = n + 1
+                ! wooten eq 6.24: sum over symmetries
+                do i = 1, nsyms
+                wigner_proj(:,:,k,j) = wigner_proj(:,:,k,j) + rr(:,:,i) * irrep_diag(n,i)
+                enddo
+                wigner_proj(:,:,k,j) = wigner_proj(:,:,k,j) * irrep_dim(j)/real(nsyms,dp)
+            enddo
+        enddo
+        ! check that each wigner projection operator is hermitian
+        do j = 1, nirreps
+        do k = 1, irrep_dim(j)
+            if (.not.isequal(adjoint(wigner_proj(:,:,k,j)),wigner_proj(:,:,k,j))) then
+                stop 'ERROR [get_irrep_projection]: irrep_proj is not hermitian'
+            endif
+        enddo
+        enddo
+        ! check that each wigner projection operator is idempotent (A^2 = A)
+        do j = 1, nirreps
+        do k = 1, irrep_dim(j)
+        if (.not.isequal(matmul(wigner_proj(:,:,k,j),wigner_proj(:,:,k,j)),wigner_proj(:,:,k,j))) then
+            call disp(X=wigner_proj(:,:,k,j),title=tostring(k)//tostring(j),style='underline')
+            stop 'ERROR [get_irrep_projection]: irrep_proj is not idempotent'
+        endif
+        enddo
+        enddo
+        !
+    end function   get_wigner_projection
+
+    function       get_block_transform(rr,irrep_dim,wigner_proj) result(phi)
         !
         implicit none
         !
         integer    , intent(in) :: rr(:,:,:)
         integer    , intent(in) :: irrep_dim(:)
-        complex(dp), intent(in) :: irrep_proj(:,:,:) ! can be complex because of complex characters
-        integer    , intent(in) :: nclasses
-        integer    , intent(in) :: class_member(:,:)
-        integer    , intent(in) :: commutator_id(:,:) ! symmetries which commute with symmetry i
+        complex(dp), intent(in) :: wigner_proj(:,:,:,:) ! wigner_proj(nbases,nbases, maxval(irrep_dim), nirreps )
         complex(dp),allocatable :: phi(:,:)
-        integer    ,allocatable :: S(:)
-        integer    ,allocatable :: E(:) 
-        complex(dp),allocatable :: V(:,:,:) ! eigenvectors
-        complex(dp),allocatable :: D(:,:) ! eigenvalues
-        complex(dp),allocatable :: zeros(:)
-        complex(dp),allocatable :: try(:)
-        complex(dp),allocatable :: V_least(:,:)
-        integer    ,allocatable :: commutator_least(:)
-        ! complex(dp),allocatable :: V_proj(:,:)
-        ! integer,    allocatable :: S_sqr(:)
-        ! integer,    allocatable :: E_sqr(:)
-        complex(dp),allocatable :: V_least_proj(:,:) ! eigenvectors
-        logical :: isorthogonal
-        integer :: nbases
-        integer :: nsyms
-        integer :: nphis
-        integer :: nirreps
-        integer :: i, i_phi, j, k
-        integer :: verbosity
-        ! verbosity for debugging
-        verbosity = 1
-        ! get bases dimensions
-        nbases = size(rr,1)
-        nsyms  = size(rr,3)
-        nirreps= size(irrep_proj,3)
-        nphis  = sum(irrep_dim)
-        ! allocate space
-        allocate(phi(nbases,nphis))
-        allocate(S(nirreps))
-        allocate(E(nirreps))
-        ! work space
-        allocate(try(nbases))
-        ! allocate zero vector
-        allocate(zeros(nbases))
-        zeros = 0
-        ! get symmetries eigenvectors and eigenvalues
-        allocate(D(nbases,nsyms))
-        allocate(V(nbases,nbases,nsyms))
-        do i = 1, nsyms
-            call am_dgeev(A=real(rr(:,:,i),dp),VR=V(:,:,i),D=D(:,i))
+        complex(dp),allocatable :: rr_block(:,:,:)
+        complex(dp),allocatable :: Q(:)
+        integer :: nirreps, nbases, nsyms
+        integer :: j,k,n, S,E
+        ! get dimensions
+        nsyms   = size(rr,3)
+        nbases  = size(rr,1)
+        nirreps = size(wigner_proj,4)
+        ! allocate phi
+        allocate(phi(nbases,nbases))
+        phi = 0
+        ! get a random vector
+        allocate(Q(nbases))
+        Q = pack( rand(nbases,1), .true. )
+        !wigner_proj
+        n = 0
+        do j = 1, nirreps
+            n = n + 1
+            S = n
+            n = n + irrep_dim(j) - 1
+            E = n
+            do k = 1, irrep_dim(j)
+                phi(:,(S-1)+k) = matmul(wigner_proj(:,:,k,j),Q)
+            enddo
+            phi(:,S:E) = orthonormalize(phi(:,S:E))
         enddo
-        ! debug
-        if (debug) then
-        call execute_command_line('mkdir -p '//trim(outfile_dir_sym)//'/debug')
-        call dump(A=class_member       , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.class_member' )
-        call dump(A=rr                 , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.rr'           )
-        call dump(A=irrep_proj         , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.irrep_proj'   )
-        call dump(A=irrep_dim          , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.irrep_dim'    )
-        endif
-        ! get similarity transform which block diagonalizes irrep projections
-        ! call get_irrep_proj_eigvec(irrep_proj=irrep_proj, V_proj=V_proj,S=S_sqr,E=E_sqr)
-        ! call dump(A=V_proj, fname=trim(outfile_dir_sym)//'/outfile.V_proj')
-        ! initialize i_phi
-        i_phi = 0
-        ! loop over irrep projections
-        do i = 1, nirreps
-            if (verbosity.ge.1) write(*,'(a,a)',advance='no') flare, 'irrep '//tostring(i)//': '
-            ! save indices
-            i_phi= i_phi + 1
-            S(i) = i_phi
-            E(i) = S(i) + irrep_dim(i) - 1
-            if     (irrep_dim(i).eq.1) then
-                if (verbosity.ge.1) write(*,'(a)',advance='no') '1D '
-                ! project a random vector on the irreducible subspace
-                ! since the subspace is 1 dimension, the randomness goes away.
-                phi(:,i_phi) = matmul(irrep_proj(:,:,i), rand(nbases) )
-            elseif (irrep_dim(i).ge.2) then
-                ! if the irrep is two-dimensional or larger...
-                if (verbosity.ge.1) write(*,'(a)',advance='no') tostring(irrep_dim(i))//'D '
-                ! search for an eigenvector of a regular rep symmetry element that has unique (nondegenerate eigenvalues)
-                if    (successfully_get_least_degenerate_eigenspace(V=V,D=D,irrep_proj_i=irrep_proj(:,:,i),V_least=V_least)) then
-                    ! project the nondegenerate vector onto the irreducible subspace
-                    phi(:,i_phi) = matmul(irrep_proj(:,:,i), V_least(:,1) )
-                elseif (successfully_restrict_eigenspace(V=V,D=D,irrep_dim_i=irrep_dim(i), &
-                    irrep_proj_i=irrep_proj(:,:,i),V_least=V_least,V_least_proj=V_least_proj)) then
-                    ! use the lowest degenerate eigenvalue to search for a starting eigensubspace
-                    phi(:,i_phi) = matmul(irrep_proj(:,:,i), V_least_proj(:,1) )
-                else
-                    stop 'need to program this still... '
-                endif
-                ! search for partners
-                search : do k = 1, nclasses
-                    ! exit search when all partners symmetry functions are found 
-                    if (i_phi.eq.E(i)) then
-                        exit search
-                    endif
-                    ! try partner function
-                    try = matmul(rr(:,:,class_member(k,1)), phi(:,S(i)))
-                    ! make sure: non-zero
-                    if (.not.isequal(try,zeros)) then
-                        ! make sure: orthogonal to other vectors in the irrep basis
-                        ! since in the regular rep symmetries have matrix elements (0,1), 
-                        ! it suffices to check whether the vectors are not the same.
-                        ! ideal, a cross product would be taken.
-                        isorthogonal = .true.
-                        search_orthogonal : do j = S(i), i_phi
-                            if (isequal(phi(:,j),try)) then
-                                isorthogonal = .false.
-                                exit search_orthogonal
-                            endif
-                        enddo search_orthogonal
-                        if (isorthogonal) then
-                            i_phi = i_phi + 1
-                            phi(:,i_phi) = try/norm(try)
-                        endif 
-                    endif
-                enddo search
-            else
-                stop 'ERROR [get_block_similarity_transform]: incorrect irrep_dim'
-            endif
-            ! orthonormalize the irreducible subspace
-            phi(:,S(i):E(i)) = orthonormalize( phi(:,S(i):E(i)) )
-            ! line break
-            if (verbosity.ge.1) write(*,*)
+        !
+        allocate(rr_block(nbases,nbases,nsyms))
+        do j = 1, nsyms
+            rr_block(:,:,j) = matmul(matmul(adjoint(phi),rr(:,:,j)), phi)
         enddo
-        if (i_phi.ne.nphis) stop 'ERROR [get_block_similarity_transform]: i_phi /= nirreps'
+        !
+        call dump(A=rr_block, fname=trim(outfile_dir_sym)//'/debug'//'/outfile.rr_block')
+        call dump(A=phi     , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.phi')
+        call dump(A=wigner_proj(:,:,1,:), fname=trim(outfile_dir_sym)//'/debug'//'/outfile.wigner_proj')
 
-    end function   get_block_similarity_transform
+
+
+
+
+        stop
+        !
+    end function   get_block_transform
+
+
+!     function       get_block_similarity_transform(rr,irrep_dim,irrep_proj,nclasses,commutator_id,class_member) result(phi)
+!         !
+!         use am_rank_and_sort
+!         !
+!         implicit none
+!         !
+!         integer    , intent(in) :: rr(:,:,:)
+!         integer    , intent(in) :: irrep_dim(:)
+!         complex(dp), intent(in) :: irrep_proj(:,:,:) ! can be complex because of complex characters
+!         integer    , intent(in) :: nclasses
+!         integer    , intent(in) :: class_member(:,:)
+!         integer    , intent(in) :: commutator_id(:,:) ! symmetries which commute with symmetry i
+!         complex(dp),allocatable :: phi(:,:)
+!         integer    ,allocatable :: S(:)
+!         integer    ,allocatable :: E(:) 
+!         complex(dp),allocatable :: V(:,:,:) ! eigenvectors
+!         complex(dp),allocatable :: D(:,:) ! eigenvalues
+!         complex(dp),allocatable :: zeros(:)
+!         complex(dp),allocatable :: try(:)
+!         complex(dp),allocatable :: V_least(:,:)
+!         integer    ,allocatable :: commutator_least(:)
+!         ! complex(dp),allocatable :: V_proj(:,:)
+!         ! integer,    allocatable :: S_sqr(:)
+!         ! integer,    allocatable :: E_sqr(:)
+!         complex(dp),allocatable :: V_least_proj(:,:) ! eigenvectors
+!         logical :: isorthogonal
+!         integer :: nbases
+!         integer :: nsyms
+!         integer :: nphis
+!         integer :: nirreps
+!         integer :: i, i_phi, j, k
+!         integer :: verbosity
+!         ! verbosity for debugging
+!         verbosity = 1
+!         ! get bases dimensions
+!         nbases = size(rr,1)
+!         nsyms  = size(rr,3)
+!         nirreps= size(irrep_proj,3)
+!         nphis  = sum(irrep_dim)
+!         ! allocate space
+!         allocate(phi(nbases,nphis))
+!         allocate(S(nirreps))
+!         allocate(E(nirreps))
+!         ! work space
+!         allocate(try(nbases))
+!         ! allocate zero vector
+!         allocate(zeros(nbases))
+!         zeros = 0
+!         ! get symmetries eigenvectors and eigenvalues
+!         allocate(D(nbases,nsyms))
+!         allocate(V(nbases,nbases,nsyms))
+!         do i = 1, nsyms
+!             call am_dgeev(A=real(rr(:,:,i),dp),VR=V(:,:,i),D=D(:,i))
+!         enddo
+!         ! debug
+!         if (debug) then
+!         call execute_command_line('mkdir -p '//trim(outfile_dir_sym)//'/debug')
+!         call dump(A=class_member       , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.class_member' )
+!         call dump(A=rr                 , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.rr'           )
+!         call dump(A=irrep_proj         , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.irrep_proj'   )
+!         call dump(A=irrep_dim          , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.irrep_dim'    )
+!         endif
+!         ! get similarity transform which block diagonalizes irrep projections
+!         ! call get_irrep_proj_eigvec(irrep_proj=irrep_proj, V_proj=V_proj,S=S_sqr,E=E_sqr)
+!         ! call dump(A=V_proj, fname=trim(outfile_dir_sym)//'/outfile.V_proj')
+!         ! initialize i_phi
+!         i_phi = 0
+!         ! loop over irrep projections
+!         do i = 1, nirreps
+!             if (verbosity.ge.1) write(*,'(a,a)',advance='no') flare, 'irrep '//tostring(i)//': '
+!             ! save indices
+!             i_phi= i_phi + 1
+!             S(i) = i_phi
+!             E(i) = S(i) + irrep_dim(i) - 1
+!             if     (irrep_dim(i).eq.1) then
+!                 if (verbosity.ge.1) write(*,'(a)',advance='no') '1D '
+!                 ! project a random vector on the irreducible subspace
+!                 ! since the subspace is 1 dimension, the randomness goes away.
+!                 phi(:,i_phi) = matmul(irrep_proj(:,:,i), rand(nbases) )
+!             elseif (irrep_dim(i).ge.2) then
+!                 ! if the irrep is two-dimensional or larger...
+!                 if (verbosity.ge.1) write(*,'(a)',advance='no') tostring(irrep_dim(i))//'D '
+!                 ! search for an eigenvector of a regular rep symmetry element that has unique (nondegenerate eigenvalues)
+!                 if    (successfully_get_least_degenerate_eigenspace(V=V,D=D,irrep_proj_i=irrep_proj(:,:,i),V_least=V_least)) then
+!                     ! project the nondegenerate vector onto the irreducible subspace
+!                     phi(:,i_phi) = matmul(irrep_proj(:,:,i), V_least(:,1) )
+!                 elseif (successfully_restrict_eigenspace(V=V,D=D,irrep_dim_i=irrep_dim(i), &
+!                     irrep_proj_i=irrep_proj(:,:,i),V_least=V_least,V_least_proj=V_least_proj)) then
+!                     ! use the lowest degenerate eigenvalue to search for a starting eigensubspace
+!                     phi(:,i_phi) = matmul(irrep_proj(:,:,i), V_least_proj(:,1) )
+!                 else
+!                     stop 'need to program this still... '
+!                 endif
+!                 ! search for partners
+!                 search : do k = 1, nclasses
+!                     ! exit search when all partners symmetry functions are found 
+!                     if (i_phi.eq.E(i)) then
+!                         exit search
+!                     endif
+!                     ! try partner function
+!                     try = matmul(rr(:,:,class_member(k,1)), phi(:,S(i)))
+!                     ! make sure: non-zero
+!                     if (.not.isequal(try,zeros)) then
+!                         ! make sure: orthogonal to other vectors in the irrep basis
+!                         ! since in the regular rep symmetries have matrix elements (0,1), 
+!                         ! it suffices to check whether the vectors are not the same.
+!                         ! ideal, a cross product would be taken.
+!                         isorthogonal = .true.
+!                         search_orthogonal : do j = S(i), i_phi
+!                             if (isequal(phi(:,j),try)) then
+!                                 isorthogonal = .false.
+!                                 exit search_orthogonal
+!                             endif
+!                         enddo search_orthogonal
+!                         if (isorthogonal) then
+!                             i_phi = i_phi + 1
+!                             phi(:,i_phi) = try/norm(try)
+!                         endif 
+!                     endif
+!                 enddo search
+!             else
+!                 stop 'ERROR [get_block_similarity_transform]: incorrect irrep_dim'
+!             endif
+!             ! orthonormalize the irreducible subspace
+!             phi(:,S(i):E(i)) = orthonormalize( phi(:,S(i):E(i)) )
+!             ! line break
+!             if (verbosity.ge.1) write(*,*)
+!         enddo
+!         if (i_phi.ne.nphis) stop 'ERROR [get_block_similarity_transform]: i_phi /= nirreps'
+
+!     end function   get_block_similarity_transform
 
     ! <AUX:get_block_similarity_transform>
 
@@ -1278,14 +1474,13 @@ contains
         !
         complex(dp), intent(in) :: V(:,:,:) ! eigenvectors
         complex(dp), intent(in) :: D(:,:)   ! eigenvalues
-        complex(dp), intent(in) :: irrep_proj_i(:,:) ! porjection
+        complex(dp), intent(in) :: irrep_proj_i(:,:) ! projection
         complex(dp),allocatable, intent(out) :: V_least(:,:)
         logical :: is_successful
         complex(dp),allocatable :: V_try(:,:)
         complex(dp),allocatable :: V_j(:,:) ! eigenvectors
         complex(dp),allocatable :: D_j(:)   ! eigenvalues
         complex(dp),allocatable :: D_j_unique(:) ! eigenvalues
-        complex(dp),allocatable :: zeros(:,:)
         logical    ,allocatable :: mask(:)
         integer    ,allocatable :: inds(:)
         integer :: n_D_j_unique_s

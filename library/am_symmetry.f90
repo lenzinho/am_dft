@@ -276,7 +276,10 @@ contains
         !
         class(am_class_group), intent(inout) :: grp
         complex(dp), allocatable :: irrep_proj(:,:,:) ! complex because character may be complex
-        real(dp)   , allocatable :: S(:,:) 
+        real(dp)   , allocatable :: phi(:,:) 
+        integer    , allocatable :: class_matrices(:,:,:)
+        complex(dp), allocatable :: irrep_diag(:,:)
+        complex(dp), allocatable :: wigner_proj(:,:,:,:) 
         integer :: i, j
         !
         ! check
@@ -293,16 +296,26 @@ contains
         ! get irrep dimensions
         grp%ct%irrep_dim = get_irrep_dimension(chartab=grp%ct%chartab, &
             nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
+        ! get class matrices
+        class_matrices = get_class_matrices(rr=grp%mt%rr, &
+            nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, class_member=grp%cc%member)
         ! get irrep projection operators
         irrep_proj = get_irrep_projection(rr=grp%mt%rr, chartab=grp%ct%chartab, irrep_dim=grp%ct%irrep_dim, &
-            nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, class_member=grp%cc%member)
+            class_matrices=class_matrices)
+        ! get irrep diagonal matrix elements
+        irrep_diag = get_irrep_diag(rr=grp%mt%rr, chartab=grp%ct%chartab, irrep_dim=grp%ct%irrep_dim,&
+            irrep_proj=irrep_proj, class_member=grp%cc%member)
+        ! get wigner projections
+        wigner_proj = get_wigner_projection(rr=grp%mt%rr, irrep_diag=irrep_diag, irrep_dim=grp%ct%irrep_dim, &
+            class_matrices=class_matrices)
         ! get similarity transform for constructing irreps
-        S = get_block_similarity_transform(rr=grp%mt%rr, irrep_dim=grp%ct%irrep_dim, irrep_proj=irrep_proj, &
-            commutator_id=grp%mt%commutator_id, &
-            nclasses=grp%cc%nclasses,                                   class_member=grp%cc%member)
+        phi = get_block_transform(rr=grp%mt%rr, irrep_dim=grp%ct%irrep_dim, wigner_proj=wigner_proj)
+
+
+!         phi = get_block_similarity_transform(rr=grp%mt%rr, irrep_dim=grp%ct%irrep_dim, irrep_proj=irrep_proj, &
+!             commutator_id=grp%mt%commutator_id, &
+!             nclasses=grp%cc%nclasses,                                   class_member=grp%cc%member)
         !
-
-
 
 
 !         do i = 1, grp%nsyms
@@ -570,9 +583,9 @@ contains
         ! print stdout
         if (opts%verbosity.ge.1) then
             ! print global information
-            write(*,'(a,a,a)') flare, 'space symmetries = ' , tostring(sg%nsyms)
-            write(*,'(a,a,a)') flare, 'conjugacy classes = ', tostring(sg%cc%nclasses)
-            write(*,'(a,a)')   flare, 'seitz symmetries [frac/cart] = '
+            write(*,'(a5,a,a)') ' ... ', 'space symmetries = ' , tostring(sg%nsyms)
+            write(*,'(a5,a,a)') ' ... ', 'conjugacy classes = ', tostring(sg%cc%nclasses)
+            write(*,'(a5,a)')   ' ... ', 'seitz symmetries [frac/cart] = '
             ! print seitz operators
             mpl=2
             do i = 1,sg%nsyms
@@ -598,7 +611,6 @@ contains
             ! TURN ALL THIS STUFF INTO FILE IO
             ! TURN ALL THIS STUFF INTO FILE IO
 
-
             ! print multiplication table
             call print_title('Space group multiplication table')
             call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
@@ -618,10 +630,9 @@ contains
             call disp(X=sg%mt%order ,advance='no',title='order',style='underline')
             disp_str = get_cycle_structure_str(rr=sg%mt%rr,order=sg%mt%order)
             call disp(X=disp_str,advance='yes',fmt=tostring(len(disp_str(1)))//'s',title='regular representation cycle structure',style='underline')
-            stop
             ! generators
             call print_title('Space group generators')
-            write(*,'(a,a)',advance='no') flare, 'group generators = ' 
+            write(*,'(a,a)',advance='no') ' ... ', 'group generators = ' 
             call disp(X=sg%mt%gen,orient='row')
             call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
             call disp(X=[1:sg%nsyms],advance='no' ,trim='yes',title='sym',style='underline')
@@ -722,12 +733,12 @@ contains
             !
             ! print stdout
             if (verbosity.ge.2) then
-                call am_print('possible (im-)propers',nRs,flare)
-                call am_print('possible translations',nTs,flare)
+                call am_print('possible (im-)propers',nRs,' ... ')
+                call am_print('possible translations',nTs,' ... ')
                 call am_print_two_matrices_side_by_side(name='translations',&
                     Atitle='fractional',A=transpose(T),&
                     Btitle='cartesian' ,B=transpose(matmul(bas,T)),&
-                    iopt_emph=flare,iopt_teaser=.true.)
+                    iopt_emph=' ... ',iopt_teaser=.true.)
             endif
         end function    space_symmetries_from_basis
         function        lattice_symmetries(bas,prec) result(R_frac)
@@ -836,10 +847,10 @@ contains
         call pg%create_seitz_group(seitz_frac=unique(wrk_frac), bas=pc%bas)
         !
         if (opts%verbosity.ge.1) then
-            write(*,'(a,a,a)') flare, 'point group = '      , decode_pointgroup(point_group_schoenflies(pg%ps_id))
-            write(*,'(a,a,a)') flare, 'point symmetries = ' , tostring(pg%nsyms)
-            write(*,'(a,a,a)') flare, 'conjugacy classes = ', tostring(pg%cc%nclasses)
-            write(*,'(a,a)')   flare, 'point symmetries [frac/cart] = '
+            write(*,'(a5,a,a)') ' ... ', 'point group = '      , decode_pointgroup(point_group_schoenflies(pg%ps_id))
+            write(*,'(a5,a,a)') ' ... ', 'point symmetries = ' , tostring(pg%nsyms)
+            write(*,'(a5,a,a)') ' ... ', 'conjugacy classes = ', tostring(pg%cc%nclasses)
+            write(*,'(a5,a)')   ' ... ', 'point symmetries [frac/cart] = '
             mpl=2 ! matrices per line
             do i = 1,pg%nsyms
                 str = tostring(i)//': '//decode_pointsymmetry(pg%ps_id(i))
@@ -863,7 +874,7 @@ contains
             call disp(X=pg%mt%multab,advance='yes',trim='yes')
             ! generators
             call print_title('Point group symmetry generators')
-            write(*,'(a,a)',advance='no') flare, 'group generators = ' 
+            write(*,'(a,a)',advance='no') ' ... ', 'group generators = ' 
             call disp(X=pg%mt%gen,orient='row')
             call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
             call disp(X=[1:pg%nsyms],advance='no' ,trim='yes',title='sym',style='underline')
@@ -1172,7 +1183,7 @@ contains
                     R=inv(sg%seitz_cart(1:3,1:3,i))
                     ! if statement are for the cases in which output needs to be trimmed
                     if (count(abs(R(j,:)).gt.tiny).gt.3) then
-                        buffer=flare 
+                        buffer=' ... ' 
                     else
                         buffer=''
                         do k = 1,3
@@ -1209,7 +1220,7 @@ contains
                     R = rot2O3(l=1,R=sg%seitz_cart(1:3,1:3,i))
                     ! if statement are for the cases in which output needs to be trimmed
                     if (count(abs(R(j,:)).gt.tiny).gt.3) then
-                        buffer=flare 
+                        buffer=' ... ' 
                     else
                         buffer=''
                         do k = 1, size(xyz)
@@ -1248,7 +1259,7 @@ contains
                     R = rot2O3(l=2,R=sg%seitz_cart(1:3,1:3,i))
                     !
                     if (count(abs(R(j,:)).gt.tiny).gt.3) then
-                        buffer=flare 
+                        buffer=' ... ' 
                     else
                         buffer=''
                         do k = 1,5
@@ -1289,7 +1300,7 @@ contains
                     R = rot2O3(l=3,R=sg%seitz_cart(1:3,1:3,i))
                     !
                     if (count(abs(R(j,:)).gt.tiny).gt.3) then
-                        buffer=flare 
+                        buffer=' ... ' 
                     else
                         buffer=''
                         do k = 1,7
