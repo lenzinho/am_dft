@@ -1851,7 +1851,7 @@ module am_matlab
 
     ! trim columns with zeros
 
-    pure function  d_trim_null_columns(A) result(B)
+    pure function d_trim_null_columns(A) result(B)
         !
         implicit none
         !

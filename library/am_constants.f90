@@ -24,10 +24,22 @@ module am_constants
     character(100), parameter :: outfile_dir_tb  = trim(outfile_dir)//'/tb'
     character(100), parameter :: outfile_dir_sym = trim(outfile_dir)//'/sym'
     character(100), parameter :: outfile_dir_uc  = trim(outfile_dir)//'/uc'
+
+    ! color
+
 #ifdef COLOR
     character(18) , parameter :: flare = char(27)//'[1;31m'//' ... '//char(27)//'[0;0m'
 #else
     character(5)  , parameter :: flare = flare
 #endif
+
+    ! DEBUG
+
+#ifdef DEBUG
+    logical, parameter :: debug = .true.
+#else
+    logical, parameter :: debug = .false.
+#endif
+
     !
 end module am_constants

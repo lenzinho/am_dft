@@ -939,10 +939,14 @@ contains
         lda  = m
         ldu  = m
         ldvt = n
-        ! allocate space
+        ! initialize
         allocate( S_internal(n))
+        S_internal = 0
         allocate( U_internal(ldu,m))
+        U_internal = 0
         allocate(VT_internal(ldvt,n))
+        VT_internal = 0
+        ! allocate space
         allocate(  WORK(lwmax) )
         allocate( RWORK(max(1,5*min(m,n))) )
         ! copy variables
