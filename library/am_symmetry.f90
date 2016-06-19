@@ -179,7 +179,10 @@ contains
         character(*), intent(in) :: fname
         integer :: fid
         !
-        ! multiplciation table
+                                              call execute_command_line( 'mkdir -p '//trim(outfile_dir_sym)//'/debug' )
+                                              call dump(A=grp%nsyms            ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.nsyms'            )
+                                              call dump(A=grp%nbases           ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.nbases'           )
+                                              call dump(A=grp%ps_id            ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ps_id'            )
         if (allocated(grp%mt%commutator_id )) call dump(A=grp%mt%commutator_id ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.mt.commutator_id' )
         if (allocated(grp%mt%multab        )) call dump(A=grp%mt%multab        ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.mt.multab'        )
         if (allocated(grp%mt%gen_id        )) call dump(A=grp%mt%gen_id        ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.mt.gen_id'        )
@@ -204,7 +207,7 @@ contains
         if (allocated(grp%seitz_cart       )) call dump(A=grp%seitz_cart       ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.seitz_cart'       )
         if (allocated(grp%seitz_frac       )) call dump(A=grp%seitz_frac       ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.seitz_frac'       )
         class default
-            stop 'Class unknown!'
+            stop 'ERROR [write_outfile]: invalid group class'
         end select
     end subroutine write_outfile
 

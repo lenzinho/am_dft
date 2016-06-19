@@ -1035,7 +1035,7 @@ contains
             n = n + count(mask) - 1
             E_sqr(i) = n
             ! save projection
-            irrep_proj_V(:,S_sqr(i):E_sqr(i)) = V(:,pack(inds,mask))
+            irrep_proj_V(:,S_sqr(i):E_sqr(i)) = orth_svd( V(:,pack(inds,mask)) )
         enddo
         ! check
         do i = 1, nirreps
