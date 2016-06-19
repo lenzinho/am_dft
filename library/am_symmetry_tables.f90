@@ -948,7 +948,47 @@ contains
         enddo
     end function   get_irrep_dimension
 
-    ! regular representation
+    ! irrep construction representation
+
+    subroutine     get_SE(irrep_dim,S,E,Ss,Es)
+        !
+        implicit none
+        !
+        integer, intent(in) :: irrep_dim(:)
+        integer,allocatable, intent(out), optional :: S(:)
+        integer,allocatable, intent(out), optional :: E(:)
+        integer,allocatable, intent(out), optional :: Ss(:)
+        integer,allocatable, intent(out), optional :: Es(:)
+        integer :: nirreps
+        integer :: j,n
+        ! get dimensions
+        nirreps = size(irrep_dim)
+        !
+        if (present(S).and.present(E)) then
+            allocate(S(nirreps))
+            allocate(E(nirreps))
+            n = 0
+            do j = 1, nirreps
+                n = n + 1
+                S(j) = n
+                n = n + irrep_dim(j) - 1
+                E(j) = n
+            enddo
+        elseif (present(Ss).and.present(Es)) then
+            allocate(Ss(nirreps))
+            allocate(Es(nirreps))
+            n = 0
+            do j = 1, nirreps
+                n = n + 1
+                Ss(j) = n
+                n = n + irrep_dim(j) - 1
+                Es(j) = n
+            enddo
+        else
+            stop 'ERROR [get_SE]: optionals missing'
+        endif
+        !
+    end subroutine get_SE
 
     function       get_irrep_proj(rr,chartab,irrep_dim,class_matrices) result(irrep_proj)
         !
@@ -999,8 +1039,8 @@ contains
         complex(dp), intent(in) :: irrep_proj(:,:,:) ! can be complex because of complex characters
         integer    , intent(in) :: irrep_dim(:)
         complex(dp),allocatable :: irrep_proj_V(:,:)
-        integer,    allocatable :: S_sqr(:)
-        integer,    allocatable :: E_sqr(:)
+        integer,    allocatable :: Ss(:)
+        integer,    allocatable :: Es(:)
         integer,    allocatable :: inds(:)
         complex(dp),allocatable :: D(:)
         complex(dp),allocatable :: V(:,:)
@@ -1015,8 +1055,8 @@ contains
         allocate(mask(nbases))
         allocate(D(nbases))
         allocate(V(nbases,nbases))
-        allocate(S_sqr(nirreps))
-        allocate(E_sqr(nirreps))
+        allocate(Ss(nirreps))
+        allocate(Es(nirreps))
         allocate(irrep_proj_V(nbases,nbases))
         !
         n = 0
@@ -1031,18 +1071,120 @@ contains
             endwhere
             ! save indics
             n = n + 1
-            S_sqr(i) = n
+            Ss(i) = n
             n = n + count(mask) - 1
-            E_sqr(i) = n
+            Es(i) = n
             ! save projection
-            irrep_proj_V(:,S_sqr(i):E_sqr(i)) = orth_svd( V(:,pack(inds,mask)) )
+            irrep_proj_V(:,Ss(i):Es(i)) = orth_svd( V(:,pack(inds,mask)) )
         enddo
         ! check
         do i = 1, nirreps
-        if ((E_sqr(i)-S_sqr(i)+1).ne.irrep_dim(i)**2) stop 'ERROR [get_irrep_proj_V]: eigenspace mismatch'
+        if ((Es(i)-Ss(i)+1).ne.irrep_dim(i)**2) stop 'ERROR [get_irrep_proj_V]: eigenspace mismatch'
         enddo
         !
     end function   get_irrep_proj_V
+
+    function       get_block_transform(rr,irrep_proj_V,irrep_dim) result(phi)
+        !
+        implicit none
+        !
+        integer    , intent(in) :: rr(:,:,:)
+        complex(dp), intent(in) :: irrep_proj_V(:,:)
+        integer    , intent(in) :: irrep_dim(:)
+        complex(dp),allocatable :: phi(:,:)
+        complex(dp),allocatable :: V(:,:)
+        complex(dp),allocatable :: H(:,:)
+        complex(dp),allocatable :: rr_block(:,:,:)
+        integer    ,allocatable :: Ss(:)
+        integer    ,allocatable :: Es(:)
+        integer :: nirreps, nbases, nsyms
+        integer :: i,j
+        ! get dimensions
+        nsyms   = size(rr,3)
+        nbases  = size(rr,1)
+        nirreps = size(irrep_dim)
+        ! get indices
+        call get_SE(irrep_dim=irrep_dim,Ss=Ss,Es=Es)
+        ! allocate block diagonalized regular rep
+        allocate(rr_block(nbases,nbases,nsyms))
+        ! preliminary block reduction using eigenvectors of irrep projection operator
+        do i = 1, nsyms
+            rr_block(:,:,i) = matmul(matmul( adjoint(irrep_proj_V), rr(:,:,i)), irrep_proj_V )
+        enddo
+        ! get block diagonalizer
+        allocate(phi(nbases,nbases))
+        phi = 0
+        do j = 1, nirreps
+            ! get dixon H
+            H = get_dixon_H( rr_block(Ss(j):Es(j), Ss(j):Es(j), :) )
+            ! get eigenvectors
+            call am_zgeev(A=H,VR=V)
+            ! construct phi
+            phi(:,Ss(j):Es(j)) = matmul(irrep_proj_V(:,Ss(j):Es(j)), V)
+        enddo
+        ! block diagonalize irrep subspace
+        do i = 1, nsyms
+            rr_block(:,:,i) = matmul(matmul( adjoint(phi),  rr(:,:,i)), phi)
+        enddo
+
+        call dump(A=rr_block ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.rr_block'  )
+
+
+        contains
+        function       get_dixon_H(rr) result(H)
+            ! REF: 
+            ! MATHEMATICS OF COMPUTATION, VOLUME 24, NUMBER 111, JULY, 1970
+            ! Computing Irreducible Representations of Groups
+            ! By John D. Dixon
+            implicit none
+            !
+            complex(dp), intent(in) :: rr(:,:,:)
+            complex(dp),allocatable :: Hrs(:,:)
+            complex(dp),allocatable :: H(:,:)
+            logical :: isreducible
+            integer :: nbases, nsyms
+            integer :: r,s,i
+            !
+            nbases=size(rr,1)
+            nsyms =size(rr,3)
+            !
+            isreducible = .false.
+            !
+            allocate(Hrs(nbases,nbases))
+            allocate(H(nbases,nbases))
+            !
+            search : do r = 1, nbases
+            do s = 1, nbases
+                ! construct Hrs
+                Hrs(1:nbases,1:nbases) = 0.0_dp
+                if     (r.eq.s) then
+                    Hrs(r,s) = 1.0_dp
+                elseif (r.gt.s) then
+                    Hrs(r,s) = 1.0_dp
+                    Hrs(s,r) = 1.0_dp
+                elseif (r.lt.s) then
+                    Hrs(r,s) = cmplx_i
+                    Hrs(s,r) =-cmplx_i
+                endif
+                ! construct H
+                H(1:nbases,1:nbases) = 0.0_dp
+                do i = 1, nsyms
+                H = H + transpose(rr(:,:,i)) * Hrs * rr(:,:,i)
+                enddo
+                H = H/nsyms
+                ! check if H is a scalar
+                if (.not.isequal(H(1,1)*eye(nbases),H)) then
+                    isreducible = .true.
+                    exit search
+                endif
+            enddo
+            enddo search
+            ! if it isn't reducible return identity
+            if (.not.isreducible) H = eye(nbases)
+            !
+        end function   get_dixon_H
+    end function   get_block_transform
+
 
     function       get_irrep_diag(rr,chartab,irrep_proj,irrep_dim,class_member) result(irrep_diag)
         !
@@ -1184,65 +1326,65 @@ contains
         !
     end function   get_wigner_proj
 
-    function       get_block_transform(rr,irrep_dim,wigner_proj) result(phi)
-        !
-        implicit none
-        !
-        integer    , intent(in) :: rr(:,:,:)
-        integer    , intent(in) :: irrep_dim(:)
-        complex(dp), intent(in) :: wigner_proj(:,:,:,:) ! wigner_proj(nbases,nbases, maxval(irrep_dim), nirreps )
-        complex(dp),allocatable :: phi(:,:)
-        complex(dp),allocatable :: rr_block(:,:,:)
-        complex(dp),allocatable :: Q(:)
-        integer :: nirreps, nbases, nsyms
-        integer :: sumdim
-        integer :: j,k,n, S,E
-        ! get dimensions
-        nsyms   = size(rr,3)
-        nbases  = size(rr,1)
-        nirreps = size(wigner_proj,4)
-        sumdim  = sum(irrep_dim)
-        ! allocate phi
-        allocate(phi(nbases,sumdim))
-        phi = 0
-        ! get a random vector
-        allocate(Q(nbases))
-        Q = pack( rand(nbases,1), .true. )
-        !wigner_proj
-        n = 0
-        do j = 1, nirreps
-            n = n + 1
-            S = n
-            n = n + irrep_dim(j) - 1
-            E = n
-            do k = 1, irrep_dim(j)
-                phi(:,(S-1)+k) = matmul(wigner_proj(:,:,k,j),Q)
-                ! call am_zgeev(A=wigner_proj(:,:,k,j), VR=V, D=Q)
-                ! call disp(X=Q,orient='row')
-                ! phi(:,S-1+k) = V(:,1)
-            enddo
-            phi(:,S:E) = orth_svd(phi(:,S:E))
-            ! phi(:,S:E) = phi(:,S:E)
-        enddo
-        !
-        allocate(rr_block(sumdim,sumdim,nsyms))
-        do j = 1, nsyms
-            rr_block(:,:,j) = matmul(matmul(adjoint(phi),rr(:,:,j)), phi)
-        enddo
-        !
-        call disp(rr_block(:,:,5))
+!     function       get_block_transform(rr,irrep_dim,wigner_proj) result(phi)
+!         !
+!         implicit none
+!         !
+!         integer    , intent(in) :: rr(:,:,:)
+!         integer    , intent(in) :: irrep_dim(:)
+!         complex(dp), intent(in) :: wigner_proj(:,:,:,:) ! wigner_proj(nbases,nbases, maxval(irrep_dim), nirreps )
+!         complex(dp),allocatable :: phi(:,:)
+!         complex(dp),allocatable :: rr_block(:,:,:)
+!         complex(dp),allocatable :: Q(:)
+!         integer :: nirreps, nbases, nsyms
+!         integer :: sumdim
+!         integer :: j,k,n, S,E
+!         ! get dimensions
+!         nsyms   = size(rr,3)
+!         nbases  = size(rr,1)
+!         nirreps = size(wigner_proj,4)
+!         sumdim  = sum(irrep_dim)
+!         ! allocate phi
+!         allocate(phi(nbases,sumdim))
+!         phi = 0
+!         ! get a random vector
+!         allocate(Q(nbases))
+!         Q = pack( rand(nbases,1), .true. )
+!         !wigner_proj
+!         n = 0
+!         do j = 1, nirreps
+!             n = n + 1
+!             S = n
+!             n = n + irrep_dim(j) - 1
+!             E = n
+!             do k = 1, irrep_dim(j)
+!                 phi(:,(S-1)+k) = matmul(wigner_proj(:,:,k,j),Q)
+!                 ! call am_zgeev(A=wigner_proj(:,:,k,j), VR=V, D=Q)
+!                 ! call disp(X=Q,orient='row')
+!                 ! phi(:,S-1+k) = V(:,1)
+!             enddo
+!             phi(:,S:E) = orth_svd(phi(:,S:E))
+!             ! phi(:,S:E) = phi(:,S:E)
+!         enddo
+!         !
+!         allocate(rr_block(sumdim,sumdim,nsyms))
+!         do j = 1, nsyms
+!             rr_block(:,:,j) = matmul(matmul(adjoint(phi),rr(:,:,j)), phi)
+!         enddo
+!         !
+!         call disp(rr_block(:,:,5))
 
-        call dump(A=rr_block, fname=trim(outfile_dir_sym)//'/debug'//'/outfile.rr_block')
-        call dump(A=phi     , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.phi')
-        call dump(A=wigner_proj(:,:,:,5), fname=trim(outfile_dir_sym)//'/debug'//'/outfile.wigner_proj')
-
-
+!         call dump(A=rr_block, fname=trim(outfile_dir_sym)//'/debug'//'/outfile.rr_block')
+!         call dump(A=phi     , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.phi')
+!         call dump(A=wigner_proj(:,:,:,5), fname=trim(outfile_dir_sym)//'/debug'//'/outfile.wigner_proj')
 
 
 
-        stop
-        !
-    end function   get_block_transform
+
+
+!         stop
+!         !
+!     end function   get_block_transform
 
     function       get_cycle_structure_str(rr,order) result(cycle_structure_str)
         !
@@ -1317,8 +1459,8 @@ contains
 !         complex(dp),allocatable :: V_least(:,:)
 !         integer    ,allocatable :: commutator_least(:)
 !         ! complex(dp),allocatable :: V_proj(:,:)
-!         ! integer,    allocatable :: S_sqr(:)
-!         ! integer,    allocatable :: E_sqr(:)
+!         ! integer,    allocatable :: Ss(:)
+!         ! integer,    allocatable :: Es(:)
 !         complex(dp),allocatable :: V_least_proj(:,:) ! eigenvectors
 !         logical :: isorthogonal
 !         integer :: nbases
@@ -1358,7 +1500,7 @@ contains
 !         call dump(A=irrep_dim          , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.irrep_dim'    )
 !         endif
 !         ! get similarity transform which block diagonalizes irrep projections
-!         ! call get_irrep_proj_eigvec(irrep_proj=irrep_proj, V_proj=V_proj,S=S_sqr,E=E_sqr)
+!         ! call get_irrep_proj_eigvec(irrep_proj=irrep_proj, V_proj=V_proj,S=Ss,E=Es)
 !         ! call dump(A=V_proj, fname=trim(outfile_dir_sym)//'/outfile.V_proj')
 !         ! initialize i_phi
 !         i_phi = 0

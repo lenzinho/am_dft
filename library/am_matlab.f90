@@ -1916,6 +1916,144 @@ module am_matlab
         enddo
     end function  sub2ind
 
+    ! cumulative sum / product (from numerical recipies)
+
+    recursive function dcumprod(arr,seed) result(ans)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: arr(:)
+        real(dp), intent(in), optional :: seed
+        real(dp), allocatable :: ans(:)
+        real(dp) :: sd
+        integer  :: n,j
+        integer  :: npar_cumprod
+        npar_cumprod = 8
+        !
+        n=size(arr)
+        allocate(ans(n))
+        !
+        if (n.eq.0) return
+        !
+        if (present(seed)) then
+            sd=seed
+        else
+            sd=1.0_dp
+        endif
+        !
+        ans(1)=arr(1)*sd
+        if (n < npar_cumprod) then
+            do j=2,n
+                ans(j)=ans(j-1)*arr(j)
+            end do
+        else
+            ans(2:n:2)=cumprod(arr(2:n:2)*arr(1:n-1:2),sd)
+            ans(3:n:2)=ans(2:n-1:2)*arr(3:n:2)
+        end if
+        !
+    end function       dcumprod
+
+    recursive function icumprod(arr,seed) result(ans)
+        !
+        implicit none
+        !
+        integer, intent(in) :: arr(:)
+        integer, intent(in), optional :: seed
+        integer, allocatable :: ans(:)
+        integer :: sd
+        integer :: n,j
+        integer :: npar_cumprod
+        npar_cumprod = 8
+        !
+        n=size(arr)
+        allocate(ans(n))
+        !
+        if (n.eq.0) return
+        !
+        if (present(seed)) then
+            sd=seed
+        else
+            sd=1.0_dp
+        endif
+        !
+        ans(1)=arr(1)*sd
+        if (n < npar_cumprod) then
+            do j=2,n
+                ans(j)=ans(j-1)*arr(j)
+            end do
+        else
+            ans(2:n:2)=cumprod(arr(2:n:2)*arr(1:n-1:2),sd)
+            ans(3:n:2)=ans(2:n-1:2)*arr(3:n:2)
+        end if
+        !
+    end function       icumprod
+
+    recursive function dcumsum(arr,seed) result(ans)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: arr(:)
+        real(dp), intent(in), optional :: seed
+        real(dp), allocatable :: ans(:)
+        real(dp) :: sd
+        integer  :: n,j
+        integer  :: npar_cumsum
+        npar_cumsum = 8
+        !
+        n=size(arr)
+        if (n.eq.0) return
+        !
+        if (present(seed)) then
+            sd=seed
+        else
+            sd=0.0_dp
+        endif
+        !
+        ans(1)=arr(1)+sd
+        if (n < npar_cumsum) then
+            do j=2,n
+                ans(j)=ans(j-1)+arr(j)
+            end do
+        else
+            ans(2:n:2)=cumsum(arr(2:n:2)+arr(1:n-1:2),sd)
+            ans(3:n:2)=ans(2:n-1:2)+arr(3:n:2)
+        end if
+        !
+    end function       dcumsum
+
+    recursive function icumsum(arr,seed) result(ans)
+        !
+        implicit none
+        !
+        integer, intent(in) :: arr(:)
+        integer, intent(in), optional :: seed
+        integer, allocatable :: ans(:)
+        integer :: sd
+        integer :: n,j
+        integer :: npar_cumsum
+        npar_cumsum = 8
+        !
+        n=size(arr)
+        if (n.eq.0) return
+        !
+        if (present(seed)) then
+            sd=seed
+        else
+            sd=0.0_dp
+        endif
+        !
+        ans(1)=arr(1)+sd
+        if (n < npar_cumsum) then
+            do j=2,n
+                ans(j)=ans(j-1)+arr(j)
+            end do
+        else
+            ans(2:n:2)=cumsum(arr(2:n:2)+arr(1:n-1:2),sd)
+            ans(3:n:2)=ans(2:n-1:2)+arr(3:n:2)
+        end if
+        !
+    end function       icumsum
+
     ! matrix generation
 
     pure function ddiag1(M,j) result(d)

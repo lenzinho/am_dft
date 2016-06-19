@@ -297,7 +297,10 @@ contains
             class_matrices=grp%cc%class_matrices)
 !         ! get irrep projection eigenvectors
         grp%ct%irrep_proj_V = get_irrep_proj_V(irrep_proj=grp%ct%irrep_proj, irrep_dim=grp%ct%irrep_dim)
-
+        !
+        phi = get_block_transform(rr=grp%mt%rr, irrep_dim=grp%ct%irrep_dim, irrep_proj_V=grp%ct%irrep_proj_V)
+        stop
+        !
 
 !         stop
 !         ! get irrep diagonal matrix elements

@@ -685,19 +685,13 @@ contains
         allocate(W(n))
         allocate(WORK(lwmax))
         allocate(RWORK(max(lwmax,n)))
-        !
         ! copy variables
-        !
         allocate(CA, source=A)
-        !
         ! query the optimal workspace
-        !
         lwork = -1
         call zgeev( 'N', 'V', n, CA, lda, W, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, RWORK, info )
         lwork = min( lwmax, int( WORK( 1 ) ) )
-        !
         ! solve eigenproblem
-        !
         if (present(VL).and.present(VR)) then
             call zgeev( 'V', 'V', n, CA, lda, W, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, RWORK, info )
         elseif (present(VR)) then
@@ -705,25 +699,12 @@ contains
         elseif (present(VL)) then
             call zgeev( 'V', 'N', n, CA, lda, W, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, RWORK, info )
         endif
-        !
         ! check for convergence
+        if( info.gt.0 ) stop 'ERROR [am_zgeev]: the algorithm failed to compute eigenvalues.'
+        if (present(D))  allocate(D(n),source=W)
+        if (present(VR)) allocate(VR,source=VR_internal)
+        if (present(VL)) allocate(VL,source=VL_internal)
         !
-        if( info.gt.0 ) then
-            write(*,*)'the algorithm failed to compute eigenvalues.'
-            stop
-        end if
-        !
-        if (present(D)) then
-            allocate(D(n),source=W)
-        endif
-        !
-        if (present(VR)) then
-            allocate(VR,source=VR_internal)
-        endif
-        !
-        if (present(VL)) then
-            allocate(VL,source=VL_internal)
-        endif
     end subroutine am_zgeev
     
     ! diagonalize complex hermitian matrix
