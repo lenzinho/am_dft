@@ -1065,7 +1065,6 @@ contains
         real(dp), intent(in)  :: A(:,:)
         integer :: matrix_rank
         real(dp), allocatable :: S_internal(:)
-        integer , allocatable :: inds(:)
         ! perform svd decomposition
         call am_dgesvd(A=A,S=S_internal)
         ! get matrix rank
@@ -1078,7 +1077,6 @@ contains
         complex(dp), intent(in)  :: A(:,:)
         integer :: matrix_rank
         real(dp), allocatable :: S_internal(:)
-        integer , allocatable :: inds(:)
         ! perform svd decomposition
         call am_zgesvd(A=A,S=S_internal)
         ! get matrix rank

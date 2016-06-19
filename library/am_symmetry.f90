@@ -140,8 +140,8 @@ contains
             grp%mt%rr = grp%mt%rr(inds,inds,inds)
         endif
         ! symmetry order
-        if (allocated(grp%mt%order)) then
-            grp%mt%order = grp%mt%order(inds)
+        if (allocated(grp%mt%corder)) then
+            grp%mt%corder = grp%mt%corder(inds)
         endif
         ! group generators
         if (allocated(grp%mt%gen)) then
@@ -179,42 +179,33 @@ contains
         character(*), intent(in) :: fname
         integer :: fid
         !
-        fid = 1
-        open(unit=fid,file=trim(fname),status="replace",action='write')
-            !
-            write(fid,'(a,a)') tostring(grp%nsyms),  ' symmetries'
-            write(fid,'(a,a)') tostring(grp%nbases), ' dimensions'
-            !
-            select type (grp)
-            class is (am_class_symrep_group)
-                ! [unitless]  
-                call dump_sym_to_file(fid=fid, sym=grp%sym, header='')
-            class is (am_class_seitz_group)
-                ! symmerties [cart./frac.]
-                call dump_sym_to_file(fid=fid, sym=grp%seitz_cart, header='[cart.]')
-                call dump_sym_to_file(fid=fid, sym=grp%seitz_frac, header='[frac.]')
-                ! call dump_sym_to_file(fid=fid, sym=grp%seitz_recfrac, header='[rec. frac.]')
-            class default
-                stop 'Class unknown!'
-            end select
-        close(fid)
-        !
-        contains
-        subroutine     dump_sym_to_file(fid,sym,header)
-            !
-            implicit none
-            !
-            integer, intent(in) :: fid
-            real(dp), intent(in) :: sym(:,:,:)
-            character(*), intent(in) :: header
-            integer :: nbases, nsyms
-            integer :: i,j,k
-            !
-            do i = 1, size(sym,3)
-                call disp(unit=fid,title=tostring(i)//' '//trim(header),style='underline',X=sym(:,:,i),fmt='f20.16')
-            enddo
-            !
-        end subroutine dump_sym_to_file
+        ! multiplciation table
+        if (allocated(grp%mt%commutator_id )) call dump(A=grp%mt%commutator_id ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.mt.commutator_id' )
+        if (allocated(grp%mt%multab        )) call dump(A=grp%mt%multab        ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.mt.multab'        )
+        if (allocated(grp%mt%gen_id        )) call dump(A=grp%mt%gen_id        ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.mt.gen_id'        )
+        if (allocated(grp%mt%corder        )) call dump(A=grp%mt%corder        ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.mt.order'         )
+        if (allocated(grp%mt%rr            )) call dump(A=grp%mt%rr            ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.mt.rr'            )
+                                              call dump(A=grp%cc%nclasses      ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.cc.nclasses'      )
+        if (allocated(grp%cc%id            )) call dump(A=grp%cc%id            ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.cc.id'            )
+        if (allocated(grp%cc%nelements     )) call dump(A=grp%cc%nelements     ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.cc.nelements'     )
+        if (allocated(grp%cc%member        )) call dump(A=grp%cc%member        ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.cc.member'        )
+        if (allocated(grp%cc%representative)) call dump(A=grp%cc%representative,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.cc.representative')
+        if (allocated(grp%cc%class_matrices)) call dump(A=grp%cc%class_matrices,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.cc.class_matrices')
+                                              call dump(A=grp%ct%nirreps       ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.nirreps'       )
+        if (allocated(grp%ct%chartab       )) call dump(A=grp%ct%chartab       ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.chartab'       )
+        if (allocated(grp%ct%irrep_dim     )) call dump(A=grp%ct%irrep_dim     ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.irrep_dim'     )
+        if (allocated(grp%ct%irrep_proj    )) call dump(A=grp%ct%irrep_proj    ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.irrep_proj'    )
+        if (allocated(grp%ct%irrep_proj_V  )) call dump(A=grp%ct%irrep_proj_V  ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.irrep_proj_V'  )
+        ! dump group specific data
+        select type (grp)
+        class is (am_class_symrep_group)
+        if (allocated(grp%sym              )) call dump(A=grp%sym              ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.seitz_cart'       )
+        class is (am_class_seitz_group)
+        if (allocated(grp%seitz_cart       )) call dump(A=grp%seitz_cart       ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.seitz_cart'       )
+        if (allocated(grp%seitz_frac       )) call dump(A=grp%seitz_frac       ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.seitz_frac'       )
+        class default
+            stop 'Class unknown!'
+        end select
     end subroutine write_outfile
 
     subroutine     get_multiplication_table(grp)
@@ -237,7 +228,7 @@ contains
         ! get inverse indices
         grp%mt%inv_id = get_inverse_indices(multab=grp%mt%multab)
         ! get cyclic order
-        grp%mt%order = get_cyclic_order(multab=grp%mt%multab)
+        grp%mt%corder = get_cyclic_order(multab=grp%mt%multab)
         ! get regular representation
         grp%mt%rr = get_regular_rep(multab=grp%mt%multab)
         ! get generator id
@@ -256,7 +247,8 @@ contains
         class(am_class_group), intent(inout) :: grp
         !
         ! check
-        if (.not.allocated(grp%mt%multab)) stop 'get_conjugacy_classes: multiplication table is required.'
+        if (.not.allocated(grp%mt%multab)) stop 'ERROR [get_conjugacy_classes]: multiplication table required'
+        if (.not.allocated(grp%mt%rr    )) stop 'ERROR [get_conjugacy_classes]: regular representation required'
         ! get conjugacy classes (ps_id is required for sorting the classes: proper before improper)
         grp%cc%id = get_class_id(multab=grp%mt%multab, inv_id=grp%mt%inv_id, ps_id=grp%ps_id)
         ! number of classes
@@ -267,12 +259,9 @@ contains
         grp%cc%member = id_member(id=grp%cc%id)
         ! get representatives
         grp%cc%representative = id_representative(id=grp%cc%id)
-        ! debug
-        if (debug) then
-        call dump(A=grp%cc%nclasses , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.nclasses')
-        call dump(A=grp%cc%nelements, fname=trim(outfile_dir_sym)//'/debug'//'/outfile.class_nelements')
-        call dump(A=grp%cc%member   , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.class_member')
-        endif
+        ! get class matrices
+        grp%cc%class_matrices = get_class_matrices(rr=grp%mt%rr, nclasses=grp%cc%nclasses, &
+            class_nelements=grp%cc%nelements, class_member=grp%cc%member)
     end subroutine get_conjugacy_classes
 
     subroutine     get_character_table(grp)
@@ -280,7 +269,6 @@ contains
         implicit none
         !
         class(am_class_group), intent(inout) :: grp
-        complex(dp), allocatable :: irrep_proj(:,:,:) ! complex because character may be complex
         real(dp)   , allocatable :: phi(:,:) 
         integer    , allocatable :: class_matrices(:,:,:)
         complex(dp), allocatable :: irrep_diag(:,:)
@@ -301,20 +289,21 @@ contains
         ! get irrep dimensions
         grp%ct%irrep_dim = get_irrep_dimension(chartab=grp%ct%chartab, &
             nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
-        ! get class matrices
-        class_matrices = get_class_matrices(rr=grp%mt%rr, &
-            nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, class_member=grp%cc%member)
-        ! get irrep projection operators
-        irrep_proj = get_irrep_projection(rr=grp%mt%rr, chartab=grp%ct%chartab, irrep_dim=grp%ct%irrep_dim, &
-            class_matrices=class_matrices)
-        ! get irrep diagonal matrix elements
-        irrep_diag = get_irrep_diag(rr=grp%mt%rr, chartab=grp%ct%chartab, irrep_dim=grp%ct%irrep_dim,&
-            irrep_proj=irrep_proj, class_member=grp%cc%member)
-        ! get wigner projections
-        wigner_proj = get_wigner_projection(rr=grp%mt%rr, irrep_diag=irrep_diag, irrep_dim=grp%ct%irrep_dim, &
-            class_matrices=class_matrices)
-        ! get similarity transform for constructing irreps
-        phi = get_block_transform(rr=grp%mt%rr, irrep_dim=grp%ct%irrep_dim, wigner_proj=wigner_proj)
+!         ! get irrep projection operators
+        grp%ct%irrep_proj = get_irrep_proj(rr=grp%mt%rr, chartab=grp%ct%chartab, irrep_dim=grp%ct%irrep_dim, &
+            class_matrices=grp%cc%class_matrices)
+!         ! get irrep projection eigenvectors
+        grp%ct%irrep_proj_V = get_irrep_proj_V(irrep_proj=grp%ct%irrep_proj, irrep_dim=grp%ct%irrep_dim)
+
+
+!         stop
+!         ! get irrep diagonal matrix elements
+!         irrep_diag = get_irrep_diag(rr=grp%mt%rr, chartab=grp%ct%chartab,  irrep_dim=grp%ct%irrep_dim,&
+!             irrep_proj=irrep_proj, class_member=grp%cc%member)
+!         ! get wigner projections
+!         wigner_proj = get_wigner_proj(rr=grp%mt%rr, irrep_diag=irrep_diag, irrep_dim=grp%ct%irrep_dim, )
+!         ! get similarity transform for constructing irreps
+!         phi = get_block_transform(rr=grp%mt%rr, irrep_dim=grp%ct%irrep_dim, wigner_proj=wigner_proj)
 
 
 !         phi = get_block_similarity_transform(rr=grp%mt%rr, irrep_dim=grp%ct%irrep_dim, irrep_proj=irrep_proj, &
@@ -571,7 +560,6 @@ contains
         class(am_class_space_group), intent(inout) :: sg
         class(am_class_unit_cell)  , intent(in) :: pc ! space groups are tabulated in the litearture for conventional cells, but primitive or arbitrary cell works just as well.
         type(am_class_options)     , intent(in) :: opts
-        character(:), allocatable :: disp_str(:)
         real(dp)    , allocatable :: seitz_frac(:,:,:)
         character(20) :: str
         integer :: mpl
@@ -588,71 +576,39 @@ contains
         ! print stdout
         if (opts%verbosity.ge.1) then
             ! print global information
-            write(*,'(a5,a,a)') ' ... ', 'space symmetries = ' , tostring(sg%nsyms)
-            write(*,'(a5,a,a)') ' ... ', 'conjugacy classes = ', tostring(sg%cc%nclasses)
-            write(*,'(a5,a)')   ' ... ', 'seitz symmetries [frac/cart] = '
+            write(*,'(a,a,a)') flare, 'space symmetries = ' , tostring(sg%nsyms)
+            write(*,'(a,a,a)') flare, 'conjugacy classes = ', tostring(sg%cc%nclasses)
+            write(*,'(a,a,a)') flare, 'group generators = ' , tostring(sg%mt%gen)
+            write(*,'(a,a)')   flare, 'seitz symmetries [frac/cart] = '
             ! print seitz operators
             mpl=2
             do i = 1,sg%nsyms
                 str = tostring(i)//': '//decode_pointsymmetry(sg%ps_id(i))
                 if     ((mod(i,mpl).eq.0).or.(i.eq.sg%nsyms)) then
-                    call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
+                    call disp_indent()
                     call disp(title=trim(str), X=nint(sg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
                     call disp(title=trim(str), X=(sg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='yes', trim='no')
                 elseif ((mod(i,mpl).eq.1)) then
-                    call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
+                    call disp_indent()
                     call disp(title=trim(str), X=nint(sg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
                     call disp(title=trim(str), X=(sg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
                 else
-                    call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
+                    call disp_indent()
                     call disp(title=trim(str), X=nint(sg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
                     call disp(title=trim(str), X=(sg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
                 endif
             enddo
-
-
-
-            ! TURN ALL THIS STUFF INTO FILE IO
-            ! TURN ALL THIS STUFF INTO FILE IO
-            ! TURN ALL THIS STUFF INTO FILE IO
-
             ! print multiplication table
             call print_title('Space group multiplication table')
-            call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
+            call disp_indent()
             call disp(X=sg%mt%multab,advance='yes',trim='yes')
-            ! print regular rep loop structure
-            call print_title('Space group regular representation loop structures')
-            call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
-            call disp(X=[1:sg%nsyms],advance='no',title='#',style='underline')
-            !
-            allocate(character(5) :: disp_str(sg%nsyms))
-            do i = 1, sg%nsyms
-                disp_str(i) = trim(decode_pointsymmetry(sg%ps_id(i)))
-            enddo
-            call disp(X=disp_str,advance='no',title='sf.',style='underline',fmt='a5')
-            deallocate(disp_str)
-            !
-            call disp(X=sg%mt%order ,advance='no',title='order',style='underline')
-            disp_str = get_cycle_structure_str(rr=sg%mt%rr,order=sg%mt%order)
-            call disp(X=disp_str,advance='yes',fmt=tostring(len(disp_str(1)))//'s',title='regular representation cycle structure',style='underline')
-            ! generators
-            call print_title('Space group generators')
-            write(*,'(a,a)',advance='no') ' ... ', 'group generators = ' 
-            call disp(X=sg%mt%gen,orient='row')
-            call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
-            call disp(X=[1:sg%nsyms],advance='no' ,trim='yes',title='sym',style='underline')
-            call disp(X=sg%mt%gen_id(:,1:maxval(count(sg%mt%gen_id.ne.0,2))),trim='yes',zeroas=' ',title='symmetry generators',style='underline',advance='yes')
-            ! commutators
-            call print_title('Space group symmetry commutators')
-            call disp(X=sg%mt%commutator_id,trim='yes',zeroas=' ',title='symmetry commutators',style='underline',advance='yes')
-
-
-
         endif
         ! create folder
         call execute_command_line ('mkdir -p '//trim(outfile_dir_sym))
         ! write to write_outfile and to file
-        call sg%write_outfile(fname=trim(outfile_dir_sym)//'/'//'outfile.spacegroup')
+        if (debug) then
+        call sg%write_outfile(fname='sg')
+        endif
         ! write action table
         call sg%write_action_table(uc=pc,fname=trim(outfile_dir_sym)//'/'//'outfile.space_group_action',opts=opts)
         !
@@ -852,10 +808,11 @@ contains
         call pg%create_seitz_group(seitz_frac=unique(wrk_frac), bas=pc%bas)
         !
         if (opts%verbosity.ge.1) then
-            write(*,'(a5,a,a)') ' ... ', 'point group = '      , decode_pointgroup(point_group_schoenflies(pg%ps_id))
-            write(*,'(a5,a,a)') ' ... ', 'point symmetries = ' , tostring(pg%nsyms)
-            write(*,'(a5,a,a)') ' ... ', 'conjugacy classes = ', tostring(pg%cc%nclasses)
-            write(*,'(a5,a)')   ' ... ', 'point symmetries [frac/cart] = '
+            write(*,'(a,a,a)') flare, 'point group = '      , decode_pointgroup(point_group_schoenflies(pg%ps_id))
+            write(*,'(a,a,a)') flare, 'point symmetries = ' , tostring(pg%nsyms)
+            write(*,'(a,a,a)') flare, 'conjugacy classes = ', tostring(pg%cc%nclasses)
+            write(*,'(a,a)')   flare, 'group generators = ' , tostring(pg%mt%gen)
+            write(*,'(a,a)')   flare, 'point symmetries [frac/cart] = '
             mpl=2 ! matrices per line
             do i = 1,pg%nsyms
                 str = tostring(i)//': '//decode_pointsymmetry(pg%ps_id(i))
@@ -877,16 +834,6 @@ contains
             call print_title('Point group multiplication table')
             call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
             call disp(X=pg%mt%multab,advance='yes',trim='yes')
-            ! generators
-            call print_title('Point group symmetry generators')
-            write(*,'(a,a)',advance='no') ' ... ', 'group generators = ' 
-            call disp(X=pg%mt%gen,orient='row')
-            call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
-            call disp(X=[1:pg%nsyms],advance='no' ,trim='yes',title='sym',style='underline')
-            call disp(X=pg%mt%gen_id(:,1:maxval(count(pg%mt%gen_id.ne.0,2))),advance='yes',trim='yes',zeroas=' ' ,title='symmetry generators',style='underline')
-            ! commutators
-            call print_title('Point group symmetry commutators')
-            call disp(X=pg%mt%commutator_id,trim='yes',zeroas=' ',title='symmetry commutators',style='underline',advance='yes')
             ! print character table
             call print_title('Point group character table')
             call pg%print_character_table()
@@ -894,7 +841,9 @@ contains
         ! make output folder
         call execute_command_line ('mkdir -p '//trim(outfile_dir_sym))
         ! write outfile
-        call pg%write_outfile(fname=trim(outfile_dir_sym)//'/'//'outfile.pointgroup')
+        if (debug) then
+        call pg%write_outfile(fname='pg')
+        endif
         ! write action table
         call pg%write_action_table(uc=pc,fname=trim(outfile_dir_sym)//'/'//'outfile.point_group_action',opts=opts)
         !
