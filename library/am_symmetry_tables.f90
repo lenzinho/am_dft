@@ -981,7 +981,7 @@ contains
             do j = 1, nirreps
                 n = n + 1
                 Ss(j) = n
-                n = n + irrep_dim(j) - 1
+                n = n + irrep_dim(j)**2 - 1
                 Es(j) = n
             enddo
         else
@@ -1117,8 +1117,32 @@ contains
         do j = 1, nirreps
             ! get dixon H
             H = get_dixon_H( rr_block(Ss(j):Es(j), Ss(j):Es(j), :) )
+            ! check that H is hermitian
+            if (.not.isequal(adjoint(H),H)) stop 'ERROR [get_block_transform]: H is not Hermitian'
+
+
+
+            
+
+! SOMETHING IS WRONG WITH H.
+! SOMETHING IS WRONG WITH H.
+! SOMETHING IS WRONG WITH H.
+! SOMETHING IS WRONG WITH H.
+
             ! get eigenvectors
             call am_zgeev(A=H,VR=V)
+
+            
+
+            if (j.eq.3) then 
+                call disp(X=irrep_proj_V,style='underline')
+                call disp(X=H,style='underline')
+                call disp(X=V,style='underline')
+                call dump(A=rr_block(Ss(j):Es(j), Ss(j):Es(j), :),fname=trim(outfile_dir_sym)//'/debug'//'/outfile.rr_block')
+                
+                stop
+            endif
+
             ! construct phi
             phi(:,Ss(j):Es(j)) = matmul(irrep_proj_V(:,Ss(j):Es(j)), V)
         enddo
@@ -1126,8 +1150,10 @@ contains
         do i = 1, nsyms
             rr_block(:,:,i) = matmul(matmul( adjoint(phi),  rr(:,:,i)), phi)
         enddo
-
+        !
         call dump(A=rr_block ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.rr_block'  )
+
+        stop
 
 
         contains
@@ -1169,10 +1195,10 @@ contains
                 ! construct H
                 H(1:nbases,1:nbases) = 0.0_dp
                 do i = 1, nsyms
-                H = H + transpose(rr(:,:,i)) * Hrs * rr(:,:,i)
+                H = H + matmul(matmul(transpose(rr(:,:,i)), Hrs), rr(:,:,i))
                 enddo
-                H = H/nsyms
-                ! check if H is a scalar
+                H = H/real(nsyms,dp)
+                ! if H is not a scalar, then the rep is reducible
                 if (.not.isequal(H(1,1)*eye(nbases),H)) then
                     isreducible = .true.
                     exit search

@@ -65,6 +65,7 @@ contains
 
     ! operate on group representation
 
+
     subroutine     sort_symmetries(grp,criterion,flags)
         ! flags = 'ascend'/'descend'
         use am_rank_and_sort
@@ -76,16 +77,13 @@ contains
         character(*), intent(in) :: flags
         integer , allocatable ::  inds(:)
         integer , allocatable :: rinds(:) ! reverse inds
-        integer :: i, j
-        integer :: n
         !
         allocate(inds(grp%nsyms))
-        call rank(criterion,inds)
         !
         if     (index(flags,'descend').ne.0) then
-            inds = inds(grp%nsyms:1:-1)
+            call rank(-criterion,inds)
         elseif (index(flags,'ascend' ).ne.0) then
-            inds = inds(1:grp%nsyms:+1)
+            call rank(+criterion,inds)
         else
             stop 'ERROR [sort_symmetries]: ascend/descend?'
         endif
@@ -107,68 +105,73 @@ contains
         class default
             stop 'ERROR [sort_symmetries]: class unknown'
         end select
-        ! symmetry id
-        if (allocated(grp%ps_id)) then
-            grp%ps_id = grp%ps_id(inds)
-        endif
-        ! conjugacy class
-        if (allocated(grp%cc%id)) then
-            !
-            grp%cc%id = grp%cc%id(inds)
-            !
-            do i = 1, grp%cc%nclasses
-            do j = 1, grp%cc%nelements(i)
-            grp%cc%member(i,j) = rinds(grp%cc%member(i,j))
-            enddo
-            enddo
-            !
-            do i = 1, grp%cc%nclasses
-            grp%cc%representative(i) = rinds(grp%cc%representative(i))
-            enddo
-        endif
-        ! multiplication table
-        if (allocated(grp%mt%multab)) then
-            grp%mt%multab = grp%mt%multab(inds,inds)
-            do i = 1, grp%nsyms
-            do j = 1, grp%nsyms
-                grp%mt%multab(i,j) = rinds(grp%mt%multab(i,j))
-            enddo
-            enddo
-        endif
-        ! regular rep
-        if (allocated(grp%mt%multab)) then
-            grp%mt%rr = grp%mt%rr(inds,inds,inds)
-        endif
-        ! symmetry order
-        if (allocated(grp%mt%corder)) then
-            grp%mt%corder = grp%mt%corder(inds)
-        endif
-        ! group generators
-        if (allocated(grp%mt%gen)) then
-            grp%mt%gen = rinds(grp%mt%gen)
-        endif
-        ! symmetry generators
+        !
+        if (allocated(grp%ps_id))             grp%ps_id             =               grp%ps_id(inds)
+        if (allocated(grp%mt%multab))         grp%mt%multab         =         apply(grp%mt%multab(inds,inds))
+        if (allocated(grp%mt%rr))             grp%mt%rr             =               grp%mt%rr(inds,inds,inds)
+        if (allocated(grp%mt%corder))         grp%mt%corder         =               grp%mt%corder(inds)
+        if (allocated(grp%mt%commutator_id))  grp%mt%commutator_id  = sort_nz(apply(grp%mt%commutator_id(inds,:)))
+        if (allocated(grp%cc%id))             grp%cc%id             =               grp%cc%id(inds)
+        if (allocated(grp%cc%representative)) grp%cc%representative =         apply(grp%cc%representative)
+        if (allocated(grp%cc%member))         grp%cc%member         =         apply(grp%cc%member)
+        ! generators need to be reevaluated. no other way. because generators are not unique.
         if (allocated(grp%mt%gen_id)) then
-            ! faster to just revaluate than sort
+            ! symmetry generators
             grp%mt%gen_id = get_generator_id(multab=grp%mt%multab)
-            ! for some reason this sort does not work...
-            ! grp%mt%gen_id = grp%mt%gen_id(inds,:)
-            ! do i = 1, grp%nsyms
-            !     n = count(grp%mt%gen_id(i,:).ne.0)
-            !     grp%mt%gen_id(i,1:n) = grp%mt%gen_id(i,1:n)
-            ! enddo
         endif
-        ! symmetry commutators
-        if (allocated(grp%mt%commutator_id)) then
-            grp%mt%commutator_id = get_commutator_id(multab=grp%mt%multab)
-            ! for some reason this sort does not work...
-            ! grp%mt%commutator_id = grp%mt%commutator_id(inds,:)
-            ! do i = 1, grp%nsyms
-            !     n = count(grp%mt%commutator_id(i,:).ne.0)
-            !     grp%mt%commutator_id(i,1:n) = rinds(grp%mt%commutator_id(i,1:n))
-            ! enddo
+        if (allocated(grp%mt%gen)) then
+            ! group generators
+            deallocate(grp%mt%gen)
+            allocate(grp%mt%gen, source=pack(grp%mt%gen_id,grp%mt%gen_id.ne.0) )
+            grp%mt%gen = nint(sort(real(unique(grp%mt%gen),dp)))
         endif
         !
+    contains
+        elemental function apply(A) result(A_rinds)
+            ! takes advantage of "global/local" scope of rinds within sort_symmetry
+            implicit none
+            !
+            integer, intent(in) :: A
+            integer :: A_rinds
+            !
+            if (A.ne.0) then
+                A_rinds = rinds(A)
+            else
+                A_rinds = 0
+            endif
+            !
+        end function       apply
+        function           sort_nz(A) result(A_sorted)
+            ! sort nonzero values in each row (puts zeros at the end of rows)
+            implicit none
+            !
+            integer, intent(in) :: A(:,:)
+            integer,allocatable :: A_sorted(:,:)
+            logical,allocatable :: mask(:)
+            integer :: m, n, i
+            integer,allocatable :: inds(:)
+            !
+            m = size(A,1)
+            n = size(A,2)
+            !
+            allocate(mask(n))
+            !
+            allocate(A_sorted(m,n))
+            A_sorted = 0
+            !
+            allocate(inds(n))
+            inds = [1:n]
+            !
+            do i = 1, m
+                where (A(i,:).ne.0)
+                    mask = .true.
+                elsewhere
+                    mask = .false.
+                endwhere
+                A_sorted(i,1:count(mask)) = sort( real(A(i, pack(inds,mask)) ,dp) )
+            enddo
+            !
+        end function       sort_nz
     end subroutine sort_symmetries
 
     subroutine     write_outfile(grp,fname)
@@ -177,7 +180,6 @@ contains
         !
         class(am_class_group), intent(in) :: grp
         character(*), intent(in) :: fname
-        integer :: fid
         !
                                               call execute_command_line( 'mkdir -p '//trim(outfile_dir_sym)//'/debug' )
                                               call dump(A=grp%nsyms            ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.nsyms'            )
@@ -276,7 +278,6 @@ contains
         integer    , allocatable :: class_matrices(:,:,:)
         complex(dp), allocatable :: irrep_diag(:,:)
         complex(dp), allocatable :: wigner_proj(:,:,:,:) 
-        integer :: i, j
         !
         ! check
         if (.not.allocated(grp%mt%multab)) stop 'ERROR [get_character_table]: multiplication table is required'
@@ -298,8 +299,8 @@ contains
 !         ! get irrep projection eigenvectors
         grp%ct%irrep_proj_V = get_irrep_proj_V(irrep_proj=grp%ct%irrep_proj, irrep_dim=grp%ct%irrep_dim)
         !
-        phi = get_block_transform(rr=grp%mt%rr, irrep_dim=grp%ct%irrep_dim, irrep_proj_V=grp%ct%irrep_proj_V)
-        stop
+!         phi = get_block_transform(rr=grp%mt%rr, irrep_dim=grp%ct%irrep_dim, irrep_proj_V=grp%ct%irrep_proj_V)
+
         !
 
 !         stop
