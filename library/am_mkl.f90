@@ -9,6 +9,8 @@ module am_mkl
     
     private :: lwmax
     private :: eps
+
+    private :: mkl_zdiag, mkl_ddiag
     
     interface norm
         module procedure am_dznrm2, am_dnrm2    
@@ -553,6 +555,7 @@ contains
         real(dp), allocatable :: CA(:,:)
         real(dp), allocatable :: WR(:), WI(:), WORK(:)
         real(dp), allocatable :: VL_internal(:,:), VR_internal(:,:)
+        character(1) :: jobr, jobl
         integer :: i
         integer :: n
         integer :: lda, ldvl, ldvr
@@ -564,39 +567,34 @@ contains
         ldvl = n
         ldvr = n
         !
+        if (present(VL)) then
+            jobl = 'V'
+        else
+            jobl = 'N'
+        endif
+        !
+        if (present(VR)) then
+            jobr = 'V'
+        else
+            jobr = 'N'
+        endif
+        ! allocate space
         allocate(VL_internal(ldvl,n))
         allocate(VR_internal(ldvr,n))
         allocate(WR(n))
         allocate(WI(n))
         allocate(WORK(lwmax))
-        !
         ! copy variables
-        !
         allocate(CA, source=A)
-        !
         ! query the optimal workspace
-        !
         lwork = -1
-        call dgeev( 'N', 'V', n, CA, lda, WR, WI, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, info )
+        call dgeev( jobl, jobr, n, CA, lda, WR, WI, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, info )
         lwork = min( lwmax, int( WORK( 1 ) ) )
-        !
         ! solve eigenproblem
-        !
-        if (present(VL).and.present(VR)) then
-            call dgeev( 'V', 'V', n, CA, lda, WR, WI, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, info )
-        elseif (present(VR)) then
-            call dgeev( 'N', 'V', n, CA, lda, WR, WI, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, info )
-        elseif (present(VL)) then
-            call dgeev( 'V', 'N', n, CA, lda, WR, WI, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, info )
-        endif
-        !
+        call dgeev( jobl, jobr, n, CA, lda, WR, WI, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, info )
         ! check for convergence
-        !
-        if( info.gt.0 ) then
-            write(*,*)'the algorithm failed to compute eigenvalues.'
-            stop
-        end if
-        !
+        if( info.gt.0 ) stop 'ERROR [am_dgeev]: failed to compute eigenvalues'
+        ! output
         if (present(D)) then
             if (size(D).ne.n) stop 'ERROR [am_dgeev]: D dimension mismatch'
             do i = 1, n
@@ -644,20 +642,6 @@ contains
 
     subroutine     am_zgeev(A,VL,D,VR)
         !
-        ! ZGEEV computes for an N-by-N complex nonsymmetric matrix A, the
-        !  eigenvalues and, optionally, the left and/or right eigenvectors.
-        !
-        !  The right eigenvector v(j) of A satisfies
-        !                   A * v(j) = lambda(j) * v(j)
-        !  where lambda(j) is its eigenvalue.
-        !
-        !  The left eigenvector u(j) of A satisfies
-        !                u(j)**H * A = lambda(j) * u(j)**H
-        !  where u(j)**H denotes the conjugate transpose of u(j).
-        !
-        !  The computed eigenvectors are normalized to have Euclidean norm
-        !  equal to 1 and largest component real.
-        ! 
         implicit none
         !
         complex(dp), intent(in) :: A(:,:)
@@ -670,6 +654,7 @@ contains
         real(dp)   , allocatable :: RWORK(:)
         complex(dp), allocatable :: VL_internal(:,:)
         complex(dp), allocatable :: VR_internal(:,:)
+        character(1) :: jobr, jobl
         integer :: n
         integer :: lda, ldvl, ldvr
         integer :: info
@@ -680,6 +665,18 @@ contains
         ldvl = n
         ldvr = n
         !
+        if (present(VL)) then
+            jobl = 'V'
+        else
+            jobl = 'N'
+        endif
+        !
+        if (present(VR)) then
+            jobr = 'V'
+        else
+            jobr = 'N'
+        endif
+        !
         allocate(VL_internal(ldvl,n))
         allocate(VR_internal(ldvr,n))
         allocate(W(n))
@@ -689,23 +686,33 @@ contains
         allocate(CA, source=A)
         ! query the optimal workspace
         lwork = -1
-        call zgeev( 'N', 'V', n, CA, lda, W, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, RWORK, info )
+        call zgeev( jobl, jobr, n, CA, lda, W, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, RWORK, info )
         lwork = min( lwmax, int( WORK( 1 ) ) )
         ! solve eigenproblem
-        if (present(VL).and.present(VR)) then
-            call zgeev( 'V', 'V', n, CA, lda, W, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, RWORK, info )
-        elseif (present(VR)) then
-            call zgeev( 'N', 'V', n, CA, lda, W, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, RWORK, info )
-        elseif (present(VL)) then
-            call zgeev( 'V', 'N', n, CA, lda, W, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, RWORK, info )
+        call zgeev( jobl, jobr, n, CA, lda, W, VL_internal, ldvl, VR_internal, ldvr, WORK, lwork, RWORK, info )
+        ! debug
+        if (debug) then
+            if (present(VR)) then
+            if (any(abs(matmul(A,VR_internal)-matmul(VR_internal,mkl_zdiag(W))).gt.tiny)) then
+                stop 'ERROR [am_zgeev] A*VR /= VR*D'
+            endif
+            endif
+            if (present(VL)) then
+            if (any(abs(matmul(VL_internal,A)-matmul(mkl_zdiag(W),VL_internal)).gt.tiny)) then
+                stop 'ERROR [am_zgeev] VL*A /= D*VL'
+            endif
+            endif
         endif
         ! check for convergence
-        if( info.gt.0 ) stop 'ERROR [am_zgeev]: the algorithm failed to compute eigenvalues.'
-        if (present(D))  allocate(D(n),source=W)
+        if (info.gt.0) stop 'ERROR [am_zgeev]: the algorithm failed to compute eigenvalues.'
+        if (present(D))  allocate(D ,source=W)
         if (present(VR)) allocate(VR,source=VR_internal)
         if (present(VL)) allocate(VL,source=VL_internal)
         !
     end subroutine am_zgeev
+
+    ! diagonalize complex general square matrix using relatively robust representation (prefered algorithm)
+    ! ***  need to implement  ***
     
     ! diagonalize complex hermitian matrix
 
@@ -722,70 +729,29 @@ contains
         integer :: lda
         integer :: info
         integer :: lwork
-        !
         ! initialize variables
-        !
         lda = size(A,1)
         n   = size(A,2)
         allocate(D(n))
         allocate(RWORK(3*n-2))
-        !
         ! copy variables
-        !
         allocate(V, source=A)
-        !
         ! query the optimal workspace
-        !
         allocate(WORK(lwmax))
         lwork = -1
         call zheev( 'vectors', 'upper', n, V, lda, D, WORK, lwork, RWORK, info )
         lwork = min( lwmax, int( WORK( 1 ) ) )
-        !
         ! solve eigenproblem
-        !
         call zheev( 'vectors', 'upper', n, V, lda, D, WORK, lwork, RWORK, info )
-        !
         ! check for convergence.
-        !
-        if( info.gt.0 ) then
-            write(*,*) 'the algorithm failed to compute eigenvalues.'
-            stop
-        end if
+        if( info.gt.0 ) stop 'ERROR [am_zheev]: failed to compute eigenvalues'
+        ! debug
+        if (debug) then
+        if (any(abs(matmul(A,V)-matmul(V,mkl_ddiag(D))).gt.tiny)) then
+            stop 'ERROR [am_zheev] A*V /= V*D'
+        endif
+        endif
     end subroutine am_zheev
-
-    subroutine     am_zheev_eig(A,D)
-        !
-        implicit none
-        !
-        complex(dp), intent(in)  :: A(:,:)
-        real(dp)   , allocatable, intent(out) :: D(:)   ! eigenvalues of the matrix A in ascending order
-        complex(dp), allocatable :: V(:,:) ! orthonormal eigenvectors of the matrix A
-        complex(dp), allocatable :: WORK(:)
-        real(dp)   , allocatable :: RWORK(:)
-        integer :: n
-        integer :: lda
-        integer :: info
-        integer :: lwork
-        !
-        !
-        ! initialize variables
-        lda = size(A,1)
-        n   = size(A,2)
-        allocate(D(n))
-        allocate(RWORK(3*n-2))
-        ! copy variables
-        allocate(V, source=A)
-        ! query the optimal workspace
-        allocate(WORK(lwmax))
-        lwork = -1
-        call zheev( 'N', 'U', n, V, lda, D, WORK, lwork, RWORK, info )
-        lwork = min( lwmax, int( WORK( 1 ) ) )
-        ! solve eigenproblem
-        call zheev( 'N', 'U', n, V, lda, D, WORK, lwork, RWORK, info )
-        ! check for convergence.
-        if( info.gt.0 ) stop 'ERROR: ZHEEV failed to compute eigenvalues'
-        !
-    end subroutine am_zheev_eig
 
     ! diagonalize banded complex hermitian matrix
 
@@ -1421,6 +1387,42 @@ contains
 !         enddo
 !         !
 !     end function   am_dgemmt
+
+    pure function mkl_ddiag(d) result(M)
+        !
+        implicit none
+        !
+        real(dp), intent(in)  :: d(:)
+        real(dp), allocatable :: M(:,:)
+        integer :: n, i
+        !
+        ! number of elements in off-diagonal
+        n = size(d)
+        allocate(M(n,n))
+        M = 0
+        do i = 1, n
+            M(i,i) = d(i)
+        enddo
+        !
+    end function  mkl_ddiag
+
+    pure function mkl_zdiag(d) result(M)
+        !
+        implicit none
+        !
+        complex(dp), intent(in)  :: d(:)
+        complex(dp), allocatable :: M(:,:)
+        integer :: n, i
+        !
+        ! number of elements in off-diagonal
+        n = size(d)
+        allocate(M(n,n))
+        M = 0
+        do i = 1, n
+            M(i,i) = d(i)
+        enddo
+        !
+    end function  mkl_zdiag
 
 end module am_mkl
  

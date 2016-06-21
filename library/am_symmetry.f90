@@ -74,8 +74,8 @@ contains
         class(am_class_group), intent(inout) :: grp
         real(dp)    , intent(in) :: criterion(:)
         character(*), intent(in) :: flags
-        integer , allocatable ::  inds(:)
-        integer , allocatable :: rinds(:) ! reverse inds
+        integer     ,allocatable :: inds(:)
+        integer     ,allocatable ::rinds(:) ! reverse inds
         !
         allocate(inds(grp%nsyms))
         if     (index(flags,'descend').ne.0) then
@@ -86,7 +86,8 @@ contains
             stop 'ERROR [sort_symmetries]: ascend/descend?'
         endif
         ! get reverse indices
-        allocate(rinds(grp%nsyms))
+        allocate(rinds(0:grp%nsyms))
+        rinds(0)    = 0
         rinds(inds) = [1:grp%nsyms]
         ! sort symmetries
         select type (grp)
@@ -103,16 +104,16 @@ contains
         class default
             stop 'ERROR [sort_symmetries]: class unknown'
         end select
-        !
-        if (allocated(grp%ps_id))             grp%ps_id             =               grp%ps_id(inds)
-        if (allocated(grp%mt%multab))         grp%mt%multab         =         apply(grp%mt%multab(inds,inds))
-        if (allocated(grp%mt%rr))             grp%mt%rr             =               grp%mt%rr(inds,inds,inds)
-        if (allocated(grp%mt%corder))         grp%mt%corder         =               grp%mt%corder(inds)
-        if (allocated(grp%mt%commutator_id))  grp%mt%commutator_id  = sort_nz(apply(grp%mt%commutator_id(inds,:)))
-        if (allocated(grp%cc%id))             grp%cc%id             =               grp%cc%id(inds)
-        if (allocated(grp%cc%representative)) grp%cc%representative =         apply(grp%cc%representative)
-        if (allocated(grp%cc%member))         grp%cc%member         =         apply(grp%cc%member)
-        if (allocated(grp%cc%class_matrices)) grp%cc%class_matrices =               grp%cc%class_matrices(inds,inds,:)
+        ! reshape(pack( .true.),shape())
+        if (allocated(grp%ps_id))             grp%ps_id             =                            grp%ps_id(inds)
+        if (allocated(grp%mt%multab))         grp%mt%multab         =         reshape(rinds(pack(grp%mt%multab(inds,inds)           , .true.)),shape(grp%mt%multab))
+        if (allocated(grp%mt%rr))             grp%mt%rr             =                            grp%mt%rr(inds,inds,inds)      
+        if (allocated(grp%mt%corder))         grp%mt%corder         =                            grp%mt%corder(inds)        
+        if (allocated(grp%mt%commutator_id))  grp%mt%commutator_id  = sort_nz(reshape(rinds(pack(grp%mt%commutator_id(inds,:)       , .true.)),shape(grp%mt%commutator_id)))
+        if (allocated(grp%cc%id))             grp%cc%id             =                            grp%cc%id(inds)        
+        if (allocated(grp%cc%representative)) grp%cc%representative =         reshape(rinds(pack(grp%cc%representative              , .true.)),shape(grp%cc%representative))
+        if (allocated(grp%cc%member))         grp%cc%member         =         reshape(rinds(pack(grp%cc%member                      , .true.)),shape(grp%cc%member))
+        if (allocated(grp%cc%class_matrices)) grp%cc%class_matrices =                            grp%cc%class_matrices(inds,inds,:)
         ! generators need to be reevaluated. no other way. because generators are not unique.
         if (allocated(grp%mt%gen_id)) then
             ! symmetry generators
@@ -124,22 +125,8 @@ contains
             allocate(grp%mt%gen, source=pack(grp%mt%gen_id,grp%mt%gen_id.ne.0) )
             grp%mt%gen = nint(sort(real(unique(grp%mt%gen),dp)))
         endif
-    contains
-        elemental function apply(A) result(A_rinds)
-            ! takes advantage of "global/local" scope of rinds within sort_symmetry
-            implicit none
-            !
-            integer, intent(in) :: A
-            integer :: A_rinds
-            !
-            if (A.ne.0) then
-                A_rinds = rinds(A)
-            else
-                A_rinds = 0
-            endif
-            !
-        end function       apply
-        function           sort_nz(A) result(A_sorted)
+        contains
+        function     sort_nz(A) result(A_sorted)
             ! sort nonzero values in each row (puts zeros at the end of rows)
             implicit none
             !
@@ -169,7 +156,7 @@ contains
                 A_sorted(i,1:count(mask)) = sort( real(A(i, pack(inds,mask)) ,dp) )
             enddo
             !
-        end function       sort_nz
+        end function sort_nz
     end subroutine sort_symmetries
 
     subroutine     write_outfile(grp,fname)
@@ -199,6 +186,11 @@ contains
         if (allocated(grp%ct%irrep_dim     )) call dump(A=grp%ct%irrep_dim     ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.irrep_dim'     )
         if (allocated(grp%ct%irrep_proj    )) call dump(A=grp%ct%irrep_proj    ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.irrep_proj'    )
         if (allocated(grp%ct%irrep_proj_V  )) call dump(A=grp%ct%irrep_proj_V  ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.irrep_proj_V'  )
+        if (allocated(grp%ct%block_proj    )) call dump(A=grp%ct%block_proj    ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.block_proj'    )
+        if (allocated(grp%ct%S             )) call dump(A=grp%ct%S             ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.S'             )
+        if (allocated(grp%ct%E             )) call dump(A=grp%ct%E             ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.E'             )
+        if (allocated(grp%ct%Ss            )) call dump(A=grp%ct%Ss            ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.Ss'            )
+        if (allocated(grp%ct%Es            )) call dump(A=grp%ct%Es            ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.Es'            )             
         ! dump group specific data
         select type (grp)
         class is (am_class_symrep_group)
@@ -272,8 +264,6 @@ contains
         implicit none
         !
         class(am_class_group), intent(inout) :: grp
-        real(dp)   , allocatable :: phi(:,:) 
-        integer    , allocatable :: class_matrices(:,:,:)
         complex(dp), allocatable :: irrep_diag(:,:)
         complex(dp), allocatable :: wigner_proj(:,:,:,:) 
         !
@@ -291,36 +281,16 @@ contains
         ! get irrep dimensions
         grp%ct%irrep_dim = get_irrep_dimension(chartab=grp%ct%chartab, &
             nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
-!         ! get irrep projection operators
+        ! get irrep start and end indices
+        call get_irrep_SE(irrep_dim=grp%ct%irrep_dim, S=grp%ct%S, E=grp%ct%E, Ss=grp%ct%Ss, Es=grp%ct%Es)
+        ! get irrep projection operators
         grp%ct%irrep_proj = get_irrep_proj(rr=grp%mt%rr, chartab=grp%ct%chartab, irrep_dim=grp%ct%irrep_dim, &
             class_matrices=grp%cc%class_matrices)
-!         ! get irrep projection eigenvectors
-        grp%ct%irrep_proj_V = get_irrep_proj_V(irrep_proj=grp%ct%irrep_proj, irrep_dim=grp%ct%irrep_dim)
+        ! get irrep projection eigenvectors
+        grp%ct%irrep_proj_V = get_irrep_proj_V(irrep_proj=grp%ct%irrep_proj, Ss=grp%ct%Ss, Es=grp%ct%Es)
+        ! convert irrep projection eigenvectors to produce block-diagnaolized matrices
+        grp%ct%block_proj = get_block_proj(rr=grp%mt%rr, irrep_proj_V=grp%ct%irrep_proj_V, Ss=grp%ct%Ss, Es=grp%ct%Es)
         !
-        phi = get_block_transform(rr=grp%mt%rr, irrep_dim=grp%ct%irrep_dim, irrep_proj_V=grp%ct%irrep_proj_V)
-        !
-
-!         stop
-!         ! get irrep diagonal matrix elements
-!         irrep_diag = get_irrep_diag(rr=grp%mt%rr, chartab=grp%ct%chartab,  irrep_dim=grp%ct%irrep_dim,&
-!             irrep_proj=irrep_proj, class_member=grp%cc%member)
-!         ! get wigner projections
-!         wigner_proj = get_wigner_proj(rr=grp%mt%rr, irrep_diag=irrep_diag, irrep_dim=grp%ct%irrep_dim, )
-!         ! get similarity transform for constructing irreps
-!         phi = get_block_transform(rr=grp%mt%rr, irrep_dim=grp%ct%irrep_dim, wigner_proj=wigner_proj)
-
-
-!         phi = get_block_similarity_transform(rr=grp%mt%rr, irrep_dim=grp%ct%irrep_dim, irrep_proj=irrep_proj, &
-!             commutator_id=grp%mt%commutator_id, &
-!             nclasses=grp%cc%nclasses,                                   class_member=grp%cc%member)
-        !
-
-
-!         do i = 1, grp%nsyms
-!             call disp(title='A(:,:,'//tostring(i)//') = [',X= matmul(matmul(transpose(S),grp%mt%rr(:,:,i)),S))
-!             write(*,*) '];'
-!         enddo
-!         stop
     end subroutine get_character_table
 
     subroutine     print_character_table(grp)
@@ -511,17 +481,17 @@ contains
         do i = 1, sg%nsyms
             sg%ps_id(i) = ps_schoenflies(R=sg%seitz_frac(1:3,1:3,i))
         enddo
+        ! sort symmetries based on parameters 
+        call sg%sort_symmetries(criterion=sg%seitz_frac(1,4,:)      , flags='ascend')
+        call sg%sort_symmetries(criterion=sg%seitz_frac(2,4,:)      , flags='ascend')
+        call sg%sort_symmetries(criterion=sg%seitz_frac(3,4,:)      , flags='ascend')
+        call sg%sort_symmetries(criterion=real(sg%ps_id,dp)         , flags='ascend')
+        call sg%sort_symmetries(criterion=cc(sg%seitz_frac,sg%ps_id), flags='ascend') ! cc_id wrapper
         ! get multiplication table
         call sg%get_multiplication_table()
         ! get conjugacy classes
         call sg%get_conjugacy_classes()
-        ! sort symmetries based on parameters
-        call sg%sort_symmetries(criterion=sg%seitz_frac(1,4,:), flags='ascend')
-        call sg%sort_symmetries(criterion=sg%seitz_frac(2,4,:), flags='ascend')
-        call sg%sort_symmetries(criterion=sg%seitz_frac(3,4,:), flags='ascend')
-        call sg%sort_symmetries(criterion=real(sg%ps_id,dp)   , flags='ascend')
-        call sg%sort_symmetries(criterion=real(sg%cc%id,dp)   , flags='ascend')
-        !get character table
+        ! get character table
         call sg%get_character_table()
         !
         contains
@@ -555,6 +525,18 @@ contains
             seitz_recfrac(4,1:3)   = 0.0_dp
             !
         end function   seitz_cart2recfrac
+        function       cc(seitz_frac,ps_id) result(cc_id)
+            !
+            implicit none
+            !
+            real(dp), intent(in) :: seitz_frac(:,:,:)
+            integer , intent(in) :: ps_id(:)
+            real(dp),allocatable :: cc_id(:)
+            integer ,allocatable :: multab(:,:)
+            !
+            multab = get_multab(sym=seitz_frac, flags='seitz')
+            cc_id  = real(get_class_id(multab=multab, inv_id=get_inverse_indices(multab), ps_id=ps_id),dp)
+        end function   cc
     end subroutine create_seitz_group
 
     subroutine     get_space_group(sg,pc,opts)
@@ -590,16 +572,12 @@ contains
                 str = tostring(i)//': '//decode_pointsymmetry(sg%ps_id(i))
                 if     ((mod(i,mpl).eq.0).or.(i.eq.sg%nsyms)) then
                     call disp_indent()
-                    call disp(title=trim(str), X=nint(sg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
-                    call disp(title=trim(str), X=(sg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='yes', trim='no')
-                elseif ((mod(i,mpl).eq.1)) then
-                    call disp_indent()
-                    call disp(title=trim(str), X=nint(sg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
-                    call disp(title=trim(str), X=(sg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
+                    call disp(title=trim(str)//' [frac]', X=sg%seitz_frac(:,:,i) ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
+                    call disp(title=trim(str)//' [cart]', X=sg%seitz_cart(:,:,i) ,style='underline',fmt='f5.2',zeroas='0',advance='yes', trim='no')
                 else
                     call disp_indent()
-                    call disp(title=trim(str), X=nint(sg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
-                    call disp(title=trim(str), X=(sg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
+                    call disp(title=trim(str)//' [frac]', X=sg%seitz_frac(:,:,i) ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
+                    call disp(title=trim(str)//' [cart]', X=sg%seitz_cart(:,:,i) ,style='underline',fmt='f5.2',zeroas='0',advance='no ', trim='no')
                 endif
             enddo
             ! print multiplication table
@@ -611,6 +589,7 @@ contains
         call execute_command_line ('mkdir -p '//trim(outfile_dir_sym))
         ! write to write_outfile and to file
         if (debug) then
+        call execute_command_line ('mkdir -p '//trim(outfile_dir_sym)//'/debug')
         call sg%write_outfile(fname='sg')
         endif
         ! write action table
@@ -820,18 +799,14 @@ contains
             mpl=2 ! matrices per line
             do i = 1,pg%nsyms
                 str = tostring(i)//': '//decode_pointsymmetry(pg%ps_id(i))
-                if     ((mod(i,mpl).eq.0).or.(i.eq.pg%nsyms)) then
-                    call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
-                    call disp(title=trim(str), X=nint(pg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
-                    call disp(title=trim(str), X=(pg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='yes', trim='no')
-                elseif ((mod(i,mpl).eq.1)) then
-                    call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
-                    call disp(title=trim(str), X=nint(pg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
-                    call disp(title=trim(str), X=(pg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
+                if ((mod(i,mpl).eq.0).or.(i.eq.sg%nsyms)) then
+                    call disp_indent()
+                    call disp(title=trim(str)//' [frac]', X=pg%seitz_frac(:,:,i) ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
+                    call disp(title=trim(str)//' [cart]', X=pg%seitz_cart(:,:,i) ,style='underline',fmt='f5.2',zeroas='0',advance='yes', trim='no')
                 else
-                    call disp(title=' '      , X=zeros([1,1]),              style='underline',fmt='i2'  ,zeroas=' ',advance='no' , trim='no')
-                    call disp(title=trim(str), X=nint(pg%seitz_frac(:,:,i)),style='underline',fmt='i2'  ,zeroas='0',advance='no' , trim='no')
-                    call disp(title=trim(str), X=(pg%seitz_cart(:,:,i))    ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
+                    call disp_indent()
+                    call disp(title=trim(str)//' [frac]', X=pg%seitz_frac(:,:,i) ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
+                    call disp(title=trim(str)//' [cart]', X=pg%seitz_cart(:,:,i) ,style='underline',fmt='f5.2',zeroas='0',advance='no ', trim='no')
                 endif
             enddo
             ! print multiplication table
@@ -846,6 +821,7 @@ contains
         call execute_command_line ('mkdir -p '//trim(outfile_dir_sym))
         ! write outfile
         if (debug) then
+        call execute_command_line ('mkdir -p '//trim(outfile_dir_sym)//'/debug')
         call pg%write_outfile(fname='pg')
         endif
         ! write action table

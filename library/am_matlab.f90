@@ -1589,6 +1589,7 @@ module am_matlab
         complex(dp), intent(in)  :: A(:,:,:)
         complex(dp), allocatable :: V(:,:)
         complex(dp), allocatable :: Q(:,:)
+        complex(dp), allocatable :: D(:)
         integer :: m, n, i
         ! get dimensions
         n = size(A,1)
@@ -1603,7 +1604,7 @@ module am_matlab
             Q = Q + rand() * A(:,:,i)
         enddo
         ! get eigenvectors
-        call am_zgeev(A=Q,VR=V)
+        call am_zgeev(A=Q,VR=V,D=D)
         ! check that matrices have been diagonalized properly and save eigenvalues
         do i = 1, m
             ! get Q

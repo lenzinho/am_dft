@@ -25,8 +25,13 @@ module am_symmetry_tables
         complex(dp), allocatable :: chartab(:,:)            ! character table ( irreps * classes )
         character(:),allocatable :: irrep_label(:)          ! irrep label
         integer    , allocatable :: irrep_dim(:)            ! irrep dimension
-        complex(dp), allocatable :: irrep_proj(:,:,:)       !
+        integer    , allocatable :: S(:)                    ! indices corresponding to irrep
+        integer    , allocatable :: E(:)                    ! indices corresponding to irrep
+        integer    , allocatable :: Ss(:)                   ! indices squared 
+        integer    , allocatable :: Es(:)                   ! indices squared 
+        complex(dp), allocatable :: irrep_proj(:,:,:)       ! 
         complex(dp), allocatable :: irrep_proj_V(:,:)       ! eigenvectors of projection
+        complex(dp), allocatable :: block_proj(:,:)         ! eigenvectors of projection
         complex(dp), allocatable :: wigner_proj(:,:,:)      !
     end type am_class_character_table
 
@@ -93,7 +98,7 @@ contains
         do i = 1, nsyms
             if (sum(multab(:,i)).ne.ref) stop 'ERROR [get_multab]: multab is incorrect'
         enddo
-        !
+        !   
         contains
         function       get_matching_element_index_in_list(list,elem) result(i)
             !
@@ -950,45 +955,41 @@ contains
 
     ! irrep construction representation
 
-    subroutine     get_SE(irrep_dim,S,E,Ss,Es)
+    subroutine     get_irrep_SE(irrep_dim,S,E,Ss,Es)
         !
         implicit none
         !
         integer, intent(in) :: irrep_dim(:)
-        integer,allocatable, intent(out), optional :: S(:)
-        integer,allocatable, intent(out), optional :: E(:)
-        integer,allocatable, intent(out), optional :: Ss(:)
-        integer,allocatable, intent(out), optional :: Es(:)
+        integer,allocatable, intent(out) :: S(:)
+        integer,allocatable, intent(out) :: E(:)
+        integer,allocatable, intent(out) :: Ss(:)
+        integer,allocatable, intent(out) :: Es(:)
         integer :: nirreps
         integer :: j,n
         ! get dimensions
         nirreps = size(irrep_dim)
         !
-        if (present(S).and.present(E)) then
-            allocate(S(nirreps))
-            allocate(E(nirreps))
-            n = 0
-            do j = 1, nirreps
-                n = n + 1
-                S(j) = n
-                n = n + irrep_dim(j) - 1
-                E(j) = n
-            enddo
-        elseif (present(Ss).and.present(Es)) then
-            allocate(Ss(nirreps))
-            allocate(Es(nirreps))
-            n = 0
-            do j = 1, nirreps
-                n = n + 1
-                Ss(j) = n
-                n = n + irrep_dim(j)**2 - 1
-                Es(j) = n
-            enddo
-        else
-            stop 'ERROR [get_SE]: optionals missing'
-        endif
+        allocate(S(nirreps))
+        allocate(E(nirreps))
+        n = 0
+        do j = 1, nirreps
+            n = n + 1
+            S(j) = n
+            n = n + irrep_dim(j) - 1
+            E(j) = n
+        enddo
         !
-    end subroutine get_SE
+        allocate(Ss(nirreps))
+        allocate(Es(nirreps))
+        n = 0
+        do j = 1, nirreps
+            n = n + 1
+            Ss(j) = n
+            n = n + irrep_dim(j)**2 - 1
+            Es(j) = n
+        enddo
+        !
+    end subroutine get_irrep_SE
 
     function       get_irrep_proj(rr,chartab,irrep_dim,class_matrices) result(irrep_proj)
         !
@@ -1032,25 +1033,22 @@ contains
         enddo
     end function   get_irrep_proj
 
-    function       get_irrep_proj_V(irrep_proj,irrep_dim) result(irrep_proj_V)
+    function       get_irrep_proj_V(irrep_proj,Ss,Es) result(irrep_proj_V)
         !
         implicit none
         !
         complex(dp), intent(in) :: irrep_proj(:,:,:) ! can be complex because of complex characters
-        integer    , intent(in) :: irrep_dim(:)
+        integer    , intent(in) :: Ss(:)
+        integer    , intent(in) :: Es(:)
         complex(dp),allocatable :: irrep_proj_V(:,:)
-        integer,    allocatable :: Ss(:)
-        integer,    allocatable :: Es(:)
-        integer,    allocatable :: inds(:)
-        complex(dp),allocatable :: D(:)
+        integer    ,allocatable :: inds(:)
+        real(dp)   ,allocatable :: D(:)
         complex(dp),allocatable :: V(:,:)
-        logical,    allocatable :: mask(:)
+        logical    ,allocatable :: mask(:)
         integer :: i, n, nirreps, nbases
         ! get number of irreps
         nbases  = size(irrep_proj,1)
         nirreps = size(irrep_proj,3)
-        ! get indices
-        call get_SE(irrep_dim=irrep_dim,Ss=Ss,Es=Es)
         ! allocate/initialize stuff
         allocate(inds(nbases))
         inds = [1:nbases]
@@ -1061,8 +1059,8 @@ contains
         !
         n = 0
         do i = 1, nirreps
-            ! get eigenvectors/eigenvalues
-            call am_zgeev(A=irrep_proj(:,:,i), VR=V, D=D)
+            ! get eigenvectors/eigenvalues (HERMITIAN)
+            call am_zheev(A=irrep_proj(:,:,i), V=V, D=D)
             ! create mask to exclude nullspace
             where (abs(D).gt.tiny)
                 mask = .true.
@@ -1072,60 +1070,80 @@ contains
             ! save projection
             irrep_proj_V(:,Ss(i):Es(i)) = orth_svd( V(:,pack(inds,mask)) )
         enddo
-        ! check
-        do i = 1, nirreps
-        if ((Es(i)-Ss(i)+1).ne.irrep_dim(i)**2) stop 'ERROR [get_irrep_proj_V]: eigenspace mismatch'
-        enddo
         !
     end function   get_irrep_proj_V
 
-    function       get_block_transform(rr,irrep_proj_V,irrep_dim) result(phi)
+    function       get_block_proj(rr,irrep_proj_V,Ss,Es) result(block_proj)  
         !
         implicit none
         !
         integer    , intent(in) :: rr(:,:,:)
         complex(dp), intent(in) :: irrep_proj_V(:,:)
-        integer    , intent(in) :: irrep_dim(:)
-        complex(dp),allocatable :: phi(:,:)
+        integer    , intent(in) :: Ss(:)
+        integer    , intent(in) :: Es(:)
+        complex(dp),allocatable :: block_proj(:,:)
         complex(dp),allocatable :: V(:,:)
         complex(dp),allocatable :: H(:,:)
-        complex(dp),allocatable :: rr_block(:,:,:)
-        integer    ,allocatable :: Ss(:)
-        integer    ,allocatable :: Es(:)
+        complex(dp),allocatable :: block_rep(:,:,:)
+        real(dp)   ,allocatable :: block_struc(:,:)
+        real(dp)   ,allocatable :: D(:)
+        integer    ,allocatable :: inds(:)
         integer :: nirreps, nbases, nsyms
-        integer :: i,j
+        integer :: i,j,k
         ! get dimensions
         nsyms   = size(rr,3)
         nbases  = size(rr,1)
-        nirreps = size(irrep_dim)
-        ! get indices
-        call get_SE(irrep_dim=irrep_dim,Ss=Ss,Es=Es)
+        nirreps = size(Ss)
         ! allocate block diagonalized regular rep
-        allocate(rr_block(nbases,nbases,nsyms))
+        allocate(block_rep(nbases,nbases,nsyms))
         ! preliminary block reduction using eigenvectors of irrep projection operator
         do i = 1, nsyms
-            rr_block(:,:,i) = matmul(matmul( adjoint(irrep_proj_V), rr(:,:,i)), irrep_proj_V )
+            block_rep(:,:,i) = matmul(matmul( adjoint(irrep_proj_V), rr(:,:,i)), irrep_proj_V )
         enddo
         ! get block diagonalizer
-        allocate(phi(nbases,nbases))
-        phi = 0
+        allocate(block_proj(nbases,nbases))
+        block_proj = 0
         do j = 1, nirreps
             ! get dixon H
-            H = get_dixon_H( rr_block(Ss(j):Es(j), Ss(j):Es(j), :) )
+            H = get_dixon_H( block_rep(Ss(j):Es(j), Ss(j):Es(j), :) )
             ! check that H is hermitian
-            if (.not.isequal(adjoint(H),H)) stop 'ERROR [get_block_transform]: H is not Hermitian'
-            ! get eigenvectors
-            call am_zgeev(A=H,VR=V)
-            ! construct phi
-            phi(:,Ss(j):Es(j)) = matmul(irrep_proj_V(:,Ss(j):Es(j)), V)
+            if (.not.isequal(adjoint(H),H)) stop 'ERROR [get_block_proj]: H is not Hermitian'
+            ! get eigenvectors using complex Hermitian routine 
+            call am_zheev(A=H,V=V,D=D)
+            ! construct block_proj
+            block_proj(:,Ss(j):Es(j)) = orth_svd( matmul(irrep_proj_V(:,Ss(j):Es(j)), V) )
         enddo
-        ! block diagonalize irrep subspace
+        ! block diagolnaize rr
         do i = 1, nsyms
-            rr_block(:,:,i) = matmul(matmul( adjoint(phi),  rr(:,:,i)), phi)
+            block_rep(:,:,i) = matmul(matmul( adjoint(block_proj), rr(:,:,i)), block_proj )
         enddo
-        call dump(A=rr_block,fname=trim(outfile_dir_sym)//'/debug/outfile.rr_block'  )
-
-        stop
+        ! get block structure
+        allocate(block_struc(nbases,nbases))
+        where (sum(abs(block_rep),3).gt.tiny) 
+            block_struc = 1
+        elsewhere
+            block_struc = 0
+        endwhere
+        ! reduce block structure to row echelon form
+        block_struc = rref(block_struc)
+        ! sort to get block diagonals next to each other
+        allocate(inds(nbases))
+        k = 0
+        do i = 1, nbases
+        do j = 1, nbases
+        if (abs(block_struc(i,j)).gt.tiny) then
+            k = k + 1
+            inds(k) = j
+        endif
+        enddo
+        enddo
+        ! check inds
+        if (2*sum(inds).ne.nsyms*(nsyms+1)) then
+            stop 'ERROR [get_block_proj]: inds is either incomplete or completely wrong'
+        endif
+        ! sort projection based on block structure
+        block_proj = block_proj(:,inds)
+        !
         contains
         function       get_dixon_H(rr) result(H)
             ! REF: 
@@ -1187,8 +1205,7 @@ contains
             H = cmplx(Re,Im,dp)
             !
         end function   get_dixon_H
-    end function   get_block_transform
-
+    end function   get_block_proj
 
     function       get_irrep_diag(rr,chartab,irrep_proj,irrep_dim,class_member) result(irrep_diag)
         !
@@ -1389,347 +1406,6 @@ contains
 !         stop
 !         !
 !     end function   get_block_transform
-
-    function       get_cycle_structure_str(rr,order) result(cycle_structure_str)
-        !
-        implicit none
-        !
-        integer, intent(in) :: rr(:,:,:)
-        integer, intent(in) :: order(:)
-        character(300), allocatable :: cycle_structure_str(:)
-        integer,allocatable :: R(:,:)
-        integer,allocatable :: P(:,:) ! power of rr
-        logical,allocatable :: T(:)
-        integer,allocatable :: inds(:)
-        integer :: nsyms
-        integer :: nbases
-        integer :: i,j 
-        !
-        nbases = size(rr,1)
-        nsyms = size(rr,3)
-        !
-        allocate(cycle_structure_str(nsyms))
-        allocate(R(nbases,nbases))
-        allocate(P(nbases,nbases))
-        allocate(T(nbases))
-        allocate(inds(nbases))
-        inds = [1:nbases]
-        !
-        do i = 1, nsyms
-            R = 0
-            P = nint(eye(nbases))
-            do j = 1, order(i)
-                P = matmul(rr(:,:,i),P)
-                R = R + P
-            enddo
-            ! reduce to row echelon form
-            P = nint(rref(real(R,dp)))
-            ! initialize cycle strucutre string
-            cycle_structure_str(i)=' '
-            ! write cycle structure
-            do j = 1, nbases
-                where (P(j,:).eq.1) 
-                    T = .true.
-                elsewhere
-                    T = .false.
-                endwhere
-                if (count(T).ge.1) then
-                    cycle_structure_str(i) = trim(cycle_structure_str(i))//' ('//tostring(pack(inds,T))//')'
-                endif
-            enddo
-        enddo
-        !
-    end function   get_cycle_structure_str
-
-!     function       get_block_similarity_transform(rr,irrep_dim,irrep_proj,nclasses,commutator_id,class_member) result(phi)
-!         !
-!         use am_rank_and_sort
-!         !
-!         implicit none
-!         !
-!         integer    , intent(in) :: rr(:,:,:)
-!         integer    , intent(in) :: irrep_dim(:)
-!         complex(dp), intent(in) :: irrep_proj(:,:,:) ! can be complex because of complex characters
-!         integer    , intent(in) :: nclasses
-!         integer    , intent(in) :: class_member(:,:)
-!         integer    , intent(in) :: commutator_id(:,:) ! symmetries which commute with symmetry i
-!         complex(dp),allocatable :: phi(:,:)
-!         integer    ,allocatable :: S(:)
-!         integer    ,allocatable :: E(:) 
-!         complex(dp),allocatable :: V(:,:,:) ! eigenvectors
-!         complex(dp),allocatable :: D(:,:) ! eigenvalues
-!         complex(dp),allocatable :: zeros(:)
-!         complex(dp),allocatable :: try(:)
-!         complex(dp),allocatable :: V_least(:,:)
-!         integer    ,allocatable :: commutator_least(:)
-!         ! complex(dp),allocatable :: V_proj(:,:)
-!         ! integer,    allocatable :: Ss(:)
-!         ! integer,    allocatable :: Es(:)
-!         complex(dp),allocatable :: V_least_proj(:,:) ! eigenvectors
-!         logical :: isorthogonal
-!         integer :: nbases
-!         integer :: nsyms
-!         integer :: nphis
-!         integer :: nirreps
-!         integer :: i, i_phi, j, k
-!         integer :: verbosity
-!         ! verbosity for debugging
-!         verbosity = 1
-!         ! get bases dimensions
-!         nbases = size(rr,1)
-!         nsyms  = size(rr,3)
-!         nirreps= size(irrep_proj,3)
-!         nphis  = sum(irrep_dim)
-!         ! allocate space
-!         allocate(phi(nbases,nphis))
-!         allocate(S(nirreps))
-!         allocate(E(nirreps))
-!         ! work space
-!         allocate(try(nbases))
-!         ! allocate zero vector
-!         allocate(zeros(nbases))
-!         zeros = 0
-!         ! get symmetries eigenvectors and eigenvalues
-!         allocate(D(nbases,nsyms))
-!         allocate(V(nbases,nbases,nsyms))
-!         do i = 1, nsyms
-!             call am_dgeev(A=real(rr(:,:,i),dp),VR=V(:,:,i),D=D(:,i))
-!         enddo
-!         ! debug
-!         if (debug) then
-!         call execute_command_line('mkdir -p '//trim(outfile_dir_sym)//'/debug')
-!         call dump(A=class_member       , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.class_member' )
-!         call dump(A=rr                 , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.rr'           )
-!         call dump(A=irrep_proj         , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.irrep_proj'   )
-!         call dump(A=irrep_dim          , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.irrep_dim'    )
-!         endif
-!         ! get similarity transform which block diagonalizes irrep projections
-!         ! call get_irrep_proj_eigvec(irrep_proj=irrep_proj, V_proj=V_proj,S=Ss,E=Es)
-!         ! call dump(A=V_proj, fname=trim(outfile_dir_sym)//'/outfile.V_proj')
-!         ! initialize i_phi
-!         i_phi = 0
-!         ! loop over irrep projections
-!         do i = 1, nirreps
-!             if (verbosity.ge.1) write(*,'(a,a)',advance='no') flare, 'irrep '//tostring(i)//': '
-!             ! save indices
-!             i_phi= i_phi + 1
-!             S(i) = i_phi
-!             E(i) = S(i) + irrep_dim(i) - 1
-!             if     (irrep_dim(i).eq.1) then
-!                 if (verbosity.ge.1) write(*,'(a)',advance='no') '1D '
-!                 ! project a random vector on the irreducible subspace
-!                 ! since the subspace is 1 dimension, the randomness goes away.
-!                 phi(:,i_phi) = matmul(irrep_proj(:,:,i), rand(nbases) )
-!             elseif (irrep_dim(i).ge.2) then
-!                 ! if the irrep is two-dimensional or larger...
-!                 if (verbosity.ge.1) write(*,'(a)',advance='no') tostring(irrep_dim(i))//'D '
-!                 ! search for an eigenvector of a regular rep symmetry element that has unique (nondegenerate eigenvalues)
-!                 if    (successfully_get_least_degenerate_eigenspace(V=V,D=D,irrep_proj_i=irrep_proj(:,:,i),V_least=V_least)) then
-!                     ! project the nondegenerate vector onto the irreducible subspace
-!                     phi(:,i_phi) = matmul(irrep_proj(:,:,i), V_least(:,1) )
-!                 elseif (successfully_restrict_eigenspace(V=V,D=D,irrep_dim_i=irrep_dim(i), &
-!                     irrep_proj_i=irrep_proj(:,:,i),V_least=V_least,V_least_proj=V_least_proj)) then
-!                     ! use the lowest degenerate eigenvalue to search for a starting eigensubspace
-!                     phi(:,i_phi) = matmul(irrep_proj(:,:,i), V_least_proj(:,1) )
-!                 else
-!                     stop 'need to program this still... '
-!                 endif
-!                 ! search for partners
-!                 search : do k = 1, nclasses
-!                     ! exit search when all partners symmetry functions are found 
-!                     if (i_phi.eq.E(i)) then
-!                         exit search
-!                     endif
-!                     ! try partner function
-!                     try = matmul(rr(:,:,class_member(k,1)), phi(:,S(i)))
-!                     ! make sure: non-zero
-!                     if (.not.isequal(try,zeros)) then
-!                         ! make sure: orthogonal to other vectors in the irrep basis
-!                         ! since in the regular rep symmetries have matrix elements (0,1), 
-!                         ! it suffices to check whether the vectors are not the same.
-!                         ! ideal, a cross product would be taken.
-!                         isorthogonal = .true.
-!                         search_orthogonal : do j = S(i), i_phi
-!                             if (isequal(phi(:,j),try)) then
-!                                 isorthogonal = .false.
-!                                 exit search_orthogonal
-!                             endif
-!                         enddo search_orthogonal
-!                         if (isorthogonal) then
-!                             i_phi = i_phi + 1
-!                             phi(:,i_phi) = try/norm(try)
-!                         endif 
-!                     endif
-!                 enddo search
-!             else
-!                 stop 'ERROR [get_block_similarity_transform]: incorrect irrep_dim'
-!             endif
-!             ! orthonormalize the irreducible subspace
-!             phi(:,S(i):E(i)) = orthonormalize( phi(:,S(i):E(i)) )
-!             ! line break
-!             if (verbosity.ge.1) write(*,*)
-!         enddo
-!         if (i_phi.ne.nphis) stop 'ERROR [get_block_similarity_transform]: i_phi /= nirreps'
-
-!     end function   get_block_similarity_transform
-
-    ! <AUX:get_block_similarity_transform>
-
-    function       successfully_restrict_eigenspace(V,D,irrep_dim_i,irrep_proj_i,V_least,V_least_proj) result(is_successful)
-        !
-        implicit none
-        !
-        complex(dp), intent(in) :: V(:,:,:) ! eigenvectors
-        complex(dp), intent(in) :: D(:,:)   ! eigenvalues
-        integer    , intent(in) :: irrep_dim_i
-        complex(dp), intent(in) :: irrep_proj_i(:,:)
-        complex(dp), intent(in) :: V_least(:,:)
-        complex(dp),allocatable, intent(out) :: V_least_proj(:,:) ! eigenvectors
-        complex(dp),allocatable :: V_i(:,:)
-        complex(dp),allocatable :: ns(:,:)  ! eigenvectors
-        integer    ,allocatable :: inds(:)
-        logical :: is_successful
-        integer :: nsyms, nbases
-        integer :: ns_i, ns_j
-        integer :: i
-        ! set is_successful (is_successful = .true. if dimension of V_least_proj is fully reduced to irrep_dim )
-        is_successful = .false.
-        ! get dimensions
-        nbases = size(V,1)
-        nsyms  = size(V,3)
-        ! allocate inds
-        allocate(inds(nbases))
-        inds = [1:nbases]
-        ! project onto irreducible subspace and orthonormalize
-        V_least_proj = orth_svd( matmul(irrep_proj_i, V_least) )
-
-! something is wrong here... V_least_proj is empty?
-            call disp(V_least_proj)
-            call disp(irrep_proj_i)
-            call disp(V_least)
-            call disp(matmul(irrep_proj_i, V_least))
-
-        ! initialize null space dimension counter
-        ns_i = nbases
-        ! attempt to reduce projected subspace by intsersecting it with eigenspace of regular reps
-        reduction_loop : do i = 1, nsyms
-            ! get eigenvectors which nonzero eigenvalues
-            V_i = orth_svd( V(:, pack(inds,abs(D(:,i)).gt.tiny), i) )
-            ! get subspace intersection
-            ns  = subspace_intersection(V_i, V_least_proj)
-            ! get dimension of intersection
-            ns_j = size(ns,2)
-            ! check that something was obtained form the intserection
-            if (ns_j.ne.0) then
-                ! check that the intersection reduced the dimension of the space
-                if (ns_j.lt.ns_i) then
-                    ! update subspace
-                    V_least_proj = orth_svd(ns)
-                    ! update subspace dimension
-                    ns_i = ns_j
-                    ! end if subspace is completely reduced (this is the smallest it will ever get)
-                    if (ns_i.eq.irrep_dim_i) then
-                        is_successful = .true.
-                        exit reduction_loop
-                    endif
-                endif
-            endif
-        enddo reduction_loop
-        ! 
-    end function   successfully_restrict_eigenspace
-    
-    function       successfully_get_least_degenerate_eigenspace(V,D,irrep_proj_i, V_least) result(is_successful)
-        !
-        implicit none
-        !
-        complex(dp), intent(in) :: V(:,:,:) ! eigenvectors
-        complex(dp), intent(in) :: D(:,:)   ! eigenvalues
-        complex(dp), intent(in) :: irrep_proj_i(:,:) ! projection
-        complex(dp),allocatable, intent(out) :: V_least(:,:)
-        logical :: is_successful
-        complex(dp),allocatable :: V_try(:,:)
-        complex(dp),allocatable :: V_j(:,:) ! eigenvectors
-        complex(dp),allocatable :: D_j(:)   ! eigenvalues
-        complex(dp),allocatable :: D_j_unique(:) ! eigenvalues
-        logical    ,allocatable :: mask(:)
-        integer    ,allocatable :: inds(:)
-        integer :: n_D_j_unique_s
-        integer :: nsyms, nbases
-        logical :: pass
-        integer :: degen_i ! counter
-        integer :: degen_j ! counter
-        integer :: j, k
-        ! successful if 1D space is returned
-        is_successful = .false.
-        ! get dimnsions
-        nbases = size(V,1)
-        nsyms  = size(V,3)
-        ! allocate stuff
-        allocate(V_j(nbases,nbases))
-        allocate(D_j(nbases))
-        ! allocate masks
-        allocate(mask(nbases))
-        ! allocate inds
-        allocate(inds(nbases))
-        inds = [1:nbases]
-        ! initialize degeneracy counter
-        degen_i = nbases
-        ! loop over symmetries
-        do j = 1, nsyms
-            ! get eigenvector/values
-            V_j = V(:,:,j)
-            D_j = D(:,j)
-            ! filter eigenvectors belonging to least degenerate eigenvalue
-            D_j_unique = unique(D_j)
-            ! get number of unique eigenvalues
-            n_D_j_unique_s = size(D_j_unique)
-            ! loop over unique eigenvalues
-            do k = 1, n_D_j_unique_s
-                ! mask eigenvalues which match the k-th unique value
-                where (abs(D_j-D_j_unique(k)).lt.tiny)
-                    mask = .true.
-                elsewhere
-                    mask = .false.
-                endwhere
-                ! get numer of eigenvalues matches
-                degen_j = count(mask)
-                ! check if this eigenvalue has fewer matchs than previous ones
-                if (degen_j.lt.degen_i) then
-                    ! get orthonormalized columns
-                    V_try = orth_svd( V(:,pack(inds,mask),j) )
-                    ! check that this eigenvectors which are not in the null space of the projection oprators
-                    pass = .true.
-                    ! seems impossible to find a set of vectors that are not simultaenosuly in the null space of at least one irrep.
-                    ! do i = i, nirreps
-                    if ( any(all( abs(matmul(irrep_proj_i,V_try)).lt.tiny ,1) ) ) then
-                        pass = .false.
-                        exit
-                    endif
-                    ! enddo
-                    !
-                    if (pass) then
-                        ! updat degeneracy counter to reflect smaller eigenspace
-                        degen_i = degen_j
-                        ! update eigenspace
-                        if (allocated(V_least)) deallocate(V_least)
-                        allocate(V_least, source = V_try)
-                        ! if a 1D space is found return (it doesn't get much smaller than this!)
-                        if (degen_j.eq.1) then 
-                            is_successful = .true.
-                            return
-                        endif
-                    endif
-                endif
-            enddo
-        enddo
-        !
-        if (.not.pass) then
-            stop 'ERROR [successfully_get_least_degenerate_eigenspace]: failed to find basis'
-        endif
-    end function   successfully_get_least_degenerate_eigenspace
-
-
-    ! </AUX:get_block_similarity_transform>
 
     ! identifier functions which operate on identifiers
 
