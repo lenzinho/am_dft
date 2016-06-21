@@ -267,7 +267,6 @@ module am_symmetry_relations
     end subroutine dump_relations
 
     subroutine     export_relations2matlab(relations,dims,fnc_name,fid_append,flags)
-        !
         ! creates .m file based on relations
         ! flags = append/standalone
         implicit none
@@ -296,7 +295,10 @@ module am_symmetry_relations
             fid = (fid_append)
         elseif (index(flags,'standalone').ne.0) then
             fid = 1
-            open(unit=fid,file=trim(fnc_name)//'.m',status='replace',action='write')
+            ! create folder
+            call execute_command_line( 'mkdir -p '//trim(outfile_dir_tb)//'/matlab' )
+            ! create file
+            open(unit=fid,file=trim(outfile_dir_tb)//'/matlab/'//trim(fnc_name)//'.m',status='replace',action='write')
         else
             stop 'ERROR [export_relations2matlab]: flags != standalone/append.'
         endif
@@ -320,12 +322,7 @@ module am_symmetry_relations
                         do j = 1,nterms
                             if (abs(relations(i,j)).gt.tiny) then
                                 str = get_basis_label(dims=dims, ind=j ,flags='')
-                                if (present(fid_append)) then
-                                    ! HIGH PRECISION
-                                    write(fid,'(a)',advance='no') tostring(relations(i,j),fmt='SP,f24.16')//'*'//trim(str)
-                                else
-                                    write(fid,'(a)',advance='no') tostring(relations(i,j),fmt='SP,f10.5')//'*'//trim(str)
-                                endif
+                                write(fid,'(a)',advance='no') tostring(relations(i,j),fmt='SP,f24.16')//'*'//trim(str)
                             endif
                         enddo
                         write(fid,'(a)') ';'
@@ -341,11 +338,8 @@ module am_symmetry_relations
                 enddo
                 !
             write(fid,'(a)') 'end'
-            !
         ! only close file if standalone
-        if (index(flags,'standalone').ne.0) then
-        close(fid)
-        endif
+        if (index(flags,'standalone').ne.0) close(fid)
     end subroutine export_relations2matlab
 
 end module am_symmetry_relations

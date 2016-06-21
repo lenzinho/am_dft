@@ -103,7 +103,7 @@ module am_symmetry_rep
         ! create tb dir
         call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
         ! write point group
-        call tbpg%write_outfile(fname=trim(outfile_dir_tb)//'/'//'outfile.tb_pointgroup')
+        call dump(A=tbpg%sym,fname=trim(outfile_dir_tb)//'/outfile.tbpg.sym')
         !
         contains
         function       ps2tb_H(R_cart,pc,ic) result(H)

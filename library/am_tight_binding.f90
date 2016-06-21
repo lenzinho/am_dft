@@ -701,8 +701,9 @@ contains
         fid = 1
         ! create directory
         call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
+        call execute_command_line( 'mkdir -p '//trim(outfile_dir_tb)//'/matlab')
         ! export file
-        open(unit=fid,file=trim(outfile_dir_tb)//'/'//trim(H_fnc_name)//'.m',status='replace',action='write')
+        open(unit=fid,file=trim(outfile_dir_tb)//'/matlab/'//trim(H_fnc_name)//'.m',status='replace',action='write')
             write(fid,'(a,a,a)') 'function [H] = ', trim(H_fnc_name), '(pg,v,kpt)'
             write(fid,'(a)') 'i2pi = 2*sqrt(-1)*pi;'
             write(fid,'(a)') 'H(1:'//tostring(E(end))//',1:'//tostring(E(end))//') = 0;'
