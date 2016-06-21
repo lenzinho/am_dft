@@ -537,7 +537,7 @@ contains
         ! Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. Cambridge, UK?; New York: Cambridge University Press, 2008. p 35.
         do i = 1, nclasses
             if (modulo(nsyms,class_nelements(i)).ne.0) then
-                stop 'Number of elements in class is not a divisor of the group order.'
+                stop 'ERROR [get_chartab]: class order is not a factor of group order'
             endif
         enddo
         !
@@ -1049,14 +1049,14 @@ contains
         ! get number of irreps
         nbases  = size(irrep_proj,1)
         nirreps = size(irrep_proj,3)
+        ! get indices
+        call get_SE(irrep_dim=irrep_dim,Ss=Ss,Es=Es)
         ! allocate/initialize stuff
         allocate(inds(nbases))
         inds = [1:nbases]
         allocate(mask(nbases))
         allocate(D(nbases))
         allocate(V(nbases,nbases))
-        allocate(Ss(nirreps))
-        allocate(Es(nirreps))
         allocate(irrep_proj_V(nbases,nbases))
         !
         n = 0
@@ -1069,11 +1069,6 @@ contains
             elsewhere
                 mask = .false.
             endwhere
-            ! save indics
-            n = n + 1
-            Ss(i) = n
-            n = n + count(mask) - 1
-            Es(i) = n
             ! save projection
             irrep_proj_V(:,Ss(i):Es(i)) = orth_svd( V(:,pack(inds,mask)) )
         enddo
@@ -1119,30 +1114,8 @@ contains
             H = get_dixon_H( rr_block(Ss(j):Es(j), Ss(j):Es(j), :) )
             ! check that H is hermitian
             if (.not.isequal(adjoint(H),H)) stop 'ERROR [get_block_transform]: H is not Hermitian'
-
-
-
-            
-
-! SOMETHING IS WRONG WITH H.
-! SOMETHING IS WRONG WITH H.
-! SOMETHING IS WRONG WITH H.
-! SOMETHING IS WRONG WITH H.
-
             ! get eigenvectors
             call am_zgeev(A=H,VR=V)
-
-            
-
-            if (j.eq.3) then 
-                call disp(X=irrep_proj_V,style='underline')
-                call disp(X=H,style='underline')
-                call disp(X=V,style='underline')
-                call dump(A=rr_block(Ss(j):Es(j), Ss(j):Es(j), :),fname=trim(outfile_dir_sym)//'/debug'//'/outfile.rr_block')
-                
-                stop
-            endif
-
             ! construct phi
             phi(:,Ss(j):Es(j)) = matmul(irrep_proj_V(:,Ss(j):Es(j)), V)
         enddo
@@ -1150,12 +1123,9 @@ contains
         do i = 1, nsyms
             rr_block(:,:,i) = matmul(matmul( adjoint(phi),  rr(:,:,i)), phi)
         enddo
-        !
-        call dump(A=rr_block ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.rr_block'  )
+        call dump(A=rr_block,fname=trim(outfile_dir_sym)//'/debug/outfile.rr_block'  )
 
         stop
-
-
         contains
         function       get_dixon_H(rr) result(H)
             ! REF: 
@@ -1167,6 +1137,8 @@ contains
             complex(dp), intent(in) :: rr(:,:,:)
             complex(dp),allocatable :: Hrs(:,:)
             complex(dp),allocatable :: H(:,:)
+            real(dp)   ,allocatable :: Re(:,:)
+            real(dp)   ,allocatable :: Im(:,:)
             logical :: isreducible
             integer :: nbases, nsyms
             integer :: r,s,i
@@ -1207,6 +1179,12 @@ contains
             enddo search
             ! if it isn't reducible return identity
             if (.not.isreducible) H = eye(nbases)
+            ! correct basic rounding error
+            allocate(Re, source= real(H))
+            allocate(Im, source=aimag(H))
+            where (abs(nint(Re)-Re).lt.tiny) Re = nint(Re)
+            where (abs(nint(Im)-Im).lt.tiny) Im = nint(Im)
+            H = cmplx(Re,Im,dp)
             !
         end function   get_dixon_H
     end function   get_block_transform

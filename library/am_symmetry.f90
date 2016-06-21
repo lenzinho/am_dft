@@ -65,7 +65,6 @@ contains
 
     ! operate on group representation
 
-
     subroutine     sort_symmetries(grp,criterion,flags)
         ! flags = 'ascend'/'descend'
         use am_rank_and_sort
@@ -79,7 +78,6 @@ contains
         integer , allocatable :: rinds(:) ! reverse inds
         !
         allocate(inds(grp%nsyms))
-        !
         if     (index(flags,'descend').ne.0) then
             call rank(-criterion,inds)
         elseif (index(flags,'ascend' ).ne.0) then
@@ -114,6 +112,7 @@ contains
         if (allocated(grp%cc%id))             grp%cc%id             =               grp%cc%id(inds)
         if (allocated(grp%cc%representative)) grp%cc%representative =         apply(grp%cc%representative)
         if (allocated(grp%cc%member))         grp%cc%member         =         apply(grp%cc%member)
+        if (allocated(grp%cc%class_matrices)) grp%cc%class_matrices =               grp%cc%class_matrices(inds,inds,:)
         ! generators need to be reevaluated. no other way. because generators are not unique.
         if (allocated(grp%mt%gen_id)) then
             ! symmetry generators
@@ -125,7 +124,6 @@ contains
             allocate(grp%mt%gen, source=pack(grp%mt%gen_id,grp%mt%gen_id.ne.0) )
             grp%mt%gen = nint(sort(real(unique(grp%mt%gen),dp)))
         endif
-        !
     contains
         elemental function apply(A) result(A_rinds)
             ! takes advantage of "global/local" scope of rinds within sort_symmetry
@@ -299,8 +297,7 @@ contains
 !         ! get irrep projection eigenvectors
         grp%ct%irrep_proj_V = get_irrep_proj_V(irrep_proj=grp%ct%irrep_proj, irrep_dim=grp%ct%irrep_dim)
         !
-!         phi = get_block_transform(rr=grp%mt%rr, irrep_dim=grp%ct%irrep_dim, irrep_proj_V=grp%ct%irrep_proj_V)
-
+        phi = get_block_transform(rr=grp%mt%rr, irrep_dim=grp%ct%irrep_dim, irrep_proj_V=grp%ct%irrep_proj_V)
         !
 
 !         stop
