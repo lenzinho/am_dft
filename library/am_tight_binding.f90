@@ -160,7 +160,6 @@ contains
                 call print_relations(relations=tb%tbvsk(i)%relations, dims=tb%tbvsk(i)%dims, flags='print:dependent,independent')
             enddo
         endif
-        !
         ! write template for irreducible matrix elements
         if (fexists('infile.tb_matrix_elements_irreducible').ne.0) then 
             ! read matrix elements

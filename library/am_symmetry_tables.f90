@@ -15,9 +15,7 @@ module am_symmetry_tables
         integer    , allocatable :: id(:)                   ! class_id(nsyms) identify conjugacy classes
         integer    , allocatable :: nelements(:)            ! class_nelements(nclasses) get number of elements in each class
         integer    , allocatable :: member(:,:)             ! members(nclass,maxval(class_nelements)) record indicies of each class_member element for each class 
-        integer    , allocatable :: representative(:)       ! class_nelements(nclasses) get number of elements in each class
-        integer    , allocatable :: class_matrices(:,:,:)   ! class_nelements(nclasses) get number of elements in each class
-        contains
+        real(dp)   , allocatable :: matrices(:,:,:)         ! 
     end type am_class_conjugacy_class
 
     type, public :: am_class_character_table
@@ -25,10 +23,8 @@ module am_symmetry_tables
         complex(dp), allocatable :: chartab(:,:)            ! character table ( irreps * classes )
         character(:),allocatable :: irrep_label(:)          ! irrep label
         integer    , allocatable :: irrep_dim(:)            ! irrep dimension
-        integer    , allocatable :: S(:)                    ! indices corresponding to irrep
-        integer    , allocatable :: E(:)                    ! indices corresponding to irrep
-        integer    , allocatable :: Ss(:)                   ! indices squared 
-        integer    , allocatable :: Es(:)                   ! indices squared 
+        integer    , allocatable :: irrep_id(:)             ! identifies the irrep to which the column of  
+        integer    , allocatable :: irrep_decomp(:)         ! number of times irrep appears in the deocmposition of rep
         complex(dp), allocatable :: irrep_proj(:,:,:)       ! 
         complex(dp), allocatable :: irrep_proj_V(:,:)       ! eigenvectors of projection
         complex(dp), allocatable :: block_proj(:,:)         ! eigenvectors of projection
@@ -160,7 +156,7 @@ contains
         !
     end function   get_cyclic_order
 
-    function       get_regular_rep(multab) result(rr)
+    function       get_regular_rep(multab) result(sym)
         !
         ! Generates regular representation for each operator
         !
@@ -174,11 +170,11 @@ contains
         !
         implicit none
         !
-        integer, intent(in)  :: multab(:,:)
-        integer, allocatable :: rr(:,:,:)
-        integer, allocatable :: sortmat(:,:)
-        integer, allocatable :: inds(:)
-        integer, allocatable :: multab_sorted(:,:)
+        integer , intent(in)  :: multab(:,:)
+        real(dp), allocatable :: sym(:,:,:)
+        integer , allocatable :: sortmat(:,:)
+        integer , allocatable :: inds(:)
+        integer , allocatable :: multab_sorted(:,:)
         integer :: nsyms
         integer :: i
         ! get number of symmetries (and size of basis)
@@ -197,12 +193,12 @@ contains
         inds = matmul(sortmat(:,:),inds)
         multab_sorted = multab(inds,:)
         ! construct regular representation from multiplication table
-        allocate(rr(nsyms,nsyms,nsyms))
+        allocate(sym(nsyms,nsyms,nsyms))
         do i = 1, nsyms
             where (multab_sorted.eq.i) 
-                rr(:,:,i) = 1
+                sym(:,:,i) = 1
             elsewhere
-                rr(:,:,i) = 0
+                sym(:,:,i) = 0
             endwhere
         enddo
     end function   get_regular_rep
@@ -418,37 +414,9 @@ contains
         end subroutine relabel_based_on_ps_id
     end function   get_class_id
 
-    function       get_class_matrices(rr,nclasses,class_nelements,class_member) result(class_matrices)
-        !
-        implicit none
-        !
-        integer, intent(in) :: rr(:,:,:)
-        integer, intent(in) :: nclasses
-        integer, intent(in) :: class_nelements(:)
-        integer, intent(in) :: class_member(:,:)
-        integer,allocatable :: class_matrices(:,:,:)
-        integer :: i,j
-        integer :: nbases
-        !
-        ! get number of things
-        nbases  = size(rr,1)
-        ! class matrices
-        allocate(class_matrices(nbases,nbases,nclasses))
-        class_matrices = 0
-        do i = 1, nclasses
-        do j = 1, class_nelements(i)
-            class_matrices(:,:,i) = class_matrices(:,:,i) + rr(:,:,class_member(i,j))
-        enddo
-        enddo
-        ! check that their sum equals ones() matrix
-        if (.not.isequal( sum(class_matrices,3), nint(ones(nbases)))) then
-            stop 'ERROR [get_class_matrices]: class matrices do not sum to ones matrix'
-        endif
-    end function   get_class_matrices
-
     ! character table
 
-    function       get_chartab(multab,nclasses,class_nelements,class_member,ps_id) result(chartab)
+    function       get_chartab(multab,class_nelements,class_member,ps_id) result(chartab)
         !
         use am_rank_and_sort
         !
@@ -456,21 +424,22 @@ contains
         !
         integer, intent(in) :: multab(:,:)
         integer, intent(in) :: ps_id(:)
-        integer, intent(in) :: nclasses
         integer, intent(in) :: class_nelements(:) ! number of elements in each class
         integer, intent(in) :: class_member(:,:) ! members(nclass,maxval(class_nelements))
         complex(dp), allocatable :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
-        real(dp)   , allocatable :: Re(:,:)
-        real(dp)   , allocatable :: Im(:,:)
-        integer :: i, j, k
-        integer :: nsyms
-        integer :: nirreps  ! just to make things clearer; always equal to nclasses
-        integer, allocatable :: H(:,:,:) ! class multiplication 
-        integer, allocatable :: irrep_dim(:) ! sym dimensions
-        integer, allocatable :: indices(:)
+        real(dp), allocatable :: Re(:,:)
+        real(dp), allocatable :: Im(:,:)
+        integer , allocatable :: H(:,:,:) ! class multiplication 
+        integer , allocatable :: irrep_dim(:) ! sym dimensions
+        integer , allocatable :: indices(:)
+        integer  :: nsyms
+        integer  :: nirreps  ! just to make things clearer; always equal to nclasses
+        integer  :: nclasses
         real(dp) :: wrk
-        !
-        nsyms = size(multab,2)
+        integer  :: i, j, k
+        ! get dimensions
+        nsyms    = size(multab,2)
+        nclasses = size(class_member,1)
         ! get class coefficients (thenumber of times class k appears in the pdocut o class j and k )
         ! Wooten p 35, Eq 2.10; p 40, Example 2.8; p 89, Example 4.6
         allocate(H(nclasses,nclasses,nclasses))
@@ -582,29 +551,28 @@ contains
         end function   eigenanalysis
     end function   get_chartab
 
-    function       get_muliken_label(chartab,nclasses,class_nelements,class_member,ps_id) result(irrep_label)
+    function       get_muliken_label(chartab,class_nelements,class_member,ps_id) result(irrep_label)
         !
         implicit none
         !
         complex(dp), intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
-        integer, intent(in) :: nclasses
         integer, intent(in) :: class_nelements(:)
         integer, intent(in) :: class_member(:,:)
         integer, intent(in) :: ps_id(:)
         character(:), allocatable :: irrep_label(:)
         integer :: i, j, k
         integer :: nirreps
+        integer :: nclasses
         integer :: class_containing_identity
         integer :: class_containing_inversion
         integer :: class_containing_highsym
         integer, allocatable :: highsymlist(:)
-        !
         ! they are always identical...
-        nirreps = nclasses
-        !
+        nirreps  = size(chartab,1)
+        nclasses = size(chartab,2)
         ! create irrep label
         allocate(character(7) :: irrep_label(nirreps))
-        !
+        ! get clases containing stuff
         class_containing_identity  = find_class_containing_ps(nclasses=nclasses, id=1, ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
         class_containing_inversion = find_class_containing_ps(nclasses=nclasses, id=6, ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
         allocate(highsymlist, source=[5,10,4,9,3,8,2,7,1,6])
@@ -664,12 +632,11 @@ contains
             end function  find_class_containing_ps
     end function   get_muliken_label
 
-    subroutine     print_chartab(chartab,nclasses,class_nelements,class_member,irrep_label,ps_id,rep_chi,rep_label)
+    subroutine     print_chartab(chartab,class_nelements,class_member,irrep_label,ps_id,rep_chi,rep_label)
         !
         implicit none
         !
         complex(dp) , intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
-        integer     , intent(in) :: nclasses
         integer     , intent(in) :: class_nelements(:)
         integer     , intent(in) :: class_member(:,:)
         character(*), intent(in) :: irrep_label(:)
@@ -678,6 +645,7 @@ contains
         character(*), intent(in), optional :: rep_label(:)
         integer :: i, j, k
         integer :: nirreps
+        integer :: nclasses
          ! rep to irrep decompostion (used only if rep_chi nd rep_label are present)
         integer :: nreps
         integer :: nsyms
@@ -689,9 +657,9 @@ contains
         integer :: char_start
         ! print formats
         character(50) :: fmts(5)
-        !
         ! they are always identical...
-        nirreps = nclasses
+        nirreps  = size(chartab,1)
+        nclasses = size(chartab,2)
         !
         ! left-side headers (sum to 10)
         fmts(2) = '(5x,a10)'
@@ -719,7 +687,6 @@ contains
         ! 
         if (present(rep_chi).and.present(rep_label)) then
             if (size(rep_chi,2).ne.nclasses) stop 'dimensions of rep character does not match number of classes'
-            !
             ! rep characters
             call print_bar(fmts=fmts, nclasses=nclasses)
             nreps = size(rep_chi,1)
@@ -737,7 +704,6 @@ contains
         ! rep decompositions
         if (present(rep_chi).and.present(rep_label)) then
             call print_bar(fmts=fmts, nclasses=nclasses)
-            !
             write(*,'(5x,a)') 'Decompositions:'
             ! initialize
             allocate(beta(nreps,nirreps))
@@ -924,12 +890,11 @@ contains
         end subroutine print_bar
     end subroutine print_chartab
 
-    function       get_irrep_dimension(chartab,nclasses,class_nelements,class_member,ps_id) result(irrep_dim)
+    function       get_irrep_dimension(chartab,class_nelements,class_member,ps_id) result(irrep_dim)
         !
         implicit none
         !
         complex(dp), intent(in) :: chartab(:,:)
-        integer    , intent(in) :: nclasses
         integer    , intent(in) :: class_nelements(:)
         integer    , intent(in) :: class_member(:,:)
         integer    , intent(in) :: ps_id(:)
@@ -937,6 +902,11 @@ contains
         integer :: i ! class
         integer :: j ! irrep
         integer :: nirreps
+        integer :: nclasses
+        ! get dimensions
+        nirreps  = size(chartab,1)
+        nclasses = size(chartab,1)
+        !
         ! find class containing identity symmetry
         id_search : do i = 1, nclasses
         do j = 1, class_nelements(i)
@@ -945,8 +915,7 @@ contains
             endif
         enddo
         enddo id_search
-        ! get dimensions
-        nirreps = nclasses
+        !
         allocate(irrep_dim(nirreps))
         do j = 1, nirreps
             irrep_dim(j) = nint(real(chartab(j,i)))
@@ -955,67 +924,129 @@ contains
 
     ! irrep construction representation
 
-    subroutine     get_irrep_SE(irrep_dim,S,E,Ss,Es)
+    function       get_rep_characters(sym,class_member) result(chi)
         !
         implicit none
         !
-        integer, intent(in) :: irrep_dim(:)
-        integer,allocatable, intent(out) :: S(:)
-        integer,allocatable, intent(out) :: E(:)
-        integer,allocatable, intent(out) :: Ss(:)
-        integer,allocatable, intent(out) :: Es(:)
-        integer :: nirreps
-        integer :: j,n
-        ! get dimensions
-        nirreps = size(irrep_dim)
+        real(dp), intent(in) :: sym(:,:,:)
+        integer , intent(in) :: class_member(:,:)
+        complex(dp), allocatable :: chi(:)
+        integer :: nclasses
+        integer :: i
         !
-        allocate(S(nirreps))
-        allocate(E(nirreps))
-        n = 0
-        do j = 1, nirreps
-            n = n + 1
-            S(j) = n
-            n = n + irrep_dim(j) - 1
-            E(j) = n
+        nclasses = size(class_member,1)
+        !
+        allocate(chi(nclasses))
+        do i = 1, nclasses
+            chi(i) = trace( sym(:,:,class_member(i,1)) )
         enddo
         !
-        allocate(Ss(nirreps))
-        allocate(Es(nirreps))
-        n = 0
-        do j = 1, nirreps
-            n = n + 1
-            Ss(j) = n
-            n = n + irrep_dim(j)**2 - 1
-            Es(j) = n
-        enddo
-        !
-    end subroutine get_irrep_SE
+    end function   get_rep_characters
 
-    function       get_irrep_proj(rr,chartab,irrep_dim,class_matrices) result(irrep_proj)
+    function       get_irrep_decomp(chi,chartab,class_nelements) result(beta)
         !
         implicit none
         !
-        integer    , intent(in) :: rr(:,:,:)
+        complex(dp), intent(in) :: chi(:) ! of rep's class reps.
         complex(dp), intent(in) :: chartab(:,:)
-        integer    , intent(in) :: irrep_dim(:)
-        integer    , intent(in) :: class_matrices(:,:,:)
-        complex(dp),allocatable :: irrep_proj(:,:,:)
-        integer :: nirreps, nsyms, nbases, nclasses
-        integer :: i,j
+        integer    , intent(in) :: class_nelements(:)
+        integer    ,allocatable :: beta(:)
+        integer :: nsyms
+        integer :: nirreps
+        complex(dp) :: wrk
+        integer :: j
+        ! get dimensions
+        nsyms   = sum(class_nelements)
+        nirreps = size(chartab,1)
+        ! allocate space
+        allocate(beta(nirreps))
+        ! get decomposition coefficients
+        do j = 1, nirreps
+            wrk = dot(chi,chartab(j,:)*class_nelements)/real(nsyms,dp)
+            if (abs(aimag(wrk)).gt.tiny)                stop 'ERROR [get_irrep_decomp]: irrep_decomp coefficient is not real'
+            if (abs(nint(real(wrk))-real(wrk)).gt.tiny) stop 'ERROR [get_irrep_decomp]: irrep_decomp coefficient is not an integer'
+            beta(j) = nint(real(wrk))
+        enddo
+    end function   get_irrep_decomp
+
+    function       get_irrep_id(irrep_dim,irrep_decomp) result(irrep_id)
         !
+        implicit none
+        !
+        integer, intent(in) :: irrep_decomp(:)
+        integer, intent(in) :: irrep_dim(:)
+        integer,allocatable :: irrep_id(:)
+        integer :: nirreps
+        integer :: i,j,k,n
+        ! get dimesnions
+        nirreps = size(irrep_dim)
+        ! get indices
+        n = sum( irrep_dim * irrep_decomp )
+        ! allocate space
+        allocate(irrep_id(n))
+        !  save n's
+        n = 0
+        do i = 1, nirreps
+        do j = 1, irrep_dim(i)
+        do k = 1, irrep_decomp(i)
+            n = n + 1
+            irrep_id(n) = i
+        enddo
+        enddo
+        enddo
+        !
+    end function   get_irrep_id
+
+    function       get_class_matrices(sym,class_nelements,class_member) result(class_matrices)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: sym(:,:,:)
+        integer , intent(in) :: class_nelements(:)
+        integer , intent(in) :: class_member(:,:)
+        real(dp),allocatable :: class_matrices(:,:,:)
+        integer :: i,j
+        integer :: nbases
+        integer :: nclasses
         ! get number of things
-        nbases  = size(rr,1)
-        nsyms   = nbases
-        nclasses= size(class_matrices,3)
-        nirreps = nclasses
+        nbases  = size(sym,1)
+        nclasses = size(class_member,1)
+        ! class matrices
+        allocate(class_matrices(nbases,nbases,nclasses))
+        class_matrices = 0
+        do i = 1, nclasses
+        do j = 1, class_nelements(i)
+            class_matrices(:,:,i) = class_matrices(:,:,i) + sym(:,:,class_member(i,j))
+        enddo
+        enddo
+        !
+    end function   get_class_matrices
+
+    function       get_irrep_proj(sym,chartab,class_id,irrep_dim) result(irrep_proj)
+        !
+        implicit none
+        !
+        real(dp)   , intent(in) :: sym(:,:,:)
+        complex(dp), intent(in) :: chartab(:,:)
+        integer    , intent(in) :: class_id(:)
+        integer    , intent(in) :: irrep_dim(:)
+        complex(dp),allocatable :: irrep_proj(:,:,:)
+        integer :: nbases
+        integer :: nsyms
+        integer :: nirreps
+        integer :: i,j
+        ! get dimensions
+        nbases  = size(sym,1)
+        nsyms   = size(sym,3)
+        nirreps = size(irrep_dim)
         ! allocate space for irrep projection operator
         allocate(irrep_proj(nbases,nbases,nirreps))
         irrep_proj = 0
         ! loop over irreos
         do j = 1, nirreps
-            ! loop over symmetries (by looping over class and members)
-            do i = 1, nclasses
-                irrep_proj(:,:,j) = irrep_proj(:,:,j) + class_matrices(:,:,i) * chartab(j,i)
+            ! sum over symmetries
+            do i = 1, nsyms
+                irrep_proj(:,:,j) = irrep_proj(:,:,j) + chartab(j, class_id(i) ) * sym(:,:,i)
             enddo
             irrep_proj(:,:,j) = irrep_proj(:,:,j) * irrep_dim(j)/real(nsyms,dp)
         enddo
@@ -1033,54 +1064,42 @@ contains
         enddo
     end function   get_irrep_proj
 
-    function       get_irrep_proj_V(irrep_proj,Ss,Es) result(irrep_proj_V)
+    function       get_irrep_proj_V(irrep_proj,irrep_id) result(irrep_proj_V)
         !
         implicit none
         !
         complex(dp), intent(in) :: irrep_proj(:,:,:) ! can be complex because of complex characters
-        integer    , intent(in) :: Ss(:)
-        integer    , intent(in) :: Es(:)
+        integer    , intent(in) :: irrep_id(:)
         complex(dp),allocatable :: irrep_proj_V(:,:)
-        integer    ,allocatable :: inds(:)
         real(dp)   ,allocatable :: D(:)
         complex(dp),allocatable :: V(:,:)
-        logical    ,allocatable :: mask(:)
-        integer :: i, n, nirreps, nbases
-        ! get number of irreps
+        integer :: nbases
+        integer :: nirreps
+        integer :: i
+        ! get dimensions
         nbases  = size(irrep_proj,1)
         nirreps = size(irrep_proj,3)
-        ! allocate/initialize stuff
-        allocate(inds(nbases))
-        inds = [1:nbases]
-        allocate(mask(nbases))
+        ! allocate space
         allocate(D(nbases))
         allocate(V(nbases,nbases))
+        ! get irrep_proj_V
         allocate(irrep_proj_V(nbases,nbases))
-        !
-        n = 0
         do i = 1, nirreps
             ! get eigenvectors/eigenvalues (HERMITIAN)
             call am_zheev(A=irrep_proj(:,:,i), V=V, D=D)
-            ! create mask to exclude nullspace
-            where (abs(D).gt.tiny)
-                mask = .true.
-            elsewhere
-                mask = .false.
-            endwhere
             ! save projection
-            irrep_proj_V(:,Ss(i):Es(i)) = orth_svd( V(:,pack(inds,mask)) )
+            irrep_proj_V(:, selector(irrep_id.eq.i) ) = orth_svd( V(:, selector(abs(D).gt.tiny)) )
         enddo
         !
     end function   get_irrep_proj_V
 
-    function       get_block_proj(rr,irrep_proj_V,Ss,Es) result(block_proj)  
+    function       get_block_proj(sym,irrep_proj_V,irrep_id) result(block_proj)  
         !
         implicit none
         !
-        integer    , intent(in) :: rr(:,:,:)
+        real(dp)   , intent(in) :: sym(:,:,:)
         complex(dp), intent(in) :: irrep_proj_V(:,:)
-        integer    , intent(in) :: Ss(:)
-        integer    , intent(in) :: Es(:)
+        integer    , intent(in) :: irrep_id(:)
         complex(dp),allocatable :: block_proj(:,:)
         complex(dp),allocatable :: V(:,:)
         complex(dp),allocatable :: H(:,:)
@@ -1088,35 +1107,43 @@ contains
         real(dp)   ,allocatable :: block_struc(:,:)
         real(dp)   ,allocatable :: D(:)
         integer    ,allocatable :: inds(:)
-        integer :: nirreps, nbases, nsyms
+        integer :: nbases
+        integer :: nsyms
+        integer :: nirreps
         integer :: i,j,k
         ! get dimensions
-        nsyms   = size(rr,3)
-        nbases  = size(rr,1)
-        nirreps = size(Ss)
+        nbases  = size(sym,1)
+        nsyms   = size(sym,3)
+        nirreps = maxval(irrep_id)
         ! allocate block diagonalized regular rep
         allocate(block_rep(nbases,nbases,nsyms))
         ! preliminary block reduction using eigenvectors of irrep projection operator
         do i = 1, nsyms
-            block_rep(:,:,i) = matmul(matmul( adjoint(irrep_proj_V), rr(:,:,i)), irrep_proj_V )
+            block_rep(:,:,i) = matmul(matmul( adjoint(irrep_proj_V), sym(:,:,i)), irrep_proj_V )
         enddo
         ! get block diagonalizer
         allocate(block_proj(nbases,nbases))
         block_proj = 0
         do j = 1, nirreps
+            ! get inds
+            inds = selector(irrep_id.eq.j)
             ! get dixon H
-            H = get_dixon_H( block_rep(Ss(j):Es(j), Ss(j):Es(j), :) )
+            H = get_dixon_H( block_rep(inds, inds, :) )
             ! check that H is hermitian
             if (.not.isequal(adjoint(H),H)) stop 'ERROR [get_block_proj]: H is not Hermitian'
             ! get eigenvectors using complex Hermitian routine 
             call am_zheev(A=H,V=V,D=D)
             ! construct block_proj
-            block_proj(:,Ss(j):Es(j)) = orth_svd( matmul(irrep_proj_V(:,Ss(j):Es(j)), V) )
+            block_proj(:,inds) = matmul(irrep_proj_V(:,inds), V)
         enddo
-        ! block diagolnaize rr
+        ! block diagonalize sym representation
         do i = 1, nsyms
-            block_rep(:,:,i) = matmul(matmul( adjoint(block_proj), rr(:,:,i)), block_proj )
+            block_rep(:,:,i) = matmul(matmul( adjoint(block_proj), sym(:,:,i)), block_proj )
         enddo
+
+
+        call disp( abs((sum(abs(block_rep),3).gt.tiny)*1) ,zeroas='.')
+
         ! get block structure
         allocate(block_struc(nbases,nbases))
         where (sum(abs(block_rep),3).gt.tiny) 
@@ -1127,7 +1154,8 @@ contains
         ! reduce block structure to row echelon form
         block_struc = rref(block_struc)
         ! sort to get block diagonals next to each other
-        allocate(inds(nbases))
+        deallocate(inds)
+        allocate(inds( count(any(abs(block_struc).lt.tiny,2)) ))
         k = 0
         do i = 1, nbases
         do j = 1, nbases
@@ -1137,10 +1165,6 @@ contains
         endif
         enddo
         enddo
-        ! check inds
-        if (2*sum(inds).ne.nsyms*(nsyms+1)) then
-            stop 'ERROR [get_block_proj]: inds is either incomplete or completely wrong'
-        endif
         ! sort projection based on block structure
         block_proj = block_proj(:,inds)
         !
@@ -1207,205 +1231,145 @@ contains
         end function   get_dixon_H
     end function   get_block_proj
 
-    function       get_irrep_diag(rr,chartab,irrep_proj,irrep_dim,class_member) result(irrep_diag)
-        !
-        implicit none
-        !
-        integer    , intent(in) :: rr(:,:,:)
-        complex(dp), intent(in) :: chartab(:,:)
-        complex(dp), intent(in) :: irrep_proj(:,:,:) ! projection
-        integer    , intent(in) :: irrep_dim(:)
-        integer    , intent(in) :: class_member(:,:)
-        complex(dp),allocatable :: irrep_diag(:,:)
-        complex(dp),allocatable :: phi(:,:)
-        complex(dp),allocatable :: wrk(:,:)
-        complex(dp),allocatable :: tr(:,:)
-        complex(dp),allocatable :: Q(:)
-        integer    ,allocatable :: S(:)
-        integer    ,allocatable :: E(:)
-        integer :: nirreps, nclasses, nbases, nsyms
-        integer :: i, j, k, n
-        ! get dimensions
-        nsyms   = size(rr,3)
-        nbases  = size(rr,1)
-        nirreps = size(irrep_proj,3)
-        nclasses= nirreps
-        ! allocate phi
-        allocate(phi(nbases,sum(irrep_dim)))
-        phi = 0
-        ! allocate local character table
-        allocate(tr(nirreps,nsyms))
-        ! allocate irrep_diag
-        allocate(irrep_diag(sum(irrep_dim),nsyms))
-        irrep_diag = 0
-        ! allocate start/end
-        allocate(S(nirreps))
-        allocate(E(nirreps))
-        ! allocate workspace
-        allocate(wrk(nbases,nsyms))
-        ! allocate random vector
-        allocate(Q(nbases))
-        ! Q = sqrt(real([1:nbases],dp))
-        Q = pack( rand(nbases,1), .true.)
-        ! 
-        n = 0
-        do j = 1, nirreps
-            ! start/end
-            n = n + 1
-            S(j) = n
-            n = n + irrep_dim(j) - 1 
-            E(j) = n
-            ! project a random vector onto the j-th irreducible subspace
-            wrk(:,1) = matmul(irrep_proj(:,:,j), Q )
-            ! generate partner symmetry functions
-            if (irrep_dim(j).ge.2) then
-                k = 2
-                do i = 2, nsyms
-                    wrk(:,k) = matmul(rr(:,:,i), wrk(:,1))
-                    if (k.eq.rank_svd(wrk(:,1:k))) then
-                    if (k.eq.irrep_dim(j)) then
-                        exit
-                    else
-                        k = k + 1
-                    endif
-                    endif
-                enddo
-            endif
-            ! save phi
-            phi(:,S(j):E(j)) = orth_svd( wrk(:,1:irrep_dim(j)) )
-        enddo
-        ! get diagonal symmetry elements
-        do i = 1, nsyms
-        do j = 1, nirreps
-            do k = 1, irrep_dim(j)
-                irrep_diag(S(j)+k-1,i) = dot_product(matmul( conjg(phi(:,S(j)+k-1)), rr(:,:,i)), phi(:,S(j)+k-1))
-            enddo
-            tr(j,i) = sum( irrep_diag(S(j):E(j),i) )
-        enddo
-        enddo
-        ! check that trace matches value in character table
-        do j = 1, nirreps
-        do i = 1, nclasses
-            if ( abs(chartab(j,i)-tr(j,class_member(i,1))) .gt. tiny ) then
-                stop 'ERROR [get_irrep_diag]: character table mismatch'
-            endif
-        enddo
-        enddo
-    end function   get_irrep_diag
+!     function       get_irrep_diag(sym,chartab,irrep_proj,irrep_dim,class_member) result(irrep_diag)
+!         !
+!         implicit none
+!         !
+!         real(dp)   , intent(in) :: sym(:,:,:)
+!         complex(dp), intent(in) :: chartab(:,:)
+!         complex(dp), intent(in) :: irrep_proj(:,:,:) ! projection
+!         integer    , intent(in) :: irrep_dim(:)
+!         integer    , intent(in) :: class_member(:,:)
+!         complex(dp),allocatable :: irrep_diag(:,:)
+!         complex(dp),allocatable :: phi(:,:)
+!         complex(dp),allocatable :: wrk(:,:)
+!         complex(dp),allocatable :: tr(:,:)
+!         complex(dp),allocatable :: Q(:)
+!         integer    ,allocatable :: S(:)
+!         integer    ,allocatable :: E(:)
+!         integer :: nirreps, nclasses, nbases, nsyms
+!         integer :: i, j, k, n
+!         ! get dimensions
+!         nsyms   = size(rr,3)
+!         nbases  = size(rr,1)
+!         nirreps = size(irrep_proj,3)
+!         nclasses= nirreps
+!         ! allocate phi
+!         allocate(phi(nbases,sum(irrep_dim)))
+!         phi = 0
+!         ! allocate local character table
+!         allocate(tr(nirreps,nsyms))
+!         ! allocate irrep_diag
+!         allocate(irrep_diag(sum(irrep_dim),nsyms))
+!         irrep_diag = 0
+!         ! allocate start/end
+!         allocate(S(nirreps))
+!         allocate(E(nirreps))
+!         ! allocate workspace
+!         allocate(wrk(nbases,nsyms))
+!         ! allocate random vector
+!         allocate(Q(nbases))
+!         ! Q = sqrt(real([1:nbases],dp))
+!         Q = pack( rand(nbases,1), .true.)
+!         ! 
+!         n = 0
+!         do j = 1, nirreps
+!             ! start/end
+!             n = n + 1
+!             S(j) = n
+!             n = n + irrep_dim(j) - 1 
+!             E(j) = n
+!             ! project a random vector onto the j-th irreducible subspace
+!             wrk(:,1) = matmul(irrep_proj(:,:,j), Q )
+!             ! generate partner symmetry functions
+!             if (irrep_dim(j).ge.2) then
+!                 k = 2
+!                 do i = 2, nsyms
+!                     wrk(:,k) = matmul(sym(:,:,i), wrk(:,1))
+!                     if (k.eq.rank_svd(wrk(:,1:k))) then
+!                     if (k.eq.irrep_dim(j)) then
+!                         exit
+!                     else
+!                         k = k + 1
+!                     endif
+!                     endif
+!                 enddo
+!             endif
+!             ! save phi
+!             phi(:,S(j):E(j)) = orth_svd( wrk(:,1:irrep_dim(j)) )
+!         enddo
+!         ! get diagonal symmetry elements
+!         do i = 1, nsyms
+!         do j = 1, nirreps
+!             do k = 1, irrep_dim(j)
+!                 irrep_diag(S(j)+k-1,i) = dot_product(matmul( conjg(phi(:,S(j)+k-1)), sym(:,:,i)), phi(:,S(j)+k-1))
+!             enddo
+!             tr(j,i) = sum( irrep_diag(S(j):E(j),i) )
+!         enddo
+!         enddo
+!         ! check that trace matches value in character table
+!         do j = 1, nirreps
+!         do i = 1, nclasses
+!             if ( abs(chartab(j,i)-tr(j,class_member(i,1))) .gt. tiny ) then
+!                 stop 'ERROR [get_irrep_diag]: character table mismatch'
+!             endif
+!         enddo
+!         enddo
+!     end function   get_irrep_diag
 
-    function       get_wigner_proj(rr,irrep_diag,irrep_dim,class_matrices) result(wigner_proj)
-        !
-        implicit none
-        !
-        integer    , intent(in) :: rr(:,:,:)
-        complex(dp), intent(in) :: irrep_diag(:,:)
-        integer    , intent(in) :: irrep_dim(:)
-        integer    , intent(in) :: class_matrices(:,:,:)
-        complex(dp),allocatable :: wigner_proj(:,:,:,:) ! wigner_proj(nbases,nbases, maxval(irrep_dim), nirreps )
-        integer :: nirreps, nsyms, nbases, nclasses
-        integer :: i,j,k,n
-        !
-        ! get number of things
-        nbases  = size(rr,1)
-        nsyms   = nbases
-        nclasses= size(class_matrices,3)
-        nirreps = nclasses
-        ! allocate space for wigner projection operator
-        allocate(wigner_proj(nbases,nbases,maxval(irrep_dim),nirreps))
-        wigner_proj = 0
-        ! loop over irreps
-        n = 0
-        do j = 1, nirreps
-            ! loop over dimensions of irreps
-            do k = 1, irrep_dim(j)
-                ! n is a compound irrep and irrep dim index
-                n = n + 1
-                ! wooten eq 6.24: sum over symmetries
-                do i = 1, nsyms
-                wigner_proj(:,:,k,j) = wigner_proj(:,:,k,j) + rr(:,:,i) * irrep_diag(n,i)
-                enddo
-                wigner_proj(:,:,k,j) = wigner_proj(:,:,k,j) * irrep_dim(j)/real(nsyms,dp)
-            enddo
-        enddo
-        ! check that each wigner projection operator is hermitian
-        do j = 1, nirreps
-        do k = 1, irrep_dim(j)
-            if (.not.isequal(adjoint(wigner_proj(:,:,k,j)),wigner_proj(:,:,k,j))) then
-                stop 'ERROR [get_irrep_projection]: irrep_proj is not hermitian'
-            endif
-        enddo
-        enddo
-        ! check that each wigner projection operator is idempotent (A^2 = A)
-        do j = 1, nirreps
-        do k = 1, irrep_dim(j)
-        if (.not.isequal(matmul(wigner_proj(:,:,k,j),wigner_proj(:,:,k,j)),wigner_proj(:,:,k,j))) then
-            call disp(X=wigner_proj(:,:,k,j),title=tostring(k)//tostring(j),style='underline')
-            stop 'ERROR [get_irrep_projection]: irrep_proj is not idempotent'
-        endif
-        enddo
-        enddo
-        !
-    end function   get_wigner_proj
-
-!     function       get_block_transform(rr,irrep_dim,wigner_proj) result(phi)
+!     function       get_wigner_proj(rr,irrep_diag,irrep_dim,class_matrices) result(wigner_proj)
 !         !
 !         implicit none
 !         !
 !         integer    , intent(in) :: rr(:,:,:)
+!         complex(dp), intent(in) :: irrep_diag(:,:)
 !         integer    , intent(in) :: irrep_dim(:)
-!         complex(dp), intent(in) :: wigner_proj(:,:,:,:) ! wigner_proj(nbases,nbases, maxval(irrep_dim), nirreps )
-!         complex(dp),allocatable :: phi(:,:)
-!         complex(dp),allocatable :: rr_block(:,:,:)
-!         complex(dp),allocatable :: Q(:)
-!         integer :: nirreps, nbases, nsyms
-!         integer :: sumdim
-!         integer :: j,k,n, S,E
-!         ! get dimensions
-!         nsyms   = size(rr,3)
+!         integer    , intent(in) :: class_matrices(:,:,:)
+!         complex(dp),allocatable :: wigner_proj(:,:,:,:) ! wigner_proj(nbases,nbases, maxval(irrep_dim), nirreps )
+!         integer :: nirreps, nsyms, nbases, nclasses
+!         integer :: i,j,k,n
+!         !
+!         ! get number of things
 !         nbases  = size(rr,1)
-!         nirreps = size(wigner_proj,4)
-!         sumdim  = sum(irrep_dim)
-!         ! allocate phi
-!         allocate(phi(nbases,sumdim))
-!         phi = 0
-!         ! get a random vector
-!         allocate(Q(nbases))
-!         Q = pack( rand(nbases,1), .true. )
-!         !wigner_proj
+!         nsyms   = nbases
+!         nclasses= size(class_matrices,3)
+!         nirreps = nclasses
+!         ! allocate space for wigner projection operator
+!         allocate(wigner_proj(nbases,nbases,maxval(irrep_dim),nirreps))
+!         wigner_proj = 0
+!         ! loop over irreps
 !         n = 0
 !         do j = 1, nirreps
-!             n = n + 1
-!             S = n
-!             n = n + irrep_dim(j) - 1
-!             E = n
+!             ! loop over dimensions of irreps
 !             do k = 1, irrep_dim(j)
-!                 phi(:,(S-1)+k) = matmul(wigner_proj(:,:,k,j),Q)
-!                 ! call am_zgeev(A=wigner_proj(:,:,k,j), VR=V, D=Q)
-!                 ! call disp(X=Q,orient='row')
-!                 ! phi(:,S-1+k) = V(:,1)
+!                 ! n is a compound irrep and irrep dim index
+!                 n = n + 1
+!                 ! wooten eq 6.24: sum over symmetries
+!                 do i = 1, nsyms
+!                 wigner_proj(:,:,k,j) = wigner_proj(:,:,k,j) + rr(:,:,i) * irrep_diag(n,i)
+!                 enddo
+!                 wigner_proj(:,:,k,j) = wigner_proj(:,:,k,j) * irrep_dim(j)/real(nsyms,dp)
 !             enddo
-!             phi(:,S:E) = orth_svd(phi(:,S:E))
-!             ! phi(:,S:E) = phi(:,S:E)
+!         enddo
+!         ! check that each wigner projection operator is hermitian
+!         do j = 1, nirreps
+!         do k = 1, irrep_dim(j)
+!             if (.not.isequal(adjoint(wigner_proj(:,:,k,j)),wigner_proj(:,:,k,j))) then
+!                 stop 'ERROR [get_irrep_projection]: irrep_proj is not hermitian'
+!             endif
+!         enddo
+!         enddo
+!         ! check that each wigner projection operator is idempotent (A^2 = A)
+!         do j = 1, nirreps
+!         do k = 1, irrep_dim(j)
+!         if (.not.isequal(matmul(wigner_proj(:,:,k,j),wigner_proj(:,:,k,j)),wigner_proj(:,:,k,j))) then
+!             call disp(X=wigner_proj(:,:,k,j),title=tostring(k)//tostring(j),style='underline')
+!             stop 'ERROR [get_irrep_projection]: irrep_proj is not idempotent'
+!         endif
+!         enddo
 !         enddo
 !         !
-!         allocate(rr_block(sumdim,sumdim,nsyms))
-!         do j = 1, nsyms
-!             rr_block(:,:,j) = matmul(matmul(adjoint(phi),rr(:,:,j)), phi)
-!         enddo
-!         !
-!         call disp(rr_block(:,:,5))
-
-!         call dump(A=rr_block, fname=trim(outfile_dir_sym)//'/debug'//'/outfile.rr_block')
-!         call dump(A=phi     , fname=trim(outfile_dir_sym)//'/debug'//'/outfile.phi')
-!         call dump(A=wigner_proj(:,:,:,5), fname=trim(outfile_dir_sym)//'/debug'//'/outfile.wigner_proj')
-
-
-
-
-
-!         stop
-!         !
-!     end function   get_block_transform
+!     end function   get_wigner_proj
 
     ! identifier functions which operate on identifiers
 

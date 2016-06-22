@@ -197,7 +197,7 @@ module am_matlab
         open(unit=fid,file=trim(fname),status='replace',action='write')
             write(fid,*) shape(A)
             do i = 1, size(A,3)
-                call disp(unit=fid,X=A(:,:,i))
+                call disp(unit=fid,X=A(:,:,i),fmt='f24.16')
             enddo
         close(fid)
         !
@@ -214,7 +214,7 @@ module am_matlab
         fid = 1
         open(unit=fid,file=trim(fname),status='replace',action='write')
             write(fid,*) shape(A)
-            call disp(unit=fid,X=A)
+            call disp(unit=fid,X=A,fmt='f24.16')
         close(fid)
         !
     end subroutine dm_dump
@@ -230,7 +230,7 @@ module am_matlab
         fid = 1
         open(unit=fid,file=trim(fname),status='replace',action='write')
             write(fid,*) shape(A)
-            call disp(unit=fid,X=A)
+            call disp(unit=fid,X=A,fmt='f24.16')
         close(fid)
         !
     end subroutine dv_dump
@@ -249,7 +249,7 @@ module am_matlab
             write(fid,*) shape(A)
             do i = 1, size(A,4)
             do j = 1, size(A,3)
-                call disp(unit=fid,X=A(:,:,j,i))
+                call disp(unit=fid,X=A(:,:,j,i),fmt='f24.16')
             enddo
             enddo
         close(fid)
@@ -269,7 +269,7 @@ module am_matlab
         open(unit=fid,file=trim(fname),status='replace',action='write')
             write(fid,*) shape(A)
             do i = 1, size(A,3)
-                call disp(unit=fid,X=A(:,:,i))
+                call disp(unit=fid,X=A(:,:,i),fmt='f24.16')
             enddo
         close(fid)
         !
@@ -286,7 +286,7 @@ module am_matlab
         fid = 1
         open(unit=fid,file=trim(fname),status='replace',action='write')
             write(fid,*) shape(A)
-            call disp(unit=fid,X=A)
+            call disp(unit=fid,X=A,fmt='f24.16')
         close(fid)
         !
     end subroutine zm_dump
@@ -302,7 +302,7 @@ module am_matlab
         fid = 1
         open(unit=fid,file=trim(fname),status='replace',action='write')
             write(fid,*) shape(A)
-            call disp(unit=fid,X=A)
+            call disp(unit=fid,X=A,fmt='f24.16')
         close(fid)
         !
     end subroutine zv_dump
@@ -1868,6 +1868,20 @@ module am_matlab
     end function  z_subspace_intersection
 
     ! matrix indexing
+
+    function      selector(mask) result(inds)
+        !
+        implicit none
+        !
+        logical, intent(in) :: mask(:)
+        integer,allocatable :: inds(:)
+        integer :: n
+        !
+        n = size(mask)
+        !
+        allocate(inds, source=pack([1:n],mask))
+        !
+    end function  selector
 
     function      ind2sub(dims,ind) result(sub)
         ! test with: ind2sub(dims=[5,3],ind=sub2ind(dims=[5,3],sub=[1,3]))

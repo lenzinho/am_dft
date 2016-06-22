@@ -87,6 +87,8 @@ module am_symmetry_rep
         do i = 1, pg%nsyms
             tbpg%sym(:,:,i) = ps2tb_H(R_cart=pg%seitz_cart(1:3,1:3,i), pc=pc, ic=ic)
         enddo
+        ! check that identity is first
+        if (.not.isequal(tbpg%sym(:,:,1),eye(tbpg%nbases))) stop 'ERROR [get_tight_binding_point_group]: Identity is not first.'
         ! correct basic rounding errors
         call correct_rounding_error(tbpg%sym)
         ! copy symmetry ids
@@ -96,14 +98,19 @@ module am_symmetry_rep
         ! check that multiplication table is identical to pg%mt
         call tbpg%get_multiplication_table()
         if (.not.isequal(tbpg%mt%multab,pg%mt%multab)) stop 'ERROR [get_tight_binding_point_group]: Multiplication table mismatch.'
-        ! copy character table
-        tbpg%ct = pg%ct
-        ! check that identity is first
-        if (.not.isequal(tbpg%sym(:,:,1),eye(tbpg%nbases))) stop 'tbpg: Identity is not first.'
+        ! get conjugacy clases
+        call tbpg%get_conjugacy_classes()
+        ! get character table
+        call tbpg%get_character_table()
         ! create tb dir
         call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
         ! write point group
         call dump(A=tbpg%sym,fname=trim(outfile_dir_tb)//'/outfile.tbpg.sym')
+        ! dump debug files
+        if (debug) then
+        call execute_command_line('mkdir -p '//trim(outfile_dir_tb)//'/debug')
+        call tbpg%debug_dump(fname=trim(outfile_dir_tb)//'/debug/outfile.tbpg')
+        endif
         !
         contains
         function       ps2tb_H(R_cart,pc,ic) result(H)
@@ -154,8 +161,8 @@ module am_symmetry_rep
         ! basic checks
         if (index(tens%property, 'tight').ne.0) then
         if (index(tens%flags,'i==j'     ).ne.0) then
-            if (.not.present(atom_m)) stop 'atom_m is required for the creation of tb flat intrinsic symmetry group'
-            if (.not.present(atom_n)) stop 'atom_n is required for the creation of tb flat intrinsic symmetry group'
+            if (.not.present(atom_m)) stop 'ERROR [get_flat_intrinsic_group]: atom_m required'
+            if (.not.present(atom_n)) stop 'ERROR [get_flat_intrinsic_group]: atom_n required'
         endif
         endif
         !
@@ -213,7 +220,7 @@ module am_symmetry_rep
             k=k+1; flat_ig%sym(:,:,k) = eye(flat_ig%nbases)    ! E
         endif
         else
-            stop 'Undefined propery encountered.'
+            stop 'ERROR [get_flat_intrinsic_group]: undefined propery'
         endif
         ! sometimes for 1-dimensional reps, multiple symmetries can be the same; a unique is added
         ! below to handle such cases. if ignored, it will cause problems later on when attempting to
@@ -225,7 +232,7 @@ module am_symmetry_rep
         flat_ig%ps_id    = default_ps_id_value
         flat_ig%ps_id(1) = 1
         !
-        ! get multiplication table (determines conjugacy classes in the process)
+        ! get multiplication table
         call flat_ig%get_multiplication_table()
         ! get conjugacy classes
         call flat_ig%get_conjugacy_classes()

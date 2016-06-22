@@ -16,6 +16,8 @@ module am_symmetry
     type, public :: am_class_group
         integer :: nsyms                              ! number of symmetries
         integer :: nbases                             ! number of bases functions (dimensions of rep)
+        real(dp), allocatable :: sym(:,:,:)           ! symmetry elements 
+                                                      ! (for seitz groups: regular rep; for reppresentation groups: rep engendered by the basis)
         integer , allocatable :: ps_id(:)             ! integer which identifies point symmetries (see decode_pointsymmetry)
         type(am_class_conjugacy_class)      :: cc     ! conjugacy classes
         type(am_class_character_table)      :: ct     ! character table
@@ -26,12 +28,11 @@ module am_symmetry
         procedure :: get_conjugacy_classes
         procedure :: get_character_table
         procedure :: print_character_table
-        procedure :: write_outfile
+        procedure :: debug_dump
     end type am_class_group
 
     type, public, extends(am_class_group)       :: am_class_symrep_group
         ! generic symmetry group
-        real(dp), allocatable :: sym(:,:,:)           ! symmetry elements [unitless rep]
     end type am_class_symrep_group
 
     type, public, extends(am_class_group)       :: am_class_seitz_group
@@ -40,14 +41,12 @@ module am_symmetry
         real(dp), allocatable :: seitz_cart(:,:,:)    ! symmetry elements [cart.]
         real(dp), allocatable :: seitz_frac(:,:,:)    ! symmetry elements [frac, direct]; acts on atoms
         real(dp), allocatable :: seitz_recfrac(:,:,:) ! symmetry elements [frac, reciprocal]; acts on kpoints
-        ! sym(:,:,:) are seitz operators
         contains
         procedure :: create_seitz_group
         procedure :: write_action_table
     end type am_class_seitz_group
 
     type, public, extends(am_class_seitz_group) :: am_class_point_group
-        ! sym(:,:,:) are seitz operators
         contains
         procedure :: get_point_group
         procedure :: get_rotational_group
@@ -56,7 +55,6 @@ module am_symmetry
     end type am_class_point_group
 
     type, public, extends(am_class_seitz_group) :: am_class_space_group
-        ! sym(:,:,:) are seitz operators
         contains
         procedure :: get_space_group
     end type am_class_space_group
@@ -110,10 +108,13 @@ contains
         if (allocated(grp%mt%rr))             grp%mt%rr             =                            grp%mt%rr(inds,inds,inds)      
         if (allocated(grp%mt%corder))         grp%mt%corder         =                            grp%mt%corder(inds)        
         if (allocated(grp%mt%commutator_id))  grp%mt%commutator_id  = sort_nz(reshape(rinds(pack(grp%mt%commutator_id(inds,:)       , .true.)),shape(grp%mt%commutator_id)))
-        if (allocated(grp%cc%id))             grp%cc%id             =                            grp%cc%id(inds)        
-        if (allocated(grp%cc%representative)) grp%cc%representative =         reshape(rinds(pack(grp%cc%representative              , .true.)),shape(grp%cc%representative))
+        if (allocated(grp%cc%id))             grp%cc%id             =                            grp%cc%id(inds)
         if (allocated(grp%cc%member))         grp%cc%member         =         reshape(rinds(pack(grp%cc%member                      , .true.)),shape(grp%cc%member))
-        if (allocated(grp%cc%class_matrices)) grp%cc%class_matrices =                            grp%cc%class_matrices(inds,inds,:)
+        ! sort class matrices only for seitz group
+        select type (grp)
+        class is (am_class_seitz_group)
+        if (allocated(grp%cc%matrices))       grp%cc%matrices       =                            grp%cc%matrices(inds,inds,:)
+        end select
         ! generators need to be reevaluated. no other way. because generators are not unique.
         if (allocated(grp%mt%gen_id)) then
             ! symmetry generators
@@ -159,49 +160,46 @@ contains
         end function sort_nz
     end subroutine sort_symmetries
 
-    subroutine     write_outfile(grp,fname)
+    subroutine     debug_dump(grp,fname)
         !
         implicit none
         !
         class(am_class_group), intent(in) :: grp
         character(*), intent(in) :: fname
         !
-                                              call execute_command_line( 'mkdir -p '//trim(outfile_dir_sym)//'/debug' )
-                                              call dump(A=grp%nsyms            ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.nsyms'            )
-                                              call dump(A=grp%nbases           ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.nbases'           )
-                                              call dump(A=grp%ps_id            ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ps_id'            )
-        if (allocated(grp%mt%commutator_id )) call dump(A=grp%mt%commutator_id ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.mt.commutator_id' )
-        if (allocated(grp%mt%multab        )) call dump(A=grp%mt%multab        ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.mt.multab'        )
-        if (allocated(grp%mt%gen_id        )) call dump(A=grp%mt%gen_id        ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.mt.gen_id'        )
-        if (allocated(grp%mt%corder        )) call dump(A=grp%mt%corder        ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.mt.order'         )
-        if (allocated(grp%mt%rr            )) call dump(A=grp%mt%rr            ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.mt.rr'            )
-                                              call dump(A=grp%cc%nclasses      ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.cc.nclasses'      )
-        if (allocated(grp%cc%id            )) call dump(A=grp%cc%id            ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.cc.id'            )
-        if (allocated(grp%cc%nelements     )) call dump(A=grp%cc%nelements     ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.cc.nelements'     )
-        if (allocated(grp%cc%member        )) call dump(A=grp%cc%member        ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.cc.member'        )
-        if (allocated(grp%cc%representative)) call dump(A=grp%cc%representative,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.cc.representative')
-        if (allocated(grp%cc%class_matrices)) call dump(A=grp%cc%class_matrices,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.cc.class_matrices')
-                                              call dump(A=grp%ct%nirreps       ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.nirreps'       )
-        if (allocated(grp%ct%chartab       )) call dump(A=grp%ct%chartab       ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.chartab'       )
-        if (allocated(grp%ct%irrep_dim     )) call dump(A=grp%ct%irrep_dim     ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.irrep_dim'     )
-        if (allocated(grp%ct%irrep_proj    )) call dump(A=grp%ct%irrep_proj    ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.irrep_proj'    )
-        if (allocated(grp%ct%irrep_proj_V  )) call dump(A=grp%ct%irrep_proj_V  ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.irrep_proj_V'  )
-        if (allocated(grp%ct%block_proj    )) call dump(A=grp%ct%block_proj    ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.block_proj'    )
-        if (allocated(grp%ct%S             )) call dump(A=grp%ct%S             ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.S'             )
-        if (allocated(grp%ct%E             )) call dump(A=grp%ct%E             ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.E'             )
-        if (allocated(grp%ct%Ss            )) call dump(A=grp%ct%Ss            ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.Ss'            )
-        if (allocated(grp%ct%Es            )) call dump(A=grp%ct%Es            ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.ct.Es'            )             
-        ! dump group specific data
-        select type (grp)
-        class is (am_class_symrep_group)
-        if (allocated(grp%sym              )) call dump(A=grp%sym              ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.seitz_cart'       )
-        class is (am_class_seitz_group)
-        if (allocated(grp%seitz_cart       )) call dump(A=grp%seitz_cart       ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.seitz_cart'       )
-        if (allocated(grp%seitz_frac       )) call dump(A=grp%seitz_frac       ,fname=trim(outfile_dir_sym)//'/debug'//'/outfile.'//trim(fname)//'.seitz_frac'       )
+                                              call dump(A=grp%nsyms            ,fname=trim(fname)//'.nsyms'            )
+                                              call dump(A=grp%nbases           ,fname=trim(fname)//'.nbases'           )
+        if (allocated(grp%sym              )) call dump(A=grp%sym              ,fname=trim(fname)//'.sym'              )
+                                              call dump(A=grp%ps_id            ,fname=trim(fname)//'.ps_id'            )
+        if (allocated(grp%mt%commutator_id )) call dump(A=grp%mt%commutator_id ,fname=trim(fname)//'.mt.commutator_id' )
+        if (allocated(grp%mt%multab        )) call dump(A=grp%mt%multab        ,fname=trim(fname)//'.mt.multab'        )
+        if (allocated(grp%mt%gen_id        )) call dump(A=grp%mt%gen_id        ,fname=trim(fname)//'.mt.gen_id'        )
+        if (allocated(grp%mt%corder        )) call dump(A=grp%mt%corder        ,fname=trim(fname)//'.mt.order'         )
+        if (allocated(grp%mt%rr            )) call dump(A=grp%mt%rr            ,fname=trim(fname)//'.mt.rr'            )
+                                              call dump(A=grp%cc%nclasses      ,fname=trim(fname)//'.cc.nclasses'      )
+        if (allocated(grp%cc%id            )) call dump(A=grp%cc%id            ,fname=trim(fname)//'.cc.id'            )
+        if (allocated(grp%cc%nelements     )) call dump(A=grp%cc%nelements     ,fname=trim(fname)//'.cc.nelements'     )
+        if (allocated(grp%cc%member        )) call dump(A=grp%cc%member        ,fname=trim(fname)//'.cc.member'        )
+        if (allocated(grp%cc%matrices      )) call dump(A=grp%cc%matrices      ,fname=trim(fname)//'.cc.matrices'      )
+                                              call dump(A=grp%ct%nirreps       ,fname=trim(fname)//'.ct.nirreps'       )
+        if (allocated(grp%ct%chartab       )) call dump(A=grp%ct%chartab       ,fname=trim(fname)//'.ct.chartab'       )
+        if (allocated(grp%ct%irrep_dim     )) call dump(A=grp%ct%irrep_dim     ,fname=trim(fname)//'.ct.irrep_dim'     )
+        if (allocated(grp%ct%irrep_decomp  )) call dump(A=grp%ct%irrep_decomp  ,fname=trim(fname)//'.ct.irrep_decomp'  )
+        if (allocated(grp%ct%irrep_id      )) call dump(A=grp%ct%irrep_id      ,fname=trim(fname)//'.ct.irrep_id'      )
+        if (allocated(grp%ct%irrep_proj    )) call dump(A=grp%ct%irrep_proj    ,fname=trim(fname)//'.ct.irrep_proj'    )
+        if (allocated(grp%ct%irrep_proj_V  )) call dump(A=grp%ct%irrep_proj_V  ,fname=trim(fname)//'.ct.irrep_proj_V'  )
+        if (allocated(grp%ct%block_proj    )) call dump(A=grp%ct%block_proj    ,fname=trim(fname)//'.ct.block_proj'    )
+        ! dump group specific data                                                                                        
+        select type (grp)                                                                                         
+        class is (am_class_symrep_group)                                                                                          
+        if (allocated(grp%sym              )) call dump(A=grp%sym              ,fname=trim(fname)//'.seitz_cart'       )
+        class is (am_class_seitz_group)                                                                           
+        if (allocated(grp%seitz_cart       )) call dump(A=grp%seitz_cart       ,fname=trim(fname)//'.seitz_cart'       )
+        if (allocated(grp%seitz_frac       )) call dump(A=grp%seitz_frac       ,fname=trim(fname)//'.seitz_frac'       )
         class default
-            stop 'ERROR [write_outfile]: invalid group class'
+            stop 'ERROR [debug_dump]: invalid group class'
         end select
-    end subroutine write_outfile
+    end subroutine debug_dump
 
     subroutine     get_multiplication_table(grp)
         !
@@ -212,20 +210,20 @@ contains
         ! get multiplication table
         select type (grp)
         class is (am_class_symrep_group)
-            ! [unitless]  
+            ! [unitless]
             grp%mt%multab = get_multab(sym=grp%sym, flags='') !//'prog')
         class is (am_class_seitz_group)
             ! symmerties [frac.]
             grp%mt%multab = get_multab(sym=grp%seitz_frac, flags='seitz') !//'prog')
+            ! get regular representation
+            grp%sym       = get_regular_rep(multab=grp%mt%multab)
         class default
-            stop 'unkown class'
+            stop 'ERROR [get_multiplication_table]: class unknown'
         end select
         ! get inverse indices
         grp%mt%inv_id = get_inverse_indices(multab=grp%mt%multab)
         ! get cyclic order
         grp%mt%corder = get_cyclic_order(multab=grp%mt%multab)
-        ! get regular representation
-        grp%mt%rr = get_regular_rep(multab=grp%mt%multab)
         ! get generator id
         grp%mt%gen_id = get_generator_id(multab=grp%mt%multab)
         ! get generators
@@ -240,23 +238,20 @@ contains
         implicit none
         !
         class(am_class_group), intent(inout) :: grp
-        !
         ! check
         if (.not.allocated(grp%mt%multab)) stop 'ERROR [get_conjugacy_classes]: multiplication table required'
-        if (.not.allocated(grp%mt%rr    )) stop 'ERROR [get_conjugacy_classes]: regular representation required'
+        if (.not.allocated(grp%ps_id    )) stop 'ERROR [get_conjugacy_classes]: point symmetry identities required'
+        if (.not.allocated(grp%mt%inv_id)) stop 'ERROR [get_conjugacy_classes]: inverse indices look-up table required'
         ! get conjugacy classes (ps_id is required for sorting the classes: proper before improper)
-        grp%cc%id = get_class_id(multab=grp%mt%multab, inv_id=grp%mt%inv_id, ps_id=grp%ps_id)
+        grp%cc%id               = get_class_id(multab=grp%mt%multab, inv_id=grp%mt%inv_id, ps_id=grp%ps_id)
         ! number of classes
-        grp%cc%nclasses = maxval(grp%cc%id)
+        grp%cc%nclasses         = maxval(grp%cc%id)
         ! get number of elements in each class
-        grp%cc%nelements = id_nelements(id=grp%cc%id)
+        grp%cc%nelements        = id_nelements(id=grp%cc%id)
         ! get members
-        grp%cc%member = id_member(id=grp%cc%id)
-        ! get representatives
-        grp%cc%representative = id_representative(id=grp%cc%id)
+        grp%cc%member           = id_member(id=grp%cc%id)
         ! get class matrices
-        grp%cc%class_matrices = get_class_matrices(rr=grp%mt%rr, nclasses=grp%cc%nclasses, &
-            class_nelements=grp%cc%nelements, class_member=grp%cc%member)
+        grp%cc%matrices         = get_class_matrices(sym=grp%sym, class_nelements=grp%cc%nelements, class_member=grp%cc%member)
     end subroutine get_conjugacy_classes
 
     subroutine     get_character_table(grp)
@@ -264,32 +259,32 @@ contains
         implicit none
         !
         class(am_class_group), intent(inout) :: grp
-        complex(dp), allocatable :: irrep_diag(:,:)
-        complex(dp), allocatable :: wigner_proj(:,:,:,:) 
-        !
-        ! check
+        complex(dp), allocatable :: chi(:)
+        ! 
+        ! check input
         if (.not.allocated(grp%mt%multab)) stop 'ERROR [get_character_table]: multiplication table is required'
+        if (.not.allocated(grp%sym))       stop 'ERROR [get_character_table]: sym is required' ! for seitz group, regular rep can be saved as grp%sym.
         if (.not.allocated(grp%cc%member)) stop 'ERROR [get_character_table]: conjugacy classes are required'
         ! set number of irreps
         grp%ct%nirreps = grp%cc%nclasses
         ! get character table (ps_id is required for sorting the irreps: proper before improper)
-        grp%ct%chartab = get_chartab(multab=grp%mt%multab,             &
-            nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
+        grp%ct%chartab      = get_chartab(            multab=grp%mt%multab, class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
         ! get muliken labels for irreps
-        grp%ct%irrep_label = get_muliken_label(chartab=grp%ct%chartab, &
-            nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
+        grp%ct%irrep_label  = get_muliken_label(    chartab=grp%ct%chartab, class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
         ! get irrep dimensions
-        grp%ct%irrep_dim = get_irrep_dimension(chartab=grp%ct%chartab, &
-            nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
-        ! get irrep start and end indices
-        call get_irrep_SE(irrep_dim=grp%ct%irrep_dim, S=grp%ct%S, E=grp%ct%E, Ss=grp%ct%Ss, Es=grp%ct%Es)
+        grp%ct%irrep_dim    = get_irrep_dimension(  chartab=grp%ct%chartab, class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
+        ! get rep character
+        chi                 = get_rep_characters(                                                             class_member=grp%cc%member,     sym=grp%sym)
+        ! get number of times each irrep appears in the decomposition of the representation
+        grp%ct%irrep_decomp = get_irrep_decomp(     chartab=grp%ct%chartab, class_nelements=grp%cc%nelements,                                     chi=chi)
+        ! identify which columns of proj_V and block_proj belong to which irrep
+        grp%ct%irrep_id     = get_irrep_id(                                       irrep_dim=grp%ct%irrep_dim,            irrep_decomp=grp%ct%irrep_decomp)
         ! get irrep projection operators
-        grp%ct%irrep_proj = get_irrep_proj(rr=grp%mt%rr, chartab=grp%ct%chartab, irrep_dim=grp%ct%irrep_dim, &
-            class_matrices=grp%cc%class_matrices)
+        grp%ct%irrep_proj   = get_irrep_proj(       chartab=grp%ct%chartab,       irrep_dim=grp%ct%irrep_dim,         class_id=grp%cc%id,     sym=grp%sym)
         ! get irrep projection eigenvectors
-        grp%ct%irrep_proj_V = get_irrep_proj_V(irrep_proj=grp%ct%irrep_proj, Ss=grp%ct%Ss, Es=grp%ct%Es)
+        grp%ct%irrep_proj_V = get_irrep_proj_V(   irrep_id=grp%ct%irrep_id,     irrep_proj=grp%ct%irrep_proj)
         ! convert irrep projection eigenvectors to produce block-diagnaolized matrices
-        grp%ct%block_proj = get_block_proj(rr=grp%mt%rr, irrep_proj_V=grp%ct%irrep_proj_V, Ss=grp%ct%Ss, Es=grp%ct%Es)
+        grp%ct%block_proj   = get_block_proj(     irrep_id=grp%ct%irrep_id, irrep_proj_V=grp%ct%irrep_proj_V,                                 sym=grp%sym)
         !
     end subroutine get_character_table
 
@@ -309,19 +304,19 @@ contains
             allocate(rep_label(nreps))
             ! representation based on basis functions
             rep_label(1) = 'rep'
-            rep_chi(1,:) = get_rep_characters(   sym=grp%seitz_frac(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_chi(1,:) = get_rep_characters(   sym=grp%seitz_frac(1:3,1:3,:), class_member=grp%cc%member)
             ! representation based on s orbitals
             rep_label(2) = 's D^(0)'
-            rep_chi(2,:) = get_orb_characters(l=0, R=grp%seitz_cart(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_chi(2,:) = get_orb_characters(l=0, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
             ! representation based on p orbitals
             rep_label(3) = 'p D^(1)'
-            rep_chi(3,:) = get_orb_characters(l=1, R=grp%seitz_cart(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_chi(3,:) = get_orb_characters(l=1, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
             ! representation based on d orbitals
             rep_label(4) = 'd D^(2)'
-            rep_chi(4,:) = get_orb_characters(l=2, R=grp%seitz_cart(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_chi(4,:) = get_orb_characters(l=2, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
             ! representation based on f orbitals
             rep_label(5) = 'f D^(3)'
-            rep_chi(5,:) = get_orb_characters(l=3, R=grp%seitz_cart(1:3,1:3,:), nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_chi(5,:) = get_orb_characters(l=3, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
             ! orbital products involving s orbitals
             rep_label(6) = 's * s'
             rep_chi(6,:) = rep_chi(2,:) * rep_chi(2,:)
@@ -354,53 +349,36 @@ contains
             allocate(rep_label(nreps))
             ! representation based on basis functions
             rep_label(1) = 'rep'
-            rep_chi(1,:) = get_rep_characters(sym=grp%sym, nclasses=grp%cc%nclasses, class_representative=grp%cc%representative)
+            rep_chi(1,:) = get_rep_characters(sym=grp%sym, class_member=grp%cc%member)
         class default
-            stop 'unkown class'
+            stop 'ERROR [print_character_table]: class unknown'
         end select
         !
-        !
         if (allocated(rep_chi).and.allocated(rep_label)) then
-            call print_chartab(chartab=grp%ct%chartab, nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, &
+            call print_chartab(chartab=grp%ct%chartab, class_nelements=grp%cc%nelements, &
                 class_member=grp%cc%member, irrep_label=grp%ct%irrep_label, ps_id=grp%ps_id, rep_chi=rep_chi, rep_label=rep_label)
         else
-            call print_chartab(chartab=grp%ct%chartab, nclasses=grp%cc%nclasses, class_nelements=grp%cc%nelements, &
+            call print_chartab(chartab=grp%ct%chartab, class_nelements=grp%cc%nelements, &
                 class_member=grp%cc%member, irrep_label=grp%ct%irrep_label, ps_id=grp%ps_id)
         endif
         !
         contains
-        function       get_rep_characters(sym,nclasses,class_representative) result(repchi)
-            !
-            implicit none
-            !
-            real(dp),    intent(in) :: sym(:,:,:)
-            integer,     intent(in) :: nclasses
-            integer,     intent(in) :: class_representative(:)
-            integer, allocatable :: repchi(:)
-            integer :: i
-            !
-            allocate(repchi(nclasses))
-            !
-            do i = 1, nclasses
-                repchi(i) = trace( sym(:,:,class_representative(i)) )
-            enddo
-            !
-        end function   get_rep_characters
-        function       get_orb_characters(l,R,nclasses,class_representative) result(orbchi)
+        function       get_orb_characters(l,R,class_member) result(orbchi)
             !
             implicit none
             !
             integer,  intent(in) :: l
             real(dp), intent(in) :: R(:,:,:)
-            integer,  intent(in) :: nclasses
-            integer,  intent(in) :: class_representative(:)
+            integer,  intent(in) :: class_member(:,:)
             complex(dp), allocatable :: orbchi(:)
+            integer :: nclasses
             integer :: i
             !
-            allocate(orbchi(nclasses))
+            nclasses = size(class_member,1)
             !
+            allocate(orbchi(nclasses))
             do i = 1, nclasses
-                orbchi(i) = get_orbchi(l=l,R=R(:,:,class_representative(i)))
+                orbchi(i) = get_orbchi(l=l,R=R(:,:,class_member(i,1)))
             enddo
             !
         end function   get_orb_characters
@@ -454,10 +432,11 @@ contains
         sg%bas = bas
         ! get reciprocal basis in which [recfrac] are defined
         sg%recbas = inv(bas)
-        ! number of "bases functions", doesn't have any real meaning here.
-        sg%nbases = 4
         ! get number of symmetries
         sg%nsyms = size(seitz_frac,3)
+        ! number of "bases functions", doesn't have any real meaning here.
+        ! using nsyms since regular rep is used in decomposing seitz groups
+        sg%nbases = sg%nsyms
         ! get symmetries [frac.]
         allocate(sg%seitz_frac,source=seitz_frac)
         ! put identity first
@@ -585,12 +564,10 @@ contains
             call disp_indent()
             call disp(X=sg%mt%multab,advance='yes',trim='yes')
         endif
-        ! create folder
-        call execute_command_line ('mkdir -p '//trim(outfile_dir_sym))
-        ! write to write_outfile and to file
+        ! dump debugging
         if (debug) then
         call execute_command_line ('mkdir -p '//trim(outfile_dir_sym)//'/debug')
-        call sg%write_outfile(fname='sg')
+        call sg%debug_dump(fname=trim(outfile_dir_sym)//'/debug/outfile.sg')
         endif
         ! write action table
         call sg%write_action_table(uc=pc,fname=trim(outfile_dir_sym)//'/'//'outfile.space_group_action',opts=opts)
@@ -817,12 +794,10 @@ contains
             call print_title('Point group character table')
             call pg%print_character_table()
         endif
-        ! make output folder
-        call execute_command_line ('mkdir -p '//trim(outfile_dir_sym))
-        ! write outfile
+        ! dump debugging
         if (debug) then
         call execute_command_line ('mkdir -p '//trim(outfile_dir_sym)//'/debug')
-        call pg%write_outfile(fname='pg')
+        call pg%debug_dump(fname=trim(outfile_dir_sym)//'/debug/outfile.pg')
         endif
         ! write action table
         call pg%write_action_table(uc=pc,fname=trim(outfile_dir_sym)//'/'//'outfile.point_group_action',opts=opts)
