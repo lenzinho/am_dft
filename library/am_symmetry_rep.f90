@@ -103,13 +103,13 @@ module am_symmetry_rep
         ! get character table
         call tbpg%get_character_table()
         ! create tb dir
-        call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
+        call execute_command_line('mkdir -p '//trim(outfile_dir_tb))
         ! write point group
         call dump(A=tbpg%sym,fname=trim(outfile_dir_tb)//'/outfile.tbpg.sym')
         ! dump debug files
         if (debug) then
-        call execute_command_line('mkdir -p '//trim(outfile_dir_tb)//'/debug')
-        call tbpg%debug_dump(fname=trim(outfile_dir_tb)//'/debug/outfile.tbpg')
+        call execute_command_line('mkdir -p '//trim(outfile_dir_tb)//'/debug/'//'tbpg')
+        call tbpg%debug_dump(fname=            trim(outfile_dir_tb)//'/debug/'//'tbpg'//'/outfile.tbpg')
         endif
         !
         contains
@@ -283,6 +283,8 @@ module am_symmetry_rep
         where (abs(flat_pg%sym).lt.tiny) flat_pg%sym = 0
         ! get unique symmetry indices
         uinds = unique_inds(flat_pg%sym)
+        ! update nsyms
+        flat_pg%nsyms = size(uinds)
         ! copy unique symmetries
         flat_pg%sym = reallocate(flat_pg%sym(:,:,uinds))
         ! copy symmetry ids
@@ -430,6 +432,9 @@ module am_symmetry_rep
                 write(*,'(a,a)') flare, 'irreducible symmetry relations:'
                 call print_relations(relations=prop%relations, dims=prop%dims, flags='print:dependent,independent')
             endif
+            ! show block structure
+            write(*,'(a,a)') flare, 'irreducible block structure [for point group only, ignores intrinsic symmetries!]:'
+            call print_blocks(sym=flat_pg%sym,block_proj=flat_pg%ct%block_proj)
         endif
         !
         contains

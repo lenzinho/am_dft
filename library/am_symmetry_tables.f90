@@ -1116,38 +1116,49 @@ contains
         nbases  = size(sym,1)
         nsyms   = size(sym,3)
         nirreps = maxval(irrep_id)
+        ! allocate H
+        allocate(H(nbases,nbases))
         ! allocate block diagonalized regular rep
         allocate(M(nbases,nbases,nsyms))
         ! allocate block structure
         allocate(C(nbases,nbases))
         ! initialize decomposition loop ...
+        ! ... by using eigenvectors of irrep projection operator to perform preliminar block decomposition 
         allocate(block_proj,source=irrep_proj_V)
         if (size(irrep_id).ne.nbases) stop 'ERROR [get_block_proj]: irrep_id /= nbases'
         allocate(blocks,source=irrep_id)
         ninds = nirreps
-        ! ... by using eigenvectors of irrep projection operator to perform preliminar block decomposition 
         do i = 1, nsyms
             M(:,:,i) = matmul(matmul( adjoint(irrep_proj_V), sym(:,:,i)), irrep_proj_V )
         enddo
+        ! ALTERNATIVE : initialize decomposition loop ... (no initial projection) DOESN'T WORK. H IS NOT HERMITIAN FOR SOME REASON...
+        !  block_proj = eye(nbases)
+        !  allocate(blocks(nbases))
+        !  blocks = 1
+        !  ninds = 1
+        !   do i = 1, nsyms
+        !      M(:,:,i) = sym(:,:,i)
+        !   enddo
         ! should be done by 10 loops
         decompose_loop : do k = 1, 10
             isdecomposed = .true.
             ! loop over block structures
             do j = 1, ninds
+                ! call disp(X=blocks,orient='row',title=tostring(j)//' ')
                 ! get blocks
                 inds = selector(blocks.eq.j)
                 ! get size of block diagonalized basis
                 n = count(blocks.eq.j)
                 ! get dixon H
-                H = get_dixon_H( M(inds,inds,:) )
+                H(1:n,1:n) = get_dixon_H( M(inds,inds,:) )
                 ! exit loop if identity is returned
-                if (.not.isequal(H, eye(n)*cmplx(1,0,dp) )) then
+                if (.not.isequal(H(1:n,1:n), H(1,1)*eye(n) )) then
                     ! check if atleast one block was decomposed
                     isdecomposed = .false.
                     ! check that H is hermitian
-                    if (.not.isequal(adjoint(H),H)) stop 'ERROR [get_block_proj]: H is not Hermitian'
+                    if (.not.isequal(adjoint(H(1:n,1:n)),H(1:n,1:n))) stop 'ERROR [get_block_proj]: H is not Hermitian'
                     ! get eigenvectors using complex Hermitian routine 
-                    call am_zheev(A=H,V=V,D=D)
+                    call am_zheev(A=H(1:n,1:n),V=V,D=D)
                     ! get unique eigenvalues
                     D_unique = unique(D)
                     ! orthonormalize the eigenbasis; each unique eigenvalue at a time
@@ -1165,34 +1176,25 @@ contains
                     block_proj(:,inds) = matmul(block_proj(:,inds), V)
                 endif
             enddo
+            ! get block structure
+            where ( sum(abs(M),3).gt.tiny )
+                C = 1
+            elsewhere
+                C = 0
+            endwhere
+            ! reduce block structure to row echelon form
+            C = rref(C)
+            ! get number of indices
+            ninds = count( any(abs(C).gt.tiny,2) )
+            do i = 1, ninds
+                blocks( selector(abs(C(i,:)).gt.tiny) ) = i
+            enddo
+            if (count(any(abs(C).gt.tiny,1)).ne.nbases) stop 'ERROR [get_block_proj]: not all rows have been assigned to a block'
             ! check if finished
-            if (isdecomposed) then
-                ! if done ...
-                exit decompose_loop
-            else
-                ! if not done ...
-                ! get block structure
-                where ( sum(abs(M),3).gt.tiny ) 
-                    C = 1
-                elsewhere
-                    C = 0
-                endwhere
-                ! reduce block structure to row echelon form
-                C = rref(C)
-                ! get number of indices
-                ninds = count( any(abs(C).gt.tiny,2) )
-                do i = 1, ninds
-                    blocks( selector(abs(C(i,:)).gt.tiny) ) = i
-                enddo
-                if (count(any(abs(C).gt.tiny,1)).ne.nbases) stop 'ERROR [get_block_proj]: not all rows have been assigned to a block'
-            endif
+            if (isdecomposed) exit decompose_loop
         enddo decompose_loop
         if (.not.isdecomposed) stop 'ERROR [get_block_proj]: irrep decomposition taking longer than 10 iterations...'
         ! sort projection based on block structure
-
-        write(*,*) 'C'
-        call spy(abs(C).gt.tiny)
-        !
         k = 0
         get_blocks : do i = 1, nbases
         do j = 1, nbases
@@ -1206,19 +1208,6 @@ contains
         enddo get_blocks
         ! sort block_proj
         block_proj = block_proj(:,blocks)
-
-
-        ! display :
-
-
-
-        do i = 1, nsyms
-            M(:,:,i) = matmul(matmul(adjoint(block_proj), sym(:,:,i)), block_proj)
-        enddo
-        call spy( sum(abs(M),3).gt.tiny )
-
-
-
         contains
         function       get_dixon_H(rr) result(H)
             ! REF: 
@@ -1230,8 +1219,6 @@ contains
             complex(dp), intent(in) :: rr(:,:,:)
             complex(dp),allocatable :: Hrs(:,:)
             complex(dp),allocatable :: H(:,:)
-            real(dp)   ,allocatable :: Re(:,:)
-            real(dp)   ,allocatable :: Im(:,:)
             logical :: isreducible
             integer :: nbases, nsyms
             integer :: r,s,i
@@ -1272,15 +1259,28 @@ contains
             enddo search
             ! if it isn't reducible return identity
             if (.not.isreducible) H = eye(nbases)
-            ! correct basic rounding error
-            allocate(Re, source= real(H))
-            allocate(Im, source=aimag(H))
-            where (abs(nint(Re)-Re).lt.tiny) Re = nint(Re)
-            where (abs(nint(Im)-Im).lt.tiny) Im = nint(Im)
-            H = cmplx(Re,Im,dp)
             !
         end function   get_dixon_H
     end function   get_block_proj
+
+    subroutine     print_blocks(sym,block_proj)
+        !
+        implicit none
+        !
+        real(dp)   , intent(in) :: sym(:,:,:)
+        complex(dp), intent(in) :: block_proj(:,:)
+        real(dp)   ,allocatable :: M(:,:,:)
+        integer :: i
+        !
+        allocate(M,mold=sym)
+        !
+        do i = 1, size(sym,3)
+            M(:,:,i) = matmul(matmul(adjoint(block_proj), sym(:,:,i)), block_proj)
+        enddo
+        !
+        call spy( sum(abs(M),3).gt.tiny )
+        !
+    end subroutine print_blocks
 
 !     function       get_irrep_diag(sym,chartab,irrep_proj,irrep_dim,class_member) result(irrep_diag)
 !         !
