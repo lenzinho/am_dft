@@ -57,8 +57,20 @@ module am_matlab
     end interface ! trace
     
     interface unique
-        module procedure dt_unique, dm_unique, zm_unique, zv_unique, im_unique, iv_unique
+        module procedure dt_unique, dm_unique, dv_unique, &
+                                    zm_unique, zv_unique, &
+                                    im_unique, iv_unique
     end interface ! unique
+
+    interface unique_inds
+        module procedure dt_unique_inds
+    end interface ! unique_inds
+
+    interface reallocate
+        module procedure dt_reallocate, zt_reallocate, it_reallocate, &
+                         dm_reallocate, zm_reallocate, im_reallocate, &
+                         dv_reallocate, zv_reallocate, iv_reallocate
+    end interface ! reallocate
 
     interface issubset
         module procedure d_issubset, dv_issubset, dm_issubset, &
@@ -87,6 +99,10 @@ module am_matlab
     interface eigenspace
         module procedure :: z_eigenspace, d_eigenspace
     end interface ! eigenspace
+
+    interface trim_null
+        module procedure i_trim_null
+    end interface ! trim_null
 
     interface trim_null_columns
         module procedure z_trim_null_columns, d_trim_null_columns        
@@ -1745,6 +1761,17 @@ module am_matlab
         deallocate(temp)
     end function  z_rref
 
+    pure function i_trim_null(A) result(B)
+        !
+        implicit none
+        !
+        integer, intent(in) :: A(:)
+        integer, allocatable :: B(:)
+        !
+        allocate(B, source=A(selector(A.ne.0)) )
+        !
+    end function  i_trim_null
+
     pure function d_trim_null_columns(A) result(B)
         !
         implicit none
@@ -1869,7 +1896,7 @@ module am_matlab
 
     ! matrix indexing
 
-    function      selector(mask) result(inds)
+    pure function selector(mask) result(inds)
         !
         implicit none
         !
@@ -1883,7 +1910,7 @@ module am_matlab
         !
     end function  selector
 
-    function      ind2sub(dims,ind) result(sub)
+    pure function ind2sub(dims,ind) result(sub)
         ! test with: ind2sub(dims=[5,3],ind=sub2ind(dims=[5,3],sub=[1,3]))
         ! Map a scalar index of a flat 1D array to the equivalent
         ! d-dimensional index
@@ -2454,6 +2481,33 @@ module am_matlab
         !        
     end function  iszero
 
+    subroutine     spy(mask)
+        !
+        implicit none
+        !
+        logical, intent(in) :: mask(:,:)
+        integer :: i,j,n,m
+        !
+        m = size(mask,1)
+        n = size(mask,2)
+        !
+        write(unit=*,fmt='(5x,a,a,a)') ,'+', repeat('--',n), '-+'
+        !
+        do i = 1, m
+            write(unit=*,fmt='(5x,a)',advance='no') '|'
+            do j = 1, n
+                if (mask(i,j)) then
+                    write(unit=*,fmt='(a)',advance='no') ' X'
+                else
+                    write(unit=*,fmt='(a)',advance='no') ' .'
+                endif
+            enddo
+            write(unit=*,fmt='(a)',advance='yes') ' |'
+        enddo
+        write(unit=*,fmt='(5x,a,a,a)') ,'+', repeat('--',n), '-+'
+        !
+    end subroutine spy
+
     ! isequal
 
     pure function  d_isequal(x,y,iopt_prec) result(bool)
@@ -2916,7 +2970,125 @@ module am_matlab
         !
     end function   i_issubset
 
+    ! reallocate
+
+    pure function dt_reallocate(A) result(B)
+        !
+        real(dp), intent(in) :: A(:,:,:)
+        real(dp),allocatable :: B(:,:,:)
+        !
+        allocate(B,source=A)
+        !
+    end function  dt_reallocate
+
+    pure function dm_reallocate(A) result(B)
+        !
+        real(dp), intent(in) :: A(:,:)
+        real(dp),allocatable :: B(:,:)
+        !
+        allocate(B,source=A)
+        !
+    end function  dm_reallocate
+
+    pure function dv_reallocate(A) result(B)
+        !
+        real(dp), intent(in) :: A(:)
+        real(dp),allocatable :: B(:)
+        !
+        allocate(B,source=A)
+        !
+    end function  dv_reallocate
+
+    pure function zt_reallocate(A) result(B)
+        !
+        complex(dp), intent(in) :: A(:,:,:)
+        complex(dp),allocatable :: B(:,:,:)
+        !
+        allocate(B,source=A)
+        !
+    end function  zt_reallocate
+
+    pure function zm_reallocate(A) result(B)
+        !
+        complex(dp), intent(in) :: A(:,:)
+        complex(dp),allocatable :: B(:,:)
+        !
+        allocate(B,source=A)
+        !
+    end function  zm_reallocate
+
+    pure function zv_reallocate(A) result(B)
+        !
+        complex(dp), intent(in) :: A(:)
+        complex(dp),allocatable :: B(:)
+        !
+        allocate(B,source=A)
+        !
+    end function  zv_reallocate
+
+    pure function it_reallocate(A) result(B)
+        !
+        integer, intent(in) :: A(:,:,:)
+        integer,allocatable :: B(:,:,:)
+        !
+        allocate(B,source=A)
+        !
+    end function  it_reallocate
+
+    pure function im_reallocate(A) result(B)
+        !
+        integer, intent(in) :: A(:,:)
+        integer,allocatable :: B(:,:)
+        !
+        allocate(B,source=A)
+        !
+    end function  im_reallocate
+
+    pure function iv_reallocate(A) result(B)
+        !
+        integer, intent(in) :: A(:)
+        integer,allocatable :: B(:)
+        !
+        allocate(B,source=A)
+        !
+    end function  iv_reallocate
+
+
     ! unique
+
+    pure function dt_unique_inds(A,iopt_prec) result(inds)
+        !> returns unique matrices of A(:,:,i) within numerical precision
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:,:)
+        real(dp), intent(in), optional :: iopt_prec
+        integer , allocatable :: inds(:)
+        integer :: i,j,k,n
+        real(dp) :: prec
+        !
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        n = size(A,3)
+        !
+        allocate(inds(n))
+        inds = 0
+        !
+        k=0
+        try_loop : do i = 1, n
+            do j = 1, k
+                if ( isequal(A(:,:,i),A(:,:,inds(j)),prec) ) cycle try_loop
+            enddo
+            k = k + 1
+            inds(k) = i
+        enddo try_loop
+        !
+        inds = trim_null(inds)
+        !
+    end function  dt_unique_inds
 
     pure function dt_unique(A,iopt_prec) result(B)
         !> returns unique matrices of A(:,:,i) within numerical precision
@@ -2926,7 +3098,7 @@ module am_matlab
         real(dp), intent(in), optional :: iopt_prec
         real(dp), allocatable :: B(:,:,:)
         real(dp) :: wrk(size(A,1),size(A,2),size(A,3))
-        integer :: i,j,k
+        integer :: i,j,k,n
         real(dp) :: prec
         !
         if ( present(iopt_prec) ) then
@@ -2935,10 +3107,12 @@ module am_matlab
             prec = tiny
         endif
         !
+        n = size(A,3)
+        !
         k=1
         wrk(:,:,1) = A(:,:,1)
         !
-        try_loop : do i = 1, size(A,3)
+        try_loop : do i = 1, n
             do j = 1, k
                 if ( isequal(A(:,:,i),wrk(:,:,j),prec) ) cycle try_loop
             enddo
@@ -2949,6 +3123,38 @@ module am_matlab
         allocate(B,source=wrk(:,:,1:k))
         !
     end function  dt_unique
+
+    pure function dv_unique(A,iopt_prec) result(B)
+        !> returns unique columns of double matrix A(:,i) within numerical precision
+        implicit none
+        !
+        real(dp), intent(in) :: A(:)
+        real(dp), intent(in), optional :: iopt_prec
+        real(dp), allocatable :: B(:)
+        real(dp) :: wrk(size(A))
+        integer :: i,j,k
+        real(dp) :: prec
+        !
+        if ( present(iopt_prec) ) then
+            prec = iopt_prec
+        else
+            prec = tiny
+        endif
+        !
+        k=1
+        wrk(1) = A(1)
+        !
+        try_loop : do i = 1, size(A)
+            do j = 1, k
+                if ( abs(A(i)-wrk(j)).lt.prec ) cycle try_loop
+            enddo
+            k = k + 1
+            wrk(k) = A(i)
+        enddo try_loop
+        !
+        allocate(B,source=wrk(1:k))
+        !
+    end function  dv_unique
 
     pure function dm_unique(A,iopt_prec) result(B)
         !> returns unique columns of double matrix A(:,i) within numerical precision

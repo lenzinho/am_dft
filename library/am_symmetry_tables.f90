@@ -57,15 +57,14 @@ contains
         character(*), intent(in) :: flags
         integer , allocatable :: multab(:,:)
         real(dp), allocatable :: W(:,:) ! workspace
-        integer :: ref ! used for checking for closure
         integer :: nsyms, nbases
-        integer :: i, j ! loop variabls
+        integer :: i, j, h ! loop variabls
         integer :: k, kmax ! for progress bar
         ! get dimensions
-        nbases=size(sym,1)
-        nsyms=size(sym,3)
+        nbases  = size(sym,1)
+        nsyms   = size(sym,3)
         ! check that first element is the identity
-        if (.not.isequal(sym(:,:,1),eye(nbases))) stop 'ERROR [get_multab]: idensity not first'
+        if (.not.isequal(sym(:,:,1),eye(nbases))) stop 'ERROR [get_multab]: identity not first'
         ! allocate space
         allocate(W(nbases,nbases))
         allocate(multab(nsyms,nsyms))
@@ -82,31 +81,24 @@ contains
             ! multiply the two sym operators
             W = matmul(sym(:,:,i),sym(:,:,j))
             ! if 'seitz' flagged, reduce translational part to primitive cell 
-            if (index(flags,'seitz')) then
+            if (index(flags,'seitz').ne.0) then
                 W(1:3,4) = modulo(W(1:3,4)+tiny,1.0_dp)-tiny
             endif
             ! get matching symmetry
-            multab(i,j) = get_matching_element_index_in_list(list=sym,elem=W)
+            do h = 1, nsyms
+                if (isequal(sym(:,:,h),W)) then
+                    multab(i,j) = h
+                    exit
+                endif
+            enddo
         enddo
         enddo
         ! quick consitency check for closure. not comprehensive
-        ref = nsyms*(nsyms+1.0_dp)/2.0_dp
         do i = 1, nsyms
-            if (sum(multab(:,i)).ne.ref) stop 'ERROR [get_multab]: multab is incorrect'
+            if (2*sum(multab(:,i)).ne.nsyms*(nsyms+1)) then
+                stop 'ERROR [get_multab]: multab is incorrect'
+            endif
         enddo
-        !   
-        contains
-        function       get_matching_element_index_in_list(list,elem) result(i)
-            !
-            implicit none
-            real(dp), intent(in) :: list(:,:,:)
-            real(dp), intent(in) :: elem(:,:)
-            integer :: i
-            !
-            do i = 1,size(list,3)
-                if (all(abs(list(:,:,i)-elem).lt.tiny)) return
-            enddo
-        end function   get_matching_element_index_in_list
     end function   get_multab
 
     pure function  get_inverse_indices(multab) result(inv_id)
@@ -1084,11 +1076,15 @@ contains
         allocate(V(nbases,nbases))
         ! get irrep_proj_V
         allocate(irrep_proj_V(nbases,nbases))
+        irrep_proj_V = 0
+        !
         do i = 1, nirreps
+        if (any(irrep_id.eq.i)) then
             ! get eigenvectors/eigenvalues (HERMITIAN)
             call am_zheev(A=irrep_proj(:,:,i), V=V, D=D)
             ! save projection
             irrep_proj_V(:, selector(irrep_id.eq.i) ) = orth_svd( V(:, selector(abs(D).gt.tiny)) )
+        endif
         enddo
         !
     end function   get_irrep_proj_V
@@ -1103,71 +1099,133 @@ contains
         complex(dp),allocatable :: block_proj(:,:)
         complex(dp),allocatable :: V(:,:)
         complex(dp),allocatable :: H(:,:)
-        complex(dp),allocatable :: block_rep(:,:,:)
-        real(dp)   ,allocatable :: block_struc(:,:)
+        complex(dp),allocatable :: M(:,:,:)
+        real(dp)   ,allocatable :: C(:,:)
         real(dp)   ,allocatable :: D(:)
         integer    ,allocatable :: inds(:)
+        integer    ,allocatable :: inds2(:)
+        integer    ,allocatable :: blocks(:)
+        real(dp)   ,allocatable :: D_unique(:)
+        logical :: isdecomposed
         integer :: nbases
         integer :: nsyms
         integer :: nirreps
-        integer :: i,j,k
+        integer :: ninds
+        integer :: i,j,k,n
         ! get dimensions
         nbases  = size(sym,1)
         nsyms   = size(sym,3)
         nirreps = maxval(irrep_id)
         ! allocate block diagonalized regular rep
-        allocate(block_rep(nbases,nbases,nsyms))
-        ! preliminary block reduction using eigenvectors of irrep projection operator
+        allocate(M(nbases,nbases,nsyms))
+        ! allocate block structure
+        allocate(C(nbases,nbases))
+        ! initialize decomposition loop ...
+        allocate(block_proj,source=irrep_proj_V)
+        if (size(irrep_id).ne.nbases) stop 'ERROR [get_block_proj]: irrep_id /= nbases'
+        allocate(blocks,source=irrep_id)
+        ninds = nirreps
+        ! ... by using eigenvectors of irrep projection operator to perform preliminar block decomposition 
         do i = 1, nsyms
-            block_rep(:,:,i) = matmul(matmul( adjoint(irrep_proj_V), sym(:,:,i)), irrep_proj_V )
+            M(:,:,i) = matmul(matmul( adjoint(irrep_proj_V), sym(:,:,i)), irrep_proj_V )
         enddo
-        ! get block diagonalizer
-        allocate(block_proj(nbases,nbases))
-        block_proj = 0
-        do j = 1, nirreps
-            ! get inds
-            inds = selector(irrep_id.eq.j)
-            ! get dixon H
-            H = get_dixon_H( block_rep(inds, inds, :) )
-            ! check that H is hermitian
-            if (.not.isequal(adjoint(H),H)) stop 'ERROR [get_block_proj]: H is not Hermitian'
-            ! get eigenvectors using complex Hermitian routine 
-            call am_zheev(A=H,V=V,D=D)
-            ! construct block_proj
-            block_proj(:,inds) = matmul(irrep_proj_V(:,inds), V)
-        enddo
-        ! block diagonalize sym representation
-        do i = 1, nsyms
-            block_rep(:,:,i) = matmul(matmul( adjoint(block_proj), sym(:,:,i)), block_proj )
-        enddo
+        ! should be done by 10 loops
+        decompose_loop : do k = 1, 10
+            isdecomposed = .true.
+            ! loop over block structures
+            do j = 1, ninds
+                ! get blocks
+                inds = selector(blocks.eq.j)
+                ! get size of block diagonalized basis
+                n = count(blocks.eq.j)
+                ! get dixon H
+                H = get_dixon_H( M(inds,inds,:) )
+                ! exit loop if identity is returned
+                if (.not.isequal(H, eye(n)*cmplx(1,0,dp) )) then
+                    ! check if atleast one block was decomposed
+                    isdecomposed = .false.
+                    ! check that H is hermitian
+                    if (.not.isequal(adjoint(H),H)) stop 'ERROR [get_block_proj]: H is not Hermitian'
+                    ! get eigenvectors using complex Hermitian routine 
+                    call am_zheev(A=H,V=V,D=D)
+                    ! get unique eigenvalues
+                    D_unique = unique(D)
+                    ! orthonormalize the eigenbasis; each unique eigenvalue at a time
+                    do i = 1, size(D_unique)
+                        ! get basis corresponding to unique eigenvalue
+                        inds2 = selector( abs(D-D_unique(i)).lt.tiny )
+                        ! orthonormalize
+                        V(:,inds2) = orth_svd( V(:,inds2) )
+                    enddo
+                    ! update M
+                    do i = 1, nsyms
+                        M(inds,inds,i) = matmul(matmul(adjoint(V), M(inds,inds,i)), V)
+                    enddo
+                    ! update block_proj
+                    block_proj(:,inds) = matmul(block_proj(:,inds), V)
+                endif
+            enddo
+            ! check if finished
+            if (isdecomposed) then
+                ! if done ...
+                exit decompose_loop
+            else
+                ! if not done ...
+                ! get block structure
+                where ( sum(abs(M),3).gt.tiny ) 
+                    C = 1
+                elsewhere
+                    C = 0
+                endwhere
+                ! reduce block structure to row echelon form
+                C = rref(C)
+                ! get number of indices
+                ninds = count( any(abs(C).gt.tiny,2) )
+                do i = 1, ninds
+                    blocks( selector(abs(C(i,:)).gt.tiny) ) = i
+                enddo
+                if (count(any(abs(C).gt.tiny,1)).ne.nbases) stop 'ERROR [get_block_proj]: not all rows have been assigned to a block'
+            endif
+        enddo decompose_loop
+        if (.not.isdecomposed) stop 'ERROR [get_block_proj]: irrep decomposition taking longer than 10 iterations...'
+        ! sort projection based on block structure
 
 
-        call disp( abs((sum(abs(block_rep),3).gt.tiny)*1) ,zeroas='.')
+        write(*,*) 'before'
+        call spy( sum(abs(M),3).gt.tiny )
 
-        ! get block structure
-        allocate(block_struc(nbases,nbases))
-        where (sum(abs(block_rep),3).gt.tiny) 
-            block_struc = 1
-        elsewhere
-            block_struc = 0
-        endwhere
-        ! reduce block structure to row echelon form
-        block_struc = rref(block_struc)
-        ! sort to get block diagonals next to each other
-        deallocate(inds)
-        allocate(inds( count(any(abs(block_struc).lt.tiny,2)) ))
+!             call disp( C )
+
         k = 0
-        do i = 1, nbases
+        get_blocks : do i = 1, nbases
         do j = 1, nbases
-        if (abs(block_struc(i,j)).gt.tiny) then
+        if (abs(C(i,j)).gt.tiny) then
             k = k + 1
-            inds(k) = j
+            blocks(k) = j
+            ! Note: C is not in RREF, hence the exit here.
+            if (k.eq.nbases) exit get_blocks
         endif
         enddo
+        enddo get_blocks
+        ! sort block_proj
+        block_proj = block_proj(:,blocks)
+        ! display:
+        ! compute M
+        do i = 1, nsyms
+            M(:,:,i) = matmul(matmul(adjoint(block_proj), sym(:,:,i)), block_proj)
         enddo
-        ! sort projection based on block structure
-        block_proj = block_proj(:,inds)
+        ! show C
+
+        write(*,*) 'after'
+!         call disp(blocks,orient='row')
+        call spy( sum(abs(M),3).gt.tiny )
+
+!         call disp( sum(abs(M),3) )
         !
+
+    !        stop
+
+
         contains
         function       get_dixon_H(rr) result(H)
             ! REF: 

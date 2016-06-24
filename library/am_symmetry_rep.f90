@@ -231,7 +231,6 @@ module am_symmetry_rep
         allocate(flat_ig%ps_id(flat_ig%nsyms))
         flat_ig%ps_id    = default_ps_id_value
         flat_ig%ps_id(1) = 1
-        !
         ! get multiplication table
         call flat_ig%get_multiplication_table()
         ! get conjugacy classes
@@ -250,13 +249,14 @@ module am_symmetry_rep
         class(am_class_point_group),intent(in) :: pg      ! seitz point group (rev stab rot groups as well)
         type(am_class_atom)       , intent(in), optional :: atom_m ! only required if property = tb
         type(am_class_atom)       , intent(in), optional :: atom_n ! only required if property = tb
+        integer , allocatable :: uinds(:)
         real(dp), allocatable :: R_cart(:,:)
         integer  :: i
         !
         ! basic checks
         if (index(tens%property,'tight').ne.0) then
-            if (.not.present(atom_m)) stop 'atom_m is required for the creation of tb flat pg'
-            if (.not.present(atom_n)) stop 'atom_n is required for the creation of tb flat pg'
+            if (.not.present(atom_m)) stop 'ERROR [get_flat_point_group]: atom_m required'
+            if (.not.present(atom_n)) stop 'ERROR [get_flat_point_group]: atom_n required'
         endif
         !
         ! number of bases functions in representation
@@ -275,25 +275,29 @@ module am_symmetry_rep
             if     (index(tens%flags   ,'axial').ne.0) then; flat_pg%sym(:,:,i) = kron_pow(R_cart, tens%rank) * det(R_cart)
             elseif (index(tens%flags   ,'polar').ne.0) then; flat_pg%sym(:,:,i) = kron_pow(R_cart, tens%rank)
             elseif (index(tens%property,'tight').ne.0) then; flat_pg%sym(:,:,i) = kron(ps2tb(R_cart,atom_m), ps2tb(R_cart,atom_n))
-            else;
-                stop 'tens%flags unknown'
+            else
+                stop 'ERROR [get_flat_point_group]: unknown flag'
             endif
         enddo
-        !
+        ! correct basic rounding error
+        where (abs(flat_pg%sym).lt.tiny) flat_pg%sym = 0
+        ! get unique symmetry indices
+        uinds = unique_inds(flat_pg%sym)
+        ! copy unique symmetries
+        flat_pg%sym = reallocate(flat_pg%sym(:,:,uinds))
         ! copy symmetry ids
-        allocate(flat_pg%ps_id, source=pg%ps_id)
-        ! copy classes
-        allocate(flat_pg%cc%id, source=pg%cc%id)
-        ! copy multiplication table
-        flat_pg%mt = pg%mt
-        ! copy character table
-        flat_pg%ct = pg%ct
+        allocate(flat_pg%ps_id, source=pg%ps_id(uinds))
+        ! get multiplication table
+        call flat_pg%get_multiplication_table()
+        ! get conjugacy classes
+        call flat_pg%get_conjugacy_classes()
+        ! get character table
+        call flat_pg%get_character_table()
         ! get relations
         flat_pg%relations = flat_pg%get_relations()
-        !
+        ! check that identity is first
         if (.not.isequal(flat_pg%sym(:,:,1),eye(flat_pg%nbases))) then
-            call am_print('flat_pg%sym(:,:,1)',flat_pg%sym(:,:,1))
-            stop 'flat_pg: Identity is not first.'
+            stop 'ERROR [get_flat_point_group]: identity is not first.'
         endif
         !
     end subroutine get_flat_point_group

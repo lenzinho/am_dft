@@ -299,23 +299,23 @@ contains
         !   
         select type (grp)
         class is (am_class_point_group) 
-            nreps = 15
+            nreps = 17
             allocate(rep_chi(nreps,grp%cc%nclasses))
             allocate(rep_label(nreps))
             ! representation based on basis functions
             rep_label(1) = 'rep'
             rep_chi(1,:) = get_rep_characters(   sym=grp%seitz_frac(1:3,1:3,:), class_member=grp%cc%member)
             ! representation based on s orbitals
-            rep_label(2) = 's D^(0)'
+            rep_label(2) = 's'
             rep_chi(2,:) = get_orb_characters(l=0, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
             ! representation based on p orbitals
-            rep_label(3) = 'p D^(1)'
+            rep_label(3) = 'p'
             rep_chi(3,:) = get_orb_characters(l=1, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
             ! representation based on d orbitals
-            rep_label(4) = 'd D^(2)'
+            rep_label(4) = 'd'
             rep_chi(4,:) = get_orb_characters(l=2, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
             ! representation based on f orbitals
-            rep_label(5) = 'f D^(3)'
+            rep_label(5) = 'f'
             rep_chi(5,:) = get_orb_characters(l=3, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
             ! orbital products involving s orbitals
             rep_label(6) = 's * s'
@@ -341,6 +341,11 @@ contains
             ! orbital products involving f orbitals
             rep_label(15)= 'f * f'
             rep_chi(15,:)= rep_chi(5,:) * rep_chi(5,:)
+            ! orbital products involving p orbital powers
+            rep_label(16)= 'p ^ 3'
+            rep_chi(16,:)= rep_chi(3,:) * rep_chi(3,:) * rep_chi(3,:)
+            rep_label(17)= 'p ^ 4'
+            rep_chi(17,:)= rep_chi(3,:) * rep_chi(3,:) * rep_chi(3,:) * rep_chi(3,:)
         class is (am_class_space_group) 
             ! do nothing.
         class is (am_class_symrep_group)
