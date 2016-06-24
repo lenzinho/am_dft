@@ -571,8 +571,8 @@ contains
         endif
         ! dump debugging
         if (debug) then
-        call execute_command_line ('mkdir -p '//trim(outfile_dir_sym)//'/debug')
-        call sg%debug_dump(fname=trim(outfile_dir_sym)//'/debug/outfile.sg')
+        call execute_command_line('mkdir -p '//trim(outfile_dir_sym)//'/debug/space_group/')
+        call sg%debug_dump(fname=              trim(outfile_dir_sym)//'/debug/space_group/outfile.sg')
         endif
         ! write action table
         call sg%write_action_table(uc=pc,fname=trim(outfile_dir_sym)//'/'//'outfile.space_group_action',opts=opts)
@@ -801,8 +801,8 @@ contains
         endif
         ! dump debugging
         if (debug) then
-        call execute_command_line ('mkdir -p '//trim(outfile_dir_sym)//'/debug')
-        call pg%debug_dump(fname=trim(outfile_dir_sym)//'/debug/outfile.pg')
+        call execute_command_line ('mkdir -p '//trim(outfile_dir_sym)//'/debug/point_group')
+        call pg%debug_dump(fname=               trim(outfile_dir_sym)//'/debug/point_group/outfile.pg')
         endif
         ! write action table
         call pg%write_action_table(uc=pc,fname=trim(outfile_dir_sym)//'/'//'outfile.point_group_action',opts=opts)

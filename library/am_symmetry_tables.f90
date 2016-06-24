@@ -1190,12 +1190,9 @@ contains
         if (.not.isdecomposed) stop 'ERROR [get_block_proj]: irrep decomposition taking longer than 10 iterations...'
         ! sort projection based on block structure
 
-
-        write(*,*) 'before'
-        call spy( sum(abs(M),3).gt.tiny )
-
-!             call disp( C )
-
+        write(*,*) 'C'
+        call spy(abs(C).gt.tiny)
+        !
         k = 0
         get_blocks : do i = 1, nbases
         do j = 1, nbases
@@ -1209,21 +1206,17 @@ contains
         enddo get_blocks
         ! sort block_proj
         block_proj = block_proj(:,blocks)
-        ! display:
-        ! compute M
+
+
+        ! display :
+
+
+
         do i = 1, nsyms
             M(:,:,i) = matmul(matmul(adjoint(block_proj), sym(:,:,i)), block_proj)
         enddo
-        ! show C
-
-        write(*,*) 'after'
-!         call disp(blocks,orient='row')
         call spy( sum(abs(M),3).gt.tiny )
 
-!         call disp( sum(abs(M),3) )
-        !
-
-    !        stop
 
 
         contains

@@ -368,6 +368,7 @@ module am_symmetry_rep
         character(*),                intent(in) :: property
         type(am_class_flat_group) :: flat_ig
         type(am_class_flat_group) :: flat_pg
+        character(:), allocatable :: str
         integer :: m, n, o, nterms
         !
         if (opts%verbosity.ge.1) call print_title('Determining group of '//trim(property))
@@ -380,7 +381,12 @@ module am_symmetry_rep
         call flat_pg%get_flat_point_group(tens=prop, pg=pg)
         ! combined relations
         prop%relations = combine_relations(flat_ig%relations, flat_pg%relations)
-        !
+        ! dump
+        if (debug) then
+        allocate(str, source = strrep(property,' ','_') )
+        call execute_command_line ('mkdir -p '//trim(outfile_dir_sym)//'/debug/'//str)
+        call flat_pg%debug_dump(fname=          trim(outfile_dir_sym)//'/debug/'//str//'/outfile.'//str)
+        endif
         ! print relations
         if (opts%verbosity.ge.1) then
             ! print statistics about parameters
@@ -452,7 +458,7 @@ module am_symmetry_rep
             elseif (index(prop%property,'dielectric')               .ne.0) then; prop%rank = 2; prop%flags = 'polar' 
             elseif (index(prop%property,'electrical susceptibility').ne.0) then; prop%rank = 2; prop%flags = 'polar' ! S  ! P_{i}     = \alpha_{ij}  E_{j}
             elseif (index(prop%property,'magnetic susceptibility')  .ne.0) then; prop%rank = 2; prop%flags = 'axial' ! S  ! M_{i}     = \mu_{ij}     H_{j}
-            elseif (index(prop%property,'magneto-electric')         .ne.0) then; prop%rank = 2; prop%flags = 'axial' 
+            elseif (index(prop%property,'magneto electric')         .ne.0) then; prop%rank = 2; prop%flags = 'axial' 
             elseif (index(prop%property,'thermal expansion')        .ne.0) then; prop%rank = 2; prop%flags = 'polar' ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
             elseif (index(prop%property,'electrical conductivity')  .ne.0) then; prop%rank = 2; prop%flags = 'polar' ! S  ! J_{i}     = \sigma_{ij}  E_{i}
             elseif (index(prop%property,'electrical resistivity')   .ne.0) then; prop%rank = 2; prop%flags = 'polar' ! S  ! E_{i}     = \rho_{ij}    J_{j}
@@ -466,7 +472,7 @@ module am_symmetry_rep
             elseif (index(prop%property,'piezomagnetic')            .ne.0) then; prop%rank = 3; prop%flags = 'axial' !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
             !------------------------------------------------- FOURTH-RANK TENSORS ------------------------------------------------
             elseif (index(prop%property,'elasticity')               .ne.0) then; prop%rank = 4; prop%flags = 'polar' !    ! 
-            elseif (index(prop%property,'piezo-optic')              .ne.0) then; prop%rank = 4                       !    ! 
+            elseif (index(prop%property,'piezo optic')              .ne.0) then; prop%rank = 4                       !    ! 
             elseif (index(prop%property,'kerr')                     .ne.0) then; prop%rank = 4                       !    ! 
             elseif (index(prop%property,'electrostriction')         .ne.0) then; prop%rank = 4                       !    ! 
             !------------------------------------------------- SXITH-RANK TENSORS -------------------------------------------------

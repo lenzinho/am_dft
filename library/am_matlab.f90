@@ -753,6 +753,7 @@ module am_matlab
         !           n  =      1         2         3         6
         !    sin(pi/n) =   0.0000    1.0000    0.8660    0.5000
         !    cos(pi/n) =  -1.0000    0.0000    0.5000    0.8660 - sqrt(3)/2
+        !
         if    (abs(sym - nint(sym)           ).lt.tiny) then; sym = nint(sym)            ! +1,-1,0
         elseif(abs(sym + 0.500000000000000_dp).lt.tiny) then; sym =-0.500000000000000_dp ! -0.5
         elseif(abs(sym - 0.500000000000000_dp).lt.tiny) then; sym = 0.500000000000000_dp ! +0.5
@@ -1362,7 +1363,50 @@ module am_matlab
         enddo
         !
     end function  strsplit
+
+    elemental function strrep(string,place,ins) result(new)
+        !
+        implicit none
+        !
+        character(len=*), intent(in)                          :: string,place,ins
+        character(len=len(string)+max(0,len(ins)-len(place))) :: new
+        integer                                               :: idx
+        idx = index(string,place)
+        if ( idx == 0 ) then
+          new = string
+        else
+          new = string(1:idx-1)//ins//string(idx+len(place):len(string))
+        end if
+    end function       strrep 
+
+    ! string
+
+    function      tosymb(a) result(str)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: a
+        character(:), allocatable :: str
+        !
+        !
+        if    (abs(a - nint(a)             ).lt.tiny) then; write(str,'(i)') nint(a)
+        elseif(abs(a + 0.500000000000000_dp).lt.tiny) then; allocate(str,source='-1/2')
+        elseif(abs(a - 0.500000000000000_dp).lt.tiny) then; allocate(str,source='+1/2')
+        elseif(abs(a + 1.154700538379252_dp).lt.tiny) then; allocate(str,source='-sqrt(3)*(2/3)')
+        elseif(abs(a - 1.154700538379252_dp).lt.tiny) then; allocate(str,source='+sqrt(3)*(2/3)')
+        elseif(abs(a + 0.866025403784439_dp).lt.tiny) then; allocate(str,source='-sqrt(3)*(1/2)')
+        elseif(abs(a - 0.866025403784439_dp).lt.tiny) then; allocate(str,source='+sqrt(3)*(1/2)')
+        elseif(abs(a + 1.732050807568877_dp).lt.tiny) then; allocate(str,source='-sqrt(3)')
+        elseif(abs(a - 1.732050807568877_dp).lt.tiny) then; allocate(str,source='+sqrt(3)')
+        else
+            ! fall back
+            allocate(str,source=tostring(a))
+        endif
+        !
+    end function  tosymb
     
+    ! vector
+
     pure function d_cross_product(a,b) result(c)
         !
         implicit none
@@ -1388,6 +1432,8 @@ module am_matlab
         c(3) = a(1) * b(2) - a(2) * b(1)
         !
     end function  z_cross_product
+
+    ! math
 
     pure function lcm(a,b)
         !
