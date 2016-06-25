@@ -1,3 +1,1 @@
-spin: off
-irreducible atoms: 1
-         1 2s 2p
+./out/tb/infile.tb_orbitals
