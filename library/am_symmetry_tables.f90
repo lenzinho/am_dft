@@ -1102,10 +1102,10 @@ contains
         complex(dp),allocatable :: M(:,:,:)
         real(dp)   ,allocatable :: C(:,:)
         real(dp)   ,allocatable :: D(:)
+        real(dp)   ,allocatable :: D_unique(:)
         integer    ,allocatable :: inds(:)
         integer    ,allocatable :: inds2(:)
         integer    ,allocatable :: blocks(:)
-        real(dp)   ,allocatable :: D_unique(:)
         logical :: isdecomposed
         integer :: nbases
         integer :: nsyms
@@ -1150,6 +1150,7 @@ contains
                 ! get size of block diagonalized basis
                 n = count(blocks.eq.j)
                 ! get dixon H
+                H = 0
                 H(1:n,1:n) = get_dixon_H( M(inds,inds,:) )
                 ! exit loop if identity is returned
                 if (.not.isequal(H(1:n,1:n), H(1,1)*eye(n) )) then
@@ -1234,9 +1235,9 @@ contains
             search : do r = 1, nbases
             do s = 1, nbases
                 ! construct Hrs
-                Hrs(1:nbases,1:nbases) = 0.0_dp
+                Hrs(1:nbases,1:nbases) = 0
                 if     (r.eq.s) then
-                    Hrs(r,s) = 1.0_dp
+                    Hrs(r,r) = 1.0_dp
                 elseif (r.gt.s) then
                     Hrs(r,s) = 1.0_dp
                     Hrs(s,r) = 1.0_dp
@@ -1245,9 +1246,9 @@ contains
                     Hrs(s,r) =-cmplx_i
                 endif
                 ! construct H
-                H(1:nbases,1:nbases) = 0.0_dp
+                H(1:nbases,1:nbases) = 0
                 do i = 1, nsyms
-                H = H + matmul(matmul(transpose(rr(:,:,i)), Hrs), rr(:,:,i))
+                H = H + matmul(matmul(adjoint(rr(:,:,i)), Hrs), rr(:,:,i))
                 enddo
                 H = H/real(nsyms,dp)
                 ! if H is not a scalar, then the rep is reducible
@@ -1259,6 +1260,28 @@ contains
             enddo search
             ! if it isn't reducible return identity
             if (.not.isreducible) H = eye(nbases)
+            !
+            ! At the end of the previous post we saw that in order to decompose a representation (V,ρ), it is
+            ! enough to find a non-scalar matrix T that commutes with ρ(g) for every g ∈ G . This first step finds
+            ! a Hermitian non-scalar H that commutes with (G) (if there is one to be found). Let Ers denote the
+            ! n×nn×n matrix with a 11 in the (r,s)th entry and zeros everywhere else. Here nn is the dimension of
+            ! VV in the representation (V,ρ). Define:
+            !
+            ! H_{rs} = 
+            ! \begin{cases}
+            !            E_{rr}  &\text{if } r = s \\
+            !   E_{rs} + E_{sr}  &\text{if } r > s \\
+            ! i(E_{rs} - E_{sr}) &\text{if } r < s,
+            ! \end{cases}
+            ! 
+            ! then the set of matrices HrsHrs forms a Hermitian basis for the n×n matrices over ℂ. Now for each r,s 
+            ! compute the sum: H=1|G|∑g∈Gρ(g)∗Hrsρ(g). Observe that HH has the following properties:
+            ! 1) it is hermitian
+            ! 2) it commutes with ρ(g)ρ(g) for all g∈Gg∈G
+            !
+            ! If ρρ is irreducible, then HH is a scalar matrix for all r,sr,s. Otherwise, it turns out that there will 
+            ! be some r,s such that HH is non-scalar (this is due to the fact that the Hrs matrices form a basis of 
+            ! the n×n matrices.
             !
         end function   get_dixon_H
     end function   get_block_proj

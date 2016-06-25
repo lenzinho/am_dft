@@ -6,7 +6,7 @@ module am_constants
 	!
     integer    , parameter :: sp      = kind(0.0E0) !> single precision
     integer    , parameter :: dp      = kind(0.0D0) !> double precision
-    real(dp)   , parameter :: tiny    = 1.0D-5 ! ultimately this is determined by to how many decimals atomic basis in poscar is specified to 
+    real(dp)   , parameter :: tiny    = 1.0D-12     ! ultimately this is determined by to how many decimals atomic basis in poscar is specified to 
     real(dp)   , parameter :: halfpi  = 1.570796326794897
     real(dp)   , parameter :: pi      = 3.141592653589793
     real(dp)   , parameter :: twopi   = 6.283185307179586
