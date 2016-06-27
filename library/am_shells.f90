@@ -463,6 +463,7 @@ contains
             write(*,'(5x,a)') ' - reversal   (rev) : (im)proper rotational parts of space symmetries which flip bond endpoints'
             write(*,'(5x,a)') ' - negative mappings indicate that endpoints have been flipped'
         endif
+        !
         ! print the character tables of all subgroups which reprsent bond stabilizers
         if (opts%verbosity.ge.1) then
             ! 
@@ -475,10 +476,11 @@ contains
             pg_id_unique = unique(pg_id_unique)
             ! loop over unique point subgroups
             do k = 1, size(pg_id_unique)
+            if (pg_id_unique(k).ne.point_group_schoenflies(pg.ps_id)) then
             do i = 1, ip%nshells
-                if ( pg_id_unique(k).eq. point_group_schoenflies(ip%shell(i)%stab%ps_id) ) then
+                if (pg_id_unique(k).eq. point_group_schoenflies(ip%shell(i)%stab%ps_id) ) then
                     !
-                    write(*,'(a,a)') flare, 'point group '//trim(decode_pointgroup( pg_id_unique(k) ))
+                    write(*,'(a,a)') flare, 'point group '//trim(decode_pointgroup(pg_id_unique(k)))
                     !
                     call ip%shell(i)%stab%print_character_table()
                     !
@@ -486,10 +488,10 @@ contains
                     !
                 endif
             enddo
+            endif
             enddo
             !
         endif
-        !
         !
         contains
         function       identify_irreducible(pp,pg,ic,opts) result(ip_id)
