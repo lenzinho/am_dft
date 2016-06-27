@@ -359,6 +359,7 @@ contains
         integer , allocatable :: ip_id(:) ! can have negative, it means bond was flipped!
         real(dp), allocatable :: d(:)
         integer , allocatable :: ind(:), rind(:)
+        integer , allocatable :: pg_id_unique(:)
         integer :: i,k
         !
         if (opts%verbosity.ge.1) call print_title('Irreducible neighbor pairs')
@@ -383,52 +384,21 @@ contains
         do i = 1,ip%nshells
             ip%shell(i) = pp%shell( ip%pp_id(i) )
         enddo
-        ! sort irreducible pair shells based on distance by converting ....
-        !
-        !  ... irreducible pair shells = 5
-        !      shell Zi-Zj   i-j   m-n    m   stab.    rot.    rev. |v(cart)|           v(cart)             |v(frac)|           v(frac)
-        !      ----- ----- ----- ----- ---- ------- ------- ------- --------- ----------------------------- --------- -----------------------------
-        !          1   V-V   1-1   1-1    1     o_h     o_h     o_h     0.000     0.000     0.000     0.000     0.000     0.000     0.000     0.000
-        !          2   V-N   1-2   1-2    6    c_4v     o_h    c_4v     2.035     0.000     0.000    -2.035     0.289    -0.167    -0.167     0.167
-        !          3   V-V   1-1   1-1   12    c_2v     o_h    c_2v     2.878     0.000     2.035     2.035     0.333     0.333     0.000     0.000
-        !          4   N-N   2-2   2-2    1     o_h     o_h     o_h     0.000     0.000     0.000     0.000     0.000     0.000     0.000     0.000
-        !          5   N-N   2-2   2-2   12    c_2v     o_h    c_2v     2.878     0.000     2.035     2.035     0.333     0.333     0.000     0.000
-        !  ... pair mapping (to irreducible: pp->ip)
-        !          1->1    2->2    3->3    4->4   5->-2    6->5
-        !  ... pair mapping (to primitive: ip->pp)
-        !          1->1    2->2    3->3    4->4    5->6
-        !
-        ! into: 
-        !
-        !  ... irreducible pair shells = 5
-        !      shell Zi-Zj   i-j   m-n    m   stab.    rot.    rev. |v(cart)|           v(cart)             |v(frac)|           v(frac)
-        !      ----- ----- ----- ----- ---- ------- ------- ------- --------- ----------------------------- --------- -----------------------------
-        !          1   V-V   1-1   1-1    1     o_h     o_h     o_h     0.000     0.000     0.000     0.000     0.000     0.000     0.000     0.000  1 -> 1
-        !          4   N-N   2-2   2-2    1     o_h     o_h     o_h     0.000     0.000     0.000     0.000     0.000     0.000     0.000     0.000  4 -> 2
-        !          2   V-N   1-2   1-2    6    c_4v     o_h    c_4v     2.035     0.000     0.000    -2.035     0.289    -0.167    -0.167     0.167  2 -> 3
-        !          3   V-V   1-1   1-1   12    c_2v     o_h    c_2v     2.878     0.000     2.035     2.035     0.333     0.333     0.000     0.000  3 -> 4
-        !          5   N-N   2-2   2-2   12    c_2v     o_h    c_2v     2.878     0.000     2.035     2.035     0.333     0.333     0.000     0.000  5 -> 5
-        !  ... pair mapping (to irreducible: pp->ip)
-        !          1->1    2->3    3->4    4->2   5->-3    6->5
-        !  ... pair mapping (to primitive: ip->pp)
-        !          1->1    2->4    3->2    4->3    5->6
-        !
+        ! sort irreducible pair shells based on distance 
         allocate(d(ip%nshells))
         do i = 1, ip%nshells
             d(i) = norm2(ip%shell(i)%tau_cart(:,1))
         enddo
         allocate( ind(ip%nshells))
         call rank(real(nint(d*1.0D5)),ind)
-        !
         ip%shell = ip%shell(ind)
         ip%pp_id = ip%pp_id(ind)
-        ! 
         allocate(rind(ip%nshells))
         rind(ind) = [1:ip%nshells]
         do i = 1, pp%nshells
             pp%ip_id(i) = rind(abs(pp%ip_id(i))) * sign(1,pp%ip_id(i))
         enddo
-        !
+        ! print stdout
         if (opts%verbosity.ge.1) then
             write(*,'(a,a,a)') flare, 'primitive pair shells = '  , tostring(pp%nshells)
             write(*,'(a,a,a)') flare, 'irreducible pair shells = ', tostring(ip%nshells)
@@ -493,6 +463,33 @@ contains
             write(*,'(5x,a)') ' - reversal   (rev) : (im)proper rotational parts of space symmetries which flip bond endpoints'
             write(*,'(5x,a)') ' - negative mappings indicate that endpoints have been flipped'
         endif
+        ! print the character tables of all subgroups which reprsent bond stabilizers
+        if (opts%verbosity.ge.1) then
+            ! 
+            call print_title('Stabilizer subgroup character tables')
+            ! get unique point group identifiers
+            allocate(pg_id_unique(ip%nshells))
+            do k = 1, ip%nshells
+            pg_id_unique(k) = point_group_schoenflies( ip%shell(k)%stab%ps_id )
+            enddo
+            pg_id_unique = unique(pg_id_unique)
+            ! loop over unique point subgroups
+            do k = 1, size(pg_id_unique)
+            do i = 1, ip%nshells
+                if ( pg_id_unique(k).eq. point_group_schoenflies(ip%shell(i)%stab%ps_id) ) then
+                    !
+                    write(*,'(a,a)') flare, 'point group '//trim(decode_pointgroup( pg_id_unique(k) ))
+                    !
+                    call ip%shell(i)%stab%print_character_table()
+                    !
+                    exit
+                    !
+                endif
+            enddo
+            enddo
+            !
+        endif
+        !
         !
         contains
         function       identify_irreducible(pp,pg,ic,opts) result(ip_id)

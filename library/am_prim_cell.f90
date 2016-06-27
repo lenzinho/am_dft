@@ -35,6 +35,8 @@ contains
         !
         ! get primitive cell basis from translations which leave unit cell invariant
         pc%bas = get_primitive_basis(bas=uc%bas,tau_frac=uc%tau_frac,Z=uc%Z,prec=opts%prec)
+        ! check if singular
+        if (abs(det(pc%bas)).lt.tiny) stop 'ERROR [get_primitive]: singular basis'
         ! get reciprocal basis
         pc%recbas = inv(pc%bas)
         ! get basis transformation (uc fractional to pc fractional)
@@ -48,7 +50,7 @@ contains
         ! get map: pc -> pc
         allocate(pc%pc_id(pc%natoms),source=[1:pc%natoms])
         ! get map: uc -> uc
-        if (.not.allocated(uc%uc_id)) stop 'uc%uc_id is not allocated'
+        if (.not.allocated(uc%uc_id)) stop 'ERROR [get_primitive]: uc_id is not allocated'
         ! allocate(uc%uc_id(uc%natoms),source=[1:uc%natoms])
         ! get map: uc -> pc
         uc%pc_id = get_uc2pc_map(uc2prim=uc2prim, pc_natoms=pc%natoms, pc_tau_frac=pc%tau_frac, uc_natoms=uc%natoms, uc_tau_frac=uc%tau_frac, prec=opts%prec)
@@ -135,6 +137,7 @@ contains
             if (any([i,j,k].eq.0)) stop 'ERROR [get_primitive_basis]: No primitive basis found'
             !
             pc_bas = T(1:3,[i,j,k])
+            ! 
         end function   get_primitive_basis
         function       reduce_atoms_to_primitive_cell(uc2prim,uc_tau_frac,prec) result(pc_tau_frac)
             !
