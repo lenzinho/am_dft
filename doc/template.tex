@@ -25,7 +25,7 @@
 
 \begin{document}
 
-\title{Anomalous temperature-dependent thermal conductivity in VN}
+\title{VN ARPES}
 
 \author{A. B. Mei}
 \affiliation{Department of Materials Science and the Materials Research Laboratory
@@ -58,8 +58,218 @@ University of Illinois, 104 South Goodwin, Urbana, IL 61801}
 \maketitle
 
 
+\begin{table}
+\caption{\label{tab:fonts} $O_h$ representation characters}
+\begin{ruledtabular}
+\begin{tabular}{rrrrrrrrrrr}
+              &  E  &3$C_4^2$& 6$C_2$ & 8$C_3$ & 6$C_4$ &  $i$ & 3$\sigma_2$ & 6$\sigma_2$ & 8$\sigma_6$ & 6$\sigma_4$ \\ \hline
+$A_{1g}$      &  1  &     1  &     1  &     1  &     1  &   1  &          1  &          1  &          1  &          1  \\         %  irrep =  1 
+$A_{2g}$      &  1  &     1  &    -1  &     1  &    -1  &   1  &          1  &         -1  &          1  &         -1  \\         %  irrep =  2 
+$E_g   $      &  2  &     2  &     0  &    -1  &     0  &   2  &          2  &          0  &         -1  &          0  \\         %  irrep =  3 
+$T_{1g}$      &  3  &    -1  &    -1  &     0  &     1  &   3  &         -1  &         -1  &          0  &          1  \\         %  irrep =  5 
+$T_{2g}$      &  3  &    -1  &     1  &     0  &    -1  &   3  &         -1  &          1  &          0  &         -1  \\         %  irrep =  4 
+$A_{1u}$      &  1  &     1  &     1  &     1  &     1  &  -1  &         -1  &         -1  &         -1  &         -1  \\         %  irrep =  7 
+$A_{2u}$      &  1  &     1  &    -1  &     1  &    -1  &  -1  &         -1  &          1  &         -1  &          1  \\         %  irrep =  6 
+$E_u   $      &  2  &     2  &     0  &    -1  &     0  &  -2  &         -2  &          0  &          1  &          0  \\         %  irrep =  8 
+$T_{1u}$      &  3  &    -1  &    -1  &     0  &     1  &  -3  &          1  &          1  &          0  &         -1  \\         %  irrep =  9 
+$T_{2u}$      &  3  &    -1  &     1  &     0  &    -1  &  -3  &          1  &         -1  &          0  &          1  \\ \hline  %  irrep = 10 
+p             &  3  &     -1 &    -1  &     0  &     1  &  -3  &          1  &          1  &          0  &         -1  \\
+d             &  5  &      1 &     1  &    -1  &    -1  &   5  &          1  &          1  &         -1  &         -1  \\
+p $\otimes$ p &  9  &      1 &     1  &     0  &     1  &   9  &          1  &          1  &          0  &          1  \\
+p $\otimes$ d & 15  &     -1 &    -1  &     0  &    -1  & -15  &          1  &          1  &          0  &          1  \\
+d $\otimes$ d & 25  &      1 &     1  &     1  &     1  &  25  &          1  &          1  &          1  &          1  \\ \hline  
+$\Gamma$      &  8  &      0 &     0  &    -1  &     0  &   2  &          2  &          2  &         -1  &         -2   \\
+\end{tabular}
+\end{ruledtabular}
+\end{table}
 
 
+\begin{align}
+    \Gamma  &=      E_g \oplus T_{2g} \oplus T_{1u}                                   \\
+          p &=   T_{1u}                                                               \\
+          d &=      E_g \oplus T_{2g}                                                 \\
+p \otimes p &=   A_{1g} \oplus E_g    \oplus   T_{1g} \oplus   T_{2g}                 \\
+p \otimes d &=   A_{2u} \oplus E_u    \oplus 2 T_{1u} \oplus 2 T_{2u}                 \\
+d \otimes d &= 2 A_{1g} \oplus A_{2g} \oplus 2 E_g    \oplus 3 T_{1g} \oplus 3 T_{2g} \\
+\end{align}
+
+
+
+
+%d * d transforms like
+%d * d = +2*A_g(1) +1*B_g(2) +2*E_g(3) +3*T_g(4) +3*T_g(5)
+
+
+
+
+VN pd tb parameters
+
+    1.2783
+   -0.4859
+   -3.9389
+    1.0091
+    1.0350
+   -0.1245
+   -0.2168
+   -0.0825
+   -0.5461
+    0.0509
+    0.1387
+   -0.1257
+    0.4381
+    0.2954
+
+
+
+The electronic band structure of B1 NaCl-structure cubic-VN is parameterized with an orthogonal tight-binding basis based on V 3d and N 2p orbitals. The basis engenders 98 possibly distinct matrix elements $v_{ij}^{\alpha\beta}$ between orbital $\alpha \equiv \ket{lm}$ on atom $i$ and orbital $\beta \equiv \ket{l'm'}$ on atom $j$. $l$ and $m$ are azimuthal and magnetic quantum numbers. Enforcing the invariance under site-switch symmetry \footnote{The factor of $(-1)^{l+l'}$ reflects orbital parity.}
+\begin{equation}
+v_{ij}^{\alpha\alpha} = (-1)^{l+l'}v_{ji}^{\alpha\alpha}
+\end{equation}
+and stabilizer symmetries $D\left(R\right)$ which leave the bond $\overline{ij}$ invariant
+\begin{equation}
+v_{ij}^{\alpha\beta} = \sum_{\mu\nu} v_{ij}^{\alpha\beta} \left[ D\left(R\right) \right]^{\mu\alpha} \left[ D\left(R\right) \right]^{\nu\beta}.
+\end{equation}
+$\left[\phantom{a}\cdot\phantom{a}\right] ^{\mu\alpha}$ selects the element at the $\mu$\textsuperscript{th} row and $\alpha$\textsuperscript{th} of the enclosed matrix.
+
+
+and 
+
+
+\begin{equation}
+[V,D(R)] = 0
+\end{equation}
+for all $D(R)$ symmetries in the stabilizer group of the bond. The Wigner D-matrices $D^{(l)}(R) =  \bra{l'm'} e^{-\theta\hat{L}\cdot\hat{n}}\ket{lm}$ parameterizes a rotation around $\hat{n}$ by $\theta$ degrees via the angular momentum opreator $\hat{L}$. % Lax p 43 Eq 2.5.18
+
+
+% V_{\alpha\beta}^{ij}
+
+\begin{equation}
+D(R) = \bigoplus_l D^{(l)}(R)
+\end{equation}
+
+Using this procedure, we identify 64 of 98 matrix elements as null. Of the remaining 34, only 14 comprise an irreducible set of independent parameters. We find \emph{a posteriori} that this minimal basis efficiently reproduces the electronic dispersion determined by ARPES and ab-initio density functional theory simulations.
+
+, i.e. that the matrix elements commute with the stabilizer group symmetries of the bonds and,
+
+ that 
+
+The procedure reduces the number of independent matrix to an irreducible set of 14 parameters, which we find \emph{a posteriori} efficiently reproduces the electronic dispersion as determined by ARPES and ab initio density functional theory simulations.
+
+\begin{equation}
+H = H_0 + H_1 + H_2
+\end{equation}
+The subscripts index neighbors.
+
+Zeroth neighbor interactions involve energy integrals between orbitals located on the same site. In the orthogonal pd basis, these interactions produce a dispersionless diagonal matrix with elements representing band energies at $\Gamma$ the Brillouin-zone center. 
+% v1 = E_eg
+% v2 = E_t2g
+\begin{equation}
+H_0 =
+\begin{bmatrix}
+H_0^{dd} & 0 \\
+ 0 & H_0^{pp} \\
+\end{bmatrix}
+\end{equation}
+
+The octahedral environment at anion sites preserve the three-fold degeneracy of N $p$ orbitals, yielding one irreducible representation, $p = T_{1u}$. Matrix elements between $p$ orbitals, $p \otimes p$, transform as $A_{1g} \oplus E_g \oplus T_{1g} \oplus T_{2g}$. The \emph{single} occurrence of the identity representation $A_{1g}$ signifies the existence of \emph{one} symmetry-adapted tight-binding matrix element, corresponding to the $p$-orbital energy $\epsilon_p$.
+
+\begin{equation}
+H_0^{pp} =
+\begin{bmatrix}
+\epsilon_{p} & 0 & 0 \\
+0 & \epsilon_{p} & 0 \\
+0 & 0 & \epsilon_{p} \\
+\end{bmatrix}
+\end{equation}
+
+Cation-site symmetries lift the five-fold degeneracy on V $d$ orbitals engendering the two and three-dimension irreducible representations $E_g$ and $T_{2g}$. The outer product $d \otimes d$ decomposes into $2 A_{1g} \oplus A_{2g} \oplus 2 E_g \oplus 3 T_{1g} \oplus 3 T_{2g}$. Here, $A_{1g}$ occurs twice, indicating the existence of two independent matrix elements, which correspond to the energies $\epsilon_e$ and $\epsilon_t$ of V $d$ bands associated with $E_g$ and $T_{2g}$.
+
+\begin{equation}
+H_0^{dd} =
+\begin{bmatrix}
+ \epsilon_{e} & 0 & 0 & 0 & 0 \\
+ 0 & \epsilon_{e} & 0 & 0 & 0 \\
+ 0 & 0 & \epsilon_{t} & 0 & 0 \\
+ 0 & 0 & 0 & \epsilon_{t} & 0 \\
+ 0 & 0 & 0 & 0 & \epsilon_{t} \\
+\end{bmatrix}
+\end{equation}
+
+The NaCl lattice consists of two interpenetrating cation and anion FCC sublattices translated half a unit-cell's length with respect to each other. Each cation (anion) has six nearest-neighbor anion (cations) at $\left[0 0 \sfrac{1}{2}\right]$. The bond stabilizer, i.e. the group of symmetries which leave the bond invariant is $c_4v$.
+
+
+\begin{equation}
+H_1 = 2i
+\begin{bmatrix}
+0                  & -H_1^{pd} \\
+{H_1^{pd}}^\dagger &  0        \\
+\end{bmatrix}
+\end{equation}
+
+in which 
+
+\begin{equation}
+H_1^{pd} = 
+\begin{bmatrix}
+-\sqrt{3} s_1 v_{ep} & 0            & \sqrt{3} s_3 v_{ep}  \\ % v5 = V(eg,p)
+ s_1 v_{ep}          &-2 s_2 v_{ep} &  s_3 v_{ep}          \\ % v4 = V(t2g,p)
+ s_2 v_{tp}          &  s_1 v_{tp}  & 0                    \\
+0                    &  s_3 v_{tp}  &  s_2 v_{tp}          \\
+ s_3 v_{tp}          & 0            &  s_1 v_{tp}          \\
+\end{bmatrix}
+\end{equation}
+
+Second-neighbor interactions between the twelve equivalent species located at $\left[0\sfrac{1}{2}\sfrac{1}{2}\right]$. The stabilizer group is $c_{2v}$.
+
+
+\begin{equation}
+H_2 = 4
+\begin{bmatrix}
+H_2^{dd} & 0 \\
+ 0 & H_2^{pp} \\
+\end{bmatrix}
+\end{equation}
+
+in which
+
+\begin{equation}
+H_2^{dd} =
+\begin{bmatrix}
+        (c_{x} (c_{z}-2 c_{y})-2 c_{yz}) v_{6} /\sqrt{3}
+                     +(c_{yz}+c_{x} (c_{y}+c_{z})) v_{7} &            c_{y} (c_{z}-c_{x}) v_{6}                         &                  -\sqrt{3} s_{xy} v_{8}  &     \sqrt{3} s_{yz} v_{8}                 &                                        0  \\
+                               c_{y} (c_{z}-c_{x}) v_{6} &   (c_{yz}+c_{x} (c_{y}+c_{z})) v_{7}  -\sqrt{3} c_{zx} v_{6} &                           -s_{xy} v_{8}  &             -s_{yz} v_{8}                 &                           2 s_{zx} v_{8}  \\
+                                  -\sqrt{3} s_{xy} v_{8} &                        -s_{xy} v_{8}                         & (c_{x}+c_{y}) c_{z} v_{11}+c_{xy} v_{9}  &             -s_{zx} v_{10}                &                             s_{yz} v_{10} \\
+                                   \sqrt{3} s_{yz} v_{8} &                        -s_{yz} v_{8}                         &                           -s_{zx} v_{10} & c_{x} (c_{y}+c_{z}) v_{11} +c_{yz} v_{9}  &                            -s_{xy} v_{10} \\
+                                                       0 &                       2 s_{zx} v_{8}                         &                           -s_{yz} v_{10} &             -s_{xy} v_{10}                & c_{y} (c_{x}+c_{z}) v_{11} +c_{zx} v_{9}  \\
+\end{bmatrix}                                                                                                                                                                        
+\end{equation}
+
+
+
+\begin{equation}
+H^{pp}_2 =
+\begin{bmatrix}
+               c_{yz} v_{12} +c_{x} (c_{y}+c_{z}) v_{14} &              -s_{xy} v_{13}                             &              -s_{zx} v_{13}                            \\
+              -s_{xy} v_{13}                             &               c_{zx} v_{12} +c_{y} (c_{x}+c_{z}) v_{14} &              -s_{yz} v_{13}                            \\
+              -s_{zx} v_{13}                             &              -s_{yz} v_{13}                             &               c_{xy} v_{12}+(c_{x}+c_{y}) c_{z} v_{14} \\
+\end{bmatrix}
+\end{equation}
+
+In Eqs. XX - XX,
+\begin{align}
+\begin{split}
+c_x &= \cos(\pi a k_x) \\
+c_y &= \cos(\pi a k_y) \\
+c_z &= \cos(\pi a k_z)
+\end{split}
+\begin{split}
+s_x &= \sin(\pi a k_x) \\
+s_y &= \sin(\pi a k_y) \\
+s_z &= \sin(\pi a k_z)
+\end{split}
+\end{align}
+and
+$s_{ij} = s_i s_j$ and $c_{ij} = c_i c_j$.
 
 
 
