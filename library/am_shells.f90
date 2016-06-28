@@ -479,11 +479,16 @@ contains
             if (pg_id_unique(k).ne.point_group_schoenflies(pg.ps_id)) then
             do i = 1, ip%nshells
                 if (pg_id_unique(k).eq. point_group_schoenflies(ip%shell(i)%stab%ps_id) ) then
-                    !
+                    ! print point group
                     write(*,'(a,a)') flare, 'point group '//trim(decode_pointgroup(pg_id_unique(k)))
-                    !
+                    ! print character table
                     call ip%shell(i)%stab%print_character_table()
-                    !
+                    ! dump debugging
+                    if (debug) then
+                    call execute_command_line('mkdir -p  '//trim(outfile_dir_sym)//'/debug/subgroups/')
+                    call ip%shell(i)%stab%debug_dump(fname= trim(outfile_dir_sym)//'/debug/subgroups/outfile.'//trim(decode_pointgroup(pg_id_unique(k))))
+                    endif
+                    ! break loop
                     exit
                     !
                 endif
