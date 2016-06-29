@@ -372,7 +372,6 @@ module am_symmetry_rep
         type(am_shell_cell)        , optional, intent(in) :: shell ! required for tight binding input
         type(am_class_flat_group) :: flat_ig
         type(am_class_flat_group) :: flat_pg
-        type(am_class_point_group):: stab ! stabilizer group, used by tb
         character(:), allocatable :: str
         integer :: m, n, o, nterms
         !
@@ -390,14 +389,22 @@ module am_symmetry_rep
             ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245. Also see R. Martin.
             ! NOTE: FOR SOME REASON, MUST CALL atom_m with shell%j and atom_n with shell%i (INDICES FLIPPED) - probably has to do with reshape and column-major ordering
             call flat_ig%get_flat_intrinsic_group(tens=tens, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i) )
-            ! determine stabilizers relations
-            call stab%get_stabilizer_group(pg=pg, v=shell%tau_cart(1:3,1), opts=opts, flags='cart')
             ! get stabilizer symmetries in the flattened hamiltonin basis
-            call flat_pg%get_flat_point_group(tens=tens, pg=stab, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i))
+            call flat_pg%get_flat_point_group(tens=tens, pg=shell%stab, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i))
             ! combined relations
             tens%relations = combine_relations(flat_ig%relations, flat_pg%relations)
             ! correct rounding error
             call correct_rounding_error(tens%relations)
+            ! print stabilzier group parameters
+            if (opts%verbosity.ge.1) then
+                write(*,'(a,a)') flare, 'atomic pair = '//trim(atm_symb(pc%Z( shell%i )))//'-'//trim(atm_symb(pc%Z( shell%j )))
+                write(*,'(a,a)') flare, 'stabilizer group = '//trim(decode_pointgroup(point_group_schoenflies( shell%stab%ps_id )))
+                write(*,'(a,a)') flare, 'orbit = '
+                call disp_indent()
+                call disp(X=[1:shell%natoms]         ,title='#'     ,style='underline',advance='no')
+                call disp(X=transpose(shell%tau_cart),title='atomic basis [cart]',style='underline',advance='no')
+                call disp(X=transpose(shell%tau_frac),title='atomic basis [frac]',style='underline',advance='yes')
+            endif
         else
             ! initialize
             call initialize_tensor(tens=tens, property=property)
@@ -419,7 +426,8 @@ module am_symmetry_rep
         ! print relations
         if (opts%verbosity.ge.1) then
             ! print statistics about parameters
-            write(*,'(a,2a6,3a14)') flare, 'shell', 'terms', 'null', 'dependent', 'independent'
+            write(*,'(a,a)') flare, 'matrix elements = '
+            write(*,'(5x,2a6,3a14)') 'shell', 'terms', 'null', 'dependent', 'independent'
             write(*,'(5x,a)') repeat(' '//repeat('-',5),2)//repeat(' '//repeat('-',13),3)
             ! intrinsic symmetries
             m = count(get_null(flat_ig%relations))
@@ -460,7 +468,7 @@ module am_symmetry_rep
                 call print_relations(relations=tens%relations, dims=tens%dims, flags='print:dependent,independent')
             endif
             ! show block structure
-            write(*,'(a,a)') flare, 'irreducible block structure:'
+            write(*,'(a,a)') flare, 'irreducible block structure [flattened point group, ignores intrinsic symmetries]:'
             call print_blocks(sym=flat_pg%sym,block_proj=flat_pg%ct%block_proj)
         endif
         !
@@ -550,35 +558,6 @@ module am_symmetry_rep
             endif
             !
         end subroutine initialize_tensor
-
-        subroutine     get_shell_relations(tens,pg,ic,shell,opts)
-                !
-                implicit none
-                !
-                type(am_class_tensor)   , intent(inout) :: tens
-                type(am_class_point_group), intent(in) :: pg   ! seitz point group
-                type(am_class_irre_cell)  , intent(in) :: ic
-                type(am_shell_cell)       , intent(in) :: shell
-                type(am_class_options)    , intent(in) :: opts
-                type(am_class_flat_group)  :: flat_pg
-                type(am_class_flat_group)  :: flat_ig
-                type(am_class_point_group) :: stab
-                !
-                ! determine intrinsic symmetries (if both irreducible atoms are of the same irreducible type)
-                ! Interchange of indices: (l,l',m) = (-1)^(l+l') * (l',l,m), due to parity of wavefunction. (s,d are even under inversion, p,f are odd)
-                ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245. Also see R. Martin.
-                ! NOTE: FOR SOME REASON, MUST CALL atom_m with shell%j and atom_n with shell%i (INDICES FLIPPED) - probably has to do with reshape and column-major ordering
-                call flat_ig%get_flat_intrinsic_group(tens=tens, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i) )
-                ! determine stabilizers relations
-                call stab%get_stabilizer_group(pg=pg, v=shell%tau_cart(1:3,1), opts=opts, flags='cart')
-                ! get stabilizer symmetries in the flattened hamiltonin basis
-                call flat_pg%get_flat_point_group(tens=tens, pg=stab, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i))
-                ! get combined relations
-                tens%relations = combine_relations(relationsA=flat_pg%relations, relationsB=flat_ig%relations)
-                ! correct rounding error
-                call correct_rounding_error(tens%relations)
-                ! 
-        end subroutine get_shell_relations
     end subroutine symmetrize
 
     ! other stuff
