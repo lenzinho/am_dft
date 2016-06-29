@@ -22,6 +22,7 @@ module am_symmetry
         type(am_class_conjugacy_class)      :: cc     ! conjugacy classes
         type(am_class_character_table)      :: ct     ! character table
         type(am_class_multiplication_table) :: mt     ! multiplication table
+        integer , allocatable :: supergroup_id(:)     ! if this is a subgroup, supergroup_id identifis the symmetry in the encompassing group (used for stabilizer group)
     contains
         procedure :: sort_symmetries
         procedure :: get_multiplication_table
@@ -830,7 +831,7 @@ contains
         character(*)              , intent(in) :: flags
         integer, allocatable   :: indicies(:)
         logical, allocatable   :: mask(:)
-        integer :: i
+        integer :: i,j
         !
         allocate(mask(pg%nsyms))
         mask = .false. 
@@ -850,7 +851,16 @@ contains
         !
         ! create group
         call rotg%create_seitz_group(seitz_frac=pg%seitz_frac(:,:,pack(indicies,mask)), bas=pg%bas)
-        !
+        ! save id's of corresponding symmetries in the encompasing group
+        allocate(rotg%supergroup_id(rotg%nsyms))
+        do i = 1, rotg%nsyms
+        search : do j = 1, pg%nsyms
+            if (isequal(rotg%seitz_cart(:,:,i),pg%seitz_cart(:,:,j))) then
+                rotg%supergroup_id(i) = j
+                exit search
+            endif
+        enddo search
+        enddo
     end subroutine get_rotational_group
 
     subroutine     get_stabilizer_group(stab,pg,v,opts,flags)
@@ -864,7 +874,7 @@ contains
         character(*)               , intent(in) :: flags
         integer, allocatable :: indicies(:)
         logical, allocatable :: mask(:)
-        integer :: i
+        integer :: i,j
         !
         allocate(mask(pg%nsyms))
         mask = .false.
@@ -890,12 +900,21 @@ contains
         !
         ! create group
         call stab%create_seitz_group(seitz_frac=pg%seitz_frac(:,:,pack(indicies,mask)), bas=pg%bas)
-        !
+        ! save id's of corresponding symmetries in the encompasing group
+        allocate(stab%supergroup_id(stab%nsyms))
+        do i = 1, stab%nsyms
+        search : do j = 1, pg%nsyms
+            if (isequal(stab%seitz_cart(:,:,i),pg%seitz_cart(:,:,j))) then
+                stab%supergroup_id(i) = j
+                exit search
+            endif
+        enddo search
+        enddo
     end subroutine get_stabilizer_group
     
     subroutine     get_reversal_group(revg,pg,v,opts,flags)
         !
-        ! there is a bug in the reversal group. Si-Si first naerest neighbor shells on different primitive cell atoms does not match.
+        ! there is a bug in the reversal group. Si-Si first nearest neighbor shells on different primitive cell atoms does not match.
         !
         !  shell Zi-Zj   i-j   m-n    m   stab.    rot.    rev. |v(cart)|           v(cart)             |v(frac)|           v(frac)
         !  ----- ----- ----- ----- ---- ------- ------- ------- --------- ----------------------------- --------- -----------------------------
@@ -917,7 +936,7 @@ contains
         integer, allocatable :: indicies(:)
         logical, allocatable :: mask(:)
         real(dp),allocatable :: seitz_frac(:,:,:)
-        integer :: i
+        integer :: i,j
         !
         allocate(mask(pg%nsyms))
         mask = .false.
@@ -946,7 +965,16 @@ contains
         !
         ! create group
         call revg%create_seitz_group(seitz_frac=unique(seitz_frac), bas=pg%bas)
-        !
+        ! save id's of corresponding symmetries in the encompasing group
+        allocate(revg%supergroup_id(revg%nsyms))
+        do i = 1, revg%nsyms
+        search : do j = 1, pg%nsyms
+            if (isequal(revg%seitz_cart(:,:,i),pg%seitz_cart(:,:,j))) then
+                revg%supergroup_id(i) = j
+                exit search
+            endif
+        enddo search
+        enddo
     end subroutine get_reversal_group
 
     subroutine     write_action_table(sg,uc,fname,opts)

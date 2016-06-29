@@ -1305,6 +1305,33 @@ contains
         !
     end subroutine print_blocks
 
+    function       get_compatibility_relations(supergroup_chartab,supergroup_class_id,subgroup_chartab,subgroup_member,supergroup_id) result(compatibility)
+        !
+        implicit none
+        !
+        complex(dp), intent(in) :: supergroup_chartab(:,:)
+        integer    , intent(in) :: supergroup_class_id(:)
+        complex(dp), intent(in) :: subgroup_chartab(:,:)
+        integer    , intent(in) :: subgroup_member(:,:)
+        integer    , intent(in) :: supergroup_id(:)
+        integer    ,allocatable :: compatibility(:,:)
+        integer :: n, m
+        !
+        n = size(supergroup_chartab,1)
+        m = size(subgroup_chartab,1)
+        !
+        if (size(supergroup_id).ne.m) stop 'ERROR [get_compatibility_relations]: dimension mismatch'
+        !
+        allocate(compatibility(n,m))
+        !
+        compatibility = nint(real(matmul( supergroup_chartab( : , supergroup_class_id( supergroup_id( subgroup_member(:,1) ) ) ), subgroup_chartab) ))
+        !
+    end function   get_compatibility_relations
+
+
+
+
+
 !     function       get_irrep_diag(sym,chartab,irrep_proj,irrep_dim,class_member) result(irrep_diag)
 !         !
 !         implicit none
