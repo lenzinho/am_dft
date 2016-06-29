@@ -19,20 +19,9 @@ module am_tight_binding
 
     private
 
-    type, public, extends(am_class_tensor) :: am_class_tens_tb
-        ! <INHERITED>
-        ! character(100)        :: property       ! name of property
-        ! character(100)        :: flags          ! axial/polar/i==j/i/=j
-        ! integer               :: rank           ! tensor rank
-        ! integer , allocatable :: dims(:)        ! tensor dimensions
-        ! real(dp), allocatable :: relations(:,:) ! relations connecting tensor elements
-        ! real(dp), allocatable :: V(:)           ! the value of the tensor, use reshape(V,dims)
-        ! </INHERITED>
-    end type am_class_tens_tb
-
     type, public :: am_class_tight_binding
         integer :: nshells                     ! how many shells irreducible atoms
-        type(am_class_tens_tb), allocatable :: tbvsk(:)  ! tbvsk(nshells)
+        type(am_class_tensor), allocatable :: tens(:)  ! tens(nshells)
         integer , allocatable :: nVs            ! number of irreducible matrix element values
         real(dp), allocatable :: V(:)           ! their values
         integer , allocatable :: V_ind(:,:)     ! their indices V_ind( [i,j], nVs); j = compound [alpha x beta index, see initialize_tb subroutine]
@@ -92,74 +81,35 @@ contains
         if (opts%verbosity.ge.1) call print_title('Symmetry-adapted tight-binding parameters')
         !
         tb%nshells = ip%nshells
-        allocate(tb%tbvsk(tb%nshells))
-        !
+        allocate(tb%tens(tb%nshells))
+        ! get rank, dims, flags, property, and symmetry relations
         do k = 1, tb%nshells
-            ! get rank, dims, flags, property
-            call initialize_tbvsk(tbvsk=tb%tbvsk(k), pc=pc, ic=ic, shell=ip%shell(k))
-            ! get relations
-            call get_shell_relations(tbvsk=tb%tbvsk(k), pg=pg, ic=ic, shell=ip%shell(k), opts=opts)
-            !
+            call tb%tens(k)%symmetrize(pg=pg,pc=pc,ic=ic,shell=ip%shell(k),opts=opts,property='irreducible tight binding shell '//tostring(k))
         enddo
         ! get number of independent (irreducible) matrix elements
         tb%nVs = 0
         do i = 1, tb%nshells
-            tb%nVs = tb%nVs + count(get_independent(tb%tbvsk(i)%relations)) 
+            tb%nVs = tb%nVs + count(get_independent(tb%tens(i)%relations)) 
         enddo
         ! allocate space for independent (irreducible) matrix elements V
         allocate(tb%V(tb%nVs))
         tb%V = 0
-        ! indices : V_ind( [i, subd2ind(dims=tb%tbvsk(i)%dims,sub=[alpha,beta])], nVs)
+        ! indices : V_ind( [i, subd2ind(dims=tb%tens(i)%dims,sub=[alpha,beta])], nVs)
         allocate(tb%V_ind(3,tb%nVs))
         tb%V_ind = 0
         k=0
         do i = 1, tb%nshells
-            is_independent = get_independent(tb%tbvsk(i)%relations)
-            do j = 1, product(tb%tbvsk(i)%dims)
+            is_independent = get_independent(tb%tens(i)%relations)
+            do j = 1, product(tb%tens(i)%dims)
             if (is_independent(j)) then
                 k=k+1
-                sub = ind2sub(dims=tb%tbvsk(i)%dims, ind=j)
+                sub = ind2sub(dims=tb%tens(i)%dims, ind=j)
                 tb%V_ind(1,k) = i      ! shell
                 tb%V_ind(2,k) = sub(1) ! alpha
                 tb%V_ind(3,k) = sub(2) ! beta
             endif
             enddo
         enddo
-        !
-        if (opts%verbosity.ge.1) then
-            ! print statistics about parameters
-            write(*,'(a,2a6,3a14)') flare, 'shell', 'terms', 'null', 'dependent', 'independent'
-            write(*,'(5x,a)') repeat(' '//repeat('-',5),2)//repeat(' '//repeat('-',13),3)
-            ! print table
-            a=0;b=0;c=0;nterms=0
-            do i = 1, tb%nshells
-                m = count(get_null(tb%tbvsk(i)%relations))
-                n = count(get_depenent(tb%tbvsk(i)%relations)) 
-                o = count(get_independent(tb%tbvsk(i)%relations))
-                nterms = m+n+o
-                write(*,'(5x,i6)'        ,advance='no') i
-                write(*,'(i6)'           ,advance='no') nterms
-                write(*,'(i5,a2,f5.1,a2)',advance='no') m, '(', (m*100_dp)/real(nterms,dp) , '%)'
-                write(*,'(i5,a2,f5.1,a2)',advance='no') n, '(', (n*100_dp)/real(nterms,dp) , '%)'
-                write(*,'(i5,a2,f5.1,a2)',advance='no') o, '(', (o*100_dp)/real(nterms,dp) , '%)'
-                write(*,*)
-                a = a + m
-                b = b + n
-                c = c + o
-            enddo
-            ! print total
-            write(*,'(5x,a6)'        ,advance='no') 'total'
-            write(*,'(i6)'           ,advance='no') (a+b+c)
-            write(*,'(i5,a2,f5.1,a2)',advance='no') a, '(', (a*100_dp)/real(a+b+c,dp) , '%)'
-            write(*,'(i5,a2,f5.1,a2)',advance='no') b, '(', (b*100_dp)/real(a+b+c,dp) , '%)'
-            write(*,'(i5,a2,f5.1,a2)',advance='no') c, '(', (c*100_dp)/real(a+b+c,dp) , '%)'
-            write(*,*)
-            ! print symmetry relations
-            do i = 1, tb%nshells
-                write(*,'(a,a)') flare, 'shell '//trim(int2char(i))//' irreducible symmetry relations:'
-                call print_relations(relations=tb%tbvsk(i)%relations, dims=tb%tbvsk(i)%dims, flags='print:dependent,independent')
-            enddo
-        endif
         ! write template for irreducible matrix elements
         if (fexists('infile.tb_matrix_elements_irreducible').ne.0) then 
             ! read matrix elements
@@ -173,6 +123,7 @@ contains
             call disp(X=tb%V_ind(2,:),title='alpha',style='underline',advance='no')
             call disp(X=tb%V_ind(3,:),title='beta',style='underline',advance='yes')
         else
+            write(*,'(a,a)') flare, 'infile.tb_matrix_elements_irreducible not found. Using template instead.'
             !
             call tb%set_Vsk(flags='seq')
             !
@@ -180,44 +131,44 @@ contains
         endif
         !
         contains
-        subroutine     initialize_tbvsk(tbvsk,pc,ic,shell)
+        subroutine     initialize_tens(tens,pc,ic,shell)
             !
             implicit none
             !
-            type(am_class_tens_tb)  , intent(out) :: tbvsk
+            type(am_class_tensor) , intent(out) :: tens
             type(am_class_prim_cell), intent(in)  :: pc
             type(am_class_irre_cell), intent(in)  :: ic
             type(am_shell_cell)     , intent(in)  :: shell
             integer :: i
             !
-            tbvsk%property = 'tight binding'
-            tbvsk%rank  = 2
+            tens%property = 'tight binding'
+            tens%rank  = 2
             ! detetmine if irreducible atoms are the same
             if (shell%i.eq.shell%j) then
-                tbvsk%flags = 'i==j'
+                tens%flags = 'i==j'
             else
-                tbvsk%flags = 'i/=j'
+                tens%flags = 'i/=j'
             endif
             ! set dimensions of matrix elements
-            allocate(tbvsk%dims(tbvsk%rank))
-            tbvsk%dims = 0 
+            allocate(tens%dims(tens%rank))
+            tens%dims = 0 
             ! dimension of Hamiltonian subsection corresponding to primitive atom m (irreducible atoms i)
             do i = 1, ic%atom(shell%i)%nazimuthals
-                tbvsk%dims(1) = tbvsk%dims(1) + ic%atom(shell%i)%azimuthal(i)*2+1
+                tens%dims(1) = tens%dims(1) + ic%atom(shell%i)%azimuthal(i)*2+1
             enddo
             ! dimension of Hamiltonian subsection corresponding to primitive atom n (irreducible atoms j)
             do i = 1, ic%atom(shell%j)%nazimuthals
-                tbvsk%dims(2) = tbvsk%dims(2) + ic%atom(shell%j)%azimuthal(i)*2+1
+                tens%dims(2) = tens%dims(2) + ic%atom(shell%j)%azimuthal(i)*2+1
             enddo
             ! allocate space for matrix elements
-            allocate(tbvsk%V(tbvsk%dims(1)*tbvsk%dims(2)))
+            allocate(tens%V(tens%dims(1)*tens%dims(2)))
             !
-        end subroutine initialize_tbvsk
-        subroutine     get_shell_relations(tbvsk,pg,ic,shell,opts)
+        end subroutine initialize_tens
+        subroutine     get_shell_relations(tens,pg,ic,shell,opts)
                 !
                 implicit none
                 !
-                type(am_class_tens_tb)    , intent(inout) :: tbvsk
+                type(am_class_tensor)   , intent(inout) :: tens
                 type(am_class_point_group), intent(in) :: pg   ! seitz point group
                 type(am_class_irre_cell)  , intent(in) :: ic
                 type(am_shell_cell)       , intent(in) :: shell
@@ -230,15 +181,15 @@ contains
                 ! Interchange of indices: (l,l',m) = (-1)^(l+l') * (l',l,m), due to parity of wavefunction. (s,d are even under inversion, p,f are odd)
                 ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245. Also see R. Martin.
                 ! NOTE: FOR SOME REASON, MUST CALL atom_m with shell%j and atom_n with shell%i (INDICES FLIPPED) - probably has to do with reshape and column-major ordering
-                call flat_ig%get_flat_intrinsic_group(tens=tbvsk, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i) )
+                call flat_ig%get_flat_intrinsic_group(tens=tens, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i) )
                 ! determine stabilizers relations
                 call stab%get_stabilizer_group(pg=pg, v=shell%tau_cart(1:3,1), opts=opts, flags='cart')
                 ! get stabilizer symmetries in the flattened hamiltonin basis
-                call flat_pg%get_flat_point_group(tens=tbvsk, pg=stab, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i))
+                call flat_pg%get_flat_point_group(tens=tens, pg=stab, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i))
                 ! get combined relations
-                tbvsk%relations = combine_relations(relationsA=flat_pg%relations, relationsB=flat_ig%relations)
+                tens%relations = combine_relations(relationsA=flat_pg%relations, relationsB=flat_ig%relations)
                 ! correct rounding error
-                call correct_rounding_error(tbvsk%relations)
+                call correct_rounding_error(tens%relations)
                 ! 
         end subroutine get_shell_relations
     end subroutine initialize_tb
@@ -418,13 +369,13 @@ contains
         ! note the absolute value
         id = abs(ip_id)
         ! get primitive atom indices
-        m = tb%tbvsk(id)%dims(1)
-        n = tb%tbvsk(id)%dims(2)
+        m = tb%tens(id)%dims(1)
+        n = tb%tens(id)%dims(2)
         ! if irreducible pair id is negative, it means the pair was flipped
         if (ip_id.lt.0) then
-            allocate(V, source=adjoint(reshape(tb%tbvsk(id)%V,[m,n])) )
+            allocate(V, source=adjoint(reshape(tb%tens(id)%V,[m,n])) )
         else
-            allocate(V, source=        reshape(tb%tbvsk(id)%V,[m,n])  )
+            allocate(V, source=        reshape(tb%tens(id)%V,[m,n])  )
         endif
         !
     end function   get_Vsk
@@ -462,28 +413,28 @@ contains
         endif
         ! clear irreducible matrix elements in each shell
         do k = 1, tb%nshells
-            tb%tbvsk(k)%V = 0
+            tb%tens(k)%V = 0
         enddo
         ! transfer irreducible matrix elements to each shell
         do i = 1, tb%nVs
             k     = tb%V_ind(1,i)
             alpha = tb%V_ind(2,i)
             beta  = tb%V_ind(3,i)
-            j     = sub2ind(dims=tb%tbvsk(k)%dims, sub=[alpha,beta])
+            j     = sub2ind(dims=tb%tens(k)%dims, sub=[alpha,beta])
             !
-            tb%tbvsk(k)%V(j) = tb%V(i)
+            tb%tens(k)%V(j) = tb%V(i)
         enddo
         ! once the irreducible matrix elements have been copied, symmetrize
         do k = 1, tb%nshells
-            tb%tbvsk(k)%V(:) = matmul(tb%tbvsk(k)%relations,tb%tbvsk(k)%V(:))
+            tb%tens(k)%V(:) = matmul(tb%tens(k)%relations,tb%tens(k)%V(:))
         enddo
         ! things are looking good up to this point.
-        !  ... tb%tbvsk(k)%V(:) =
+        !  ... tb%tens(k)%V(:) =
         !              1.00000        0.00000        0.00000        0.00000
         !              0.00000        2.00000        0.00000        0.00000
         !              0.00000        0.00000        2.00000        0.00000
         !              0.00000        0.00000        0.00000        2.00000
-        !  ... tb%tbvsk(k)%V(:) =
+        !  ... tb%tens(k)%V(:) =
         !              3.00000        4.00000        4.00000        4.00000
         !             -4.00000        6.00000        5.00000        5.00000
         !             -4.00000        5.00000        6.00000        5.00000
@@ -693,7 +644,7 @@ contains
         do i = 1, ip%nshells
             j = j + 1
             Sv(i) = j
-            j = j + count(get_independent(tb%tbvsk(i)%relations)) - 1
+            j = j + count(get_independent(tb%tens(i)%relations)) - 1
             Ev(i) = j
         enddo
         ! export hamiltonian
@@ -739,7 +690,7 @@ contains
             write(fid,'(a)') 'end'
             ! export symmetry relations for each irreducible pair (append to the same file)
             do i = 1, ip%nshells
-                call export_relations2matlab(relations=tb%tbvsk(i)%relations, dims=tb%tbvsk(i)%dims, fnc_name=trim(V_fnc_name)//tostring(i), fid_append=fid, flags='append')
+                call export_relations2matlab(relations=tb%tens(i)%relations, dims=tb%tens(i)%dims, fnc_name=trim(V_fnc_name)//tostring(i), fid_append=fid, flags='append')
             enddo
         close(fid)
     end subroutine export_to_matlab

@@ -8,6 +8,7 @@ module am_symmetry_rep
     use am_atom
     use am_prim_cell
     use am_irre_cell
+    use am_shells
     use am_symmetry_relations
     use dispmodule
 
@@ -46,12 +47,9 @@ module am_symmetry_rep
         integer , allocatable :: dims(:)        ! tensor dimensions
         real(dp), allocatable :: relations(:,:) ! relations connecting tensor elements
         real(dp), allocatable :: V(:)           ! the value of the tensor, use reshape(V,dims)
-    end type am_class_tensor
-
-    type, public, extends(am_class_tensor) :: am_class_property
         contains
-        procedure :: get_property
-    end type am_class_property
+        procedure :: symmetrize
+    end type am_class_tensor
 
 	contains
 
@@ -358,36 +356,65 @@ module am_symmetry_rep
         !
     end function   get_relations
 
-    ! operates on prop
+    ! operates on tens
 
-    subroutine     get_property(prop,pg,opts,property)
+    subroutine     symmetrize(tens,pg,opts,property,pc,ic,shell)
+        !                                           ----------- tight binding input
         !
         implicit none
         !
-        class(am_class_property),    intent(out):: prop
+        class(am_class_tensor),      intent(out):: tens
         class(am_class_point_group), intent(in) :: pg
         type(am_class_options),      intent(in) :: opts
         character(*),                intent(in) :: property
+        type(am_class_prim_cell)   , optional, intent(in) :: pc   ! primitive cell
+        type(am_class_irre_cell)   , optional, intent(in) :: ic    ! required for tight binding input
+        type(am_shell_cell)        , optional, intent(in) :: shell ! required for tight binding input
         type(am_class_flat_group) :: flat_ig
         type(am_class_flat_group) :: flat_pg
+        type(am_class_point_group):: stab ! stabilizer group, used by tb
         character(:), allocatable :: str
         integer :: m, n, o, nterms
         !
-        if (opts%verbosity.ge.1) call print_title('Determining group of '//trim(property))
-        !
-        ! initialize
-        call initialize_property(prop=prop, property=property)
-        ! get intrinsic symmetries
-        call flat_ig%get_flat_intrinsic_group(tens=prop)
-        ! get point symmetries
-        call flat_pg%get_flat_point_group(tens=prop, pg=pg)
-        ! combined relations
-        prop%relations = combine_relations(flat_ig%relations, flat_pg%relations)
-        ! dump
-        if (debug) then
-        allocate(str, source = strrep(property,' ','_') )
-        call execute_command_line ('mkdir -p '//trim(outfile_dir_sym)//'/debug/'//str)
-        call flat_pg%debug_dump(fname=          trim(outfile_dir_sym)//'/debug/'//str//'/outfile.'//str)
+        if (opts%verbosity.ge.1) call print_title('Symmeterized '//trim(property))
+        ! check intput for tight binding
+        if    (index(property,'tight binding').ne.0) then
+            ! tb matrix element
+            if (.not.present(pc))    stop 'ERROR [symmetrize]: missing pc for tight-binding intput'
+            if (.not.present(ic))    stop 'ERROR [symmetrize]: missing ic for tight-binding intput'
+            if (.not.present(shell)) stop 'ERROR [symmetrize]: missing shell for tight-binding intput'
+            ! initialize
+            call initialize_tensor(tens=tens, pc=pc, ic=ic, shell=shell, property=property)
+            ! determine intrinsic symmetries (if both irreducible atoms are of the same irreducible type)
+            ! Interchange of indices: (l,l',m) = (-1)^(l+l') * (l',l,m), due to parity of wavefunction. (s,d are even under inversion, p,f are odd)
+            ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245. Also see R. Martin.
+            ! NOTE: FOR SOME REASON, MUST CALL atom_m with shell%j and atom_n with shell%i (INDICES FLIPPED) - probably has to do with reshape and column-major ordering
+            call flat_ig%get_flat_intrinsic_group(tens=tens, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i) )
+            ! determine stabilizers relations
+            call stab%get_stabilizer_group(pg=pg, v=shell%tau_cart(1:3,1), opts=opts, flags='cart')
+            ! get stabilizer symmetries in the flattened hamiltonin basis
+            call flat_pg%get_flat_point_group(tens=tens, pg=stab, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i))
+            ! combined relations
+            tens%relations = combine_relations(flat_ig%relations, flat_pg%relations)
+            ! correct rounding error
+            call correct_rounding_error(tens%relations)
+        else
+            ! initialize
+            call initialize_tensor(tens=tens, property=property)
+            ! get intrinsic symmetries
+            call flat_ig%get_flat_intrinsic_group(tens=tens)
+            ! get point symmetries
+            call flat_pg%get_flat_point_group(tens=tens, pg=pg)
+            ! combined relations
+            tens%relations = combine_relations(flat_ig%relations, flat_pg%relations)
+            ! correct rounding error
+            call correct_rounding_error(tens%relations)
+            ! dump
+            if (debug) then
+                allocate(str, source = strrep(property,' ','_') )
+                call execute_command_line ('mkdir -p '//trim(outfile_dir_sym)//'/debug/'//str)
+                call flat_pg%debug_dump(fname=          trim(outfile_dir_sym)//'/debug/'//str//'/outfile.'//str)
+            endif
         endif
         ! print relations
         if (opts%verbosity.ge.1) then
@@ -417,9 +444,9 @@ module am_symmetry_rep
             write(*,'(i5,a2,f5.1,a2)',advance='no') o, '(', (o*100_dp)/real(nterms,dp) , '%)'
             write(*,*)
             ! total
-            m = count(get_null(prop%relations))
-            n = count(get_depenent(prop%relations)) 
-            o = count(get_independent(prop%relations))
+            m = count(get_null(tens%relations))
+            n = count(get_depenent(tens%relations)) 
+            o = count(get_independent(tens%relations))
             nterms = m+n+o
             write(*,'(5x,a6)'        ,advance='no') 'total'
             write(*,'(i6)'           ,advance='no') nterms
@@ -430,20 +457,24 @@ module am_symmetry_rep
             ! print symmetry relations
             if (m.ne.nterms) then
                 write(*,'(a,a)') flare, 'irreducible symmetry relations:'
-                call print_relations(relations=prop%relations, dims=prop%dims, flags='print:dependent,independent')
+                call print_relations(relations=tens%relations, dims=tens%dims, flags='print:dependent,independent')
             endif
             ! show block structure
-            write(*,'(a,a)') flare, 'irreducible block structure [for point group only, ignores intrinsic symmetries!]:'
+            write(*,'(a,a)') flare, 'irreducible block structure:'
             call print_blocks(sym=flat_pg%sym,block_proj=flat_pg%ct%block_proj)
         endif
         !
         contains
-        subroutine     initialize_property(prop,property)
+        subroutine     initialize_tensor(tens,property,pc,ic,shell)
             !
             implicit none
             !
-            class(am_class_property), intent(out) :: prop
+            class(am_class_tensor)  , intent(out) :: tens
             character(*)            , intent(in)  :: property
+            type(am_class_prim_cell), intent(in), optional :: pc    ! required for tb
+            type(am_class_irre_cell), intent(in), optional :: ic    ! required for tb
+            type(am_shell_cell)     , intent(in), optional :: shell ! required for tb
+            integer :: i
             !
             !----------------------------------------------------------------------------------------------------------------------
             !
@@ -456,43 +487,99 @@ module am_symmetry_rep
             ! This does not hold for the Seebeck and Peltier (thermoelectric) tensors which relate two different flows. Thus
             ! there are, at most, nine independent parameters rather than six. [Newnham "Properties of Materials"]
             !
-            prop%property = property
+            tens%property = property
             !------------------------------------------------- FIRST-RANK TENSORS --------------------------------------------------
-            if     (index(prop%property,'pyroelectricity')          .ne.0) then; prop%rank = 1                       !    ! P_{i}     = p_{i} \Delta T
+            if     (index(tens%property,'pyroelectricity')          .ne.0) then; tens%rank = 1                       !    ! P_{i}     = p_{i} \Delta T
             !------------------------------------------------- SECOND-RANK TENSORS -------------------------------------------------
-            elseif (index(prop%property,'dielectric')               .ne.0) then; prop%rank = 2; prop%flags = 'polar' 
-            elseif (index(prop%property,'electrical susceptibility').ne.0) then; prop%rank = 2; prop%flags = 'polar' ! S  ! P_{i}     = \alpha_{ij}  E_{j}
-            elseif (index(prop%property,'magnetic susceptibility')  .ne.0) then; prop%rank = 2; prop%flags = 'axial' ! S  ! M_{i}     = \mu_{ij}     H_{j}
-            elseif (index(prop%property,'magneto electric')         .ne.0) then; prop%rank = 2; prop%flags = 'axial' 
-            elseif (index(prop%property,'thermal expansion')        .ne.0) then; prop%rank = 2; prop%flags = 'polar' ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
-            elseif (index(prop%property,'electrical conductivity')  .ne.0) then; prop%rank = 2; prop%flags = 'polar' ! S  ! J_{i}     = \sigma_{ij}  E_{i}
-            elseif (index(prop%property,'electrical resistivity')   .ne.0) then; prop%rank = 2; prop%flags = 'polar' ! S  ! E_{i}     = \rho_{ij}    J_{j}
-            elseif (index(prop%property,'thermal conductivity')     .ne.0) then; prop%rank = 2; prop%flags = 'polar' ! S  ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
-            elseif (index(prop%property,'thermoelectricity')        .ne.0) then; prop%rank = 2; prop%flags = 'polar' ! N  ! 
-            elseif (index(prop%property,'seebeck')                  .ne.0) then; prop%rank = 2; prop%flags = 'polar' ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
-            elseif (index(prop%property,'peltier')                  .ne.0) then; prop%rank = 2; prop%flags = 'polar' ! N  ! q_{i}     = \pi_{ij}     J_{j}
+            elseif (index(tens%property,'dielectric')               .ne.0) then; tens%rank = 2; tens%flags = 'polar' 
+            elseif (index(tens%property,'electrical susceptibility').ne.0) then; tens%rank = 2; tens%flags = 'polar' ! S  ! P_{i}     = \alpha_{ij}  E_{j}
+            elseif (index(tens%property,'magnetic susceptibility')  .ne.0) then; tens%rank = 2; tens%flags = 'axial' ! S  ! M_{i}     = \mu_{ij}     H_{j}
+            elseif (index(tens%property,'magneto electric')         .ne.0) then; tens%rank = 2; tens%flags = 'axial' 
+            elseif (index(tens%property,'thermal expansion')        .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
+            elseif (index(tens%property,'electrical conductivity')  .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! S  ! J_{i}     = \sigma_{ij}  E_{i}
+            elseif (index(tens%property,'electrical resistivity')   .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! S  ! E_{i}     = \rho_{ij}    J_{j}
+            elseif (index(tens%property,'thermal conductivity')     .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! S  ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
+            elseif (index(tens%property,'thermoelectricity')        .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! N  ! 
+            elseif (index(tens%property,'seebeck')                  .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
+            elseif (index(tens%property,'peltier')                  .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! N  ! q_{i}     = \pi_{ij}     J_{j}
             !------------------------------------------------- THIRD-RANK TENSORS -------------------------------------------------
-            elseif (index(prop%property,'hall')                     .ne.0) then; prop%rank = 3;                      !    ! E_{i}     = h_{ijk}      J_{j} H_{k} - has two polar componnts {ij} and one axial component {k}
-            elseif (index(prop%property,'piezoelectricity')         .ne.0) then; prop%rank = 3; prop%flags = 'polar' !    ! P_{i}     = d_{ijk}      \sigma_{jk}
-            elseif (index(prop%property,'piezomagnetic')            .ne.0) then; prop%rank = 3; prop%flags = 'axial' !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
+            elseif (index(tens%property,'hall')                     .ne.0) then; tens%rank = 3;                      !    ! E_{i}     = h_{ijk}      J_{j} H_{k} - has two polar componnts {ij} and one axial component {k}
+            elseif (index(tens%property,'piezoelectricity')         .ne.0) then; tens%rank = 3; tens%flags = 'polar' !    ! P_{i}     = d_{ijk}      \sigma_{jk}
+            elseif (index(tens%property,'piezomagnetic')            .ne.0) then; tens%rank = 3; tens%flags = 'axial' !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
             !------------------------------------------------- FOURTH-RANK TENSORS ------------------------------------------------
-            elseif (index(prop%property,'elasticity')               .ne.0) then; prop%rank = 4; prop%flags = 'polar' !    ! 
-            elseif (index(prop%property,'piezo optic')              .ne.0) then; prop%rank = 4                       !    ! 
-            elseif (index(prop%property,'kerr')                     .ne.0) then; prop%rank = 4                       !    ! 
-            elseif (index(prop%property,'electrostriction')         .ne.0) then; prop%rank = 4                       !    ! 
+            elseif (index(tens%property,'elasticity')               .ne.0) then; tens%rank = 4; tens%flags = 'polar' !    ! 
+            elseif (index(tens%property,'piezo optic')              .ne.0) then; tens%rank = 4                       !    ! 
+            elseif (index(tens%property,'kerr')                     .ne.0) then; tens%rank = 4                       !    ! 
+            elseif (index(tens%property,'electrostriction')         .ne.0) then; tens%rank = 4                       !    ! 
             !------------------------------------------------- SXITH-RANK TENSORS -------------------------------------------------
-            elseif (index(prop%property,'third-order elasticity')   .ne.0) then; prop%rank = 6; prop%flags = 'polar' !    ! 
+            elseif (index(tens%property,'third-order elasticity')   .ne.0) then; tens%rank = 6; tens%flags = 'polar' !    ! 
             !----------------------------------------------------------------------------------------------------------------------
+            elseif (index(tens%property,'tight binding')            .ne.0) then
+                ! set rank
+                tens%rank  = 2
+                ! detetmine if irreducible atoms are the same
+                if (shell%i.eq.shell%j) then
+                    tens%flags = 'i==j'
+                else
+                    tens%flags = 'i/=j'
+                endif
+                ! set dimensions of matrix elements
+                allocate(tens%dims(tens%rank))
+                tens%dims = 0 
+                ! dimension of Hamiltonian subsection corresponding to primitive atom m (irreducible atoms i)
+                do i = 1, ic%atom(shell%i)%nazimuthals
+                    tens%dims(1) = tens%dims(1) + ic%atom(shell%i)%azimuthal(i)*2+1
+                enddo
+                ! dimension of Hamiltonian subsection corresponding to primitive atom n (irreducible atoms j)
+                do i = 1, ic%atom(shell%j)%nazimuthals
+                    tens%dims(2) = tens%dims(2) + ic%atom(shell%j)%azimuthal(i)*2+1
+                enddo
+                ! allocate space for matrix elements
+                allocate(tens%V(tens%dims(1)*tens%dims(2)))
+                !
             else
-                stop 'Unknown property.'
+                stop 'ERROR [initialize_tensor]: unknown property'
             endif
             !----------------------------------------------------------------------------------------------------------------------
             !
-            allocate(prop%dims(prop%rank))
-            prop%dims = 3
+            ! if property is macroscopic enter if condition
+            ! if tight binding, skip it.
+            if (index(tens%property,'tight binding').eq.0) then
+                allocate(tens%dims(tens%rank))
+                tens%dims = 3
+            endif
             !
-        end subroutine initialize_property
-    end subroutine get_property
+        end subroutine initialize_tensor
+
+        subroutine     get_shell_relations(tens,pg,ic,shell,opts)
+                !
+                implicit none
+                !
+                type(am_class_tensor)   , intent(inout) :: tens
+                type(am_class_point_group), intent(in) :: pg   ! seitz point group
+                type(am_class_irre_cell)  , intent(in) :: ic
+                type(am_shell_cell)       , intent(in) :: shell
+                type(am_class_options)    , intent(in) :: opts
+                type(am_class_flat_group)  :: flat_pg
+                type(am_class_flat_group)  :: flat_ig
+                type(am_class_point_group) :: stab
+                !
+                ! determine intrinsic symmetries (if both irreducible atoms are of the same irreducible type)
+                ! Interchange of indices: (l,l',m) = (-1)^(l+l') * (l',l,m), due to parity of wavefunction. (s,d are even under inversion, p,f are odd)
+                ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245. Also see R. Martin.
+                ! NOTE: FOR SOME REASON, MUST CALL atom_m with shell%j and atom_n with shell%i (INDICES FLIPPED) - probably has to do with reshape and column-major ordering
+                call flat_ig%get_flat_intrinsic_group(tens=tens, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i) )
+                ! determine stabilizers relations
+                call stab%get_stabilizer_group(pg=pg, v=shell%tau_cart(1:3,1), opts=opts, flags='cart')
+                ! get stabilizer symmetries in the flattened hamiltonin basis
+                call flat_pg%get_flat_point_group(tens=tens, pg=stab, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i))
+                ! get combined relations
+                tens%relations = combine_relations(relationsA=flat_pg%relations, relationsB=flat_ig%relations)
+                ! correct rounding error
+                call correct_rounding_error(tens%relations)
+                ! 
+        end subroutine get_shell_relations
+    end subroutine symmetrize
 
     ! other stuff
 
