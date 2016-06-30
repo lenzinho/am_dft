@@ -295,74 +295,74 @@ contains
         !
         class(am_class_group), intent(in) :: grp
         integer :: nreps
-        complex(dp) , allocatable :: rep_chi(:,:)
+        complex(dp) , allocatable :: chi_rep(:,:)
         character(7), allocatable :: rep_label(:)
         !   
         select type (grp)
         class is (am_class_point_group) 
             nreps = 17
-            allocate(rep_chi(nreps,grp%cc%nclasses))
+            allocate(chi_rep(nreps,grp%cc%nclasses))
             allocate(rep_label(nreps))
             ! representation based on basis functions
             rep_label(1) = 'rep'
-            rep_chi(1,:) = get_rep_characters(   sym=grp%seitz_frac(1:3,1:3,:), class_member=grp%cc%member)
+            chi_rep(1,:) = get_rep_characters(   sym=grp%seitz_frac(1:3,1:3,:), class_member=grp%cc%member)
             ! representation based on s orbitals
             rep_label(2) = 's'
-            rep_chi(2,:) = get_orb_characters(l=0, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
+            chi_rep(2,:) = get_orb_characters(l=0, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
             ! representation based on p orbitals
             rep_label(3) = 'p'
-            rep_chi(3,:) = get_orb_characters(l=1, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
+            chi_rep(3,:) = get_orb_characters(l=1, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
             ! representation based on d orbitals
             rep_label(4) = 'd'
-            rep_chi(4,:) = get_orb_characters(l=2, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
+            chi_rep(4,:) = get_orb_characters(l=2, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
             ! representation based on f orbitals
             rep_label(5) = 'f'
-            rep_chi(5,:) = get_orb_characters(l=3, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
+            chi_rep(5,:) = get_orb_characters(l=3, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
             ! orbital products involving s orbitals
             rep_label(6) = 's * s'
-            rep_chi(6,:) = rep_chi(2,:) * rep_chi(2,:)
+            chi_rep(6,:) = chi_rep(2,:) * chi_rep(2,:)
             rep_label(7) = 's * p'
-            rep_chi(7,:) = rep_chi(2,:) * rep_chi(3,:)
+            chi_rep(7,:) = chi_rep(2,:) * chi_rep(3,:)
             rep_label(8) = 's * d'
-            rep_chi(8,:) = rep_chi(2,:) * rep_chi(4,:)
+            chi_rep(8,:) = chi_rep(2,:) * chi_rep(4,:)
             rep_label(9) = 's * f'
-            rep_chi(9,:) = rep_chi(2,:) * rep_chi(5,:)
+            chi_rep(9,:) = chi_rep(2,:) * chi_rep(5,:)
             ! orbital products involving p orbitals
             rep_label(10)= 'p * p'
-            rep_chi(10,:)= rep_chi(3,:) * rep_chi(3,:)
+            chi_rep(10,:)= chi_rep(3,:) * chi_rep(3,:)
             rep_label(11)= 'p * d'
-            rep_chi(11,:)= rep_chi(3,:) * rep_chi(4,:)
+            chi_rep(11,:)= chi_rep(3,:) * chi_rep(4,:)
             rep_label(12)= 'p * f'
-            rep_chi(12,:)= rep_chi(3,:) * rep_chi(5,:)
+            chi_rep(12,:)= chi_rep(3,:) * chi_rep(5,:)
             ! orbital products involving d orbitals
             rep_label(13)= 'd * d'
-            rep_chi(13,:)= rep_chi(4,:) * rep_chi(4,:)
+            chi_rep(13,:)= chi_rep(4,:) * chi_rep(4,:)
             rep_label(14)= 'd * f'
-            rep_chi(14,:)= rep_chi(4,:) * rep_chi(5,:)
+            chi_rep(14,:)= chi_rep(4,:) * chi_rep(5,:)
             ! orbital products involving f orbitals
             rep_label(15)= 'f * f'
-            rep_chi(15,:)= rep_chi(5,:) * rep_chi(5,:)
+            chi_rep(15,:)= chi_rep(5,:) * chi_rep(5,:)
             ! orbital products involving p orbital powers
             rep_label(16)= 'p ^ 3'
-            rep_chi(16,:)= rep_chi(3,:) * rep_chi(3,:) * rep_chi(3,:)
+            chi_rep(16,:)= chi_rep(3,:) * chi_rep(3,:) * chi_rep(3,:)
             rep_label(17)= 'p ^ 4'
-            rep_chi(17,:)= rep_chi(3,:) * rep_chi(3,:) * rep_chi(3,:) * rep_chi(3,:)
+            chi_rep(17,:)= chi_rep(3,:) * chi_rep(3,:) * chi_rep(3,:) * chi_rep(3,:)
         class is (am_class_space_group) 
             ! do nothing.
         class is (am_class_symrep_group)
             nreps = 1
-            allocate(rep_chi(nreps,grp%cc%nclasses))
+            allocate(chi_rep(nreps,grp%cc%nclasses))
             allocate(rep_label(nreps))
             ! representation based on basis functions
             rep_label(1) = 'rep'
-            rep_chi(1,:) = get_rep_characters(sym=grp%sym, class_member=grp%cc%member)
+            chi_rep(1,:) = get_rep_characters(sym=grp%sym, class_member=grp%cc%member)
         class default
             stop 'ERROR [print_character_table]: class unknown'
         end select
         !
-        if (allocated(rep_chi).and.allocated(rep_label)) then
+        if (allocated(chi_rep).and.allocated(rep_label)) then
             call print_chartab(chartab=grp%ct%chartab, class_nelements=grp%cc%nelements, &
-                class_member=grp%cc%member, irrep_label=grp%ct%irrep_label, ps_id=grp%ps_id, rep_chi=rep_chi, rep_label=rep_label)
+                class_member=grp%cc%member, irrep_label=grp%ct%irrep_label, ps_id=grp%ps_id, chi_rep=chi_rep, rep_label=rep_label)
         else
             call print_chartab(chartab=grp%ct%chartab, class_nelements=grp%cc%nelements, &
                 class_member=grp%cc%member, irrep_label=grp%ct%irrep_label, ps_id=grp%ps_id)
