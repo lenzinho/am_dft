@@ -289,19 +289,73 @@ contains
 
     ! subgroup
 
-!     function       get_subgroup_member(multab)
+    function       get_cyclic_id(multab,order) result(cyclic_id)
+        !
+        implicit none
+        !
+        integer, intent(in) :: multab(:,:)
+        integer, intent(in) :: order(:)
+        integer,allocatable :: cyclic_id(:)
+        integer :: nsyms
+        integer :: i, j, k
+        !
+        nsyms = size(multab,1)
+        allocate(cyclic_id(nsyms))
+        cyclic_id = 0
+        !
+        k=0
+        do i = 1, nsyms
+        if (cyclic_id(i).eq.0) then
+            k = k + 1
+            do j = 1, order(i)
+                cyclic_id( multab(i,j) ) = k
+            enddo
+        endif
+        enddo
+        !
+    end function   get_cyclic_id
+
+!     function       get_subgroup_member(cylic_id) result(subgroup_member)
 !         !
 !         implicit none
 !         !
-!         integer, intent(in) :: multab(:,:)
-!         integer :: nsyms
+!         integer, intent(in) :: cyclic_id(:)
+!         logical,allocatable :: mask(:,:)
+!         integer :: ncyclics
+!         integer :: k
 !         !
-!         nsyms = size(multab,1)
-!         ! get all cyclic subgroups
-        
+!         nsyms    = size(cyclic_id)
+!         ncyclics = maxval(cyclic_id)
+!         !
+!         mask = id_mask(cyclic_id)
+!         !
+!         allocate(mask(nsyms))
+!         !
+!         k=0
+!         do i = 1, ncyclics
+!         do j = 1, ncyclics
+!             k=k+1;
+!             mask(:,k) = mask(:,i) .or. mask(:,j)
+!         enddo
+!         enddo
+!         !
+!     contains
+!         function   direct_product(mask) result(C) 
+!             !
+!             implicit none
+!             !
 
-
+!         k=0
+!         do i = 1, ncyclics
+!         do j = 1, ncyclics
+!             k=k+1;
+!             mask(:,k) = mask(:,i) .or. mask(:,j)
+!         enddo
+!         enddo
+!         !
 !     end function
+!         !
+!     end function   get_subgroup_member
 
     ! conjugacy classes
 
@@ -781,7 +835,7 @@ contains
         complex(dp), intent(in) :: supergroup_chartab(:,:)
         integer    , intent(in) :: supergroup_class_id(:)
         integer    , intent(in) :: supergroup_id(:)
-        integer    ,allocatable :: chi_subduced(:,:)
+        complex(dp),allocatable :: chi_subduced(:,:)
         !
         allocate(chi_subduced,source=supergroup_chartab(:,unique(supergroup_class_id(supergroup_id))))
         !
@@ -1417,6 +1471,27 @@ contains
             class_nelements(i) = count(i.eq.id)
         enddo
     end function   id_nelements
+
+    function       id_mask(id) result(mask)
+        !
+        implicit none
+        !
+        integer, intent(in) :: id(:)
+        logical,allocatable :: mask(:,:)
+        integer :: nsyms
+        integer :: nids
+        integer :: i
+        !
+        nsyms = size(id,1)
+        nids  = maxval(id)
+        !
+        allocate(mask(nsyms,nids))
+        !
+        do i = 1, nids
+            mask(:,i) = (id.eq.i)
+        enddo
+        !
+    end function   id_mask
 
     ! get point symmetry name
 
