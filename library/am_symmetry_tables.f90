@@ -287,6 +287,22 @@ contains
         !
     end function   get_commutator_id
 
+    ! subgroup
+
+!     function       get_subgroup_member(multab)
+!         !
+!         implicit none
+!         !
+!         integer, intent(in) :: multab(:,:)
+!         integer :: nsyms
+!         !
+!         nsyms = size(multab,1)
+!         ! get all cyclic subgroups
+        
+
+
+!     end function
+
     ! conjugacy classes
 
     function       get_class_id(multab,inv_id,ps_id) result(class_id)
@@ -657,13 +673,11 @@ contains
         integer :: nclasses
          ! rep to irrep decompostion (used only if chi_rep nd rep_label are present)
         integer :: nreps
-        integer :: nsyms
         integer, allocatable :: beta(:,:)
         !
         ! get dimensions
         nirreps  = size(chartab,1)
         nclasses = size(chartab,2)
-        nsyms    = sum(class_nelements)
         !
         call printer%printer_initialize()
         !
@@ -701,7 +715,7 @@ contains
             call printer%printer_print_bar(nclasses=nclasses)
             write(*,'(5x,a)') 'Decompositions:'
             do i = 1, nreps
-                beta(i,:) = get_reduction_coefficient(chartab=chartab,class_nelements=class_nelements,nsyms=nsyms,chi_rep=chi_rep(i,:))
+                beta(i,:) = get_reduction_coefficient(chartab=chartab,class_nelements=class_nelements,chi_rep=chi_rep(i,:))
             enddo
             ! print
             do i = 1, nreps
@@ -721,181 +735,31 @@ contains
         !
     end subroutine print_chartab
 
-    subroutine     printer_print_definitions(printer)
-        !
-        implicit none
-        !
-        class(am_class_chartab_printer), intent(in) :: printer
-        integer :: i
-        !
-        if (printer%k.ne.0) then
-            write(*,'(5x,a)') 'Definitions:'
-            do i = 1, printer%k
-                write(*,'(5x,a)') char(printer%char_start+printer%k)//' = '//tostring(printer%s(i))
-            enddo
-        endif
-    end subroutine printer_print_definitions
+!     function      get_aux_reduction_matrix(chartab,)
+!         !
+!         ! matlab: ( c_4v.ct.chartab .* spread(c_4v.cc.nelements,1,c_4v.ct.nirreps))'/c_4v.nsyms
+!         implicit none
+!         !
 
-    subroutine     printer_print_chartab_header(printer,nclasses,class_nelements,class_member,ps_id)
-        !
-        implicit none
-        !
-        class(am_class_chartab_printer), intent(in) :: printer
-        integer     , intent(in) :: nclasses
-        integer     , intent(in) :: class_nelements(:)
-        integer     , intent(in) :: class_member(:,:)
-        integer     , intent(in) :: ps_id(:)
-        integer :: i
-        !
-        ! start printing
-        write(*,printer%fmts(2),advance='no') 'class'
-        do i = 1, nclasses
-            write(*,printer%fmts(1),advance='no') i
-        enddo
-        write(*,*)
-        !
-        write(*,printer%fmts(2),advance='no') 'elements'
-        do i = 1, nclasses
-            write(*,printer%fmts(1),advance='no') class_nelements(i)
-        enddo
-        write(*,*)
-        !
-        write(*,printer%fmts(2),advance='no') 'repr.'
-        do i = 1, nclasses
-            write(*,printer%fmts(3),advance='no') trim(decode_pointsymmetry(ps_id(class_member(i,1))))
-        enddo
-        write(*,*)
-        !
-        call printer%printer_print_bar(nclasses=nclasses)
-        !
-    end subroutine printer_print_chartab_header
-
-    function       printer_chi2symb(printer,chi) result(str)
-        !
-        implicit none
-        !
-        class(am_class_chartab_printer), intent(inout) :: printer
-        complex(dp), intent(in) :: chi !  value o
-        character(:), allocatable :: str
-        !
-        integer :: kk, k_exp
-        complex(dp) :: s_exp
-        real(dp) :: Zr,Zi
-        logical :: strmatch
-        !
-        strmatch = .false.
-        !
-        Zr= real(chi)
-        Zi= aimag(chi)
-        !
-        if ( isint(Zr) .and. iszero(Zi) ) then
-            ! no imaginary, integer real
-            strmatch = .true.
-            str = trim(int2char(nint(Zr)))
-        elseif ( iszero(Zr) .and. isint(Zi) ) then
-            ! no real, imaginary integer
-            strmatch = .true.
-            str = trim(int2char(nint(Zi)))//'i'
-        elseif ( (.not. isint(Zr)) .and. (.not. isint(Zi)) ) then
-            ! complex number
-            if (printer%k.ge.1) then
-            search : do kk = 1, printer%k
-                s_exp = cmplx(0.0_dp,0.0_dp)
-                k_exp = 0 
-                do while ( .not. isequal(s_exp,cmplx(1,0,dp)) )
-                    ! do a full loop. complex numbers form a cyclic abelian group.
-                    ! exponentiate it until it loops back to one, the identity
-                    k_exp = k_exp+1
-                    s_exp = printer%s(printer%k)**k_exp
-                    ! check positive
-                    if ( isequal(chi,s_exp) ) then
-                        strmatch = .true.
-                        if (k_exp.eq.1) then
-                            str = char(printer%char_start+printer%k)
-                        else
-                            str = char(printer%char_start+printer%k)//trim(int2char(k_exp))
-                        endif
-                        exit search
-                    endif
-                    ! check negative
-                    if ( isequal(chi,-s_exp) ) then
-                        strmatch = .true.
-                        if (k_exp.eq.1) then
-                            str = '-'//char(printer%char_start+printer%k)
-                        else
-                            str = '-'//char(printer%char_start+printer%k)//trim(int2char(k_exp))
-                        endif
-                        exit search
-                    endif
-                enddo
-            enddo search
-            endif
-            ! if match is not found assign a new character to variable
-            if (.not.strmatch) then
-                strmatch = .true.
-                printer%k = printer%k + 1
-                printer%s(printer%k) = chi
-                str = char(printer%char_start+printer%k)
-            endif
-        endif
-        ! if nothing found...
-        if (.not.strmatch) then
-            write(str,printer%fmts(5)) real(chi)
-        endif
-        !
-    end function   printer_chi2symb
-
-    subroutine     printer_initialize(printer)
-        !
-        implicit none
-        !
-        class(am_class_chartab_printer), intent(out) :: printer
-        !
-        ! left-side headers (sum to 10)
-        printer%fmts(2) = '(5x,a10)'
-        printer%fmts(4) = '(5x,a6,i4)'
-        ! chartab (sum to 6)
-        printer%fmts(1) = '(i6)'
-        printer%fmts(3) = '(a6)'
-        printer%fmts(5) = '(f6.2)'
-        !
-        allocate(printer%s(100)) ! value of symbolic output, 30 possible options
-        allocate(character(4) :: printer%str)
-        printer%char_start = 96 ! 97 = a
-        printer%k=0
-        !
-    end subroutine printer_initialize
-
-    subroutine     printer_print_bar(printer,nclasses)
-        !
-        implicit none
-        !
-        class(am_class_chartab_printer), intent(in) :: printer
-        integer, intent(in) :: nclasses
-        integer :: i
-        !
-        write(*,printer%fmts(2),advance='no') repeat('-',10)
-        do i = 1, nclasses
-            write(*,printer%fmts(3),advance='no') repeat('-',6)
-        enddo
-        write(*,*)
-    end subroutine printer_print_bar
+!         !
+!     end function  get_aux_reduction_matrix
 
 
-    function       get_reduction_coefficient(chartab,class_nelements,nsyms,chi_rep) result(beta)
+    function       get_reduction_coefficient(chartab,class_nelements,chi_rep) result(beta)
         !
         implicit none
         !
         complex(dp), intent(in) :: chartab(:,:)
         complex(dp), intent(in) :: chi_rep(:)
         integer, intent(in) :: class_nelements(:)
-        integer, intent(in) :: nsyms
         integer,allocatable :: beta(:)
         complex(dp) :: try
+        integer :: nsyms
         integer :: nirreps
         integer :: j
         !
         nirreps = size(chartab,1)
+        nsyms   = sum(class_nelements)
         ! initialize
         allocate(beta(nirreps))
         ! calculate
@@ -903,31 +767,23 @@ contains
             try = dot(chi_rep,chartab(j,:)*class_nelements)/real(nsyms,dp)
             if (abs(aimag(try)).gt.tiny)                stop 'irrep reduction coefficient is not real'
             if (abs(nint(real(try))-real(try)).gt.tiny) stop 'irrep reduction coefficient is not an integer'
-            ! get save inteer beta
+            ! get save integer beta
             beta(j) = nint(real(try))
         enddo
     end function   get_reduction_coefficient
 
-    function       get_chi_subduced(supergroup_chartab,supergroup_class_id,subgroup_chartab,subgroup_member,supergroup_id) result(chi_subduced)
+    function       get_chi_subduced(supergroup_chartab,supergroup_class_id,supergroup_id) result(chi_subduced)
         !
+        ! matlab:
+        ! o_h.ct.chartab(:,unique(o_h.cc.id(c_4v.supergroup_id)))
         implicit none
         !
         complex(dp), intent(in) :: supergroup_chartab(:,:)
         integer    , intent(in) :: supergroup_class_id(:)
-        complex(dp), intent(in) :: subgroup_chartab(:,:)
-        integer    , intent(in) :: subgroup_member(:,:)
         integer    , intent(in) :: supergroup_id(:)
         integer    ,allocatable :: chi_subduced(:,:)
-        integer :: n, m
         !
-        n = size(supergroup_chartab,1)
-        m = size(subgroup_chartab,1)
-        !
-        if (size(supergroup_id).ne.m) stop 'ERROR [get_compatibility_relations]: dimension mismatch'
-        !
-        allocate(chi_subduced(n,m))
-        !
-        chi_subduced = supergroup_chartab( : , supergroup_class_id( supergroup_id( subgroup_member(:,1) ) ) ) 
+        allocate(chi_subduced,source=supergroup_chartab(:,unique(supergroup_class_id(supergroup_id))))
         !
     end function   get_chi_subduced
 
@@ -1587,5 +1443,166 @@ contains
         end select
     end function   decode_pointsymmetry
 
+    ! printer for chartab
+
+    subroutine     printer_print_definitions(printer)
+        !
+        implicit none
+        !
+        class(am_class_chartab_printer), intent(in) :: printer
+        integer :: i
+        !
+        if (printer%k.ne.0) then
+            write(*,'(5x,a)') 'Definitions:'
+            do i = 1, printer%k
+                write(*,'(5x,a)') char(printer%char_start+printer%k)//' = '//tostring(printer%s(i))
+            enddo
+        endif
+    end subroutine printer_print_definitions
+
+    subroutine     printer_print_chartab_header(printer,nclasses,class_nelements,class_member,ps_id)
+        !
+        implicit none
+        !
+        class(am_class_chartab_printer), intent(in) :: printer
+        integer     , intent(in) :: nclasses
+        integer     , intent(in) :: class_nelements(:)
+        integer     , intent(in) :: class_member(:,:)
+        integer     , intent(in) :: ps_id(:)
+        integer :: i
+        !
+        ! start printing
+        write(*,printer%fmts(2),advance='no') 'class'
+        do i = 1, nclasses
+            write(*,printer%fmts(1),advance='no') i
+        enddo
+        write(*,*)
+        !
+        write(*,printer%fmts(2),advance='no') 'elements'
+        do i = 1, nclasses
+            write(*,printer%fmts(1),advance='no') class_nelements(i)
+        enddo
+        write(*,*)
+        !
+        write(*,printer%fmts(2),advance='no') 'repr.'
+        do i = 1, nclasses
+            write(*,printer%fmts(3),advance='no') trim(decode_pointsymmetry(ps_id(class_member(i,1))))
+        enddo
+        write(*,*)
+        !
+        call printer%printer_print_bar(nclasses=nclasses)
+        !
+    end subroutine printer_print_chartab_header
+
+    function       printer_chi2symb(printer,chi) result(str)
+        !
+        implicit none
+        !
+        class(am_class_chartab_printer), intent(inout) :: printer
+        complex(dp), intent(in) :: chi !  value o
+        character(:), allocatable :: str
+        !
+        integer :: kk, k_exp
+        complex(dp) :: s_exp
+        real(dp) :: Zr,Zi
+        logical :: strmatch
+        !
+        strmatch = .false.
+        !
+        Zr= real(chi)
+        Zi= aimag(chi)
+        !
+        if ( isint(Zr) .and. iszero(Zi) ) then
+            ! no imaginary, integer real
+            strmatch = .true.
+            str = trim(int2char(nint(Zr)))
+        elseif ( iszero(Zr) .and. isint(Zi) ) then
+            ! no real, imaginary integer
+            strmatch = .true.
+            str = trim(int2char(nint(Zi)))//'i'
+        elseif ( (.not. isint(Zr)) .and. (.not. isint(Zi)) ) then
+            ! complex number
+            if (printer%k.ge.1) then
+            search : do kk = 1, printer%k
+                s_exp = cmplx(0.0_dp,0.0_dp)
+                k_exp = 0 
+                do while ( .not. isequal(s_exp,cmplx(1,0,dp)) )
+                    ! do a full loop. complex numbers form a cyclic abelian group.
+                    ! exponentiate it until it loops back to one, the identity
+                    k_exp = k_exp+1
+                    s_exp = printer%s(printer%k)**k_exp
+                    ! check positive
+                    if ( isequal(chi,s_exp) ) then
+                        strmatch = .true.
+                        if (k_exp.eq.1) then
+                            str = char(printer%char_start+printer%k)
+                        else
+                            str = char(printer%char_start+printer%k)//trim(int2char(k_exp))
+                        endif
+                        exit search
+                    endif
+                    ! check negative
+                    if ( isequal(chi,-s_exp) ) then
+                        strmatch = .true.
+                        if (k_exp.eq.1) then
+                            str = '-'//char(printer%char_start+printer%k)
+                        else
+                            str = '-'//char(printer%char_start+printer%k)//trim(int2char(k_exp))
+                        endif
+                        exit search
+                    endif
+                enddo
+            enddo search
+            endif
+            ! if match is not found assign a new character to variable
+            if (.not.strmatch) then
+                strmatch = .true.
+                printer%k = printer%k + 1
+                printer%s(printer%k) = chi
+                str = char(printer%char_start+printer%k)
+            endif
+        endif
+        ! if nothing found...
+        if (.not.strmatch) then
+            write(str,printer%fmts(5)) real(chi)
+        endif
+        !
+    end function   printer_chi2symb
+
+    subroutine     printer_initialize(printer)
+        !
+        implicit none
+        !
+        class(am_class_chartab_printer), intent(out) :: printer
+        !
+        ! left-side headers (sum to 10)
+        printer%fmts(2) = '(5x,a10)'
+        printer%fmts(4) = '(5x,a6,i4)'
+        ! chartab (sum to 6)
+        printer%fmts(1) = '(i6)'
+        printer%fmts(3) = '(a6)'
+        printer%fmts(5) = '(f6.2)'
+        !
+        allocate(printer%s(100)) ! value of symbolic output, 30 possible options
+        allocate(character(4) :: printer%str)
+        printer%char_start = 96 ! 97 = a
+        printer%k=0
+        !
+    end subroutine printer_initialize
+
+    subroutine     printer_print_bar(printer,nclasses)
+        !
+        implicit none
+        !
+        class(am_class_chartab_printer), intent(in) :: printer
+        integer, intent(in) :: nclasses
+        integer :: i
+        !
+        write(*,printer%fmts(2),advance='no') repeat('-',10)
+        do i = 1, nclasses
+            write(*,printer%fmts(3),advance='no') repeat('-',6)
+        enddo
+        write(*,*)
+    end subroutine printer_print_bar
 
 end module am_symmetry_tables

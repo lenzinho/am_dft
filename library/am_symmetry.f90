@@ -172,6 +172,7 @@ contains
                                               call dump(A=grp%nbases           ,fname=trim(fname)//'.nbases'           )
         if (allocated(grp%sym              )) call dump(A=grp%sym              ,fname=trim(fname)//'.sym'              )
                                               call dump(A=grp%ps_id            ,fname=trim(fname)//'.ps_id'            )
+        if (allocated(grp%supergroup_id    )) call dump(A=grp%supergroup_id    ,fname=trim(fname)//'.supergroup_id'    )
         if (allocated(grp%mt%commutator_id )) call dump(A=grp%mt%commutator_id ,fname=trim(fname)//'.mt.commutator_id' )
         if (allocated(grp%mt%multab        )) call dump(A=grp%mt%multab        ,fname=trim(fname)//'.mt.multab'        )
         if (allocated(grp%mt%gen_id        )) call dump(A=grp%mt%gen_id        ,fname=trim(fname)//'.mt.gen_id'        )

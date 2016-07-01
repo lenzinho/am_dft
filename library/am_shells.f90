@@ -476,7 +476,6 @@ contains
             pg_id_unique = unique(pg_id_unique)
             ! loop over unique point subgroups
             do k = 1, size(pg_id_unique)
-            if (pg_id_unique(k).ne.point_group_schoenflies(pg.ps_id)) then
             do i = 1, ip%nshells
                 if (pg_id_unique(k).eq. point_group_schoenflies(ip%shell(i)%stab%ps_id) ) then
                     ! print point group
@@ -493,7 +492,6 @@ contains
                     !
                 endif
             enddo
-            endif
             enddo
             !
         endif
