@@ -63,7 +63,6 @@ contains
         integer , allocatable :: shell_id(:)
         integer , allocatable :: ind(:)
         integer  :: nshells ! number of shells
-        real(dp) :: D(3) ! center of sphere in fractional coordinates
         integer  :: k,i,j,m,n
         integer  :: s
         !
@@ -144,11 +143,10 @@ contains
         ! print stuff
         if (opts%verbosity.ge.1) then
             write(*,'(5a,a,a)') flare, 'pair cutoff radius = ', tostring(pair_cutoff)
-            ! write the number of shells each primitive cell atom hsa
+            ! write the number of shells each primitive cell atom has
             do i = 1, pc%natoms
-                D = matmul(matmul(inv(pc%bas),pc%bas),pc%tau_frac(:,i))
-                write(*,'(" ... ",a," atom ",a," at "   ,a,",",a,",",a,  " (frac) has ",a," nearest-neighbor shells")') &
-                    & 'primitive', trim(int2char(i)), (trim(dbl2char(D(j),4)),j=1,3), trim(int2char(nshells))
+                write(*,'(" ... ",a," atom ",a," at ",a," (cart) has ",a," nearest-neighbor shells")') &
+                    & 'primitive', tostring(i), tostring(pc%tau_cart(:,i),'f4.2'), tostring(nshells)
                 !
                 write(*,'(5x)' ,advance='no')
                 write(*,'(a5)' ,advance='no') 'shell'
