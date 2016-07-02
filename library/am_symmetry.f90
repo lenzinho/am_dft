@@ -233,6 +233,8 @@ contains
         grp%mt%gen = nint(sort(real(unique(grp%mt%gen),dp)))
         ! identifty commutators
         grp%mt%commutator_id = get_commutator_id(multab=grp%mt%multab)
+        ! get subgroups
+        ! call disp( get_subgroup_member( get_cstruct(multab=grp%mt%multab), ps_id=grp%ps_id ) ) 
     end subroutine get_multiplication_table
 
     subroutine     get_conjugacy_classes(grp)
@@ -292,84 +294,150 @@ contains
 
     subroutine     print_character_table(grp)
         !
+        use am_atom, only : l2spdf
+        !
         implicit none
         !
         class(am_class_group), intent(in) :: grp
-        integer :: nreps
-        complex(dp) , allocatable :: chi_rep(:,:)
-        character(7), allocatable :: rep_label(:)
-        !   
+        type(am_class_chartab_printer) :: printer
+        character(:), allocatable :: rep_label(:)
+        integer :: i,j
+        !
+        ! print character table
+        write(*,'(a,a)') flare, 'character table'
+        ! initilize table
+        call printer%printer_initialize()
+        ! print header
+        call printer%printer_print_chartab_header(class_nelements=grp%cc%nelements,class_member=grp%cc%member,ps_id=grp%ps_id)
+        ! print irrep characters (character table)
+        do i = 1, grp%ct%nirreps
+            write(*,'(5x,i2,a8)',advance='no') i, grp%ct%irrep_label(i)
+            do j = 1, grp%cc%nclasses
+                write(*,printer%fmts(3),advance='no') printer%printer_chi2symb(chi=grp%ct%chartab(i,j))
+            enddo
+            write(*,*)
+        enddo
+        call printer%printer_print_definitions()
+        ! ------------------------------------------------------------------------------------------
+        ! print irrep decompositions
+        write(*,'(a,a)') flare, 'decomposition of irrep products:'
+        ! allocate space for reduction coefficient
+        call print_product_decomp(chartab=grp%ct%chartab,class_nelements=grp%cc%nelements,&
+            irrep_label=grp%ct%irrep_label,rep_label=grp%ct%irrep_label,chi=grp%ct%chartab)
+        ! print group-specific things
         select type (grp)
-        class is (am_class_point_group) 
-            nreps = 17
-            allocate(chi_rep(nreps,grp%cc%nclasses))
-            allocate(rep_label(nreps))
-            ! representation based on basis functions
-            rep_label(1) = 'rep'
-            chi_rep(1,:) = get_rep_characters(   sym=grp%seitz_frac(1:3,1:3,:), class_member=grp%cc%member)
-            ! representation based on s orbitals
-            rep_label(2) = 's'
-            chi_rep(2,:) = get_orb_characters(l=0, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
-            ! representation based on p orbitals
-            rep_label(3) = 'p'
-            chi_rep(3,:) = get_orb_characters(l=1, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
-            ! representation based on d orbitals
-            rep_label(4) = 'd'
-            chi_rep(4,:) = get_orb_characters(l=2, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
-            ! representation based on f orbitals
-            rep_label(5) = 'f'
-            chi_rep(5,:) = get_orb_characters(l=3, R=grp%seitz_cart(1:3,1:3,:), class_member=grp%cc%member)
-            ! orbital products involving s orbitals
-            rep_label(6) = 's * s'
-            chi_rep(6,:) = chi_rep(2,:) * chi_rep(2,:)
-            rep_label(7) = 's * p'
-            chi_rep(7,:) = chi_rep(2,:) * chi_rep(3,:)
-            rep_label(8) = 's * d'
-            chi_rep(8,:) = chi_rep(2,:) * chi_rep(4,:)
-            rep_label(9) = 's * f'
-            chi_rep(9,:) = chi_rep(2,:) * chi_rep(5,:)
-            ! orbital products involving p orbitals
-            rep_label(10)= 'p * p'
-            chi_rep(10,:)= chi_rep(3,:) * chi_rep(3,:)
-            rep_label(11)= 'p * d'
-            chi_rep(11,:)= chi_rep(3,:) * chi_rep(4,:)
-            rep_label(12)= 'p * f'
-            chi_rep(12,:)= chi_rep(3,:) * chi_rep(5,:)
-            ! orbital products involving d orbitals
-            rep_label(13)= 'd * d'
-            chi_rep(13,:)= chi_rep(4,:) * chi_rep(4,:)
-            rep_label(14)= 'd * f'
-            chi_rep(14,:)= chi_rep(4,:) * chi_rep(5,:)
-            ! orbital products involving f orbitals
-            rep_label(15)= 'f * f'
-            chi_rep(15,:)= chi_rep(5,:) * chi_rep(5,:)
-            ! orbital products involving p orbital powers
-            rep_label(16)= 'p ^ 3'
-            chi_rep(16,:)= chi_rep(3,:) * chi_rep(3,:) * chi_rep(3,:)
-            rep_label(17)= 'p ^ 4'
-            chi_rep(17,:)= chi_rep(3,:) * chi_rep(3,:) * chi_rep(3,:) * chi_rep(3,:)
+        class is (am_class_point_group)
+            ! ------------------------------------------------------------------------------------------
+            ! initialize decomposition
+            write(*,'(a,a)') flare, 'decomposition of symmeterized irrep products:'
+            ! create rep label
+            if (allocated(rep_label)) deallocate(rep_label)
+            allocate(character(100) :: rep_label(grp%ct%nirreps))
+            do i = 1, grp%ct%nirreps
+                rep_label(i) = '['//trim(grp%ct%irrep_label(i))//' * '//trim(grp%ct%irrep_label(i))//']'
+            enddo
+            ! rep_label = trim_null(rep_label)
+            ! print decomposition
+            call print_rep_decomposition(chartab=grp%ct%chartab,class_nelements=grp%cc%nelements,&
+                irrep_label=grp%ct%irrep_label,rep_label=rep_label,&
+                chi=  get_chi_symmeterized_irrep(multab=grp%mt%multab,chartab=grp%ct%chartab,&
+                              class_id=grp%cc%id,class_member=grp%cc%member,flags='plus') )
+            ! ------------------------------------------------------------------------------------------
+            ! initialize decomposition
+            write(*,'(a,a)') flare, 'decomposition of antisymmeterized irrep products:'
+            ! create rep label
+            if (allocated(rep_label)) deallocate(rep_label)
+            allocate(character(100) :: rep_label(grp%ct%nirreps))
+            do i = 1, grp%ct%nirreps
+                rep_label(i) = '{'//trim(grp%ct%irrep_label(i))//' * '//trim(grp%ct%irrep_label(i))//'}'
+            enddo
+            ! rep_label = trim_null(rep_label)
+            ! print decomposition
+            call print_rep_decomposition(chartab=grp%ct%chartab,class_nelements=grp%cc%nelements,&
+                irrep_label=grp%ct%irrep_label,rep_label=rep_label,&
+                chi=  get_chi_symmeterized_irrep(multab=grp%mt%multab,chartab=grp%ct%chartab,&
+                              class_id=grp%cc%id,class_member=grp%cc%member,flags='minus') )
+            ! ------------------------------------------------------------------------------------------
+            ! initialize decomposition
+            write(*,'(a,a)') flare, 'decompositions of subduced wigner matrices (orbital):'
+            ! create rep label
+            if (allocated(rep_label)) deallocate(rep_label)
+            allocate(rep_label, source=['s','p','d','f'])
+            ! print decomposition
+            call print_product_decomp(chartab=grp%ct%chartab,class_nelements=grp%cc%nelements,&
+                irrep_label=grp%ct%irrep_label,rep_label=rep_label,&
+                chi=  get_chi_wigner(seitz_cart=grp%seitz_cart,class_member=grp%cc%member)  )
+            ! ------------------------------------------------------------------------------------------
+
+
+
+            ! get_chi_symmeterized_irrep(multab,chartab,class_id,class_member,flags)
+
+
+
+
+!             ! representation based on basis functions
+!             rep_label(1) = 'rep'
+!             chi_rep(1,:) = get_rep_characters(   sym=grp%seitz_frac(1:3,1:3,:), class_member=grp%cc%member)
+
+!             ! orbital products involving p orbitals
+!             rep_label(10)= 'p * p'
+!             chi_rep(10,:)= chi_rep(3,:) * chi_rep(3,:)
+!             rep_label(11)= 'p * d'
+!             chi_rep(11,:)= chi_rep(3,:) * chi_rep(4,:)
+!             rep_label(12)= 'p * f'
+!             chi_rep(12,:)= chi_rep(3,:) * chi_rep(5,:)
+!             ! orbital products involving d orbitals
+!             rep_label(13)= 'd * d'
+!             chi_rep(13,:)= chi_rep(4,:) * chi_rep(4,:)
+!             rep_label(14)= 'd * f'
+!             chi_rep(14,:)= chi_rep(4,:) * chi_rep(5,:)
+!             ! orbital products involving f orbitals
+!             rep_label(15)= 'f * f'
+!             chi_rep(15,:)= chi_rep(5,:) * chi_rep(5,:)
+!             ! orbital products involving p orbital powers
+!             rep_label(16)= 'p ^ 3'
+!             chi_rep(16,:)= chi_rep(3,:) * chi_rep(3,:) * chi_rep(3,:)
+!             rep_label(17)= 'p ^ 4'
+!             chi_rep(17,:)= chi_rep(3,:) * chi_rep(3,:) * chi_rep(3,:) * chi_rep(3,:)
         class is (am_class_space_group) 
             ! do nothing.
         class is (am_class_symrep_group)
-            nreps = 1
-            allocate(chi_rep(nreps,grp%cc%nclasses))
-            allocate(rep_label(nreps))
-            ! representation based on basis functions
-            rep_label(1) = 'rep'
-            chi_rep(1,:) = get_rep_characters(sym=grp%sym, class_member=grp%cc%member)
+!             nreps = 1
+!             allocate(chi_rep(nreps,grp%cc%nclasses))
+!             allocate(rep_label(nreps))
+!             ! representation based on basis functions
+!             rep_label = 'rep'
+!             chi_rep = get_rep_characters(sym=grp%sym, class_member=grp%cc%member)
         class default
             stop 'ERROR [print_character_table]: class unknown'
         end select
         !
-        if (allocated(chi_rep).and.allocated(rep_label)) then
-            call print_chartab(chartab=grp%ct%chartab, class_nelements=grp%cc%nelements, &
-                class_member=grp%cc%member, irrep_label=grp%ct%irrep_label, ps_id=grp%ps_id, chi_rep=chi_rep, rep_label=rep_label)
-        else
-            call print_chartab(chartab=grp%ct%chartab, class_nelements=grp%cc%nelements, &
-                class_member=grp%cc%member, irrep_label=grp%ct%irrep_label, ps_id=grp%ps_id)
-        endif
-        !
+
+
+
         contains
+
+        function       get_chi_wigner(seitz_cart,class_member) result(chi)
+            !
+            implicit none
+            !
+            real(dp), intent(in) :: seitz_cart(:,:,:)
+            integer , intent(in) :: class_member(:,:)
+            complex(dp),allocatable :: chi(:,:)
+            integer :: nclasses
+            ! initialize
+            nclasses = size(class_member,1)
+            allocate(chi(4,nclasses))
+            ! representation based on s orbitals
+            chi(1,:) = get_orb_characters(l=0, R=seitz_cart(1:3,1:3,:), class_member=class_member)
+            ! representation based on p orbitals
+            chi(2,:) = get_orb_characters(l=1, R=seitz_cart(1:3,1:3,:), class_member=class_member)
+            ! representation based on d orbitals
+            chi(3,:) = get_orb_characters(l=2, R=seitz_cart(1:3,1:3,:), class_member=class_member)
+            ! representation based on f orbitals
+            chi(4,:) = get_orb_characters(l=3, R=seitz_cart(1:3,1:3,:), class_member=class_member)
+        end function   get_chi_wigner
         function       get_orb_characters(l,R,class_member) result(orbchi)
             !
             implicit none
@@ -422,7 +490,149 @@ contains
             chi = chi * sign(1.0_dp,d)**(l)
             !
         end function   get_orbchi
+        function       get_chi_symmeterized_irrep(multab,chartab,class_id,class_member,flags) result(chi)
+            !
+            implicit none
+            !
+            integer    , intent(in) :: multab(:,:)
+            complex(dp), intent(in) :: chartab(:,:)
+            integer    , intent(in) :: class_id(:)
+            integer    , intent(in) :: class_member(:,:)
+            character(*),intent(in) :: flags
+            complex(dp),allocatable :: chi(:,:)
+            integer :: nirreps, nclasses
+            integer :: class_rep
+            integer :: i,j,ii
+            !
+            nirreps = size(chartab,1)
+            nclasses= size(chartab,2)
+            !
+            allocate(chi(nirreps,nclasses))
+            !
+            do j = 1, nirreps
+            do i = 1, nclasses
+                ! get class rep
+                class_rep = class_member(i,1)
+                ! get class of rep squared
+                ii = class_id(multab(class_rep,class_rep))
+                ! get antisymmetric character
+                if     (index(flags,'plus').ne.0) then
+                    ! symmetric
+                    chi(j,i) = 0.5_dp * (chartab(j,i)**2 + chartab(j,ii) )
+                elseif (index(flags,'minus').ne.0) then
+                    ! antisymmetric
+                    chi(j,i) = 0.5_dp * (chartab(j,i)**2 - chartab(j,ii) )
+                else 
+                    stop 'ERROR [get_chi_symmeterized_irrep]: unknown flag'
+                endif
+            enddo
+            enddo
+            !
+        end function   get_chi_symmeterized_irrep
+        subroutine     print_product_decomp(chartab,class_nelements,irrep_label,rep_label,chi)
+            !
+            implicit none
+            !
+            complex(dp) , intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
+            integer     , intent(in) :: class_nelements(:)
+            character(*), intent(in) :: irrep_label(:)
+            character(*), intent(in) :: rep_label(:)
+            complex(dp) , intent(in) :: chi(:,:)
+            integer :: i, j, k
+            integer :: nirreps
+            integer :: nclasses
+            integer :: nreps
+            character(:), allocatable :: str(:)
+            integer, allocatable :: beta(:,:,:)
+            integer :: maxlen
+            ! get dimensions
+            nirreps = size(chartab,1)
+            nclasses = nirreps
+            nreps = size(chi,1)
+            ! allocate space for string
+            allocate(character(150)::str(nreps))
+            ! allocate space for reduction cofficients
+            allocate(beta(nclasses,nreps,nreps))
+            ! initialize
+            beta = 0
+            ! get reduction coefficients
+            do i = 1, nreps
+            do j = i, nreps
+                beta(:,i,j) = get_reduction_coefficient(chartab=chartab,class_nelements=class_nelements,chi_rep=chi(i,:)*chi(j,:))
+            enddo
+            enddo
+            ! get string and begin printing
+            call disp_indent()
+            call disp(X=rep_label,title='*',style='underline',advance='no',fmt='10a')
+            do i = 1, nreps
+                do j = 1, nreps
+                    if (all(beta(:,i,j).eq.0)) then
+                        str(j) = '.'
+                    else
+                        str(j) = ''
+                        do k = 1, nirreps
+                        if (beta(k,i,j).ne.0) then
+                            str(j) = trim(str(j))//' '//trim(tostring(X=beta(k,i,j),fmt='SP,i5'))//trim(irrep_label(k))//'('//trim(tostring(k))//')'
+                        endif
+                        enddo
+                    endif
+                enddo
+                ! get max length
+                maxlen = len_trim(rep_label(i))
+                do j = 1, nreps
+                    if (len_trim(str(j)).gt.maxlen) maxlen = len_trim(str(j))
+                enddo
+                ! print column of table
+                call disp(X=trim_null(str(1:nreps)),title=trim(rep_label(i)),style='underline',advance='no',fmt='a'//tostring(maxlen))
+            enddo
+            ! write table
+            call disp(X=0,zeroas=' ',advance='yes')
+            !
+        end subroutine print_product_decomp
+        subroutine     print_rep_decomposition(chartab,class_nelements,irrep_label,rep_label,chi)
+            !
+            implicit none
+            !
+            complex(dp) , intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
+            integer     , intent(in) :: class_nelements(:)
+            character(*), intent(in) :: irrep_label(:)
+            character(*), intent(in) :: rep_label(:)
+            complex(dp) , intent(in) :: chi(:,:)
+            integer :: i, j, k
+            integer :: nirreps
+            integer :: nclasses
+            integer :: nreps
+            character(:), allocatable :: str(:)
+            integer, allocatable :: beta(:,:)
+            ! get dimensions
+            nirreps = size(chartab,1)
+            nclasses = nirreps
+            nreps = size(chi,1)
+            ! allocate space for string
+            allocate(character(150)::str(nreps))
+            ! allocate space for reduction cofficients
+            allocate(beta(nreps,nreps))
+            ! initialize
+            beta = 0
+            ! print rep decompositions
+            do i = 1, nreps
+                beta(:,i) = get_reduction_coefficient(chartab=chartab,class_nelements=class_nelements,chi_rep=chi(i,:))
+            enddo
+            ! print
+            do i = 1, nreps
+            if (any(beta(:,i).ne.0)) then
+                write(*,'(5x,a,a)',advance='no') trim(rep_label(i)), ' = '
+                do j = 1, nirreps
+                if (beta(j,i).ne.0) then
+                    write(*,'(a)',advance='no') trim(tostring(X=beta(j,i),fmt='SP,i5'))//'*'//trim(irrep_label(j))//'('//trim(tostring(j))//') '
+                endif
+                enddo
+                write(*,*)
+            endif
+            enddo
+        end subroutine print_rep_decomposition
     end subroutine print_character_table
+
 
     ! high level routines which operate on sg/pg
 
@@ -798,7 +1008,7 @@ contains
             call disp(spread(' ',1,2),orient='row',advance='no',trim='no') ! add some space
             call disp(X=pg%mt%multab,advance='yes',trim='yes')
             ! print character table
-            call print_title('Point group character table')
+            call print_title('Point group character properties')
             call pg%print_character_table()
         endif
         ! dump debugging

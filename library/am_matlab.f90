@@ -72,7 +72,7 @@ module am_matlab
     end interface ! unique_inds
 
     interface trim_null
-        module procedure i_trim_null, vz_trim_null, vd_trim_null
+        module procedure i_trim_null, vz_trim_null, vd_trim_null, vs_trim_null
     end interface ! trim_null
 
     interface issubset
@@ -1879,6 +1879,30 @@ module am_matlab
         !
     end function  vz_trim_null
 
+    pure function vs_trim_null(A) result(B)
+        !
+        implicit none
+        !
+        character(*), intent(in) :: A(:)
+        character(:),allocatable :: B(:)
+        integer :: m,j
+        integer :: maxlen
+        !
+        m = size(A)
+        !
+        maxlen = 0
+        do j = 1, m
+            if (len_trim(A(j)).gt.maxlen) maxlen = len_trim(A(j))
+        enddo
+        !
+        allocate(character(maxlen)::B(m))
+        !
+        do j = 1, m
+            B(j) = trim(A(j))
+        enddo
+        !
+    end function  vs_trim_null
+
     ! get vector subspace intersection 
 
     function      d_subspace_intersection(A,B) result(C)
@@ -3527,7 +3551,7 @@ module am_matlab
         integer, allocatable :: inds(:)
         integer :: i,j,k,n
         !
-        n = size(A)
+        n = size(A,2)
         !
         allocate(inds(n))
         inds = 0

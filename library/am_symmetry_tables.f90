@@ -41,7 +41,7 @@ module am_symmetry_tables
         integer    , allocatable :: rr(:,:,:)               ! regular representation matrices
     end type am_class_multiplication_table
 
-    type, private :: am_class_chartab_printer
+    type, public :: am_class_chartab_printer
         integer :: k
         ! complex to symbol
         complex(dp), allocatable :: s(:)
@@ -49,13 +49,15 @@ module am_symmetry_tables
         integer :: char_start
         ! print formats
         character(50) :: fmts(5)
-    contains
+        contains
         procedure :: printer_initialize
         procedure :: printer_print_chartab_header
         procedure :: printer_chi2symb
         procedure :: printer_print_bar
         procedure :: printer_print_definitions
     end type am_class_chartab_printer
+
+    private :: point_group_schoenflies
 
 contains
 
@@ -289,71 +291,213 @@ contains
 
     ! subgroup
 
-    function       get_cyclic_id(multab,order) result(cyclic_id)
+    function       point_group_schoenflies(ps_id) result(pg_code)
+        !>
+        !> Refs:
+        !>
+        !> Applied Group Theory: For Physicists and Chemists. Reissue edition.
+        !> Mineola, New York: Dover Publications, 2015. page 20.
+        !>
+        !> Casas, Ignasi, and Juan J. Pérez. “Modification to Flow Chart to
+        !> Determine Point Groups.” Journal of Chemical Education 69, no. 1
+        !> (January 1, 1992): 83. doi:10.1021/ed069p83.2.
+        !>
+        !> Breneman, G. L. “Crystallographic Symmetry Point Group Notation
+        !> Flow Chart.” Journal of Chemical Education 64, no. 3 (March 1, 1987):
+        !> 216. doi:10.1021/ed064p216.
+        !>
+        !> Adapted from VASP
+        !>
+        !>   pg_code --> point_group_name
+        !>     1 --> c_1       9 --> c_3      17 --> d_4      25 --> c_6v
+        !>     2 --> s_2      10 --> s_6      18 --> c_4v     26 --> d_3h
+        !>     3 --> c_2      11 --> d_3      19 --> d_2d     27 --> d_6h
+        !>     4 --> c_1h     12 --> c_3v     20 --> d_4h     28 --> t
+        !>     5 --> c_2h     13 --> d_3d     21 --> c_6      29 --> t_h
+        !>     6 --> d_2      14 --> c_4      22 --> c_3h     30 --> o
+        !>     7 --> c_2v     15 --> s_4      23 --> c_6h     31 --> t_d
+        !>     8 --> d_2h     16 --> c_4h     24 --> d_6      32 --> o_h
+        !>
+        implicit none
+        !
+        integer, intent(in) :: ps_id(:)
+        integer :: nsyms
+        integer :: ni, nc2, nc3, nc4, nc6, ns2, ns6, ns4, ns3, ne
+        integer :: pg_code
+        !
+        pg_code = 0
+        !
+        ! trivial cases first
+        !
+        nsyms = size(ps_id)
+        if     (nsyms .eq. 1 ) then; pg_code=1;  return
+        elseif (nsyms .eq. 48) then; pg_code=32; return
+        elseif (nsyms .eq. 16) then; pg_code=20; return
+        elseif (nsyms .eq. 3 ) then; pg_code=9;  return
+        endif
+        !
+        ni=0; nc2=0; nc3=0; nc4=0; nc6=0; ns2=0; ns6=0; ns4=0; ns3=0
+        ne  = count(ps_id.eq.1)  ! 'e' identity
+        nc2 = count(ps_id.eq.2)  ! 'c_2'
+        nc3 = count(ps_id.eq.3)  ! 'c_3'
+        nc4 = count(ps_id.eq.4)  ! 'c_4'
+        nc6 = count(ps_id.eq.5)  ! 'c_6'
+        ni  = count(ps_id.eq.6)  ! 'i' inversion
+        ns2 = count(ps_id.eq.7)  ! 's_2'
+        ns6 = count(ps_id.eq.8)  ! 's_6'
+        ns4 = count(ps_id.eq.9)  ! 's_4'
+        ns3 = count(ps_id.eq.10) ! 's_3'
+        !
+        if (ni.gt.1) then
+            call am_print('ERROR','More than one inversion operator found.',flags='E')
+            stop
+        endif
+        !
+        if (ne.gt.1) then
+            call am_print('ERROR','More than one identity operator found.',flags='E')
+        elseif (ne.eq.0) then
+            call am_print('ERROR','No identity operator found.',flags='E')
+            stop
+        endif
+        !
+        if (nsyms.eq.2)   then
+            if (ni.eq.1)  then; pg_code=2;  return; endif
+            if (nc2.eq.1) then; pg_code=3;  return; endif
+            if (ns2.eq.1) then; pg_code=4;  return; endif
+        endif
+        if (nsyms.eq.4)   then
+            if (ni.eq.1)  then; pg_code=5;  return; endif
+            if (nc2.eq.3) then; pg_code=6;  return; endif
+            if (ns2.eq.2) then; pg_code=7;  return; endif
+            if (nc4.eq.1) then; pg_code=14; return; endif
+            if (ns4.eq.2) then; pg_code=15; return; endif
+        endif
+        if (nsyms.eq.6)   then
+            if (ni.eq.1)  then; pg_code=10; return; endif
+            if (nc2.eq.3) then; pg_code=11; return; endif
+            if (ns2.eq.3) then; pg_code=12; return; endif
+            if (nc2.eq.1) then; pg_code=21; return; endif
+            if (ns2.eq.1) then; pg_code=22; return; endif
+        endif
+        if (nsyms.eq.8)  then
+            if (ns2.eq.3) then; pg_code=8;  return; endif
+            if (ns2.eq.1) then; pg_code=16; return; endif
+            if (ns2.eq.0) then; pg_code=17; return; endif
+            if (ns2.eq.4) then; pg_code=18; return; endif
+            if (ns2.eq.2) then; pg_code=19; return; endif
+        endif
+        if (nsyms.eq.12)  then
+            if (ns2.eq.3) then; pg_code=13; return; endif
+            if (ns2.eq.1) then; pg_code=23; return; endif
+            if (nc2.eq.7) then; pg_code=24; return; endif
+            if (ns2.eq.6) then; pg_code=25; return; endif
+            if (ns2.eq.4) then; pg_code=26; return; endif
+            if (nc3.eq.8) then; pg_code=28; return; endif
+        endif
+        if (nsyms.eq.24)  then
+            if (nc6.eq.2) then; pg_code=27; return; endif
+            if (ni.eq.1)  then; pg_code=29; return; endif
+            if (nc4.eq.6) then; pg_code=30; return; endif
+            if (ns4.eq.6) then; pg_code=31; return; endif
+            endif
+        ! if it makes it this far, it means nothing matches. return an error immediately. 
+        call am_print('ERROR','Unable to identify point group',flags='E')
+            write(*,'(" ... ",a)') 'number of symmetry operators'
+            write(*,'(5x,a5,i5)') 'e  ', ne
+            write(*,'(5x,a5,i5)') 'c_2', nc2
+            write(*,'(5x,a5,i5)') 'c_3', nc3
+            write(*,'(5x,a5,i5)') 'c_4', nc4
+            write(*,'(5x,a5,i5)') 'c_6', nc6
+            write(*,'(5x,a5,i5)') 'i  ', ni
+            write(*,'(5x,a5,i5)') 's_2', ns2
+            write(*,'(5x,a5,i5)') 's_6', ns6
+            write(*,'(5x,a5,i5)') 's_4', ns4
+            write(*,'(5x,a5,i5)') 's_3', ns3
+            stop
+    end function   point_group_schoenflies
+
+    function       get_cstruct(multab) result(cstruct)
         !
         implicit none
         !
         integer, intent(in) :: multab(:,:)
-        integer, intent(in) :: order(:)
-        integer,allocatable :: cyclic_id(:)
-        integer :: nsyms
+        logical,allocatable :: cstruct(:,:)
+        integer :: power
         integer :: i, j, k
+        integer :: nsyms
         !
-        nsyms = size(multab,1)
-        allocate(cyclic_id(nsyms))
-        cyclic_id = 0
+        nsyms = size(multab,2)
         !
-        k=0
+        allocate(cstruct(nsyms,nsyms))
+        cstruct = .false.
+        !
         do i = 1, nsyms
-        if (cyclic_id(i).eq.0) then
-            k = k + 1
-            do j = 1, order(i)
-                cyclic_id( multab(i,j) ) = k
+            power = 1
+            ! apply operation until identity (1) is returned
+            do j = 1, 100
+                power = multab(power,i)
+                cstruct(power,i) = .true.
+                if (power.eq.1) then
+                    exit
+                endif
             enddo
-        endif
         enddo
         !
-    end function   get_cyclic_id
+    end function   get_cstruct
 
-!     function       get_subgroup_member(cylic_id) result(subgroup_member)
+!     function       get_subgroup_member(cstruct,ps_id) result(subgroup_member)
 !         !
 !         implicit none
 !         !
-!         integer, intent(in) :: cyclic_id(:)
+!         logical, intent(in) :: cstruct(:,:)
+!         integer, intent(in) :: ps_id(:)
+!         integer,allocatable :: subgroup_member(:,:)
+!         integer,allocatable :: pg_id(:)
 !         logical,allocatable :: mask(:,:)
-!         integer :: ncyclics
-!         integer :: k
+!         logical,allocatable :: mask_x2(:,:)
+!         integer,allocatable :: inds(:)
+!         integer :: ncyclics, ncyclics_x2, nsyms
+!         integer :: k,i,j
 !         !
-!         nsyms    = size(cyclic_id)
-!         ncyclics = maxval(cyclic_id)
+!         ! initialize mask
+!         mask = unique(cstruct)
+!         ! get number of symmerties
+!         nsyms = size(mask,1)
+!         ! initialize loop
+!         ncyclics_x2 = size(mask,2)
+!         ! do loop
+!         do
+!             ! st cyclic 
+!             ncyclics = ncyclics_x2
+!             ! need to figure out a better way of doing this without reallocating...
+!             if (allocated(mask_x2)) deallocate(mask_x2)
+!             allocate(mask_x2(nsyms,ncyclics**2))
+!             writE(*,*) shape(mask_x2)
+!             ! construct mask_x2
+!             k=0
+!             do i = 1, ncyclics
+!             do j = 1, ncyclics
+!                 k=k+1
+!                 mask_x2(:,k) = mask(:,i) .or. mask(:,j)
+!             enddo
+!             enddo
+!             ! update mask
+!             mask = unique(mask_x2)
+!             ! update number of cycle structures
+!             ncyclics_x2 = size(mask,2)
+!             ! check if number of subgroups did not change
+!             if (ncyclics.eq.ncyclics_x2) then
+!                 ! if same number of subgroups since last iteration: done
+!                 exit
+!             endif
+!         enddo
 !         !
-!         mask = id_mask(cyclic_id)
-!         !
-!         allocate(mask(nsyms))
-!         !
-!         k=0
+!         allocate(subgroup_member(ncyclics,nsyms))
+!         subgroup_member = 0
 !         do i = 1, ncyclics
-!         do j = 1, ncyclics
-!             k=k+1;
-!             mask(:,k) = mask(:,i) .or. mask(:,j)
+!             inds = selector(mask(:,i))
+!             subgroup_member(i,1:size(inds)) = nint(sort(real(inds,dp)))
 !         enddo
-!         enddo
-!         !
-!     contains
-!         function   direct_product(mask) result(C) 
-!             !
-!             implicit none
-!             !
-
-!         k=0
-!         do i = 1, ncyclics
-!         do j = 1, ncyclics
-!             k=k+1;
-!             mask(:,k) = mask(:,i) .or. mask(:,j)
-!         enddo
-!         enddo
-!         !
-!     end function
 !         !
 !     end function   get_subgroup_member
 
@@ -710,85 +854,6 @@ contains
             end function  find_class_containing_ps
     end function   get_muliken_label
 
-    subroutine     print_chartab(chartab,class_nelements,class_member,irrep_label,ps_id,chi_rep,rep_label)
-        !
-        implicit none
-        !
-        complex(dp) , intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
-        integer     , intent(in) :: class_nelements(:)
-        integer     , intent(in) :: class_member(:,:)
-        character(*), intent(in) :: irrep_label(:)
-        integer     , intent(in) :: ps_id(:)
-        complex(dp) , intent(in), optional :: chi_rep(:,:)
-        character(*), intent(in), optional :: rep_label(:)
-        type(am_class_chartab_printer) :: printer
-        integer :: i, j
-        integer :: nirreps
-        integer :: nclasses
-         ! rep to irrep decompostion (used only if chi_rep nd rep_label are present)
-        integer :: nreps
-        integer, allocatable :: beta(:,:)
-        !
-        ! get dimensions
-        nirreps  = size(chartab,1)
-        nclasses = size(chartab,2)
-        !
-        call printer%printer_initialize()
-        !
-        call printer%printer_print_chartab_header(nclasses=nclasses,&
-            class_nelements=class_nelements,class_member=class_member,ps_id=ps_id)
-        !
-        ! print irrep characters (character table)
-        do i = 1, nirreps
-            write(*,'(5x,i2,a8)',advance='no') i, irrep_label(i)
-            do j = 1, nclasses
-                write(*,printer%fmts(3),advance='no') printer%printer_chi2symb(chi=chartab(i,j))
-            enddo
-            write(*,*)
-        enddo
-        ! print rep characters
-        if (present(chi_rep).and.present(rep_label)) then
-            ! check for error
-            if (size(chi_rep,2).ne.nclasses) stop 'ERROR [print_chartab]: dimensions of rep character does not match number of classes'
-            ! rep characters
-            call printer%printer_print_bar(nclasses=nclasses)
-            nreps = size(chi_rep,1)
-            ! allocate beta (reduction coefficients)
-            allocate(beta(nreps,nirreps))
-            ! print rep characters
-            do i = 1, nreps
-                write(*,'(5x,i2,a8)',advance='no') i, rep_label(i)
-                do j = 1, nclasses
-                    write(*,printer%fmts(3),advance='no') printer%printer_chi2symb(chi=chi_rep(i,j))
-                enddo
-                write(*,*)
-            enddo
-        endif
-        ! print rep decompositions
-        if (present(chi_rep).and.present(rep_label)) then
-            call printer%printer_print_bar(nclasses=nclasses)
-            write(*,'(5x,a)') 'Decompositions:'
-            do i = 1, nreps
-                beta(i,:) = get_reduction_coefficient(chartab=chartab,class_nelements=class_nelements,chi_rep=chi_rep(i,:))
-            enddo
-            ! print
-            do i = 1, nreps
-            if (any(beta(i,:).ne.0)) then
-                write(*,'(5x,a9,a)',advance='no') trim(rep_label(i)), ' = '
-                do j = 1, nirreps
-                if (beta(i,j).ne.0) then
-                    write(*,'(a)',advance='no') trim(int2char(beta(i,j),'SP'))//'*'//trim(irrep_label(j))//'('//trim(int2char(j))//') '
-                endif
-                enddo
-                write(*,*)
-            endif
-            enddo
-        endif
-        ! print definitions
-        call printer%printer_print_definitions()
-        !
-    end subroutine print_chartab
-
 !     function      get_aux_reduction_matrix(chartab,)
 !         !
 !         ! matlab: ( c_4v.ct.chartab .* spread(c_4v.cc.nelements,1,c_4v.ct.nirreps))'/c_4v.nsyms
@@ -826,20 +891,20 @@ contains
         enddo
     end function   get_reduction_coefficient
 
-    function       get_chi_subduced(supergroup_chartab,supergroup_class_id,supergroup_id) result(chi_subduced)
-        !
-        ! matlab:
-        ! o_h.ct.chartab(:,unique(o_h.cc.id(c_4v.supergroup_id)))
-        implicit none
-        !
-        complex(dp), intent(in) :: supergroup_chartab(:,:)
-        integer    , intent(in) :: supergroup_class_id(:)
-        integer    , intent(in) :: supergroup_id(:)
-        complex(dp),allocatable :: chi_subduced(:,:)
-        !
-        allocate(chi_subduced,source=supergroup_chartab(:,unique(supergroup_class_id(supergroup_id))))
-        !
-    end function   get_chi_subduced
+!     function       get_chi_subduced(supergroup_chartab,supergroup_class_id,supergroup_id) result(chi_subduced)
+!         !
+!         ! matlab:
+!         ! o_h.ct.chartab(:,unique(o_h.cc.id(c_4v.supergroup_id)))
+!         implicit none
+!         !
+!         complex(dp), intent(in) :: supergroup_chartab(:,:)
+!         integer    , intent(in) :: supergroup_class_id(:)
+!         integer    , intent(in) :: supergroup_id(:)
+!         complex(dp),allocatable :: chi_subduced(:,:)
+!         !
+!         allocate(chi_subduced,source=supergroup_chartab(:,unique(supergroup_class_id(supergroup_id))))
+!         !
+!     end function   get_chi_subduced
 
     function       get_irrep_dimension(chartab,class_nelements,class_member,ps_id) result(irrep_dim)
         !
@@ -1266,8 +1331,6 @@ contains
 
 
 
-
-
 !     function       get_irrep_diag(sym,chartab,irrep_proj,irrep_dim,class_member) result(irrep_diag)
 !         !
 !         implicit none
@@ -1535,16 +1598,18 @@ contains
         endif
     end subroutine printer_print_definitions
 
-    subroutine     printer_print_chartab_header(printer,nclasses,class_nelements,class_member,ps_id)
+    subroutine     printer_print_chartab_header(printer,class_nelements,class_member,ps_id)
         !
         implicit none
         !
         class(am_class_chartab_printer), intent(in) :: printer
-        integer     , intent(in) :: nclasses
         integer     , intent(in) :: class_nelements(:)
         integer     , intent(in) :: class_member(:,:)
         integer     , intent(in) :: ps_id(:)
+        integer:: nclasses
         integer :: i
+        !
+        nclasses = size(class_nelements)
         !
         ! start printing
         write(*,printer%fmts(2),advance='no') 'class'

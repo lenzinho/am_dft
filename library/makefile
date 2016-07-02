@@ -36,10 +36,12 @@ all: $(LIBS)
 	@echo > /dev/null
 
 $(LIBS): $(OBJS)
+	touch libam.a
 	rm libam.a
 	ar rcv libam.a $(OBJS)
 	ranlib libam.a
 	rm *.i90
+	
 
 clean:
 	rm -f $(OBJS) *.mod *.o *.i90
