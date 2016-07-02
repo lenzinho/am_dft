@@ -31,8 +31,6 @@ module am_dispersion
         procedure :: write_bandcharacter ! requires load_eigenval or load_procar
     end type am_class_dispersion_vasp
 
-
-
 contains
 
     subroutine     load(dr,opts,flags)
@@ -111,32 +109,32 @@ contains
         class(am_class_unit_cell)      , intent(in) :: uc
         type(am_class_options)         , intent(in) :: opts
         real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
+        character(:), allocatable :: fname
         real(dp) :: k1(3) ! point for kdiff
         real(dp) :: k2(3) ! point for kdiff
         real(dp) :: kdiff ! for dispersion plot
         integer :: fid
         integer :: i, j, l, m, n ! loop variables
         !
-        if (opts%verbosity.ge.1) call print_title('Writing bandcharacter file')
+        if (opts%verbosity.ge.1) call print_title('Bandcharacter output')
         !
+        allocate(fname,source='outfile.bandcharacter')
+        write(*,'(a,a)') flare, 'file = '//trim(fname)
         !
         ! generate voronoi points (cartesian), used to reduce points to wigner-seitz brillouin zone
         grid_points = matmul( inv(uc%bas) , meshgrid([-1:1],[-1:1],[-1:1]) )
         !
         fid = 1
-        open(unit=fid,file="outfile.bandcharacter",status="replace",action='write')
-            !
+        open(unit=fid,file=trim(fname),status="replace",action='write')
             ! STDOUT
-            !
-            if (opts%verbosity.ge.1) call am_print('kpoints',  bz%nkpts,flare)
-            if (opts%verbosity.ge.1) call am_print('bands',    dr%nbands ,flare)
-            if (opts%verbosity.ge.1) call am_print('ions',     dr%nions ,flare)
-            if (opts%verbosity.ge.1) call am_print('orbitals', dr%norbitals ,flare)
-            if (opts%verbosity.ge.1) call am_print('spins',    dr%nspins ,flare)
-            if (opts%verbosity.ge.1) call am_print('columns',  dr%nspins*dr%norbitals ,flare)
+            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'kpoints' //tostring(bz%nkpts)
+            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'bands'   //tostring(dr%nbands)
+            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'ions'    //tostring(dr%nions)
+            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'orbitals'//tostring(dr%norbitals)
+            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'spins'   //tostring(dr%nspins)
+            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'columns' //tostring(dr%nspins*dr%norbitals)
             !
             ! HEADER (first three lines)
-            !
             write(fid,'(a)')  'Character-projected energy dispersion'
             write(fid,'(100a13)',advance='no') ' ', flare,' ','ions'
             do m = 1, dr%nions

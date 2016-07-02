@@ -16,6 +16,8 @@ module am_brillouin_zone
     ! BZ (primitive reciprocal-lattice cell defined with x,y,z (fractional) between [0,1).)
 
     type, public :: am_class_bz
+        real(dp) :: bas(3,3)
+        real(dp) :: recbas(3,3)
         integer :: nkpts                        ! nkpts number of kpoints
         real(dp), allocatable :: kpt_cart(:,: ) ! kpt(3,nkpts) kpoint
         real(dp), allocatable :: kpt_frac(:,:)  ! kpt(3,nkpts) kpoint - notice that vasp IBZKPT is in (reciprocal) fractional units.
@@ -23,9 +25,10 @@ module am_brillouin_zone
         integer , allocatable :: fbz_id(:)
         integer , allocatable :: ibz_id(:)
     contains
-        procedure :: create_brillouin_zone
+        procedure :: create_bz
         procedure :: load
         procedure :: write_kpoints
+        procedure :: debug_dump => debug_dump_bz
         ! add sort procedure
     end type am_class_bz
 
@@ -50,7 +53,25 @@ contains
 
     ! create
 
-    subroutine     create_brillouin_zone(bz,kpt_frac,kpt_cart,bas,recbas,prec)
+    subroutine     debug_dump_bz(bz,fname)
+        !
+        implicit none
+        !
+        class(am_class_bz), intent(in) :: bz
+        character(*), intent(in) :: fname
+        !
+                                                call dump(A=bz%nkpts             ,fname=trim(fname)//'.nkpts'            ) 
+                                                call dump(A=bz%bas               ,fname=trim(fname)//'.bas'              )
+                                                call dump(A=bz%recbas            ,fname=trim(fname)//'.recbas'           )
+        if (allocated(bz%kpt_cart            )) call dump(A=bz%kpt_cart          ,fname=trim(fname)//'.kpt_cart'         )
+        if (allocated(bz%kpt_frac            )) call dump(A=bz%kpt_frac          ,fname=trim(fname)//'.kpt_frac'         )
+        if (allocated(bz%w                   )) call dump(A=bz%w                 ,fname=trim(fname)//'.w'                )
+        if (allocated(bz%fbz_id              )) call dump(A=bz%fbz_id            ,fname=trim(fname)//'.fbz_id'           )
+        if (allocated(bz%ibz_id              )) call dump(A=bz%ibz_id            ,fname=trim(fname)//'.ibz_id'           )
+        !
+    end subroutine debug_dump_bz
+
+    subroutine     create_bz(bz,kpt_frac,kpt_cart,bas,prec)
         !
         ! kpt_frac points are shifted to be between [0,1)
         ! kpt_cart        are shifted to be in the wigner-seitz bz
@@ -60,13 +81,13 @@ contains
         class(am_class_bz), intent(out) :: bz
         real(dp), intent(in), optional :: kpt_frac(:,:)
         real(dp), intent(in), optional :: kpt_cart(:,:)
-        real(dp), intent(in) :: recbas(3,3)
         real(dp), intent(in) :: bas(3,3)
         real(dp), intent(in) :: prec
         real(dp) :: grid_points(3,27) ! voronoi points
         integer  :: i
         !
-        !
+        bz%bas = bas
+        bz%recbas= inv(bas)
         ! copy kpoint coordiantes [cart.] and [rec. frac.]
         if (present(kpt_frac)) then
             !
@@ -75,7 +96,7 @@ contains
             allocate(bz%kpt_frac(3,bz%nkpts))
             !
             bz%kpt_frac = kpt_frac
-            bz%kpt_cart    = matmul(recbas,kpt_frac)  
+            bz%kpt_cart = matmul(bz%recbas,kpt_frac)
             !
         elseif (present(kpt_cart)) then
             !
@@ -83,20 +104,25 @@ contains
             allocate(bz%kpt_cart(3,bz%nkpts))
             allocate(bz%kpt_frac(3,bz%nkpts))
             !
-            bz%kpt_frac = matmul(bas,kpt_cart)
-            bz%kpt_cart    = kpt_cart
+            bz%kpt_frac = matmul(bz%bas,kpt_cart)
+            bz%kpt_cart = kpt_cart
         else
             stop 'Either kpt_cart or kpt_frac must be present'
         endif
         ! generate voronoi points [cart]
         grid_points = meshgrid([-1:1],[-1:1],[-1:1])
-        grid_points = matmul(recbas,grid_points)
+        grid_points = matmul(bz%recbas,grid_points)
         ! make sure kpt_cart is in wigner-seitz cell 
         do i = 1, bz%nkpts
         bz%kpt_cart(:,i) = reduce_kpoint_to_fbz(kpoint_cart=bz%kpt_cart(:,i), grid_points=grid_points)
         enddo
         ! make sure kpt_frac is betwen [0,1)
         bz%kpt_frac = modulo(bz%kpt_frac+prec,1.0_dp)-prec
+        ! debug dump
+        if (debug) then
+        call execute_command_line ('mkdir -p '//trim(debug_dir)//'/bz')
+        call bz%debug_dump(fname=               trim(debug_dir)//'/bz/outfile.bz')
+        endif
         !
         contains
         function       reduce_kpoint_to_fbz(kpoint_cart,grid_points) result(kpoint_fbz_cart)
@@ -129,7 +155,7 @@ contains
             end do
             !
         end function   reduce_kpoint_to_fbz
-    end subroutine create_brillouin_zone
+    end subroutine create_bz
 
     subroutine     load(bz,uc,pg,opts,flags)
         !
@@ -159,7 +185,7 @@ contains
             stop 'Unknown flag. Nothing read.'
         endif
         !
-        call bz%create_brillouin_zone(kpt_frac=kpt, recbas=uc%recbas, bas=uc%bas, prec=opts%prec)
+        call bz%create_bz(kpt_frac=kpt, bas=uc%bas, prec=opts%prec)
         !
         ! call bz%get_weights(pg=pg, opts=opts)
         ! if (.not.isequal(bz%w,w)) stop 'Computed weights do not match vasp input'
@@ -276,7 +302,7 @@ contains
 !         !
 !         if (opts%verbosity.ge.1) call print_title('Generating Monkhorst-Pack mesh on FBZ')
 !         ! get k-points
-!         call fbz%create_brillouin_zone(kpt_frac=generate_monkhorst_pack_mesh(n=n,s=s), recbas=uc%recbas, bas=uc%bas, prec=opts%prec)
+!         call fbz%create_bz(kpt_frac=generate_monkhorst_pack_mesh(n=n,s=s), recbas=uc%recbas, bas=uc%bas, prec=opts%prec)
 !         ! get weights
 !         call fbz%get_weights()
 !         ! print stdout

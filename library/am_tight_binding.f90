@@ -54,7 +54,7 @@ module am_tight_binding
 
     type, public, extends(am_class_dispersion) :: am_class_dispersion_tb
         complex(dp), allocatable :: C(:,:,:) ! tight binding coefficients
-    contains
+        contains
         procedure :: get_dispersion
     end type am_class_dispersion_tb
 
@@ -265,7 +265,7 @@ contains
                     ! rotate matrix elements as needed to get from the tau_frac(:,1) => tau_frac(:,x)
                     Hsub = matmul(matmul(transpose(Dm), Hsub), Dn)
                     ! multiply exponential factor from Bloch sum
-                    Hsub = Hsub * exp(-itwopi*dot_product(pp%shell(k)%tau_cart(1:3,p), kpt)) ! kpt [cart]
+                    Hsub = Hsub * exp(-itwopi*dot_product(pp%shell(k)%tau_cart(1:3,p), kpt)) ! kpt [rec. cart.]
                     ! this pair's contribution to the Hamiltonian
                     H(S(m):E(m), S(n):E(n)) = H(S(m):E(m), S(n):E(n)) + Hsub
                 enddo
@@ -654,38 +654,39 @@ contains
         call execute_command_line( 'mkdir -p '//trim(outfile_dir_tb)//'/matlab')
         ! export file
         open(unit=fid,file=trim(outfile_dir_tb)//'/matlab/'//trim(H_fnc_name)//'.m',status='replace',action='write')
-            write(fid,'(a,a,a)') 'function [H] = ', trim(H_fnc_name), '(pg,v,kpt)'
+            write(fid,'(a,a,a)') 'function [H] = ', trim(H_fnc_name), '(pg,v,kpt,shell)'
             write(fid,'(a)') 'i2pi = 2*sqrt(-1)*pi;'
             write(fid,'(a)') 'H(1:'//tostring(E(end))//',1:'//tostring(E(end))//') = 0;'
             if (index(flags,'symb').ne.0) write(fid,'(a)') 'H = sym(H);'
                 ! construct Hamiltonian
                 do l = 1, ip%nshells
-                do k = 1, pp%nshells
-                if (abs(pp%ip_id(k)).eq.l) then
-                    write(fid,'(a)') '% irreducible shell '//tostring(l)
-                    ! compute bloch sum by loop over atoms in shell
-                    do p = 1, pp%shell(k)%natoms
-                        ! determine how to write stuff
-                        m = pp%shell(k)%m
-                        n = pp%shell(k)%n
-                        str_H  =      'H('//tostring(S(m))//':'//tostring(E(m))//','//tostring(S(n))//':'//tostring(E(n))//')'
-                        str_Dm = 'pg.sym('//tostring(S(m))//':'//tostring(E(m))//','//tostring(S(m))//':'//tostring(E(m))//','//tostring(pp%shell(k)%pg_id(p))//')'
-                        str_Dn = 'pg.sym('//tostring(S(n))//':'//tostring(E(n))//','//tostring(S(n))//':'//tostring(E(n))//','//tostring(pp%shell(k)%pg_id(p))//')'
-                        if     (index(flags,'cart').ne.0) then
-                            str_tau= '['//tostring(pp%shell(k)%tau_cart(1:3,p),fmt='SP,f10.5')//']'
-                        elseif (index(flags,'frac').ne.0) then
-                            str_tau= '['//tostring(pp%shell(k)%tau_frac(1:3,p),fmt='SP,f10.5')//']'
-                        endif
-                        str_Vab= trim(V_fnc_name)//tostring(l)//'(v('//tostring(Sv(l))//':'//tostring(Ev(l))//'))'
-                        if (pp%ip_id(k).lt.0) str_Vab=trim(str_Vab)//"'" ! adjoint
-                        ! write stuff
-                        write(fid,'(a)',advance='no') trim(str_H)       // ' = ' // trim(str_H)   // ' + '
-                        write(fid,'(a)',advance='no') trim(str_Dm)//"'" // ' * ' // trim(str_Vab) // ' * ' // trim(str_Dn)
-                        write(fid,'(a)',advance='no')     ' * exp(i2pi*dot(kpt,' // trim(str_tau) // '));'
-                        write(fid,*)
+                write(fid,'(a)') 'if any(shell=='//tostring(l)//')'
+                    do k = 1, pp%nshells
+                    if (abs(pp%ip_id(k)).eq.l) then
+                        ! compute bloch sum by loop over atoms in shell
+                        do p = 1, pp%shell(k)%natoms
+                            ! determine how to write stuff
+                            m = pp%shell(k)%m
+                            n = pp%shell(k)%n
+                            str_H  =      'H('//tostring(S(m))//':'//tostring(E(m))//','//tostring(S(n))//':'//tostring(E(n))//')'
+                            str_Dm = 'pg.sym('//tostring(S(m))//':'//tostring(E(m))//','//tostring(S(m))//':'//tostring(E(m))//','//tostring(pp%shell(k)%pg_id(p))//')'
+                            str_Dn = 'pg.sym('//tostring(S(n))//':'//tostring(E(n))//','//tostring(S(n))//':'//tostring(E(n))//','//tostring(pp%shell(k)%pg_id(p))//')'
+                            if     (index(flags,'cart').ne.0) then
+                                str_tau= '['//tostring(pp%shell(k)%tau_cart(1:3,p),fmt='SP,f10.5')//']'
+                            elseif (index(flags,'frac').ne.0) then
+                                str_tau= '['//tostring(pp%shell(k)%tau_frac(1:3,p),fmt='SP,f10.5')//']'
+                            endif
+                            str_Vab= trim(V_fnc_name)//tostring(l)//'(v('//tostring(Sv(l))//':'//tostring(Ev(l))//'))'
+                            if (pp%ip_id(k).lt.0) str_Vab=trim(str_Vab)//"'" ! adjoint
+                            ! write stuff
+                            write(fid,'(a)',advance='no') trim(str_H)       // ' = ' // trim(str_H)   // ' + '
+                            write(fid,'(a)',advance='no') trim(str_Dm)//"'" // ' * ' // trim(str_Vab) // ' * ' // trim(str_Dn)
+                            write(fid,'(a)',advance='no')     ' * exp(i2pi*dot(kpt,' // trim(str_tau) // '));'
+                            write(fid,*)
+                        enddo
+                    endif
                     enddo
-                endif
-                enddo
+                write(fid,'(a)') 'end'
                 enddo
             write(fid,'(a)') 'end'
             ! export symmetry relations for each irreducible pair (append to the same file)
@@ -988,7 +989,7 @@ contains
         !
         implicit none
         !
-        class(am_class_dispersion_tb), intent(out) :: dr
+        class(am_class_dispersion_tb),intent(out) :: dr
         type(am_class_tb_group)      , intent(in) :: tbpg ! point group in tight binding representation
         type(am_class_tight_binding) , intent(in) :: tb
         type(am_class_bz)            , intent(in) :: bz

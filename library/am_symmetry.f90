@@ -29,7 +29,7 @@ module am_symmetry
         procedure :: get_conjugacy_classes
         procedure :: get_character_table
         procedure :: print_character_table
-        procedure :: debug_dump
+        procedure :: debug_dump => debug_dump_grp
     end type am_class_group
 
     type, public, extends(am_class_group)       :: am_class_symrep_group
@@ -161,7 +161,7 @@ contains
         end function sort_nz
     end subroutine sort_symmetries
 
-    subroutine     debug_dump(grp,fname)
+    subroutine     debug_dump_grp(grp,fname)
         !
         implicit none
         !
@@ -201,7 +201,7 @@ contains
         class default
             stop 'ERROR [debug_dump]: invalid group class'
         end select
-    end subroutine debug_dump
+    end subroutine debug_dump_grp
 
     subroutine     get_multiplication_table(grp)
         !
@@ -270,7 +270,7 @@ contains
         if (.not.allocated(grp%sym))       stop 'ERROR [get_character_table]: sym is required' ! for seitz group, regular rep can be saved as grp%sym.
         if (.not.allocated(grp%cc%member)) stop 'ERROR [get_character_table]: conjugacy classes are required'
         ! set number of irreps
-        grp%ct%nirreps = grp%cc%nclasses
+        grp%ct%nirreps      = grp%cc%nclasses
         ! get character table (ps_id is required for sorting the irreps: proper before improper)
         grp%ct%chartab      = get_chartab(            multab=grp%mt%multab, class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
         ! get muliken labels for irreps
@@ -338,7 +338,7 @@ contains
             enddo
             ! rep_label = trim_null(rep_label)
             ! print decomposition
-            call print_rep_decomposition(chartab=grp%ct%chartab,class_nelements=grp%cc%nelements,&
+            call print_rep_decomp(chartab=grp%ct%chartab,class_nelements=grp%cc%nelements,&
                 irrep_label=grp%ct%irrep_label,rep_label=rep_label,&
                 chi=  get_chi_symmeterized_irrep(multab=grp%mt%multab,chartab=grp%ct%chartab,&
                               class_id=grp%cc%id,class_member=grp%cc%member,flags='plus') )
@@ -353,7 +353,7 @@ contains
             enddo
             ! rep_label = trim_null(rep_label)
             ! print decomposition
-            call print_rep_decomposition(chartab=grp%ct%chartab,class_nelements=grp%cc%nelements,&
+            call print_rep_decomp(chartab=grp%ct%chartab,class_nelements=grp%cc%nelements,&
                 irrep_label=grp%ct%irrep_label,rep_label=rep_label,&
                 chi=  get_chi_symmeterized_irrep(multab=grp%mt%multab,chartab=grp%ct%chartab,&
                               class_id=grp%cc%id,class_member=grp%cc%member,flags='minus') )
@@ -369,6 +369,59 @@ contains
                 chi=  get_chi_wigner(seitz_cart=grp%seitz_cart,class_member=grp%cc%member)  )
             ! ------------------------------------------------------------------------------------------
 
+            ! ADD VECTOR PRINT, RAMAN and IR selection rules.
+
+
+            ! Irreps Decompositions
+            ! Oh(m-3m)    A1g A1u A2g A2u Eu  Eg  T2u T2g T1u T1g
+            ! V   ·   ·   ·   ·   ·   ·   ·   ·   1   ·
+            ! [V2]    1   ·   ·   ·   ·   1   ·   1   ·   ·
+            ! [V3]    ·   ·   ·   1   ·   ·   1   ·   2   ·
+            ! [V4]    2   ·   ·   ·   ·   2   ·   2   ·   1
+            ! A   ·   ·   ·   ·   ·   ·   ·   ·   ·   1
+            ! [A2]    1   ·   ·   ·   ·   1   ·   1   ·   ·
+            ! [A3]    ·   ·   1   ·   ·   ·   ·   1   ·   2
+            ! [A4]    2   ·   ·   ·   ·   2   ·   2   ·   1
+            ! [V2]xV  ·   ·   ·   1   1   ·   2   ·   3   ·
+            ! [[V2]2] 3   ·   ·   ·   ·   3   ·   3   ·   1
+            ! {V2}    ·   ·   ·   ·   ·   ·   ·   ·   ·   1
+            ! {A2}    ·   ·   ·   ·   ·   ·   ·   ·   ·   1
+            ! {[V2]2} ·   ·   1   ·   ·   1   ·   2   ·   2
+
+            ! V ≡ the vector representation 
+            ! A ≡ the axial representation 
+
+
+            ! IR Selection Rules
+            ! IR  A1g A1u A2g A2u Eu  Eg  T2u T2g T1u T1g
+            ! A1g ·   ·   ·   ·   ·   ·   ·   ·   x   ·
+            ! A1u ·   ·   ·   ·   ·   ·   ·   ·   ·   x
+            ! A2g ·   ·   ·   ·   ·   ·   x   ·   ·   ·
+            ! A2u ·   ·   ·   ·   ·   ·   ·   x   ·   ·
+            ! Eu  ·   ·   ·   ·   ·   ·   ·   x   ·   x
+            ! Eg  ·   ·   ·   ·   ·   ·   x   ·   x   ·
+            ! T2u ·   ·   x   ·   ·   x   ·   x   ·   x
+            ! T2g ·   ·   ·   x   x   ·   x   ·   x   ·
+            ! T1u x   ·   ·   ·   ·   x   ·   x   ·   x
+            ! T1g ·   x   ·   ·   x   ·   x   ·   x   ·
+
+            ! [ Note: x means allowed ]
+
+
+            ! Raman Selection Rules
+            ! Raman   A1g A1u A2g A2u Eu  Eg  T2u T2g T1u T1g
+            ! A1g x   ·   ·   ·   ·   x   ·   x   ·   ·
+            ! A1u ·   x   ·   ·   x   ·   x   ·   ·   ·
+            ! A2g ·   ·   x   ·   ·   x   ·   ·   ·   x
+            ! A2u ·   ·   ·   x   x   ·   ·   ·   x   ·
+            ! Eu  ·   x   ·   x   x   ·   x   ·   x   ·
+            ! Eg  x   ·   x   ·   ·   x   ·   x   ·   x
+            ! T2u ·   x   ·   ·   x   ·   x   ·   x   ·
+            ! T2g x   ·   ·   ·   ·   x   ·   x   ·   x
+            ! T1u ·   ·   ·   x   x   ·   x   ·   x   ·
+            ! T1g ·   ·   x   ·   ·   x   ·   x   ·   x
+
+            ! [ Note: x means allowed ]
 
 
             ! get_chi_symmeterized_irrep(multab,chartab,class_id,class_member,flags)
@@ -417,7 +470,6 @@ contains
 
 
         contains
-
         function       get_chi_wigner(seitz_cart,class_member) result(chi)
             !
             implicit none
@@ -589,7 +641,7 @@ contains
             call disp(X=0,zeroas=' ',advance='yes')
             !
         end subroutine print_product_decomp
-        subroutine     print_rep_decomposition(chartab,class_nelements,irrep_label,rep_label,chi)
+        subroutine     print_rep_decomp(chartab,class_nelements,irrep_label,rep_label,chi)
             !
             implicit none
             !
@@ -630,7 +682,10 @@ contains
                 write(*,*)
             endif
             enddo
-        end subroutine print_rep_decomposition
+            if (all(beta.eq.0)) then
+                write(*,'(5x,a)') 'all reduction coefficients are zero'
+            endif
+        end subroutine print_rep_decomp
     end subroutine print_character_table
 
 

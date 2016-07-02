@@ -14,8 +14,6 @@ module am_shells
 
     private
 
-    public :: get_pair_cutoff
-
     type, public, extends(am_class_unit_cell) :: am_shell_cell
         real(dp):: center(3) ! center of shell [cart]
         integer :: i ! identifies irreducible atoms (center)
@@ -47,22 +45,7 @@ module am_shells
 
 contains
 
-	subroutine     get_pair_cutoff(uc,pair_cutoff,opts)
-		!
-		implicit none
-		!
-        type(am_class_unit_cell), intent(in) :: uc ! unit cell
-        real(dp)			    , intent(inout) :: pair_cutoff
-        type(am_class_options)  , intent(in) :: opts
-		!
-        ! set pair cutoff radius (smaller than half the smallest cell dimension, larger than the smallest distance between atoms)
-        pair_cutoff = minval([norm2(uc%bas(:,:),1)/real(2,dp), pair_cutoff]) - opts%prec
-        !
-    end subroutine get_pair_cutoff
-
-    subroutine     get_primitive(pp,pc,pg,pair_cutoff,uc,opts)
-        !
-        ! goal: get rid of uc in input here; do it all via pc.
+    subroutine     get_primitive(pp,pc,pg,pair_cutoff,opts)
         !
         use am_symmetry_tables
         !
@@ -71,7 +54,6 @@ contains
         class(am_class_prim_pair) , intent(inout) :: pp ! primitive pairs
         type(am_class_prim_cell)  , intent(in) :: pc ! primitive cell
         type(am_class_point_group), intent(in) :: pg ! point group
-        type(am_class_unit_cell)  , intent(in) :: uc ! unit cell
         type(am_class_options)    , intent(in) :: opts
         real(dp), intent(inout) :: pair_cutoff
         !
@@ -92,7 +74,7 @@ contains
         nshells=0
         do i = 1, pc%natoms
             ! create sphere
-            sphere = create_sphere(uc=uc, sphere_center=pc%tau_cart(:,i), pair_cutoff=pair_cutoff, opts=opts )
+            sphere = create_sphere(pc=pc, sphere_center=pc%tau_cart(:,i), pair_cutoff=pair_cutoff, opts=opts )
             ! get number of pairs
             nshells = nshells + maxval(identify_shells(sphere=sphere,pg=pg))
         enddo
@@ -104,7 +86,7 @@ contains
         k = 0 ! shell index
         do i = 1, pc%natoms
           	! create sphere containing atoms a maximum distance of a choosen atom (atoms are translated to as close to sphere center as possible)
-            sphere = create_sphere(uc=uc, sphere_center=pc%tau_cart(:,i), pair_cutoff=pair_cutoff, opts=opts )
+            sphere = create_sphere(pc=pc, sphere_center=pc%tau_cart(:,i), pair_cutoff=pair_cutoff, opts=opts )
             ! identify atoms in the whole sphere that can be mapped onto each other by point symmetry operations and return the id of the pair for each atom (including the center atom)
             shell_id = identify_shells(sphere=sphere,pg=pg)
             ! get number of pairs
@@ -164,7 +146,7 @@ contains
             write(*,'(5a,a,a)') flare, 'pair cutoff radius = ', tostring(pair_cutoff)
             ! write the number of shells each primitive cell atom hsa
             do i = 1, pc%natoms
-                D = matmul(matmul(inv(uc%bas),pc%bas),pc%tau_frac(:,i))
+                D = matmul(matmul(inv(pc%bas),pc%bas),pc%tau_frac(:,i))
                 write(*,'(" ... ",a," atom ",a," at "   ,a,",",a,",",a,  " (frac) has ",a," nearest-neighbor shells")') &
                     & 'primitive', trim(int2char(i)), (trim(dbl2char(D(j),4)),j=1,3), trim(int2char(nshells))
                 !
@@ -225,11 +207,11 @@ contains
         endif
         !
         contains
-        function       create_sphere(uc,sphere_center,pair_cutoff,opts) result(sphere)
+        function       create_sphere(pc,sphere_center,pair_cutoff,opts) result(sphere)
             !
             implicit none
             !
-            type(am_class_unit_cell), intent(in) :: uc
+            type(am_class_prim_cell), intent(in) :: pc
             type(am_class_options)  , intent(in) :: opts
             type(am_class_unit_cell) :: sphere
             real(dp), intent(in)  :: sphere_center(3)
@@ -245,10 +227,10 @@ contains
             ! set notalk option
             notalk = opts 
             notalk%verbosity = 0
-            ! create sphere instance based on a 2x2x2 supercell
-            bscfp     = 2.0_dp*eye(3)
+            ! create sphere instance based on a supercell
+            bscfp     = eye(3) * ceiling(2.0_dp*pair_cutoff/minval(norm2(pc%bas(:,:),1)))
             inv_bscfp = inv(bscfp)
-            call sphere%get_supercell(uc=uc, bscfp=bscfp, opts=notalk)
+            call sphere%get_supercell(uc=pc, bscfp=bscfp, opts=notalk)
             ! generate voronoi points [cart]
             grid_points = meshgrid([-1:1],[-1:1],[-1:1])
             grid_points = matmul(sphere%bas,grid_points)
@@ -263,7 +245,7 @@ contains
                 ! translate atoms to be as close to the origin as possible
                 sphere%tau_cart(:,i) = reduce_to_wigner_seitz(tau=sphere%tau_cart(:,i), grid_points=grid_points)
                 ! also apply same tranformations to [frac], shift to origin
-				sphere%tau_frac(:,i) = sphere%tau_frac(:,i) - matmul(matmul(inv_bscfp,uc%recbas),sphere_center)
+				sphere%tau_frac(:,i) = sphere%tau_frac(:,i) - matmul(matmul(inv_bscfp,pc%recbas),sphere_center)
 				! also apply translation to get [frac] in the range [0,1)
             	sphere%tau_frac(:,i) = modulo(sphere%tau_frac(:,i) + 0.5_dp + opts%prec, 1.0_dp) - opts%prec - 0.5_dp
                 ! take note of points within the predetermined pair cutoff radius [cart.]

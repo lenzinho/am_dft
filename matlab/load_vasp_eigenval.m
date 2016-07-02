@@ -1,6 +1,6 @@
-function [dr,bz] = load_vasp_eigenval()
-    fprintf('loading dispersion from eigenval \n');
-    fid=fopen('EIGENVAL');
+function [dr,bz] = load_vasp_eigenval(fname)
+    fprintf(' ... loading dispersion from: %s \n',fname);
+    fid=fopen(fname);
     % skip first five lines
     for i = 1:5
     fgetl(fid);

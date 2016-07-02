@@ -24,6 +24,7 @@ module am_constants
     character(100), parameter :: outfile_dir_tb  = trim(outfile_dir)//'/tb'
     character(100), parameter :: outfile_dir_sym = trim(outfile_dir)//'/sym'
     character(100), parameter :: outfile_dir_uc  = trim(outfile_dir)//'/uc'
+    character(100), parameter :: debug_dir       = './debug'
 
     ! color
 
