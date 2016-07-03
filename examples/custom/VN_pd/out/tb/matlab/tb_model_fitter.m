@@ -115,6 +115,12 @@ for i = 1:100
     end
 end
 %% generate plot
+band_skip = 1;
+% load xmin
+load VN_pd_optimized_tb_parameters.mat
+% load dumps
+dumpdir = '/Volumes/Lenzinho/MyLinux/calc.vasp.5.3.3/development/am_lib/examples/custom/VN_pd/out/tb/debug/tbpg';
+load_dumps
 % set shells
 shell_mask = [1,2,3,4,5];
 % set kpoint
@@ -139,7 +145,8 @@ k=0;
 for i = 1:bz.npaths
 for j = 1:bz.ndivs
     k=k+1;
-    H(:,:,k) = get_H_numeric_frac(tbpg, xmin, 3*bz.path(i).kpt_frac(:,j),shell_mask);
+%     H(:,:,k) = get_H_numeric_frac(tbpg, xmin, bz.path(i).kpt_frac(:,j),shell_mask);
+    H(:,:,k) = get_H_numeric_cart(tbpg, xmin, bz.path(i).kpt_cart(:,j),shell_mask);
     if (abs(norm(H(:,:,k)-H(:,:,k)'))>tiny) 
         fprintf('H is not hermitian\n')
         return
