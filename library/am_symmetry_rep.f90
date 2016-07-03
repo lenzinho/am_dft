@@ -34,8 +34,8 @@ module am_symmetry_rep
     end type am_class_flat_group
 
     type, public, extends(am_class_symrep_group) :: am_class_tb_group
-        integer, allocatable :: H_start(:)      ! Hstart(m) start of hamiltonian section corresponding to atom m
-        integer, allocatable :: H_end(:)        ! Hend(m)   end of hamiltonian section corresponding to atom m
+        integer, allocatable :: S(:) ! Hstart(m) start of hamiltonian section corresponding to atom m
+        integer, allocatable :: E(:) ! Hend(m)   end of hamiltonian section corresponding to atom m
         contains
         procedure :: get_tight_binding_point_group
     end type am_class_tb_group
@@ -68,12 +68,12 @@ module am_symmetry_rep
         ! get number of bases functions in representation (see below) ...
         tbpg%nbases = 0
         ! ... and also determine subsections of rotations in Hamiltonian basis corresponding to each atom
-        allocate(tbpg%H_start(pc%natoms))
-        allocate(tbpg%H_end(pc%natoms))
+        allocate(tbpg%S(pc%natoms))
+        allocate(tbpg%E(pc%natoms))
         do i = 1, pc%natoms
-            tbpg%H_start(i) = tbpg%nbases + 1
-            tbpg%nbases     = tbpg%nbases + ic%atom(pc%ic_id(i))%norbitals
-            tbpg%H_end(i)   = tbpg%nbases
+            tbpg%S(i)   = tbpg%nbases + 1
+            tbpg%nbases = tbpg%nbases + ic%atom(pc%ic_id(i))%norbitals
+            tbpg%E(i)   = tbpg%nbases
         enddo
         ! number of symmetries
         tbpg%nsyms = pg%nsyms
@@ -83,7 +83,8 @@ module am_symmetry_rep
         ! determine rotation in the hamiltonian basis
         ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
         do i = 1, pg%nsyms
-            tbpg%sym(:,:,i) = ps2tb_H(R_cart=pg%seitz_cart(1:3,1:3,i), pc=pc, ic=ic)
+            ! convert rotation R to symmetry representation in tight-binding basis (direct sum of wigner matrices)
+            tbpg%sym(:,:,i) = ps2D(S=tbpg%S, E=tbpg%E, R_cart=pg%seitz_cart(1:3,1:3,i), pc=pc, ic=ic)
         enddo
         ! check that identity is first
         if (.not.isequal(tbpg%sym(:,:,1),eye(tbpg%nbases))) stop 'ERROR [get_tight_binding_point_group]: Identity is not first.'
@@ -106,42 +107,34 @@ module am_symmetry_rep
         call dump(A=tbpg%sym,fname=trim(outfile_dir_tb)//'/outfile.tbpg.sym')
         ! dump debug files
         if (debug) then
-        call execute_command_line('mkdir -p '//trim(outfile_dir_tb)//'/debug/'//'tbpg')
-        call tbpg%debug_dump(fname=            trim(outfile_dir_tb)//'/debug/'//'tbpg'//'/outfile.tbpg')
+        call execute_command_line('mkdir -p '//trim(debug_dir)//'/tbpg')
+        call tbpg%debug_dump(fname=            trim(debug_dir)//'/tbpg'//'/outfile.tbpg')
         endif
         !
         contains
-        function       ps2tb_H(R_cart,pc,ic) result(H)
+        function       ps2D(S,E,R_cart,pc,ic) result(wigner_D)
             ! produces rotation which commutes with the entire Hamiltonian (useful building Hamiltonian and probably later for kpoints stuff too)
             implicit none
             !
+            integer , intent(in) :: S(:)
+            integer , intent(in) :: E(:)
             real(dp), intent(in) :: R_cart(3,3)
             type(am_class_prim_cell), intent(in) :: pc ! primitive cell
             type(am_class_irre_cell), intent(in) :: ic ! irreducible cell
-            real(dp), allocatable :: H(:,:)
-            integer , allocatable :: H_start(:), H_end(:)
-            integer :: Hdim ! hamiltonian dimensions
+            real(dp), allocatable :: wigner_D(:,:)
+            integer :: nbases
             integer :: i
-            !
-            ! allocate space for defining subsections of rotation in Hamiltonian basis
-            allocate(H_start(pc%natoms))
-            allocate(H_end(pc%natoms))
-            ! determine subsections of rotations in Hamiltonian basis corresponding to each atom
-            Hdim = 0
-            do i = 1, pc%natoms
-                H_start(i) = Hdim + 1
-                Hdim = Hdim + ic%atom(pc%ic_id(i))%norbitals
-                H_end(i) = Hdim
-            enddo
+            ! get hamil
+            nbases = maxval(E)
             ! allocate and initialize space for rotations in Hamiltonin bais
-            allocate(H(Hdim,Hdim))
-            H = 0.0_dp
+            allocate(wigner_D(nbases,nbases))
+            wigner_D = 0.0_dp
             ! construct rotation in the Hamiltonian basis
             do i = 1, pc%natoms
-                H(H_start(i):H_end(i), H_start(i):H_end(i)) = ps2tb(R_cart=R_cart, atom=ic%atom(pc%ic_id(i)) )
+                wigner_D(S(i):E(i), S(i):E(i)) = ps2tb(R_cart=R_cart, atom=ic%atom(pc%ic_id(i)) )
             enddo
             !
-        end function   ps2tb_H
+        end function   ps2D
     end subroutine get_tight_binding_point_group
 
     subroutine     get_flat_intrinsic_group(flat_ig,tens,atom_m,atom_n)
@@ -623,27 +616,27 @@ module am_symmetry_rep
         real(dp), intent(in) :: R_cart(3,3)
         type(am_class_atom), intent(in) :: atom
         real(dp), allocatable :: H(:,:)
-        integer , allocatable :: H_start(:), H_end(:)
+        integer , allocatable :: S(:), E(:)
         integer :: Hdim ! hamiltonian dimensions
         integer :: i
         !
         ! allocate space for defining subsections of the rotation in Hamiltonian basis
-        allocate(H_start(atom%nazimuthals))
-        allocate(H_end(atom%nazimuthals))
+        allocate(S(atom%nazimuthals))
+        allocate(E(atom%nazimuthals))
         ! determine subsections: 1 per primitive atom per azimuthal quantum number per magnetic number per spin
         ! ignoring spin contributions at this stage
         Hdim = 0
         do i = 1, atom%nazimuthals
-            H_start(i) = Hdim + 1
+            S(i) = Hdim + 1
             Hdim = Hdim + atom%azimuthal(i)*2+1
-            H_end(i) = Hdim
+            E(i) = Hdim
         enddo
         ! allocate and initialize space for rotations in Hamiltonin bais
         allocate(H(Hdim,Hdim))
         H = 0.0_dp
         ! construct rotation in the Hamiltonian basis
         do i = 1, atom%nazimuthals
-            H(H_start(i):H_end(i), H_start(i):H_end(i)) = rot2irrep(l=atom%azimuthal(i), R=R_cart)
+            H(S(i):E(i), S(i):E(i)) = rot2irrep(l=atom%azimuthal(i), R=R_cart)
         enddo
         !
     end function   ps2tb

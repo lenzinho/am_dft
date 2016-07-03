@@ -226,8 +226,8 @@ contains
             allocate(selector_shell_internal,source=[1:ip_nshells])
         endif
         ! allocate space for vectors demarking start and end of Hamiltonian subsection
-        allocate(S, source=tbpg%H_start)
-        allocate(E, source=tbpg%H_end)
+        allocate(S, source=tbpg%S)
+        allocate(E, source=tbpg%E)
         ! allocate workspace for H subsection (initialized later)
         allocate(Hsub_target(tbpg%nbases,tbpg%nbases))
         ! allocate workspace for H subsection (initialized later)
@@ -508,8 +508,8 @@ contains
         ! allocate space for vectors demarking start and end of Hamiltonian subsection
         allocate(Hsub_target(tbpg%nbases,tbpg%nbases))
         allocate(pg_target, source=tbpg%sym)
-        allocate(S, source=tbpg%H_start)
-        allocate(E, source=tbpg%H_end)
+        allocate(S, source=tbpg%S)
+        allocate(E, source=tbpg%E)
         !
         call tostring_set(sep=' ')
             ! create directory
@@ -559,8 +559,8 @@ contains
         type(am_class_prim_pair)     , intent(in) :: pp     ! primitive pairs
         type(am_class_irre_pair)     , intent(in) :: ip     ! irreducible pairs
         character(*)                 , intent(in) :: flags  ! symbolic/numerical cart/frac
-        integer, allocatable :: Sv(:) ! start and end if irreducible vector
-        integer, allocatable :: Ev(:) ! start and end if irreducible vector
+        integer, allocatable :: Sv(:) ! start and end of irreducible vector
+        integer, allocatable :: Ev(:) ! start and end of irreducible vector
         integer, allocatable :: S(:)  ! start and end of hamiltonian subsection
         integer, allocatable :: E(:)  ! start and end of hamiltonian subsection
         integer :: i,j,l,k,p,m,n,end,fid
@@ -613,9 +613,9 @@ contains
         !
         V_fnc_name = 'getV'
         ! create abbreviations
-        allocate(S, source=tbpg%H_start)
-        allocate(E, source=tbpg%H_end)
-        end = size(tbpg%H_end)
+        allocate(S, source=tbpg%S)
+        allocate(E, source=tbpg%E)
+        end = size(tbpg%E)
         ! allocate start and end vectors
         allocate(Sv(ip%nshells))
         allocate(Ev(ip%nshells))
@@ -692,7 +692,7 @@ contains
         !
         ! initialize optimizer
         ft%maxiter    = 10
-        ft%nbands     = maxval(tbpg%H_end)
+        ft%nbands     = maxval(tbpg%E)
         ft%nkpts      = bz%nkpts
         ft%nxs        = tb%nVs
         ft%skip_band  = opts%skip_band
@@ -703,6 +703,20 @@ contains
         ft%r = 0
         allocate(ft%x(ft%nxs))
         ft%x = 0
+
+        ! get array of parameters to fit
+        ! if the entire vector of irreducible matrix elements looks like:
+        ! [1 2 3 4 5 6 7 8 9 10]
+        ! with shell id's given by
+        ! [1 1 2 2 2 3 4 5 5 6]
+        ! and selector_shell = [1,2]
+        ! then this function returns the Vsk_inds
+        ! [1 2 3 4 5]
+!         allocate(mask(tb%nVs))
+!         mask = .false.
+!         do i = 1, size(selector_shell)
+!             mask = mask.or.(tb%V_ind(1,:).eq.selector_shell(i))
+!         enddo
         !
         if (debug) then
         write(*,'(a,a,a)') flare, 'irreducible matrix elements = '//tostring(ft%nxs)
