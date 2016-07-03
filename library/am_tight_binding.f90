@@ -53,7 +53,7 @@ module am_tight_binding
 
     type, public, extends(am_class_dispersion) :: am_class_dispersion_tb
         complex(dp), allocatable :: C(:,:,:) ! tight binding coefficients
-        contains
+    contains
         procedure :: get_dispersion
     end type am_class_dispersion_tb
 
@@ -682,7 +682,7 @@ contains
         class(am_class_tight_binding) , intent(inout) :: tb
         type(am_class_tb_group)       , intent(in) :: tbpg
         type(am_class_bz)             , intent(in) :: bz
-        type(am_class_dispersion_vasp), intent(in) :: dr
+        type(am_class_dispersion)     , intent(in) :: dr
         type(am_class_irre_pair)      , intent(in) :: ip
         type(am_class_prim_pair)      , intent(in) :: pp
         type(am_class_options)        , intent(in) :: opts
@@ -743,7 +743,7 @@ contains
             type(am_class_tight_binding)  , intent(inout) :: tb
             type(am_class_tb_group)       , intent(in) :: tbpg
             type(am_class_bz)             , intent(in) :: bz
-            type(am_class_dispersion_vasp), intent(in) :: dr
+            type(am_class_dispersion)     , intent(in) :: dr
             type(am_class_irre_pair)      , intent(in) :: ip
             type(am_class_prim_pair)      , intent(in) :: pp
             real(dp), allocatable :: x(:)
@@ -861,7 +861,7 @@ contains
             type(am_class_tight_binding)  , intent(in) :: tb
             type(am_class_tb_group)       , intent(in) :: tbpg
             type(am_class_bz)             , intent(in) :: bz
-            type(am_class_dispersion_vasp), intent(in) :: dr 
+            type(am_class_dispersion)     , intent(in) :: dr 
             type(am_class_prim_pair)      , intent(in) :: pp
             real(dp), allocatable         , intent(out):: R(:)
             type(am_class_dispersion_tb) :: dr_tb 
@@ -893,7 +893,7 @@ contains
             type(am_class_tight_binding)  , intent(inout) :: tb
             type(am_class_tb_group)       , intent(in) :: tbpg
             type(am_class_bz)             , intent(in) :: bz
-            type(am_class_dispersion_vasp), intent(in) :: dr
+            type(am_class_dispersion)     , intent(in) :: dr
             type(am_class_prim_pair)      , intent(in) :: pp
             real(dp), allocatable         , intent(out):: FJAC(:,:) ! fjac(m,n) jacobian matrix
             real(dp), allocatable :: f1(:)     ! f1(m)     residual vector

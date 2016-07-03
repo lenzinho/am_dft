@@ -547,8 +547,6 @@ module am_vasp_io
             verbosity = 1
         endif
         !
-        !
-        !
         if (verbosity.ge.1) call print_title('Reading EIGENVAL')
         !
         fid = 1
@@ -613,7 +611,7 @@ module am_vasp_io
                     word = strsplit(buffer,delimiter=' ')
                     if ( (i .eq. 1) .and. (j .eq. 1) ) then
                         !> nspins number of spins
-                        internal_nspins = size(word)-1
+                        internal_nspins = size(word)-2
                         ! <ORIGINAL>
                         ! internal_nspins = size(word)-2
                         ! </ORIGINAL>
