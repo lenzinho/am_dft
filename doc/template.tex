@@ -24,8 +24,9 @@
 % \renewcommand{\vec}[1]{\ensuremath{\mathbf{#1}}}
 \newcommand*{\ham}{\hat{H}}
 \newcommand*{\class}{\mathcal{C}}
-\newcommand*{\wignerD}{D(R)}
-\newcommand*{\wignerDl}{D^{(l)}(R)}
+\newcommand*{\wignerD}{\mathbb{D}(R)}
+\newcommand*{\wignerDl}{\mathbb{D}^{(l)}(R)}
+
 
 
 \begin{document}
@@ -62,15 +63,47 @@ University of Illinois, 104 South Goodwin, Urbana, IL 61801}
 
 \maketitle
 
-
-
-The electronic band dispersion $E(\vec{k})$ of B1 NaCl-structure cubic-VN is parameterized with an orthogonal tight-binding basis based on V 3d and N 2p orbitals as described in \ref{appendix:tb}. We find \emph{a posteriori} that this minimal basis accurately and efficiently reproduces the electronic dispersion determined by ARPES and ab-initio density functional theory simulations.
-
-$E(\vec{k})$ is computed by diagonalizing the hamiltonian $\ham$ via the secular equation:
+A minimal-basis orthogonal tight-binding model based upon V $d$ and N $p$ orbitals is developed to accurately reproduce the electronic properties of NaCl-structure VN. Energy-momenta dispersion relations are obtained from the secular equation:
 \begin{equation}
-\left| \ham_{\alpha\beta} - E(\vec{k}) \delta_{\alpha\beta} \right| = 0
+\label{eq:secular}
+\left| \ham^{\alpha\beta}_{ij}(\vec{k}) - E(\vec{k})\delta{\alpha\beta}\delta_{ij} \right| = 0
+\end{equation}
+in which the tight-binding hamiltonian
+\begin{equation}
+\label{eq:ham}
+\ham^{\alpha\beta}_{ij} = \sum_j v^{\alpha\beta}_{ij} e^{-i\vec{\tau}_{ij} \cdot \vec{k} }.
+\end{equation}
+$v^{\alpha\beta}_{ij} = \bra{i\alpha} \mathbb{V} \ket{j\beta}$ are matrix elements between orbitals $\alpha \equiv \ket{lm}$ and $\beta \equiv \ket{l'm'}$ centered on atoms $i$ and $j$.  $l$ and $m$ are azimuthal and magnetic quantum numbers. $\vec{\tau}_{ij}$ represents the bond vector connection i to j. The summation is evaluated explicitly up to second neighbors. Closed-form expressions are presented in Appendix \ref{appendix:tb}.
+
+Intrinsic and crystallographic symmetries relations are utilized to determine the irreducible set of independent matrix elements. Transposition of atomic indices produce the relations:
+\begin{equation}
+\label{eq:transposition}
+v_{ij}^{\alpha\alpha} = (-1)^{l+l'}v_{ji}^{\alpha\alpha}
+\end{equation}
+in which the prefactor arises from orbital parity.
+
+Commutativity of $\mathbb{V}$ with $\wignerD$, the representation of symmetry R engendered by the tight-binding basis, yields the relationships:
+\begin{equation}
+[\mathbb{V},\wignerD] = 0
+\end{equation}
+or, equivalently,
+\begin{equation}
+\label{eq:stab}
+v_{ij}^{\alpha\beta} = \sum_{\mu\nu} v_{ij}^{\alpha\beta} \left[\wignerD\right]^{\mu\alpha} \left[\wignerD\right]^{\nu\beta}.
+\end{equation}
+$\left[\phantom{a}\cdot\phantom{a}\right] ^{\mu\alpha}$ selects element $\mu\alpha$ of the enclosed matrix. 
+
+
+
+
+Symmetry representations $\wignerD$ engendered on the tight binding basis are
+
+\begin{equation}
+D(R) = \oplus_l D^{(l)}(R)
 \end{equation}
 
+
+Wigner matrices $\wignerDl =  e^{-i\theta\hat{n}\cdot\hat{L}}$ parameterize rotations $\theta$ around axes $\hat{n}$. $\hat{L}$ the angular momentum operator. % Lax p 43 Eq 2.5.18
 
 \section{Acknowledgements}
 
@@ -103,31 +136,9 @@ VN pd tb parameters
 
 \section{tight binding model}\label{appendix:tb}
 
-The basis engenders 98 possibly distinct matrix elements $v_{ij}^{\alpha\beta}$ between orbital $\alpha \equiv \ket{lm}$ on atom $i$ and orbital $\beta \equiv \ket{l'm'}$ on atom $j$. $l$ and $m$ are azimuthal and magnetic quantum numbers. Due to orbital parity Enforcing the invariance under site-switch symmetry
-\begin{equation}
-v_{ij}^{\alpha\alpha} = (-1)^{l+l'}v_{ji}^{\alpha\alpha}
-\end{equation}
-and stabilizer symmetries $D\left(R\right)$ which leave the bond $\overline{ij}$ invariant
-\begin{equation}
-v_{ij}^{\alpha\beta} = \sum_{\mu\nu} v_{ij}^{\alpha\beta} \left[\wignerD\right]^{\mu\alpha} \left[\wignerD\right]^{\nu\beta}.
-\end{equation}
-$\left[\phantom{a}\cdot\phantom{a}\right] ^{\mu\alpha}$ selects the element at the $\mu$\textsuperscript{th} row and $\alpha$\textsuperscript{th} of the enclosed matrix.
-
-
-and 
-
-
-\begin{equation}
-[V,D(R)] = 0
-\end{equation}
-for all $D(R)$ symmetries in the stabilizer group of the bond. The Wigner matrices $\wignerDl =  \bra{l'm'} e^{-\theta\hat{L}\cdot\hat{n}}\ket{lm}$ parameterizes a rotation around $\hat{n}$ by $\theta$ degrees via the angular momentum opreator $\hat{L}$. % Lax p 43 Eq 2.5.18
 
 
 % V_{\alpha\beta}^{ij}
-
-\begin{equation}
-D(R) = \bigoplus_l D^{(l)}(R)
-\end{equation}
 
 Using this procedure, we identify 64 of 98 matrix elements as null. Of the remaining 34, only 14 comprise an irreducible set of independent parameters. We find \emph{a posteriori} that this minimal basis efficiently reproduces the electronic dispersion determined by ARPES and ab-initio density functional theory simulations.
 
@@ -136,6 +147,15 @@ Using this procedure, we identify 64 of 98 matrix elements as null. Of the remai
  that 
 
 The procedure reduces the number of independent matrix to an irreducible set of 14 parameters, which we find \emph{a posteriori} efficiently reproduces the electronic dispersion as determined by ARPES and ab initio density functional theory simulations.
+
+The electronic band dispersion $E(\vec{k})$ of B1 NaCl-structure cubic-VN is parameterized with an orthogonal tight-binding basis based on V 3d and N 2p orbitals as described in \ref{appendix:tb}. We find \emph{a posteriori} that this minimal basis accurately and efficiently reproduces the electronic dispersion determined by ARPES and ab-initio density functional theory simulations.
+
+$E(\vec{k})$ is computed by diagonalizing the hamiltonian $\ham$ via the secular equation:
+\begin{equation}
+\left| \ham_{\alpha\beta} - E(\vec{k}) \delta_{\alpha\beta} \right| = 0
+\end{equation}
+
+
 
 \begin{equation}
 H = H_0 + H_1 + H_2

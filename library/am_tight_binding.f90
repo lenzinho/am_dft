@@ -24,8 +24,8 @@ module am_tight_binding
         real(dp), allocatable :: V(:)                  ! their values
         integer , allocatable :: V_ind(:,:)            ! their indices
         type(am_class_tensor), allocatable :: tens(:)  ! tens(nshells)
-
-        contains
+        ! type(am_class_hamiltonian)
+    contains
         procedure :: set_Vsk
         procedure :: initialize_tb
         procedure :: get_hamiltonian
@@ -36,7 +36,96 @@ module am_tight_binding
         procedure :: write_matrix_elements_full
     end type am_class_tight_binding
 
+    type, public, extends(am_class_symrep_group) :: am_class_tb_group
+        integer, allocatable :: S(:) ! Hstart(m) start of hamiltonian section corresponding to atom m
+        integer, allocatable :: E(:) ! Hend(m)   end of hamiltonian section corresponding to atom m
+        contains
+        procedure :: get_tight_binding_point_group
+    end type am_class_tb_group
+
 contains
+
+    subroutine     get_tight_binding_point_group(tbpg,pg,pc,ic)
+        !
+        implicit none
+        !
+        class(am_class_tb_group)   , intent(out) :: tbpg ! point symmetries in tight binding basis
+        class(am_class_point_group), intent(in)  :: pg   ! seitz point group (rev stab rot groups as well)
+        type(am_class_prim_cell)   , intent(in)  :: pc   ! primitive cell
+        type(am_class_irre_cell)   , intent(in)  :: ic   ! irreducible cell
+        integer  :: i
+        !
+        ! get number of bases functions in representation (see below) ...
+        tbpg%nbases = 0
+        ! ... and also determine subsections of rotations in Hamiltonian basis corresponding to each atom
+        allocate(tbpg%S(pc%natoms))
+        allocate(tbpg%E(pc%natoms))
+        do i = 1, pc%natoms
+            tbpg%S(i)   = tbpg%nbases + 1
+            tbpg%nbases = tbpg%nbases + ic%atom(pc%ic_id(i))%norbitals
+            tbpg%E(i)   = tbpg%nbases
+        enddo
+        ! number of symmetries
+        tbpg%nsyms = pg%nsyms
+        ! generate intrinsic symmetries
+        allocate(tbpg%sym(tbpg%nbases,tbpg%nbases,tbpg%nsyms))
+        tbpg%sym = 0
+        ! determine rotation in the hamiltonian basis
+        ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
+        do i = 1, pg%nsyms
+            ! convert rotation R to symmetry representation in tight-binding basis (direct sum of wigner matrices)
+            tbpg%sym(:,:,i) = ps2D(S=tbpg%S, E=tbpg%E, R_cart=pg%seitz_cart(1:3,1:3,i), pc=pc, ic=ic)
+        enddo
+        ! check that identity is first
+        if (.not.isequal(tbpg%sym(:,:,1),eye(tbpg%nbases))) stop 'ERROR [get_tight_binding_point_group]: Identity is not first.'
+        ! correct basic rounding errors
+        call correct_rounding_error(tbpg%sym)
+        ! copy symmetry ids
+        allocate(tbpg%ps_id, source=pg%ps_id)
+        ! copy classes
+        allocate(tbpg%cc%id, source=pg%cc%id)
+        ! check that multiplication table is identical to pg%mt
+        call tbpg%get_multiplication_table()
+        if (.not.isequal(tbpg%mt%multab,pg%mt%multab)) stop 'ERROR [get_tight_binding_point_group]: Multiplication table mismatch.'
+        ! get conjugacy clases
+        call tbpg%get_conjugacy_classes()
+        ! get character table
+        call tbpg%get_character_table()
+        ! create tb dir
+        call execute_command_line('mkdir -p '//trim(outfile_dir_tb))
+        ! write point group
+        call dump(A=tbpg%sym,fname=trim(outfile_dir_tb)//'/outfile.tbpg.sym')
+        ! dump debug files
+        if (debug) then
+        call execute_command_line('mkdir -p '//trim(debug_dir)//'/tbpg')
+        call tbpg%debug_dump(fname=            trim(debug_dir)//'/tbpg'//'/outfile.tbpg')
+        endif
+        !
+        contains
+        function       ps2D(S,E,R_cart,pc,ic) result(Dsum)
+            ! produces rotation which commutes with the entire Hamiltonian (useful building Hamiltonian and probably later for kpoints stuff too)
+            implicit none
+            !
+            integer , intent(in) :: S(:)
+            integer , intent(in) :: E(:)
+            real(dp), intent(in) :: R_cart(3,3)
+            type(am_class_prim_cell), intent(in) :: pc ! primitive cell
+            type(am_class_irre_cell), intent(in) :: ic ! irreducible cell
+            real(dp), allocatable :: Dsum(:,:)
+            integer :: nbases
+            integer :: i
+            ! get hamil
+            nbases = maxval(E)
+            ! allocate and initialize space for rotations in Hamiltonin bais
+            allocate(Dsum(nbases,nbases))
+            Dsum = 0.0_dp
+            ! construct rotation in the Hamiltonian basis
+            do i = 1, pc%natoms
+                Dsum(S(i):E(i), S(i):E(i)) = ps2tb(R_cart=R_cart, atom=ic%atom(pc%ic_id(i)) )
+            enddo
+            !
+        end function   ps2D
+    end subroutine get_tight_binding_point_group
 
     subroutine     initialize_tb(tb,pg,ip,ic,pc,opts)
         !
