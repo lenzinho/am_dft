@@ -9,6 +9,9 @@ module am_dispersion
     use am_mkl
     use am_options
     use am_histogram
+    use am_shells
+    use am_symmetry_rep
+    use am_tight_binding
 
     implicit none
 
@@ -20,20 +23,18 @@ module am_dispersion
         real(dp), allocatable :: E(:,:) ! E(nbands,nkpts) energies
     contains
         procedure :: debug_dump => debug_dump_dr
-        procedure :: load
     end type am_class_dispersion
 
-!    type, public, extends(am_class_dispersion) :: am_class_dispersion_vasp
-!         real(dp), allocatable :: lmproj(:,:,:,:,:) ! lmproj(nspins,norbitals,nions,nbands,nkpts) band character weights
-!         ! projection information:
-!         integer :: nspins
-!         integer :: norbitals
-!         integer :: nions
-!         character(:), allocatable :: orbitals(:) ! orbitals(norbitals) names of orbitals
-!     contains
-!         procedure :: load
-!         procedure :: write_bandcharacter ! requires load_eigenval or load_procar
-!     end type am_class_dispersion_vasp
+    type, public, extends(am_class_dispersion) :: am_class_dispersion_dft
+        contains
+        procedure :: load
+    end type am_class_dispersion_dft
+
+    type, public, extends(am_class_dispersion) :: am_class_dispersion_tb
+        complex(dp), allocatable :: C(:,:,:) ! tight binding coefficients
+        contains
+        procedure :: get_dispersion
+    end type am_class_dispersion_tb
 
 contains
 
@@ -61,11 +62,11 @@ contains
         !
         implicit none
         !
-        class(am_class_dispersion), intent(out) :: dr
-        type(am_class_options)    , intent(in)  :: opts
-        character(*)              , intent(in)  :: flags
+        class(am_class_dispersion_dft), intent(out) :: dr
+        type(am_class_options)        , intent(in)  :: opts
+        character(*)                  , intent(in)  :: flags
         !
-        if (opts%verbosity.ge.1) call print_title('Input electronic band dispersion')
+        if (opts%verbosity.ge.1) call print_title('Electronic band dispersion (DFT)')
         !
         if     (index(flags,'eigenval')) then
             write(*,'(a,a,a)') flare, 'file = ', 'eigenval'
@@ -96,105 +97,37 @@ contains
         !
     end subroutine load
 
-!     subroutine     write_bandcharacter(dr,bz,uc,opts)
-!         ! 
-!         ! Creates outfile.bandcharacter, which contains the energy and character of the bands read either from EIGENVAL using bz%load_eigenval() or PROCAR using bz%load_procar()
-!         !
-!         use am_options
-!         !
-!         implicit none
-!         !
-!         class(am_class_dispersion), intent(in) :: dr ! dispersion relations
-!         class(am_class_bz)        , intent(in) :: bz ! brillouin zone class
-!         class(am_class_unit_cell) , intent(in) :: uc
-!         type(am_class_options)    , intent(in) :: opts
-!         real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
-!         character(:), allocatable :: fname
-!         real(dp) :: k1(3) ! point for kdiff
-!         real(dp) :: k2(3) ! point for kdiff
-!         real(dp) :: kdiff ! for dispersion plot
-!         integer :: fid
-!         integer :: i, j, l, m, n ! loop variables
-!         !
-!         if (opts%verbosity.ge.1) call print_title('Bandcharacter output')
-!         !
-!         allocate(fname,source='outfile.bandcharacter')
-!         write(*,'(a,a)') flare, 'file = '//trim(fname)
-!         !
-!         ! generate voronoi points (cartesian), used to reduce points to wigner-seitz brillouin zone
-!         grid_points = matmul( inv(uc%bas) , meshgrid([-1:1],[-1:1],[-1:1]) )
-!         !
-!         fid = 1
-!         open(unit=fid,file=trim(fname),status="replace",action='write')
-!             ! STDOUT
-!             if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'kpoints = ' //tostring(bz%nkpts)
-!             if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'bands = '   //tostring(dr%nbands)
-!             if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'ions = '    //tostring(dr%nions)
-!             if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'orbitals = '//tostring(dr%norbitals)
-!             if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'spins = '   //tostring(dr%nspins)
-!             if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'columns = ' //tostring(dr%nspins*dr%norbitals)
-!             !
-!             ! HEADER (first three lines)
-!             write(fid,'(a)')  'Character-projected energy dispersion'
-!             write(fid,'(100a13)',advance='no') ' ', flare,' ','ions'
-!             do m = 1, dr%nions
-!                 do l = 1, dr%norbitals
-!                 do n = 1, dr%nspins
-!                     write(fid,'(i13)' ,advance='no') m
-!                 enddo
-!                 enddo
-!             enddo
-!             write(fid,*)
-!             !
-!             write(fid,'(100a13)',advance='no') ' ', flare,' ','spin'
-!             do m = 1, dr%nions
-!                 do l = 1, dr%norbitals
-!                 do n = 1, dr%nspins
-!                     write(fid,'(i13)' ,advance='no') n
-!                 enddo
-!                 enddo
-!             enddo
-!             write(fid,*)
-!             !
-!             write(fid,'(100a13)',advance='no') 'kpath','k_x','k_y','k_z','E [eV]'
-!             do m = 1, dr%nions
-!                 do l = 1, dr%norbitals
-!                 do n = 1, dr%nspins
-!                     write(fid,'(a13)',advance='no') trim(dr%orbitals(l))
-!                 enddo
-!                 enddo
-!             enddo 
-!             write(fid,*)
-!             !
-!             ! DATA
-!             !
-!             do j = 1, dr%nbands
-!                 do i = 1, bz%nkpts
-!                     if (i .eq. 1) then
-!                         kdiff = 0
-!                     else
-!                         k1=bz%kpt_frac(:,i-1)
-!                         k2=bz%kpt_frac(:,i)
-!                         kdiff = kdiff + norm2( abs(k1-k2) )
-!                     endif
-!                     !
-!                     write(fid,'(100f13.5)',advance='no') kdiff, bz%kpt_frac(1:3,i), dr%E(j,i)
-!                     do m = 1, dr%nions
-!                     do l = 1, dr%norbitals
-!                     do n = 1, dr%nspins
-!                         !> lmproj(nbands,nkpts,nspins,norbitals,nions)
-!                         write(fid,'(f13.5)',advance='no') dr%lmproj(n,l,m,j,i)
-!                     enddo
-!                     enddo
-!                     enddo
-!                     write(fid,*)
-!                     !
-!                 enddo
-!                 write(fid,'(a)') ' '
-!             enddo
-!         close(fid)
-!         !
-!     end subroutine write_bandcharacter
+    subroutine     get_dispersion(dr,tb,tbpg,bz,pp)
+        !
+        implicit none
+        !
+        class(am_class_dispersion_tb),intent(out) :: dr
+        type(am_class_tb_group)      , intent(in) :: tbpg ! point group in tight binding representation
+        type(am_class_tight_binding) , intent(in) :: tb
+        type(am_class_bz)            , intent(in) :: bz
+        type(am_class_prim_pair)     , intent(in) :: pp
+        complex(dp), allocatable :: H(:,:), V(:,:)
+        real(dp)   , allocatable :: D(:)
+        integer :: i
+        !
+        ! tight binding coefficients
+        allocate(dr%C(tbpg%nbases,tbpg%nbases,bz%nkpts))
+        ! eigenvalues
+        allocate(dr%E(tbpg%nbases,bz%nkpts))
+        ! loop over kpoints
+        do i = 1, bz%nkpts
+            ! construct hamiltonian
+            H = tb%get_hamiltonian(tbpg=tbpg, pp=pp, kpt=bz%kpt_cart(:,i))
+            ! diagonalize hamiltonian
+            call am_zheev(A=H,V=V,D=D)
+            dr%C(:,:,i) = V
+            dr%E(:,i) = D
+        enddo
+        !
+    end subroutine get_dispersion
+
+
+
 
 
 end module am_dispersion

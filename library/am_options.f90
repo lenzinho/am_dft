@@ -223,8 +223,10 @@ module am_options
         write(*,'(5x,a)') ''
         write(*,'(5x,a)') '-fit_tb <file:str> <skip_band:int>'
         write(*,'(5x,a)') '     Optimizes TB parameters.'
-        write(*,'(5x,a)') '     fname:     read DFT dispersion from file [eigenval/procar]'
-        write(*,'(5x,a)') '     skip_band: number of DFT bands to skip when fitting parameters'
+        write(*,'(5x,a)') '     Example: tb -poscar infile.primitive -pair_cutoff 3 -fit_tb eigenval 1'
+        write(*,'(5x,a)') '     Parameters:'
+        write(*,'(5x,a)') '         fname       [eigenval/procar] file from which to read DFT dipersion'
+        write(*,'(5x,a)') '         skip_band   number of DFT bands to skip when fitting parameters'
         write(*,'(5x,a)') '' 
         ! PROG_UC STUFF BEGINS HERE
         write(*,'(5x,a)') '-primitive'

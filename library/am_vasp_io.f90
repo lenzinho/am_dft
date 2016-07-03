@@ -612,9 +612,6 @@ module am_vasp_io
                     if ( (i .eq. 1) .and. (j .eq. 1) ) then
                         !> nspins number of spins
                         internal_nspins = size(word)-2
-                        ! <ORIGINAL>
-                        ! internal_nspins = size(word)-2
-                        ! </ORIGINAL>
                         if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'spins = ', tostring(internal_nspins)
                         if (present(nspins)) then
                             nspins = internal_nspins

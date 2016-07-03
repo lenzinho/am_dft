@@ -24,8 +24,9 @@ OBJS  = mkl_rci.o 						\
 		am_symmetry_relations.o 		\
 		am_symmetry_rep.o 				\
 		am_brillouin_zone.o             \
+        am_tight_binding.o              \
 		am_dispersion.o                 \
-		am_tight_binding.o          	
+		am_optimizer.o
 
 		# am_tet_mesh.o                   \
 		# am_tetrahedra.o                 \
@@ -36,11 +37,12 @@ all: $(LIBS)
 	@echo > /dev/null
 
 $(LIBS): $(OBJS)
-	touch libam.a
-	rm libam.a
+	touch  libam.a
+	rm     libam.a
 	ar rcv libam.a $(OBJS)
 	ranlib libam.a
-	rm *.i90
+	touch  a.i90
+	rm     *.i90
 	
 
 clean:

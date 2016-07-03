@@ -112,7 +112,7 @@ module am_symmetry_rep
         endif
         !
         contains
-        function       ps2D(S,E,R_cart,pc,ic) result(wigner_D)
+        function       ps2D(S,E,R_cart,pc,ic) result(Dsum)
             ! produces rotation which commutes with the entire Hamiltonian (useful building Hamiltonian and probably later for kpoints stuff too)
             implicit none
             !
@@ -121,17 +121,17 @@ module am_symmetry_rep
             real(dp), intent(in) :: R_cart(3,3)
             type(am_class_prim_cell), intent(in) :: pc ! primitive cell
             type(am_class_irre_cell), intent(in) :: ic ! irreducible cell
-            real(dp), allocatable :: wigner_D(:,:)
+            real(dp), allocatable :: Dsum(:,:)
             integer :: nbases
             integer :: i
             ! get hamil
             nbases = maxval(E)
             ! allocate and initialize space for rotations in Hamiltonin bais
-            allocate(wigner_D(nbases,nbases))
-            wigner_D = 0.0_dp
+            allocate(Dsum(nbases,nbases))
+            Dsum = 0.0_dp
             ! construct rotation in the Hamiltonian basis
             do i = 1, pc%natoms
-                wigner_D(S(i):E(i), S(i):E(i)) = ps2tb(R_cart=R_cart, atom=ic%atom(pc%ic_id(i)) )
+                Dsum(S(i):E(i), S(i):E(i)) = ps2tb(R_cart=R_cart, atom=ic%atom(pc%ic_id(i)) )
             enddo
             !
         end function   ps2D
