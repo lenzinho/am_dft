@@ -90,7 +90,7 @@ contains
             shell_id = identify_shells(sphere=sphere,pg=pg)
             ! get number of pairs
             nshells = maxval(shell_id)
-            ! get number of pair elements (essentially the oribital weights)
+            ! get number of pair elements (essentially the orbital weights)
             shell_nelements = id_nelements(shell_id)
             ! get pair members [pair representative is given by shell_member(:,1)]
             shell_member = id_member(shell_id)

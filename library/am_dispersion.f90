@@ -127,12 +127,12 @@ contains
         fid = 1
         open(unit=fid,file=trim(fname),status="replace",action='write')
             ! STDOUT
-            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'kpoints' //tostring(bz%nkpts)
-            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'bands'   //tostring(dr%nbands)
-            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'ions'    //tostring(dr%nions)
-            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'orbitals'//tostring(dr%norbitals)
-            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'spins'   //tostring(dr%nspins)
-            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'columns' //tostring(dr%nspins*dr%norbitals)
+            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'kpoints = ' //tostring(bz%nkpts)
+            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'bands = '   //tostring(dr%nbands)
+            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'ions = '    //tostring(dr%nions)
+            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'orbitals = '//tostring(dr%norbitals)
+            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'spins = '   //tostring(dr%nspins)
+            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'columns = ' //tostring(dr%nspins*dr%norbitals)
             !
             ! HEADER (first three lines)
             write(fid,'(a)')  'Character-projected energy dispersion'

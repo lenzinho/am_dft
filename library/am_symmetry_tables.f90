@@ -423,7 +423,7 @@ contains
         integer, intent(in) :: multab(:,:)
         logical,allocatable :: cstruct(:,:)
         integer :: power
-        integer :: i, j, k
+        integer :: i, j
         integer :: nsyms
         !
         nsyms = size(multab,2)
@@ -701,6 +701,11 @@ contains
         chartab = cmplx(Re,Im,dp)
         ! initialize indices sort sorting
         allocate(indices(nirreps))
+        ! sort irreps based on characters of classes
+        do i = nclasses, 1, -1
+            call rank(-real(chartab(:,i)),indices)
+            chartab = chartab(indices,:)
+        enddo
         ! sort irreps based on character of class containing identity
         ! find class containing inversion (1 is the ps_id for identity)
         id_search : do i = 1, nclasses
@@ -863,6 +868,21 @@ contains
 !         !
 !     end function  get_aux_reduction_matrix
 
+!     function       get_chi_subduced(supergroup_chartab,supergroup_class_id,supergroup_id) result(chi_subduced)
+!         !
+!         ! matlab:
+!         ! o_h.ct.chartab(:,unique(o_h.cc.id(c_4v.supergroup_id)))
+!         implicit none
+!         !
+!         complex(dp), intent(in) :: supergroup_chartab(:,:)
+!         integer    , intent(in) :: supergroup_class_id(:)
+!         integer    , intent(in) :: supergroup_id(:)
+!         complex(dp),allocatable :: chi_subduced(:,:)
+!         !
+!         allocate(chi_subduced,source=supergroup_chartab(:,unique(supergroup_class_id(supergroup_id))))
+!         !
+!     end function   get_chi_subduced
+
 
     function       get_reduction_coefficient(chartab,class_nelements,chi_rep) result(beta)
         !
@@ -890,21 +910,6 @@ contains
             beta(j) = nint(real(try))
         enddo
     end function   get_reduction_coefficient
-
-!     function       get_chi_subduced(supergroup_chartab,supergroup_class_id,supergroup_id) result(chi_subduced)
-!         !
-!         ! matlab:
-!         ! o_h.ct.chartab(:,unique(o_h.cc.id(c_4v.supergroup_id)))
-!         implicit none
-!         !
-!         complex(dp), intent(in) :: supergroup_chartab(:,:)
-!         integer    , intent(in) :: supergroup_class_id(:)
-!         integer    , intent(in) :: supergroup_id(:)
-!         complex(dp),allocatable :: chi_subduced(:,:)
-!         !
-!         allocate(chi_subduced,source=supergroup_chartab(:,unique(supergroup_class_id(supergroup_id))))
-!         !
-!     end function   get_chi_subduced
 
     function       get_irrep_dimension(chartab,class_nelements,class_member,ps_id) result(irrep_dim)
         !

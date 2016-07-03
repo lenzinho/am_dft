@@ -23,7 +23,7 @@ module am_options
         integer :: nstrains
         real(dp):: pair_cutoff
         ! TB
-        real(dp):: Erange(2)
+        real(dp):: skip_band
     contains
         procedure :: defaults
         procedure :: get
@@ -56,7 +56,7 @@ module am_options
         opts%maxstrain        = -1000
         opts%nstrains         = -1000
         opts%pair_cutoff      =  1000
-        opts%Erange           = [-1000,1000]
+        opts%skip_band        = 0
         !
     end subroutine  defaults
 
@@ -121,23 +121,8 @@ module am_options
                     read(argument,*) opts%pair_cutoff
                 case('-matlab')
                     opts%flags = trim(opts%flags)//' export2matlab'
-                case('-template')
-                    opts%flags = trim(opts%flags)//' template:'
-                    i=i+1
-                    call get_command_argument(i,argument)
-                    if     (index(argument,'orbitals').ne.0) then
-                        opts%flags = trim(opts%flags)//'tb_orbitals'
-                    elseif (index(argument,'matrix_elements').ne.0) then
-                        opts%flags = trim(opts%flags)//'tb_matrix_elements'
-                    else
-                        stop '-template /= orbitals/matrix_elements'
-                    endif
-                case('-Erange')
-                    i=i+1
-                    call get_command_argument(i,argument)
-                    read(argument,*) opts%Erange(1)
-                case('-tbfit')
-                    opts%flags = trim(opts%flags)//' tbfit:'
+                case('-fit_tb')
+                    opts%flags = trim(opts%flags)//' fit_tb:'
                     i=i+1
                     call get_command_argument(i,argument)
                     if     (index(argument,'eigenval').ne.0) then
@@ -145,8 +130,11 @@ module am_options
                     elseif (index(argument,'procar').ne.0) then
                         opts%flags = trim(opts%flags)//'procar'
                     else
-                        stop '-tbfit /= eigenval or procar!'
+                        stop '-fit_tb /= eigenval or procar!'
                     endif
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*) opts%skip_band
                 ! ************************************************
                 ! prog_uc : UNIT CELL
                 case('-conventional') 
@@ -233,11 +221,10 @@ module am_options
         write(*,'(5x,a)') '-pair_cutoff <dbl>'
         write(*,'(5x,a)') '     Realspace cutoff for second order force constants.'
         write(*,'(5x,a)') ''
-        write(*,'(5x,a)') '-tbfit <file:str>'
-        write(*,'(5x,a)') '     Optimizes TB parameters. Dispersion is read from file (eigenval/procar).'
-        write(*,'(5x,a)') ''
-        write(*,'(5x,a)') '-Erange <lower:dbl> <upper:dbl>'
-        write(*,'(5x,a)') '     Energy range over which fit is performed.'
+        write(*,'(5x,a)') '-fit_tb <file:str> <skip_band:int>'
+        write(*,'(5x,a)') '     Optimizes TB parameters.'
+        write(*,'(5x,a)') '     fname:     read DFT dispersion from file [eigenval/procar]'
+        write(*,'(5x,a)') '     skip_band: number of DFT bands to skip when fitting parameters'
         write(*,'(5x,a)') '' 
         ! PROG_UC STUFF BEGINS HERE
         write(*,'(5x,a)') '-primitive'

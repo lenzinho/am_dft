@@ -38,18 +38,17 @@ module am_tight_binding
     end type am_class_tight_binding
 
     type, private :: am_class_tb_optimizer
-        integer :: maxiter      ! maximum number of iterations 
-        integer :: nipshells 
+        integer :: maxiter      ! maximum number of iterations  
         integer :: nbands
         integer :: nkpts
-        integer :: nVs
-        integer :: nRs
-        real(dp), allocatable :: E_lower
-        logical , allocatable :: kpt_mask(:)
-        logical , allocatable :: ip_mask(:) 
-        real(dp), allocatable :: V(:,:)   ! V(maxiter,nVs)
-        real(dp), allocatable :: R(:,:)   ! R(maxiter,nRs)
-        integer , allocatable :: L_ind(:) ! L_ind(nkpts) index of lowest band above E_lower
+        integer :: nxs
+        integer :: nrs
+        integer               :: skip_band
+        integer , allocatable :: selector_shell(:)
+        integer , allocatable :: selector_kpoint(:)
+        real(dp), allocatable :: x(:) 
+        real(dp), allocatable :: r(:)
+        real(dp)              :: rms
     end type am_class_tb_optimizer
 
     type, public, extends(am_class_dispersion) :: am_class_dispersion_tb
@@ -72,10 +71,7 @@ contains
         type(am_class_options)       , intent(in)  :: opts
         logical, allocatable :: is_independent(:)
         integer :: sub(2)
-        integer :: nterms
         integer :: i,j,k
-        integer :: a,b,c
-        integer :: m,n,o
         !
         !
         if (opts%verbosity.ge.1) call print_title('Symmetry-adapted tight-binding parameters')
@@ -112,17 +108,18 @@ contains
         enddo
         ! write template for irreducible matrix elements
         if (fexists('infile.tb_matrix_elements_irreducible').ne.0) then 
-            ! read matrix elements
+            ! print title
             call print_title('Input tight-binding matrix elements')
-            !
+            ! read matrix elements
             call tb%read_matrix_elements_irr()
-            !
-            call disp(X=[0],zeroas=' ',advance='no')
-            call disp(X=tb%V,title='V',style='underline',advance='no')
-            call disp(X=tb%V_ind(1,:),title='shell',style='underline',advance='no')
-            call disp(X=tb%V_ind(2,:),title='alpha',style='underline',advance='no')
-            call disp(X=tb%V_ind(3,:),title='beta',style='underline',advance='yes')
+            ! display input file on stdout
+            call disp(x=[0],zeroas=' ',advance='no')
+            call disp(x=tb%V,title='V',style='underline',advance='no')
+            call disp(x=tb%V_ind(1,:),title='shell',style='underline',advance='no')
+            call disp(x=tb%V_ind(2,:),title='alpha',style='underline',advance='no')
+            call disp(x=tb%V_ind(3,:),title='beta',style='underline',advance='yes')
         else
+            ! print title
             write(*,'(a,a)') flare, 'infile.tb_matrix_elements_irreducible not found. Using template instead.'
             !
             call tb%set_Vsk(flags='seq')
@@ -194,7 +191,7 @@ contains
         end subroutine get_shell_relations
     end subroutine initialize_tb
 
-    function       get_hamiltonian(tb,tbpg,pp,kpt,iopt_mask) result(H)
+    function       get_hamiltonian(tb,tbpg,pp,kpt,selector_shell) result(H)
         ! 
         ! Get tight binding Hamiltonian at kpt.
         ! 
@@ -204,8 +201,8 @@ contains
         type(am_class_tb_group)      , intent(in) :: tbpg   ! point group in tight binding representation
         type(am_class_prim_pair)     , intent(in) :: pp     ! primitive pairs
         real(dp)                     , intent(in) :: kpt(3) ! cart
-        logical, optional            , intent(in) :: iopt_mask(:)
-        logical    , allocatable :: mask(:)
+        integer, optional            , intent(in) :: selector_shell(:)
+        integer    , allocatable :: selector_shell_internal(:)
         integer    , allocatable :: S(:),E(:)
         complex(dp), allocatable, target :: Hsub_target(:,:)
         real(dp)   , allocatable, target :: pg_target(:,:,:)
@@ -220,19 +217,14 @@ contains
         integer :: l ! shell (irreducible)
         integer :: p ! atoms
         integer :: ip_nshells
-        !
         ! get number of irreducile shell
         ip_nshells = maxval(abs(pp%ip_id(:)))
-        !
-        ! mask irreducible pair shells 
-        !      -----------
-        if (present(iopt_mask)) then
-            allocate(mask,source=iopt_mask)
+        ! set selector
+        if (present(selector_shell)) then
+            allocate(selector_shell_internal,source=selector_shell)
         else
-            allocate(mask(ip_nshells))
-            mask = .true.
+            allocate(selector_shell_internal,source=[1:ip_nshells])
         endif
-        !
         ! allocate space for vectors demarking start and end of Hamiltonian subsection
         allocate(S, source=tbpg%H_start)
         allocate(E, source=tbpg%H_end)
@@ -245,7 +237,7 @@ contains
         H = cmplx(0,0,dp)
         ! construct Hamiltonian
         do l = 1, ip_nshells
-        if ( mask(l) ) then
+        if ( any(selector_shell_internal.eq.l) ) then
             do k = 1, pp%nshells
             if (abs(pp%ip_id(k)).eq.l) then
                 ! primitive atom indicies
@@ -272,12 +264,8 @@ contains
             endif
             enddo
             !
-            if (.not.ishermitian(H)) then
-                ! call disp(X=l,style='underline',title='l')
-                ! call disp(X=pp%ip_id,style='underline',title='pp%ip_id')
-                ! call disp(style='underline',title='H',X=H)
-                ! call disp(style='underline',title='H-H^\dag',X=H-adjoint(H))
-                stop 'ERROR [get_hamiltonian]: H is not Hermitian!'
+            if (debug) then
+            if (.not.ishermitian(H)) stop 'ERROR [get_hamiltonian]: H is not Hermitian!'
             endif
         endif
         enddo
@@ -292,28 +280,22 @@ contains
         type(am_class_prim_pair)     , intent(in)    :: pp   ! primitive pairs
         complex(dp), allocatable :: H(:,:)
         real(dp)   , allocatable :: R(:,:)
-        logical    , allocatable :: mask(:) ! mask the irreducible shells which are considered in construction of the hamiltonin
         integer :: i, j, k
         integer :: ip_nshells
         real(dp):: kpt(3,1)
         !
-        call print_title('Checking Hamiltonian at Gamma')
+        call print_title('Checking model Hamiltonian at Gamma')
         !
         ! get number of irreducile shell
         ip_nshells = maxval(abs(pp%ip_id(:)))
-        ! allocate space for mask
-        allocate(mask(ip_nshells))
         ! allocate space for symmetry in tb basis
         allocate(R(tbpg%nbases,tbpg%nbases))
         ! initilize tb matrix elements
-        call tb%set_Vsk(flags='seq')
+        call tb%set_Vsk(flags='zero')
         ! loop over irreducible shells
         do j = 1, ip_nshells
-            ! ignore all irreducible shells, except j
-            mask    = .false.
-            mask(j) = .true.
             !
-            H = tb%get_hamiltonian(tbpg=tbpg, pp=pp, kpt=real([0,0,0],dp),iopt_mask=mask)
+            H = tb%get_hamiltonian(tbpg=tbpg, pp=pp, kpt=real([0,0,0],dp),selector_shell=[j])
             !
             ! check that H commutes with all point symmetries
             do i = 1, tbpg%nsyms
@@ -330,7 +312,7 @@ contains
             write(*,'(a,a)') flare ,'shell '//tostring(j)//': OK!'
         enddo
         !
-        call print_title('Checking Hamiltonian at arbitrary k-points')
+        call print_title('Checking model Hamiltonian at arbitrary k-points')
         !
         do k = 1, 10
             kpt = reshape([rand(),rand(),rand()],[3,1])
@@ -339,10 +321,7 @@ contains
             do j = 1, ip_nshells
                 write(*,'(a,a)',advance='no') flare, 'shell '//tostring(j)//' '
                 ! ignore all irreducible shells, except j
-                mask    = .false.
-                mask(j) = .true.
-                !
-                H = tb%get_hamiltonian(tbpg=tbpg, pp=pp, kpt=real([0,0,0],dp),iopt_mask=mask)
+                H = tb%get_hamiltonian(tbpg=tbpg, pp=pp, kpt=real([0,0,0],dp),selector_shell=[j])
                 !
                 if (.not.ishermitian(H)) then
                     stop 'ERROR [test_hamiltonian]: H is not Hermitian'
@@ -562,7 +541,7 @@ contains
                 ! print stuff
                 Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k)) 
                 ! print
-                call disp(unit=fid, fmt='f18.10',X=matmul(matmul(transpose(Dm), Hsub), Dn),title=tostring(pp%shell(k)%tau_cart(1:3,p),fmt='f10.5')//' [cart.]',style='above')
+                call disp(unit=fid, fmt='f18.10',x=matmul(matmul(transpose(Dm), Hsub), Dn),title=tostring(pp%shell(k)%tau_cart(1:3,p),fmt='f10.5')//' [cart.]',style='above')
                 enddo
                 enddo
             close(fid)
@@ -711,65 +690,34 @@ contains
         !
         if (opts%verbosity.ge.1) call print_title('Optimizing matrix elements')
         !
-        call initialize_optimizer(ft=ft, tb=tb, bz=bz, dr=dr, ip=ip, tbpg=tbpg, &
-        E_lower=opts%Erange(1) , maxiter=1000)
+        ! initialize optimizer
+        ft%maxiter    = 10
+        ft%nbands     = maxval(tbpg%H_end)
+        ft%nkpts      = bz%nkpts
+        ft%nxs        = tb%nVs
+        ft%skip_band  = opts%skip_band
+        ft%nrs        = bz%nkpts * ft%nbands
+        allocate(ft%selector_shell,  source=[1:ip%nshells])
+        allocate(ft%selector_kpoint, source=[1:bz%nkpts])
+        allocate(ft%r(ft%nrs))
+        ft%r = 0
+        allocate(ft%x(ft%nxs))
+        ft%x = 0
         !
-        write(*,'(a,a,a)') flare, 'irreducible matrix elements = ', tostring(ft%nVs)
-        write(*,'(a,a,a)') flare, 'k-points = '                   , tostring(ft%nkpts)
-        write(*,'(a,a,a)') flare, 'bands = '                      , tostring(ft%nbands)
-        write(*,'(a,a,a)') flare, 'residual vector length = '     , tostring(ft%nRs)
-        write(*,'(a,a,a)') flare, 'low energy cutoff = '          , tostring(ft%E_lower)
+        if (debug) then
+        write(*,'(a,a,a)') flare, 'irreducible matrix elements = '//tostring(ft%nxs)
+        write(*,'(a,a,a)') flare, 'k-points = '                   //tostring(ft%nkpts)
+        write(*,'(a,a,a)') flare, 'bands = '                      //tostring(ft%nbands)
+        write(*,'(a,a,a)') flare, 'number of bands to skip = '    //tostring(ft%skip_band)
+        write(*,'(a,a,a)') flare, 'residual vector length = '     //tostring(ft%nrs)
+        write(*,'(a,a,a)') flare, 'max iterations = '             //tostring(ft%maxiter)
+        endif
         !
         call perform_optimization(ft=ft, tb=tb, tbpg=tbpg, bz=bz, dr=dr, ip=ip, pp=pp)
         !
+        ! call dump(ft%x,'outfile.debug.V')
+        !
         contains
-        subroutine     initialize_optimizer(ft,tb,tbpg,bz,dr,ip,E_lower,maxiter)
-            !
-            implicit none
-            !
-            class(am_class_tb_optimizer)  , intent(out):: ft
-            type(am_class_tight_binding)  , intent(in) :: tb
-            type(am_class_tb_group)       , intent(in) :: tbpg
-            type(am_class_bz)             , intent(in) :: bz
-            type(am_class_dispersion_vasp), intent(in) :: dr
-            type(am_class_irre_pair)      , intent(in) :: ip
-            real(dp)                      , intent(in) :: E_lower
-            integer                       , intent(in) :: maxiter
-            integer :: i, j
-            !
-            ! set maximum number of iterations
-            ft%maxiter = maxiter
-            ! set kpoint mask
-            ft%nkpts = bz%nkpts
-            allocate(ft%kpt_mask(ft%nkpts))
-            ft%kpt_mask = .true.
-            ! set lower band energy cutoff (evntually make this read in from file)
-            ft%E_lower = E_lower
-            ! get index of lowest band above E_lower at all kpoints
-            allocate(ft%L_ind(bz%nkpts))
-            do j = 1, bz%nkpts
-                search : do i = 1, dr%nbands
-                    if (dr%E(i,j).ge.ft%E_lower) then
-                        ft%L_ind(j) = i
-                        exit search
-                    endif
-                enddo search
-            enddo
-            ! set irreducible shell mask
-            ft%nipshells = ip%nshells
-            allocate(ft%ip_mask(ft%nipshells))
-            ft%ip_mask  = .true.
-            ! initialize residual vector
-            ft%nbands = maxval(tbpg%H_end)
-            ft%nRs    = ft%nbands * ft%nkpts
-            allocate(ft%R(ft%nRs,ft%maxiter))
-            ft%R = 0
-            ! initialize parameter vector
-            ft%nVs = tb%nVs
-            allocate(ft%V(ft%nVs,ft%maxiter))
-            ft%V = 0
-            !
-        end subroutine initialize_optimizer
         subroutine     perform_optimization(ft,tb,tbpg,bz,dr,pp,ip)
             !
             use mkl_rci
@@ -784,9 +732,9 @@ contains
             type(am_class_dispersion_vasp), intent(in) :: dr
             type(am_class_irre_pair)      , intent(in) :: ip
             type(am_class_prim_pair)      , intent(in) :: pp
+            real(dp), allocatable :: x(:)
             real(dp), allocatable :: FVEC(:)
             real(dp), allocatable :: FJAC(:,:)
-            real(dp), allocatable :: X(:)
             type(handle_tr) :: handle
             real(dp) :: eps(6)
             integer  :: info(6)
@@ -795,16 +743,16 @@ contains
             integer  :: i
             !
             ! default internal paramters
-            eps(1:6) = 1.d-5
+            eps(1:6) = 0.01
             !
             ! initialize fitting parameters (irreducible matrix elements) 
-            allocate(X(ft%nVs))
-            X = tb%V 
+            allocate(x(ft%nxs))
+            x = tb%V 
             ! initialize residual vector
-            allocate(FVEC(ft%nRs))
+            allocate(FVEC(ft%nrs))
             FVEC = 0.0_dp
             ! initialize jacobian matrix
-            allocate(FJAC(ft%nRs,ft%nVs))
+            allocate(FJAC(ft%nrs,ft%nxs))
             FJAC = 0
             ! handle    in/out: tr solver handle
             ! n         in:     number of function variables
@@ -814,8 +762,8 @@ contains
             ! iter1     in:     maximum number of iterations
             ! iter2     in:     maximum number of iterations of calculation of trial-step
             ! rs        in:     initial step bound
-            if (dtrnlsp_init(handle=handle, n=ft%nVs, m=ft%nRs, X=X, eps=eps, iter1=ft%maxiter, iter2=100, rs=100.0D0) /= tr_success) then
-                print *, '| error in dtrnlsp_init'
+            if (dtrnlsp_init(handle=handle, n=ft%nxs, m=ft%nrs, x=x, eps=eps, iter1=ft%maxiter, iter2=100, rs=100.0D0) /= tr_success) then
+                print *, 'error in dtrnlsp_init'
                 call mkl_free_buffers
                 stop 1
             end if
@@ -825,13 +773,13 @@ contains
             ! fvec      in:     [m] function values at x ( fvec(i) = y_i - f_i(x) )
             ! eps       in:     precisions for stop-criteria
             ! info      out:    result of input checking
-            if (dtrnlsp_check(handle=handle, n=ft%nVs, m=ft%nRs, FJAC=FJAC, FVEC=FVEC, eps=eps, info=info) /= tr_success) then
-                print *, '| error in dtrnlspbc_init'
+            if (dtrnlsp_check(handle=handle, n=ft%nxs, m=ft%nrs, FJAC=FJAC, FVEC=FVEC, eps=eps, info=info) /= tr_success) then
+                print *, ' error in dtrnlspbc_init'
                 call mkl_free_buffers
                 stop 1
             else
                 if ( info(1) /= 0 .or. info(2) /= 0 .or. info(3) /= 0 .or. info(4) /= 0 ) then
-                    print *, '| input parameters are not valid'
+                    print *, 'input parameters are not valid'
                     call mkl_free_buffers
                     stop 1
                 end if
@@ -841,8 +789,8 @@ contains
             successful = 0
             i = 0
             ! write header
-            write(*,'(5x,a8,a10,a10,a)') 'i iter.', 'R res.', 'log(dR)',centertitle('parameters',ft%nVs*10)
-            write(*,'(5x,a8,a10,a10,a)') ' '//repeat('-',8-1), ' '//repeat('-',10-1), ' '//repeat('-',10-1), ' '//repeat('-',ft%nVs*10-1)
+            write(*,'(5x,a8,a10,a10,a)') 'iter', 'rms', 'log(d rms)',centertitle('parameters',ft%nxs*10)
+            write(*,'(5x,a8,a10,a10,a)') ' '//repeat('-',8-1), ' '//repeat('-',10-1), ' '//repeat('-',10-1), ' '//repeat('-',ft%nxs*10-1)
             ! enter optimization loop
             do while (successful == 0)
                 ! handle        in/out: tr solver handle
@@ -850,7 +798,7 @@ contains
                 ! fjac          in:     jacobi matrix
                 ! rci_request   in/out: return number which denote next step for performing
                 if (dtrnlsp_solve(handle=handle, FVEC=FVEC, FJAC=FJAC, rci_request=rci_request) /= tr_success) then
-                    print *, '| error in dtrnlsp_solve'
+                    print *, 'error in dtrnlsp_solve'
                     call mkl_free_buffers
                     stop 1
                 end if
@@ -858,31 +806,33 @@ contains
                 case (-1, -2, -3, -4, -5, -6)
                     successful = 1
                 case (1)
-                    ! update X in tb model
-                    call tb%set_Vsk(V=X)
+                    ! update x in tb model
+                    call tb%set_Vsk(V=x)
                     ! recalculate function
                     call compute_residual(ft=ft, tb=tb, tbpg=tbpg, bz=bz, dr=dr, pp=pp, R=FVEC)
+                    ! save result
+                    ft%r   = FVEC 
+                    ft%rms = sqrt(sum(FVEC**2)/ft%nrs)
                     ! increase counter
                     i = i + 1
                     ! print results
                     if (i.eq.1) then
-                        write(*,'(5x,i8,f10.2,10x,SP,1000f10.2)')   i, norm2(FVEC), X
+                        write(*,'(5x,i8,f10.2,10x,SP,1000f10.2)')   i, ft%rms, x
                     else
-                        write(*,'(5x,i8,f10.2,f10.2,SP,1000f10.2)') i, norm2(FVEC), log10(abs(norm(1.0D-14+FVEC-ft%R(:,i-1)))), X 
+                        write(*,'(5x,i8,f10.2,f10.2,SP,1000f10.2)') i, ft%rms, log10(abs(norm(1.0D-14 + x-ft%x ))), x 
                     endif
                     ! save results
-                    ft%V(:,i) = X
-                    ft%R(:,i) = FVEC 
+                    ft%x = x
                 case (2)
-                    ! update X in tb model
-                    call tb%set_Vsk(V=X)
+                    ! update x in tb model
+                    call tb%set_Vsk(V=x)
                     ! compute jacobian matrix (uses central difference)
                     call compute_jacobian(ft=ft, tb=tb, tbpg=tbpg, bz=bz, dr=dr,  pp=pp, FJAC=FJAC)
                 end select
             end do
             ! clean up
             if (dtrnlsp_delete(handle) /= tr_success) then
-                print *, '| error in dtrnlsp_delete'
+                print *, 'error in dtrnlsp_delete'
                 call mkl_free_buffers
                 stop 1
             else
@@ -906,7 +856,7 @@ contains
             ! index vector
             allocate(inds(ft%nbands))
             ! create residual vector
-            allocate(R(ft%nRs))
+            allocate(R(ft%nrs))
             R = 0
             ! get tb dispersion 
             call dr_tb%get_dispersion(tb=tb,tbpg=tbpg,bz=bz,pp=pp)
@@ -915,7 +865,7 @@ contains
                 ! get indices
                 inds = [1:ft%nbands] + (i-1)*ft%nbands
                 ! calculate residual vector indices
-                R(inds) = dr%E( [ft%L_ind(i):(ft%L_ind(i)+ft%nbands)], i ) - dr_tb%E(:,i)
+                R(inds) = dr%E([1:ft%nbands]+ft%skip_band, i ) - dr_tb%E(:,i)
             enddo
             !
         end subroutine compute_residual
@@ -934,7 +884,7 @@ contains
             real(dp), allocatable         , intent(out):: FJAC(:,:) ! fjac(m,n) jacobian matrix
             real(dp), allocatable :: f1(:)     ! f1(m)     residual vector
             real(dp), allocatable :: f2(:)     ! f1(m)     residual vector
-            real(dp), allocatable :: X(:)      ! X(n)      parameter vector
+            real(dp), allocatable :: x(:)      ! x(n)      parameter vector
             real(dp) :: eps_jac
             integer*8:: handle 
             integer  :: successful
@@ -942,13 +892,13 @@ contains
             ! set epsilon for jacobian calc
             eps_jac = 1.d-5
             ! allocate space
-            allocate(  f1(ft%nRs))
-            allocate(  f2(ft%nRs))
-            allocate(FJAC(ft%nRs,ft%nVs))
-            ! initialize X
-            allocate(X, source=tb%V)
+            allocate(  f1(ft%nrs))
+            allocate(  f2(ft%nrs))
+            allocate(FJAC(ft%nrs,ft%nxs))
+            ! initialize x
+            allocate(x, source=tb%V)
             ! begin jacobian computation
-            if (djacobi_init(handle=handle, n=ft%nVs, m=ft%nRs, X=X, FJAC=FJAC, eps=eps_jac) .ne. tr_success) then
+            if (djacobi_init(handle=handle, n=ft%nxs, m=ft%nrs, x=x, FJAC=FJAC, eps=eps_jac) .ne. tr_success) then
                 print *, '#fail: error in djacobi_init' 
                 call mkl_free_buffers
                 stop 1
@@ -962,13 +912,13 @@ contains
                     stop 1
                 end if
                 if (rci_request .eq. 1) then
-                    ! update X in TB model
-                    call tb%set_Vsk(V=X)
+                    ! update x in TB model
+                    call tb%set_Vsk(V=x)
                     ! compute jacobian
                     call compute_residual(ft=ft,tb=tb,tbpg=tbpg,bz=bz,dr=dr,pp=pp,R=f1)
                 else if (rci_request .eq. 2) then
-                    ! update X in TB model
-                    call tb%set_Vsk(V=X)
+                    ! update x in TB model
+                    call tb%set_Vsk(V=x)
                     ! compute jacobian
                     call compute_residual(ft=ft,tb=tb,tbpg=tbpg,bz=bz,dr=dr,pp=pp,R=f2)
                 else if (rci_request .eq. 0) then
