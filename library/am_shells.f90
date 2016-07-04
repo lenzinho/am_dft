@@ -184,9 +184,9 @@ contains
                     write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%i))//'-'//trim(int2char(pp%shell(k)%j))
                     write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%m))//'-'//trim(int2char(pp%shell(k)%n))
                     write(*,'(i5)'    ,advance='no') pp%shell(k)%natoms
-                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( pp%shell(k)%stab%ps_id )))
-                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( pp%shell(k)%rotg%ps_id )))
-                    write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( pp%shell(k)%revg%ps_id )))
+                    write(*,'(a8)'    ,advance='no') trim(get_pg_name(get_pg_code( pp%shell(k)%stab%ps_id )))
+                    write(*,'(a8)'    ,advance='no') trim(get_pg_name(get_pg_code( pp%shell(k)%rotg%ps_id )))
+                    write(*,'(a8)'    ,advance='no') trim(get_pg_name(get_pg_code( pp%shell(k)%revg%ps_id )))
                     write(*,'(f10.3)' ,advance='no') norm2(pp%shell(k)%tau_cart(1:3,1))
                     write(*,'(3f10.3)',advance='no') 	   pp%shell(k)%tau_cart(1:3,1)
                     write(*,'(f10.3)' ,advance='no') norm2(pp%shell(k)%tau_frac(1:3,1))
@@ -417,9 +417,9 @@ contains
                 write(*,'(a6)'    ,advance='no') tostring(ip%shell(k)%i)//'-'//tostring(ip%shell(k)%j)
                 write(*,'(a6)'    ,advance='no') tostring(ip%shell(k)%m)//'-'//tostring(ip%shell(k)%n)
                 write(*,'(i5)'    ,advance='no') ip%shell(k)%natoms
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%stab%ps_id )))
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%rotg%ps_id )))
-                write(*,'(a8)'    ,advance='no') trim(decode_pointgroup(point_group_schoenflies( ip%shell(k)%revg%ps_id )))
+                write(*,'(a8)'    ,advance='no') trim(get_pg_name(get_pg_code( ip%shell(k)%stab%ps_id )))
+                write(*,'(a8)'    ,advance='no') trim(get_pg_name(get_pg_code( ip%shell(k)%rotg%ps_id )))
+                write(*,'(a8)'    ,advance='no') trim(get_pg_name(get_pg_code( ip%shell(k)%revg%ps_id )))
                 write(*,'(f10.3)' ,advance='no') norm2(ip%shell(k)%tau_cart(1:3,1))
                 write(*,'(3f10.3)',advance='no')       ip%shell(k)%tau_cart(1:3,1)
                 write(*,'(f10.3)' ,advance='no') norm2(ip%shell(k)%tau_frac(1:3,1))
@@ -451,21 +451,21 @@ contains
             ! get unique point group identifiers
             allocate(pg_id_unique(ip%nshells))
             do k = 1, ip%nshells
-            pg_id_unique(k) = point_group_schoenflies( ip%shell(k)%stab%ps_id )
+            pg_id_unique(k) = get_pg_code( ip%shell(k)%stab%ps_id )
             enddo
             pg_id_unique = unique(pg_id_unique)
             ! loop over unique point subgroups
             do k = 1, size(pg_id_unique)
             do i = 1, ip%nshells
-                if (pg_id_unique(k).eq. point_group_schoenflies(ip%shell(i)%stab%ps_id) ) then
+                if (pg_id_unique(k).eq. get_pg_code(ip%shell(i)%stab%ps_id) ) then
                     ! print point group
-                    write(*,'(a,a)') flare, 'point group '//trim(decode_pointgroup(pg_id_unique(k)))
+                    write(*,'(a,a)') flare, 'point group '//trim(get_pg_name(pg_id_unique(k)))
                     ! print character table
                     call ip%shell(i)%stab%print_character_table()
                     ! dump debugging
                     if (debug) then
                     call execute_command_line('mkdir -p  '//trim(debug_dir)//'/subgroups/')
-                    call ip%shell(i)%stab%debug_dump(fname= trim(debug_dir)//'/subgroups/outfile.'//trim(decode_pointgroup(pg_id_unique(k))))
+                    call ip%shell(i)%stab%debug_dump(fname= trim(debug_dir)//'/subgroups/outfile.'//trim(get_pg_name(pg_id_unique(k))))
                     endif
                     ! break loop
                     exit
@@ -528,7 +528,7 @@ contains
                     M([1,2],k) = M([2,1],k)
                 endif
                 ! record stabilzier group
-                s(k) = point_group_schoenflies( pp%shell(k)%rotg%ps_id )
+                s(k) = get_pg_code( pp%shell(k)%rotg%ps_id )
             enddo
             !
             ! compare all the prerequisists listed above (distances, atom types, and bond stabilizer) to figure out which pairs are irreducible

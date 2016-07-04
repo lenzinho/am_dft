@@ -29,6 +29,9 @@ module am_symmetry_tables
         complex(dp), allocatable :: irrep_proj_V(:,:)       ! eigenvectors of projection
         complex(dp), allocatable :: block_proj(:,:)         ! eigenvectors of projection
         complex(dp), allocatable :: wigner_proj(:,:,:)      !
+        ! if subgroup
+        complex(dp), allocatable :: subduced_chi(:,:)       ! subduced characters
+        character(:),allocatable :: subduced_label(:)       ! subduced irrep labels
     end type am_class_character_table
 
     type, public :: am_class_multiplication_table
@@ -291,7 +294,7 @@ contains
 
     ! subgroup
 
-    function       point_group_schoenflies(ps_id) result(pg_code)
+    function       get_pg_code(ps_id) result(pg_code)
         !>
         !> Refs:
         !>
@@ -414,7 +417,7 @@ contains
             write(*,'(5x,a5,i5)') 's_4', ns4
             write(*,'(5x,a5,i5)') 's_3', ns3
             stop
-    end function   point_group_schoenflies
+    end function   get_pg_code
 
     function       get_cstruct(multab) result(cstruct)
         !
@@ -778,35 +781,82 @@ contains
         end function   eigenanalysis
     end function   get_chartab
 
-    function       get_muliken_label(chartab,class_nelements,class_member,ps_id) result(irrep_label)
+    function       get_mulliken_label(chartab,class_id,ps_id) result(irrep_label)
         !
         implicit none
         !
         complex(dp), intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
-        integer, intent(in) :: class_nelements(:)
-        integer, intent(in) :: class_member(:,:)
+        integer, intent(in) :: class_id(:)
         integer, intent(in) :: ps_id(:)
+        ! integer, intent(in) :: ax_id(:)
         character(:), allocatable :: irrep_label(:)
+        integer, allocatable :: v(:)
         integer :: i, j, k
         integer :: nirreps
         integer :: nclasses
         integer :: class_containing_identity
         integer :: class_containing_inversion
         integer :: class_containing_highsym
-        integer, allocatable :: highsymlist(:)
+        integer :: class_containing_c2_or_sv
+
+
+
+        integer :: ax_id(48)
+        ax_id = 0
+
+
+
+
+
         ! they are always identical...
         nirreps  = size(chartab,1)
         nclasses = size(chartab,2)
+        ! lookup tables:
+        ! ps_id: 1  e
+        !        2  c_2
+        !        3  c_3
+        !        4  c_4
+        !        5  c_6
+        !        6  i
+        !        7  s_2
+        !        8  s_6
+        !        9  s_4
+        !        10 s_3
+        ! ax_id: 1  principal axis
+        !        2  rotation   parallel
+        !        3  rotation   perpendicular
+        !        4  reflection parallel (sv)
+        !        5  reflection perpendicular (sh)
+        !        6  reflection diagonal (sd)
         ! create irrep label
         allocate(character(7) :: irrep_label(nirreps))
-        ! get clases containing stuff
-        class_containing_identity  = find_class_containing_ps(nclasses=nclasses, id=1, ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
-        class_containing_inversion = find_class_containing_ps(nclasses=nclasses, id=6, ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
-        allocate(highsymlist, source=[5,10,4,9,3,8,2,7,1,6])
-        do i = 1,10
-            class_containing_highsym = find_class_containing_ps(nclasses=nclasses, id=highsymlist(i), ps_id=ps_id, class_nelements=class_nelements, class_member=class_member)
-            if (class_containing_highsym.ne.0) exit
-        enddo
+        ! initialize class_containing_stuff
+        class_containing_identity  = 0
+        class_containing_inversion = 0
+        class_containing_highsym   = 0
+        class_containing_c2_or_sv  = 0
+        ! get class containing identity
+        v = selector(ps_id.eq.1)
+        if (size(v).ne.0) then
+            class_containing_identity = class_id(v(1))
+        else
+            stop 'ERROR [get_mulliken_label]: no identity'
+        endif
+        ! get class containing inversion
+        v = selector(ps_id.eq.6)
+        if (size(v).ne.0) class_containing_inversion = class_id(v(1))
+        ! get class with principal axis
+        v = selector(ax_id.eq.1)
+        if (size(v).ne.0) class_containing_highsym   = class_id(v(1))
+        ! if another class also has a high symmtery principal axis, then unset the rotation axis
+        
+        ! 
+
+        ! find class containing perpendicular reflection plane (backup) or perpendicular two-fold rotation axis
+        v = selector((ps_id.eq.7).and.(ax_id.eq.4))
+        if (size(v).ne.0) class_containing_c2_or_sv = class_id(v(1))
+        v = selector((ps_id.eq.2).and.(ax_id.eq.3))
+        if (size(v).ne.0) class_containing_c2_or_sv = class_id(v(1))
         !
         do j = 1, nirreps
             ! 0) nullify irrep label
@@ -816,73 +866,69 @@ contains
             select case (nint(real(chartab(j,i))))
                 case (1)
                     k = class_containing_highsym
-                    if (real(chartab(j,k)).ge.0) then 
-                        irrep_label(j) = trim(irrep_label(j))//'A'
+                    if (k.ne.0) then
+                        ! unique high symmetry axis
+                        if (real(chartab(j,k)).ge.0) then 
+                            ! A is used when the IR is symmetric under Cn or Sn for the highest n in the group
+                            irrep_label(j) = trim(irrep_label(j))//'A'
+                        else
+                            ! B is used when the IR is antisymmetric under Cn or Sn for the highest n in the group
+                            irrep_label(j) = trim(irrep_label(j))//'B'
+                        endif
                     else
-                        irrep_label(j) = trim(irrep_label(j))//'B'
+                        ! no unique high symmetry axis
+                        ! A is also used if there is no Cn or Sn
+                            irrep_label(j) = trim(irrep_label(j))//'A'
                     endif
                 case (2); irrep_label(j) = trim(irrep_label(j))//'E'
                 case (3); irrep_label(j) = trim(irrep_label(j))//'T'
+                case (4); irrep_label(j) = trim(irrep_label(j))//'G'
+                case (5); irrep_label(j) = trim(irrep_label(j))//'H'
             end select
-            ! 2) find class containing inversion (ps_id=6)
+            ! 2) find class containing c2 or sv (ps_id=7)
+            i = class_containing_identity
+            if (nint(real(chartab(j,i))).eq.1) then
+                i = class_containing_c2_or_sv
+                if (i.ne.0) then
+                select case (sign(1,nint(real(chartab(j,i)))))
+                    case (+1); irrep_label(j) = trim(irrep_label(j))//'_1'
+                    case (-1); irrep_label(j) = trim(irrep_label(j))//'_2'
+                end select
+                endif
+            endif
+            ! 3) find class containing inversion (ps_id=6)
             i = class_containing_inversion
             if (i.ne.0) then
             select case (sign(1,nint(real(chartab(j,i)))))
-                case (+1); irrep_label(j) = trim(irrep_label(j))//'_g'
-                case (-1); irrep_label(j) = trim(irrep_label(j))//'_u'
+                case (+1)
+                    if (index(irrep_label(j),'_').eq.0) then
+                        irrep_label(j)=trim(irrep_label(j))//'_'
+                    endif
+                    irrep_label(j) = trim(irrep_label(j))//'g'
+                case (-1)
+                    if (index(irrep_label(j),'_').eq.0) then
+                        irrep_label(j)=trim(irrep_label(j))//'_'
+                    endif
+                    irrep_label(j) = trim(irrep_label(j))//'u'
             end select
             endif
-            !
         enddo
+    end function   get_mulliken_label
+
+    function       get_subduced_chi(supergroup_chartab,supergroup_class_id,supergroup_id) result(subduced_chi)
         !
-        contains
-            pure function find_class_containing_ps(nclasses, id, ps_id, class_nelements, class_member) result(i)
-                !
-                implicit none
-                !
-                integer, intent(in) :: id
-                integer, intent(in) :: nclasses
-                integer, intent(in) :: ps_id(:)
-                integer, intent(in) :: class_nelements(:)
-                integer, intent(in) :: class_member(:,:)
-                integer :: i, j
-                !
-                do i = 1, nclasses
-                do j = 1, class_nelements(i)
-                    if (ps_id(class_member(i,j)).eq.id) then
-                        return
-                    endif
-                enddo
-                enddo
-                ! if not found
-                i = 0
-            end function  find_class_containing_ps
-    end function   get_muliken_label
-
-!     function      get_aux_reduction_matrix(chartab,)
-!         !
-!         ! matlab: ( c_4v.ct.chartab .* spread(c_4v.cc.nelements,1,c_4v.ct.nirreps))'/c_4v.nsyms
-!         implicit none
-!         !
-
-!         !
-!     end function  get_aux_reduction_matrix
-
-!     function       get_chi_subduced(supergroup_chartab,supergroup_class_id,supergroup_id) result(chi_subduced)
-!         !
-!         ! matlab:
-!         ! o_h.ct.chartab(:,unique(o_h.cc.id(c_4v.supergroup_id)))
-!         implicit none
-!         !
-!         complex(dp), intent(in) :: supergroup_chartab(:,:)
-!         integer    , intent(in) :: supergroup_class_id(:)
-!         integer    , intent(in) :: supergroup_id(:)
-!         complex(dp),allocatable :: chi_subduced(:,:)
-!         !
-!         allocate(chi_subduced,source=supergroup_chartab(:,unique(supergroup_class_id(supergroup_id))))
-!         !
-!     end function   get_chi_subduced
-
+        ! matlab:
+        ! o_h.ct.chartab(:,unique(o_h.cc.id(c_4v.supergroup_id)))
+        implicit none
+        !
+        complex(dp), intent(in) :: supergroup_chartab(:,:)
+        integer    , intent(in) :: supergroup_class_id(:)
+        integer    , intent(in) :: supergroup_id(:)
+        complex(dp),allocatable :: subduced_chi(:,:)
+        !
+        allocate(subduced_chi,source=supergroup_chartab(:,unique(supergroup_class_id(supergroup_id))))
+        !
+    end function   get_subduced_chi
 
     function       get_reduction_coefficient(chartab,class_nelements,chi_rep) result(beta)
         !
@@ -1563,7 +1609,7 @@ contains
 
     ! get point symmetry name
 
-    function       decode_pointsymmetry(ps_id) result(schoenflies)
+    function       get_ps_name(ps_id) result(schoenflies)
         !
         implicit none
         !
@@ -1584,7 +1630,7 @@ contains
         case default
             stop 'Schoenflies code unknown.'
         end select
-    end function   decode_pointsymmetry
+    end function   get_ps_name
 
     ! printer for chartab
 
@@ -1631,11 +1677,9 @@ contains
         !
         write(*,printer%fmts(2),advance='no') 'repr.'
         do i = 1, nclasses
-            write(*,printer%fmts(3),advance='no') trim(decode_pointsymmetry(ps_id(class_member(i,1))))
+            write(*,printer%fmts(3),advance='no') trim(get_ps_name(ps_id(class_member(i,1))))
         enddo
         write(*,*)
-        !
-        call printer%printer_print_bar(nclasses=nclasses)
         !
     end subroutine printer_print_chartab_header
 

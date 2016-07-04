@@ -23,7 +23,7 @@ module am_symmetry
         type(am_class_character_table)      :: ct     ! character table
         type(am_class_multiplication_table) :: mt     ! multiplication table
         integer , allocatable :: supergroup_id(:)     ! if this is a subgroup, supergroup_id identifis the symmetry in the encompassing group (used for stabilizer group)
-    contains
+        contains
         procedure :: sort_symmetries
         procedure :: get_multiplication_table
         procedure :: get_conjugacy_classes
@@ -336,7 +336,6 @@ contains
             do i = 1, grp%ct%nirreps
                 rep_label(i) = '['//trim(grp%ct%irrep_label(i))//' * '//trim(grp%ct%irrep_label(i))//']'
             enddo
-            ! rep_label = trim_null(rep_label)
             ! print decomposition
             call print_rep_decomp(chartab=grp%ct%chartab,class_nelements=grp%cc%nelements,&
                 irrep_label=grp%ct%irrep_label,rep_label=rep_label,&
@@ -351,7 +350,6 @@ contains
             do i = 1, grp%ct%nirreps
                 rep_label(i) = '{'//trim(grp%ct%irrep_label(i))//' * '//trim(grp%ct%irrep_label(i))//'}'
             enddo
-            ! rep_label = trim_null(rep_label)
             ! print decomposition
             call print_rep_decomp(chartab=grp%ct%chartab,class_nelements=grp%cc%nelements,&
                 irrep_label=grp%ct%irrep_label,rep_label=rep_label,&
@@ -367,6 +365,15 @@ contains
             call print_product_decomp(chartab=grp%ct%chartab,class_nelements=grp%cc%nelements,&
                 irrep_label=grp%ct%irrep_label,rep_label=rep_label,&
                 chi=  get_chi_wigner(seitz_cart=grp%seitz_cart,class_member=grp%cc%member)  )
+            ! ------------------------------------------------------------------------------------------
+            ! initialize decomposition
+            if (allocated(grp%ct%subduced_chi)) then
+                write(*,'(a,a)') flare, 'decompositions of subduced supergroup irreps:'
+                ! print decomposition
+                call print_rep_decomp(chartab=grp%ct%chartab,class_nelements=grp%cc%nelements,&
+                    irrep_label=grp%ct%irrep_label,rep_label=grp%ct%subduced_label,&
+                    chi=  grp%ct%subduced_chi  )
+            endif
             ! ------------------------------------------------------------------------------------------
 
             ! ADD VECTOR PRINT, RAMAN and IR selection rules.
@@ -426,33 +433,6 @@ contains
 
             ! get_chi_symmeterized_irrep(multab,chartab,class_id,class_member,flags)
 
-
-
-
-!             ! representation based on basis functions
-!             rep_label(1) = 'rep'
-!             chi_rep(1,:) = get_rep_characters(   sym=grp%seitz_frac(1:3,1:3,:), class_member=grp%cc%member)
-
-!             ! orbital products involving p orbitals
-!             rep_label(10)= 'p * p'
-!             chi_rep(10,:)= chi_rep(3,:) * chi_rep(3,:)
-!             rep_label(11)= 'p * d'
-!             chi_rep(11,:)= chi_rep(3,:) * chi_rep(4,:)
-!             rep_label(12)= 'p * f'
-!             chi_rep(12,:)= chi_rep(3,:) * chi_rep(5,:)
-!             ! orbital products involving d orbitals
-!             rep_label(13)= 'd * d'
-!             chi_rep(13,:)= chi_rep(4,:) * chi_rep(4,:)
-!             rep_label(14)= 'd * f'
-!             chi_rep(14,:)= chi_rep(4,:) * chi_rep(5,:)
-!             ! orbital products involving f orbitals
-!             rep_label(15)= 'f * f'
-!             chi_rep(15,:)= chi_rep(5,:) * chi_rep(5,:)
-!             ! orbital products involving p orbital powers
-!             rep_label(16)= 'p ^ 3'
-!             chi_rep(16,:)= chi_rep(3,:) * chi_rep(3,:) * chi_rep(3,:)
-!             rep_label(17)= 'p ^ 4'
-!             chi_rep(17,:)= chi_rep(3,:) * chi_rep(3,:) * chi_rep(3,:) * chi_rep(3,:)
         class is (am_class_space_group) 
             ! do nothing.
         class is (am_class_symrep_group)
@@ -466,9 +446,6 @@ contains
             stop 'ERROR [print_character_table]: class unknown'
         end select
         !
-
-
-
         contains
         function       get_chi_wigner(seitz_cart,class_member) result(chi)
             !
@@ -598,9 +575,9 @@ contains
             integer, allocatable :: beta(:,:,:)
             integer :: maxlen
             ! get dimensions
-            nirreps = size(chartab,1)
+            nirreps  = size(chartab,1)
             nclasses = nirreps
-            nreps = size(chi,1)
+            nreps    = size(chi,1)
             ! allocate space for string
             allocate(character(150)::str(nreps))
             ! allocate space for reduction cofficients
@@ -688,7 +665,6 @@ contains
         end subroutine print_rep_decomp
     end subroutine print_character_table
 
-
     ! high level routines which operate on sg/pg
 
     subroutine     create_seitz_group(sg,bas,seitz_frac)
@@ -728,10 +704,7 @@ contains
         ! correct rounding error in cart
         call correct_rounding_error(sg%seitz_cart)
         ! identify point symmetries
-        allocate(sg%ps_id(sg%nsyms))
-        do i = 1, sg%nsyms
-            sg%ps_id(i) = ps_schoenflies(R=sg%seitz_frac(1:3,1:3,i))
-        enddo
+        sg%ps_id = get_ps_id(R=sg%seitz_frac)
         ! sort symmetries based on parameters 
         call sg%sort_symmetries(criterion=sg%seitz_frac(1,4,:)      , flags='ascend')
         call sg%sort_symmetries(criterion=sg%seitz_frac(2,4,:)      , flags='ascend')
@@ -744,6 +717,18 @@ contains
         call sg%get_conjugacy_classes()
         ! get character table
         call sg%get_character_table()
+        ! get class-specifc things
+        select type (sg)
+        class is (am_class_point_group)
+            ! identify point group
+            sg%pg_code = get_pg_code(sg%ps_id)
+            ! get name of point group
+            sg%pg_name = trim_null(get_pg_name(sg%pg_code))
+        class is (am_class_space_group)
+            ! do nothing
+        class default
+            stop 'ERROR [create_seitz_group]: class unknown'
+        end select
         !
         contains
         function       seitz_frac2cart(seitz_frac,bas,recbas) result(seitz_cart)
@@ -820,7 +805,7 @@ contains
             ! print seitz operators
             mpl=2
             do i = 1,sg%nsyms
-                str = tostring(i)//': '//decode_pointsymmetry(sg%ps_id(i))
+                str = tostring(i)//': '//get_ps_name(sg%ps_id(i))
                 if     ((mod(i,mpl).eq.0).or.(i.eq.sg%nsyms)) then
                     call disp_indent()
                     call disp(title=trim(str)//' [frac]', X=sg%seitz_frac(:,:,i) ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
@@ -1040,14 +1025,14 @@ contains
         call pg%create_seitz_group(seitz_frac=unique(wrk_frac), bas=pc%bas)
         !
         if (opts%verbosity.ge.1) then
-            write(*,'(a,a,a)') flare, 'point group = '      , decode_pointgroup(point_group_schoenflies(pg%ps_id))
+            write(*,'(a,a,a)') flare, 'point group = '      , get_pg_name(get_pg_code(pg%ps_id))
             write(*,'(a,a,a)') flare, 'point symmetries = ' , tostring(pg%nsyms)
             write(*,'(a,a,a)') flare, 'conjugacy classes = ', tostring(pg%cc%nclasses)
             write(*,'(a,a)')   flare, 'group generators = ' , tostring(pg%mt%gen)
             write(*,'(a,a)')   flare, 'point symmetries [frac/cart] = '
             mpl=2 ! matrices per line
             do i = 1,pg%nsyms
-                str = tostring(i)//': '//decode_pointsymmetry(pg%ps_id(i))
+                str = tostring(i)//': '//get_ps_name(pg%ps_id(i))
                 if ((mod(i,mpl).eq.0).or.(i.eq.sg%nsyms)) then
                     call disp_indent()
                     call disp(title=trim(str)//' [frac]', X=pg%seitz_frac(:,:,i) ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
@@ -1127,6 +1112,16 @@ contains
             endif
         enddo search
         enddo
+        ! get subduced chi
+        rotg%ct%subduced_chi = get_subduced_chi(supergroup_chartab=pg%ct%chartab,&
+            supergroup_class_id=pg%cc%id,supergroup_id=rotg%supergroup_id)
+        ! get subduced irrep labels
+        allocate(character(200)::rotg%ct%subduced_label(pg%ct%nirreps))
+        do i = 1, pg%ct%nirreps
+            rotg%ct%subduced_label(i) = trim(pg%ct%irrep_label(i))//'('//trim(pg%pg_name)//')'
+        enddo
+        rotg%ct%subduced_label = trim_null(rotg%ct%subduced_label)
+        !
     end subroutine get_rotational_group
 
     subroutine     get_stabilizer_group(stab,pg,v,opts,flags)
@@ -1163,7 +1158,6 @@ contains
         !
         allocate(indicies(pg%nsyms))
         indicies=[1:pg%nsyms]
-        !
         ! create group
         call stab%create_seitz_group(seitz_frac=pg%seitz_frac(:,:,pack(indicies,mask)), bas=pg%bas)
         ! save id's of corresponding symmetries in the encompasing group
@@ -1176,6 +1170,16 @@ contains
             endif
         enddo search
         enddo
+        ! get subduced chi
+        stab%ct%subduced_chi = get_subduced_chi(supergroup_chartab=pg%ct%chartab,&
+            supergroup_class_id=pg%cc%id,supergroup_id=stab%supergroup_id)
+        ! get subduced irrep labels
+        allocate(character(200)::stab%ct%subduced_label(pg%ct%nirreps))
+        do i = 1, pg%ct%nirreps
+            stab%ct%subduced_label(i) = trim(pg%ct%irrep_label(i))//'('//trim(pg%pg_name)//')'
+        enddo
+        stab%ct%subduced_label = trim_null(stab%ct%subduced_label)
+        !
     end subroutine get_stabilizer_group
     
     subroutine     get_reversal_group(revg,pg,v,opts,flags)
@@ -1241,6 +1245,16 @@ contains
             endif
         enddo search
         enddo
+        ! get subduced chi
+        revg%ct%subduced_chi = get_subduced_chi(supergroup_chartab=pg%ct%chartab,&
+            supergroup_class_id=pg%cc%id,supergroup_id=revg%supergroup_id)
+        ! get subduced irrep labels
+        allocate(character(200)::revg%ct%subduced_label(pg%ct%nirreps))
+        do i = 1, pg%ct%nirreps
+            revg%ct%subduced_label(i) = trim(pg%ct%irrep_label(i))//'('//trim(pg%pg_name)//')'
+        enddo
+        revg%ct%subduced_label = trim_null(revg%ct%subduced_label)
+        !
     end subroutine get_reversal_group
 
     subroutine     write_action_table(sg,uc,fname,opts)
@@ -1302,7 +1316,7 @@ contains
             write(fid,'(5x)',advance='no')
             write(fid,fmt1,advance='no') 'schf.'
             do i = 1, sg%nsyms
-                write(fid,fmt3,advance='no') trim(decode_pointsymmetry(sg%ps_id(i)))
+                write(fid,fmt3,advance='no') trim(get_ps_name(sg%ps_id(i)))
             enddo
             write(fid,*)
             ! POINT SYMMETRY COMPONENTS
@@ -1559,47 +1573,73 @@ contains
 
     ! decoding/naming functions 
 
-    function       ps_schoenflies(R) result(ps_id)
+    function       get_ps_id(R) result(ps_id)
         !
         ! Point symmetries in fractional coordinates so that they are nice integers which can be easily classified.
-        !
+        !  (should not matter... trace and det are invariant under similarity transforms...)
         !    element:         e    i  c_2  c_3  c_4  c_6  s_2  s_6  s_4  s_3
         !    trace:          +3   -3   -1    0   +1   +2   +1    0   -1   -2
         !    determinant:    +1   -1   +1   +1   +1   +1   -1   -1   -1   -1
         !
         implicit none
         !
-        real(dp), intent(in) :: R(3,3)
+        real(dp), intent(in) :: R(:,:,:)
+        integer, allocatable :: ps_id(:)
+        integer :: nsyms
+        integer :: i
         real(dp) :: tr
         real(dp) :: d
-        integer :: ps_id
         !
-        ! get trace and determinant (fractional)
-        tr  = trace(R)
-        d = det(R)
+        nsyms = size(R,3)
         !
-        ! The Mathematical Theory of Symmetry in Solids: Representation Theory for
-        ! Point Groups and Space Groups. 1 edition. Oxford?: New York: Oxford University
-        ! Press, 2010. page 138, chartab 3.8.
-        !
+        allocate(ps_id(nsyms))
         ps_id = 0
-        if     ( (abs(tr - 3).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_id = 1  ! 'e'
-        elseif ( (abs(tr + 1).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_id = 2  ! 'c_2'
-        elseif ( (abs(tr - 0).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_id = 3  ! 'c_3'
-        elseif ( (abs(tr - 1).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_id = 4  ! 'c_4'
-        elseif ( (abs(tr - 2).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_id = 5  ! 'c_6'
-        elseif ( (abs(tr + 3).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_id = 6  ! 'i'
-        elseif ( (abs(tr - 1).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_id = 7  ! 's_2'
-        elseif ( (abs(tr - 0).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_id = 8  ! 's_6'
-        elseif ( (abs(tr + 1).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_id = 9  ! 's_4'
-        elseif ( (abs(tr + 2).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_id = 10 ! 's_3'
-        endif
         !
-        if (ps_id.eq.0) stop 'Unable to identify point symmetry.'
-        !
-    end function   ps_schoenflies
+        do i = 1, nsyms
+            ! get trace and determinant (fractional)
+            tr = trace(R(1:3,1:3,i))
+            d  = det(R(1:3,1:3,i))
+            ! The Mathematical Theory of Symmetry in Solids: Representation Theory for
+            ! Point Groups and Space Groups. 1 edition. Oxford?: New York: Oxford University
+            ! Press, 2010. page 138, chartab 3.8.
+            if     ( (abs(tr - 3).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_id(i) = 1  ! 'e'
+            elseif ( (abs(tr + 1).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_id(i) = 2  ! 'c_2'
+            elseif ( (abs(tr - 0).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_id(i) = 3  ! 'c_3'
+            elseif ( (abs(tr - 1).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_id(i) = 4  ! 'c_4'
+            elseif ( (abs(tr - 2).lt.tiny) .and. (abs(d - 1).lt.tiny) ) then; ps_id(i) = 5  ! 'c_6'
+            elseif ( (abs(tr + 3).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_id(i) = 6  ! 'i'
+            elseif ( (abs(tr - 1).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_id(i) = 7  ! 's_2'
+            elseif ( (abs(tr - 0).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_id(i) = 8  ! 's_6'
+            elseif ( (abs(tr + 1).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_id(i) = 9  ! 's_4'
+            elseif ( (abs(tr + 2).lt.tiny) .and. (abs(d + 1).lt.tiny) ) then; ps_id(i) = 10 ! 's_3'
+            endif
+            if (ps_id(i).eq.0) stop 'Unable to identify point symmetry.'
+        enddo
+    end function   get_ps_id
 
-    function       decode_pointgroup(pg_code) result(point_group_name)
+    function       get_ax_name(ax_id) result(ax_name)
+        ! 0 principal rotation axis, +1 parallel-rotation, 2 perp.-rotation, 4 reflection parallel (sv), 5 reflection perpendicular (sh), 6 reflection diagonal (sd)
+        implicit none
+        !
+        integer ,intent(in) :: ax_id
+        character(:), allocatable :: ax_name
+        !
+        allocate(character(10)::ax_name)
+        !
+        select case(ax_id)
+        case(1); ax_name = 'P'
+        case(2); ax_name = '='
+        case(3); ax_name = 'T'
+        case(4); ax_name = 's_v'
+        case(5); ax_name = 's_h'
+        case(6); ax_name = 's_d'
+        case default
+            ax_name = ''
+        end select
+        !
+    end function   get_ax_name
+
+    function       get_pg_name(pg_code) result(pg_name)
         ! Hermann-Mauguin     Shubnikov[1]        Schoenflies     Orbifold    Coxeter 
         ! 1                   1\                  C1              11          [ ]+    
         ! -1                  \tilde{2}           S2 (=Ci)        ×           [2+,2+] 
@@ -1637,49 +1677,49 @@ contains
         implicit none
         !
         integer, intent(in) :: pg_code
-        character(string_length_schoenflies) :: point_group_name
+        character(string_length_schoenflies) :: pg_name
         !
         select case (pg_code)
-                case(1);  point_group_name = 'c_1'
-                case(2);  point_group_name = 's_2'
-                case(3);  point_group_name = 'c_2'
-                case(4);  point_group_name = 'c_1h'
-                case(5);  point_group_name = 'c_2h'
-                case(6);  point_group_name = 'd_2'
-                case(7);  point_group_name = 'c_2v'
-                case(8);  point_group_name = 'd_2h'
-                case(9);  point_group_name = 'c_3'
-                case(10); point_group_name = 's_6'
-                case(11); point_group_name = 'd_3'
-                case(12); point_group_name = 'c_3v'
-                case(13); point_group_name = 'd_3d'
-                case(14); point_group_name = 'c_4'
-                case(15); point_group_name = 's_4'
-                case(16); point_group_name = 'c_4h'
-                case(17); point_group_name = 'd_4'
-                case(18); point_group_name = 'c_4v'
-                case(19); point_group_name = 'd_2d'
-                case(20); point_group_name = 'd_4h'
-                case(21); point_group_name = 'c_6'
-                case(22); point_group_name = 'c_3h'
-                case(23); point_group_name = 'c_6h'
-                case(24); point_group_name = 'd_6'
-                case(25); point_group_name = 'c_6v'
-                case(26); point_group_name = 'd_3h'
-                case(27); point_group_name = 'd_6h'
-                case(28); point_group_name = 't'
-                case(29); point_group_name = 't_h'
-                case(30); point_group_name = 'o'
-                case(31); point_group_name = 't_d'
-                case(32); point_group_name = 'o_h'
+                case(1);  pg_name = 'c_1'
+                case(2);  pg_name = 's_2'
+                case(3);  pg_name = 'c_2'
+                case(4);  pg_name = 'c_1h'
+                case(5);  pg_name = 'c_2h'
+                case(6);  pg_name = 'd_2'
+                case(7);  pg_name = 'c_2v'
+                case(8);  pg_name = 'd_2h'
+                case(9);  pg_name = 'c_3'
+                case(10); pg_name = 's_6'
+                case(11); pg_name = 'd_3'
+                case(12); pg_name = 'c_3v'
+                case(13); pg_name = 'd_3d'
+                case(14); pg_name = 'c_4'
+                case(15); pg_name = 's_4'
+                case(16); pg_name = 'c_4h'
+                case(17); pg_name = 'd_4'
+                case(18); pg_name = 'c_4v'
+                case(19); pg_name = 'd_2d'
+                case(20); pg_name = 'd_4h'
+                case(21); pg_name = 'c_6'
+                case(22); pg_name = 'c_3h'
+                case(23); pg_name = 'c_6h'
+                case(24); pg_name = 'd_6'
+                case(25); pg_name = 'c_6v'
+                case(26); pg_name = 'd_3h'
+                case(27); pg_name = 'd_6h'
+                case(28); pg_name = 't'
+                case(29); pg_name = 't_h'
+                case(30); pg_name = 'o'
+                case(31); pg_name = 't_d'
+                case(32); pg_name = 'o_h'
             case default
                 call am_print('ERROR','Schoenflies code for point-group unknown.',flags='E')
                 call am_print('pg_code',pg_code)
                 stop
             end select
-    end function   decode_pointgroup
+    end function   get_pg_name
 
-    function       point_group_schoenflies(ps_id) result(pg_code)
+    function       get_pg_code(ps_id) result(pg_code)
         !>
         !> Refs:
         !>
@@ -1696,7 +1736,7 @@ contains
         !>
         !> Adapted from VASP
         !>
-        !>   pg_code --> point_group_name
+        !>   pg_code --> pg_name
         !>     1 --> c_1       9 --> c_3      17 --> d_4      25 --> c_6v
         !>     2 --> s_2      10 --> s_6      18 --> c_4v     26 --> d_3h
         !>     3 --> c_2      11 --> d_3      19 --> d_2d     27 --> d_6h
@@ -1802,7 +1842,7 @@ contains
             write(*,'(5x,a5,i5)') 's_4', ns4
             write(*,'(5x,a5,i5)') 's_3', ns3
             stop
-    end function   point_group_schoenflies
+    end function   get_pg_code
 
     subroutine     put_identity_first(seitz)
         !
@@ -1825,6 +1865,129 @@ contains
         enddo search
         ! 
     end subroutine put_identity_first
+
+
+
+    function       get_ax_id(R) result(ax_id)
+        ! 0 principal rotation axis, +1 parallel-rotation, 2 perp.-rotation, 4 reflection parallel (sv), 5 reflection perpendicular (sh), 6 reflection diagonal (sd)
+        implicit none
+        !
+        real(dp), intent(in) :: R(:,:,:)
+        integer , allocatable :: ax_id(:)
+        integer , allocatable :: ps_ns_rank(:)
+        real(dp), allocatable :: aa(:,:)
+        real(dp), allocatable :: v(:,:) ! null space vectors
+        integer , allocatable :: ps_id(:)
+        real(dp) :: c(3) ! cross product
+        real(dp) :: d    ! dot product
+        integer  :: nsyms
+        real(dp) :: highsym
+        integer  :: highsym_i
+        real(dp) :: zero(3)
+        real(dp) :: identity(3,3)
+        integer  :: i,j,k
+        ! get dimensions
+        nsyms = size(R,3)
+        ! get ps_id
+        ps_id = get_ps_id(R=R)
+        ! allocate space
+        allocate(ax_id(nsyms))
+        ax_id = 0
+        ! initialize zero
+        zero = 0
+        ! initialize identity
+        identity = eye(3)
+        ! identify rotations and reflections
+        allocate(ps_ns_rank(nsyms))
+        do i = 1, nsyms
+            ps_ns_rank(i) = size(null_svd(R(1:3,1:3,i)-identity),2)
+            if (ps_ns_rank(i).eq.0) then
+            ps_ns_rank(i) =-size(null_svd(R(1:3,1:3,i)+identity),2)
+            endif
+        enddo
+        ! among the rotations find the highest symmetry (principal) axis
+        allocate(aa(4,nsyms))
+        aa = 0
+        do i = 1, nsyms
+        if (ps_ns_rank(i).eq.1) then
+            aa(1:4,i) = rot2axis_angle(R(1:3,1:3,i))
+        endif
+        enddo
+        ! find highest symmetry axis, if multiple reflctions are the same choose the on alined with Z
+        highsym   = 3.15_dp ! slightly larger than pi
+        highsym_i = 1
+        search : do i = 1, nsyms
+        if (ps_ns_rank(i).eq.1) then
+            if (abs(aa(4,i)).le.highsym+tiny) then
+                highsym   = abs(aa(4,i))
+                highsym_i = i
+                ! if multiple reflctions are the same choose the on alined with Z
+                if (isequal(aa(1:3,i),real([0,0,1],dp))) then
+                    highsym = highsym - tiny
+                endif
+            endif
+        endif
+        enddo search
+        ! set it as the principal axis
+        ax_id(highsym_i) = 1
+        ! see which rotations are perpendicular to/parallel with the principal symmetry axis
+        do i = 1, nsyms
+        if (i.ne.highsym_i)     then
+        if (ps_ns_rank(i).eq.1) then
+            d = dot_product(aa(1:3,i),aa(1:3,highsym_i))
+            if     (    abs(d)-0.0_dp .lt.tiny) then
+                ! find perpendicular axes
+                ax_id(i) = 2
+            elseif (abs(abs(d)-1.0_dp).lt.tiny) then
+                ! find parallel axes
+                ax_id(i) = 3
+            endif
+        endif
+        endif
+        enddo
+        ! see which planes of reflections contain the principal axis
+        do i = 1, nsyms
+        if (ps_ns_rank(i).eq.2) then
+            v = null_svd(R(1:3,1:3,i)-identity)
+            ! define reflection plane as the normal vector
+            c = cross_product(v(:,1),v(:,2))
+            ! get dot product with highest symmetry axis
+            d = dot_product(c,aa(1:3,highsym_i))
+            ! note that perp and para are switched below to agree with convetion.
+            ! (using the normal vector to determine whether the reflection plane contains or is perpendicular to the principal axis)
+            if     (    abs(d)-0.0_dp .lt.tiny) then
+                ! If plane contains the principle rotation axis (i.e., parallel), it is a vertical plane (sv)
+                ax_id(i) = 4
+            elseif (abs(abs(d)-1.0_dp).lt.tiny) then
+                ! If plane is perpendicular to the principle rotation axis, it is a horizontal plane (sh)
+                ax_id(i) = 5
+            endif
+            ! if it is still equal to zero, check whether it is a sd ( requires the reflection normal to bisect the angle between two C2 axes)
+            if (ax_id(i).eq.0) then
+                sd_search : do j = 1, nsyms
+                if (ps_ns_rank(j).eq.1) then
+                do k = j, nsyms
+                if (j.ne.k) then
+                if (ps_ns_rank(k).eq.1) then
+                    if ( abs(dot_product(aa(1:3,j),c)-dot_product(aa(1:3,k),c)).lt.tiny ) then
+                        ax_id(i) = 6
+                        exit sd_search
+                    endif
+                endif
+                endif
+                enddo
+                endif
+                enddo sd_search
+            endif
+        endif
+        enddo
+
+        call disp(X=[1:nsyms],advance='no')
+        call disp(X=ps_ns_rank,advance='no')
+        call disp(X=ax_id,advance='yes')
+
+        stop
+    end function   get_ax_id
 
 end module am_symmetry
 

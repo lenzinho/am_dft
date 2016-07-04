@@ -29,7 +29,7 @@ module am_mkl
     end interface ! det
 
     interface rand
-        module procedure :: d_rand, dv_rand, dm_rand, dt_rand
+        module procedure d_rand, dv_rand, dm_rand, dt_rand
     end interface ! rand
 
     interface null_svd
@@ -37,11 +37,11 @@ module am_mkl
     end interface ! null_svd
 
     interface orth_svd
-        module procedure :: orth_dgesvd, orth_zgesvd
+        module procedure orth_dgesvd, orth_zgesvd
     end interface ! orth_svd
 
     interface rank_svd
-        module procedure :: rank_dgesvd, rank_zgesvd
+        module procedure rank_dgesvd, rank_zgesvd
     end interface ! rank_svd
 
 contains

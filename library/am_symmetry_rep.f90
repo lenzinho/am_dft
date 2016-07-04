@@ -300,7 +300,7 @@ module am_symmetry_rep
             ! print stabilzier group parameters
             if (opts%verbosity.ge.1) then
                 write(*,'(a,a)') flare, 'atomic pair = '//trim(atm_symb(pc%Z( shell%i )))//'-'//trim(atm_symb(pc%Z( shell%j )))
-                write(*,'(a,a)') flare, 'stabilizer group = '//trim(decode_pointgroup(point_group_schoenflies( shell%stab%ps_id )))
+                write(*,'(a,a)') flare, 'stabilizer group = '//trim(get_pg_name(get_pg_code( shell%stab%ps_id )))
                 write(*,'(a,a)') flare, 'orbit = '
                 call disp_indent()
                 call disp(X=[1:shell%natoms]         ,title='#'     ,style='underline',advance='no')

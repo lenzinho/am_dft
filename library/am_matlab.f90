@@ -72,7 +72,7 @@ module am_matlab
     end interface ! unique_inds
 
     interface trim_null
-        module procedure i_trim_null, vz_trim_null, vd_trim_null, vs_trim_null
+        module procedure i_trim_null, vz_trim_null, vd_trim_null, vs_trim_null, s_trim_null
     end interface ! trim_null
 
     interface issubset
@@ -826,12 +826,12 @@ module am_matlab
             do i = 1,3
                 axis(i) = sqrt(max(0.5_dp*(Rcp(i,i)+1),0.0_dp))
             enddo
-            aa(1:3) = axis
+            aa(1:3) = axis/norm2(axis)
             aa(4)   = pi
         else
             phi = acos( (tr-1.0_dp)/2.0_dp )
             axis = [Rcp(3,2)-Rcp(2,3),Rcp(1,3)-Rcp(3,1),Rcp(2,1)-Rcp(1,2)]/(2.0_dp*sin(phi))
-            aa(1:3) = axis
+            aa(1:3) = axis/norm2(axis)
             aa(4)   = phi
         endif
         !
@@ -1902,6 +1902,17 @@ module am_matlab
         enddo
         !
     end function  vs_trim_null
+
+    pure function  s_trim_null(A) result(B)
+        !
+        implicit none
+        !
+        character(*), intent(in) :: A
+        character(:),allocatable :: B
+        !
+        allocate(B, source=trim(A))
+        !
+    end function   s_trim_null
 
     ! get vector subspace intersection 
 
