@@ -60,8 +60,6 @@ module am_symmetry_tables
         procedure :: printer_print_definitions
     end type am_class_chartab_printer
 
-    private :: point_group_schoenflies
-
 contains
 
     ! multiplication table
@@ -293,131 +291,6 @@ contains
     end function   get_commutator_id
 
     ! subgroup
-
-    function       get_pg_code(ps_id) result(pg_code)
-        !>
-        !> Refs:
-        !>
-        !> Applied Group Theory: For Physicists and Chemists. Reissue edition.
-        !> Mineola, New York: Dover Publications, 2015. page 20.
-        !>
-        !> Casas, Ignasi, and Juan J. Pérez. “Modification to Flow Chart to
-        !> Determine Point Groups.” Journal of Chemical Education 69, no. 1
-        !> (January 1, 1992): 83. doi:10.1021/ed069p83.2.
-        !>
-        !> Breneman, G. L. “Crystallographic Symmetry Point Group Notation
-        !> Flow Chart.” Journal of Chemical Education 64, no. 3 (March 1, 1987):
-        !> 216. doi:10.1021/ed064p216.
-        !>
-        !> Adapted from VASP
-        !>
-        !>   pg_code --> point_group_name
-        !>     1 --> c_1       9 --> c_3      17 --> d_4      25 --> c_6v
-        !>     2 --> s_2      10 --> s_6      18 --> c_4v     26 --> d_3h
-        !>     3 --> c_2      11 --> d_3      19 --> d_2d     27 --> d_6h
-        !>     4 --> c_1h     12 --> c_3v     20 --> d_4h     28 --> t
-        !>     5 --> c_2h     13 --> d_3d     21 --> c_6      29 --> t_h
-        !>     6 --> d_2      14 --> c_4      22 --> c_3h     30 --> o
-        !>     7 --> c_2v     15 --> s_4      23 --> c_6h     31 --> t_d
-        !>     8 --> d_2h     16 --> c_4h     24 --> d_6      32 --> o_h
-        !>
-        implicit none
-        !
-        integer, intent(in) :: ps_id(:)
-        integer :: nsyms
-        integer :: ni, nc2, nc3, nc4, nc6, ns2, ns6, ns4, ns3, ne
-        integer :: pg_code
-        !
-        pg_code = 0
-        !
-        ! trivial cases first
-        !
-        nsyms = size(ps_id)
-        if     (nsyms .eq. 1 ) then; pg_code=1;  return
-        elseif (nsyms .eq. 48) then; pg_code=32; return
-        elseif (nsyms .eq. 16) then; pg_code=20; return
-        elseif (nsyms .eq. 3 ) then; pg_code=9;  return
-        endif
-        !
-        ni=0; nc2=0; nc3=0; nc4=0; nc6=0; ns2=0; ns6=0; ns4=0; ns3=0
-        ne  = count(ps_id.eq.1)  ! 'e' identity
-        nc2 = count(ps_id.eq.2)  ! 'c_2'
-        nc3 = count(ps_id.eq.3)  ! 'c_3'
-        nc4 = count(ps_id.eq.4)  ! 'c_4'
-        nc6 = count(ps_id.eq.5)  ! 'c_6'
-        ni  = count(ps_id.eq.6)  ! 'i' inversion
-        ns2 = count(ps_id.eq.7)  ! 's_2'
-        ns6 = count(ps_id.eq.8)  ! 's_6'
-        ns4 = count(ps_id.eq.9)  ! 's_4'
-        ns3 = count(ps_id.eq.10) ! 's_3'
-        !
-        if (ni.gt.1) then
-            call am_print('ERROR','More than one inversion operator found.',flags='E')
-            stop
-        endif
-        !
-        if (ne.gt.1) then
-            call am_print('ERROR','More than one identity operator found.',flags='E')
-        elseif (ne.eq.0) then
-            call am_print('ERROR','No identity operator found.',flags='E')
-            stop
-        endif
-        !
-        if (nsyms.eq.2)   then
-            if (ni.eq.1)  then; pg_code=2;  return; endif
-            if (nc2.eq.1) then; pg_code=3;  return; endif
-            if (ns2.eq.1) then; pg_code=4;  return; endif
-        endif
-        if (nsyms.eq.4)   then
-            if (ni.eq.1)  then; pg_code=5;  return; endif
-            if (nc2.eq.3) then; pg_code=6;  return; endif
-            if (ns2.eq.2) then; pg_code=7;  return; endif
-            if (nc4.eq.1) then; pg_code=14; return; endif
-            if (ns4.eq.2) then; pg_code=15; return; endif
-        endif
-        if (nsyms.eq.6)   then
-            if (ni.eq.1)  then; pg_code=10; return; endif
-            if (nc2.eq.3) then; pg_code=11; return; endif
-            if (ns2.eq.3) then; pg_code=12; return; endif
-            if (nc2.eq.1) then; pg_code=21; return; endif
-            if (ns2.eq.1) then; pg_code=22; return; endif
-        endif
-        if (nsyms.eq.8)  then
-            if (ns2.eq.3) then; pg_code=8;  return; endif
-            if (ns2.eq.1) then; pg_code=16; return; endif
-            if (ns2.eq.0) then; pg_code=17; return; endif
-            if (ns2.eq.4) then; pg_code=18; return; endif
-            if (ns2.eq.2) then; pg_code=19; return; endif
-        endif
-        if (nsyms.eq.12)  then
-            if (ns2.eq.3) then; pg_code=13; return; endif
-            if (ns2.eq.1) then; pg_code=23; return; endif
-            if (nc2.eq.7) then; pg_code=24; return; endif
-            if (ns2.eq.6) then; pg_code=25; return; endif
-            if (ns2.eq.4) then; pg_code=26; return; endif
-            if (nc3.eq.8) then; pg_code=28; return; endif
-        endif
-        if (nsyms.eq.24)  then
-            if (nc6.eq.2) then; pg_code=27; return; endif
-            if (ni.eq.1)  then; pg_code=29; return; endif
-            if (nc4.eq.6) then; pg_code=30; return; endif
-            if (ns4.eq.6) then; pg_code=31; return; endif
-            endif
-        ! if it makes it this far, it means nothing matches. return an error immediately. 
-        call am_print('ERROR','Unable to identify point group',flags='E')
-            write(*,'(" ... ",a)') 'number of symmetry operators'
-            write(*,'(5x,a5,i5)') 'e  ', ne
-            write(*,'(5x,a5,i5)') 'c_2', nc2
-            write(*,'(5x,a5,i5)') 'c_3', nc3
-            write(*,'(5x,a5,i5)') 'c_4', nc4
-            write(*,'(5x,a5,i5)') 'c_6', nc6
-            write(*,'(5x,a5,i5)') 'i  ', ni
-            write(*,'(5x,a5,i5)') 's_2', ns2
-            write(*,'(5x,a5,i5)') 's_6', ns6
-            write(*,'(5x,a5,i5)') 's_4', ns4
-            write(*,'(5x,a5,i5)') 's_3', ns3
-            stop
-    end function   get_pg_code
 
     function       get_cstruct(multab) result(cstruct)
         !
@@ -788,16 +661,15 @@ contains
         complex(dp), intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
         integer, intent(in) :: class_id(:)
         integer, intent(in) :: ps_id(:)
-        ! integer, intent(in) :: ax_id(:)
         character(:), allocatable :: irrep_label(:)
         integer, allocatable :: v(:)
         integer :: i, j, k
         integer :: nirreps
         integer :: nclasses
-        integer :: class_containing_identity
-        integer :: class_containing_inversion
-        integer :: class_containing_highsym
-        integer :: class_containing_c2_or_sv
+        integer :: class_with_eye
+        integer :: class_with_inv
+        integer :: class_with_paxis  
+        integer :: class_with_c2sv
 
 
 
@@ -829,43 +701,43 @@ contains
         !        5  reflection perpendicular (sh)
         !        6  reflection diagonal (sd)
         ! create irrep label
-        allocate(character(7) :: irrep_label(nirreps))
-        ! initialize class_containing_stuff
-        class_containing_identity  = 0
-        class_containing_inversion = 0
-        class_containing_highsym   = 0
-        class_containing_c2_or_sv  = 0
+        allocate(character(20) :: irrep_label(nirreps))
+        ! initialize class_with_stuff
+        class_with_eye   = 0
+        class_with_inv   = 0
+        class_with_paxis = 0
+        class_with_c2sv  = 0
         ! get class containing identity
         v = selector(ps_id.eq.1)
         if (size(v).ne.0) then
-            class_containing_identity = class_id(v(1))
+            class_with_eye = class_id(v(1))
         else
             stop 'ERROR [get_mulliken_label]: no identity'
         endif
         ! get class containing inversion
         v = selector(ps_id.eq.6)
-        if (size(v).ne.0) class_containing_inversion = class_id(v(1))
-        ! get class with principal axis
-        v = selector(ax_id.eq.1)
-        if (size(v).ne.0) class_containing_highsym   = class_id(v(1))
-        ! if another class also has a high symmtery principal axis, then unset the rotation axis
-        
-        ! 
-
-        ! find class containing perpendicular reflection plane (backup) or perpendicular two-fold rotation axis
-        v = selector((ps_id.eq.7).and.(ax_id.eq.4))
-        if (size(v).ne.0) class_containing_c2_or_sv = class_id(v(1))
-        v = selector((ps_id.eq.2).and.(ax_id.eq.3))
-        if (size(v).ne.0) class_containing_c2_or_sv = class_id(v(1))
+        if (size(v).ne.0) class_with_inv = class_id(v(1))
+        ! get class with principal axis (c_6, c_4, c_3, c_2)
+        do i = 5, 2, -1
+            v = selector(ps_id.eq.i)
+            if (size(v).ne.0) then 
+                class_with_paxis = class_id(v(1))
+                ! check if there are other classes which also contain an equally-high symmetry axis
+                if (any(ps_id(selector(class_id.ne.class_with_paxis)).eq.i)) then
+                class_with_paxis = 0
+                endif
+                exit
+            endif
+        enddo
         !
         do j = 1, nirreps
             ! 0) nullify irrep label
             irrep_label(j) = ''
             ! 1) find class containing identity (ps_id=1)
-            i = class_containing_identity
+            i = class_with_eye
             select case (nint(real(chartab(j,i))))
                 case (1)
-                    k = class_containing_highsym
+                    k = class_with_paxis  
                     if (k.ne.0) then
                         ! unique high symmetry axis
                         if (real(chartab(j,k)).ge.0) then 
@@ -886,9 +758,9 @@ contains
                 case (5); irrep_label(j) = trim(irrep_label(j))//'H'
             end select
             ! 2) find class containing c2 or sv (ps_id=7)
-            i = class_containing_identity
+            i = class_with_eye
             if (nint(real(chartab(j,i))).eq.1) then
-                i = class_containing_c2_or_sv
+                i = class_with_c2sv
                 if (i.ne.0) then
                 select case (sign(1,nint(real(chartab(j,i)))))
                     case (+1); irrep_label(j) = trim(irrep_label(j))//'_1'
@@ -897,7 +769,7 @@ contains
                 endif
             endif
             ! 3) find class containing inversion (ps_id=6)
-            i = class_containing_inversion
+            i = class_with_inv
             if (i.ne.0) then
             select case (sign(1,nint(real(chartab(j,i)))))
                 case (+1)
@@ -912,7 +784,12 @@ contains
                     irrep_label(j) = trim(irrep_label(j))//'u'
             end select
             endif
+            ! add to completely remove ambiguity
+            irrep_label(j) = trim(irrep_label(j))//'('//trim(tostring(j))//')'
         enddo
+        ! reallocate to remove trailing white spaces
+        irrep_label = vs_trim_null(irrep_label)
+        !
     end function   get_mulliken_label
 
     function       get_subduced_chi(supergroup_chartab,supergroup_class_id,supergroup_id) result(subduced_chi)
@@ -1632,6 +1509,131 @@ contains
         end select
     end function   get_ps_name
 
+    function       get_pg_code(ps_id) result(pg_code)
+        !>
+        !> Refs:
+        !>
+        !> Applied Group Theory: For Physicists and Chemists. Reissue edition.
+        !> Mineola, New York: Dover Publications, 2015. page 20.
+        !>
+        !> Casas, Ignasi, and Juan J. Pérez. “Modification to Flow Chart to
+        !> Determine Point Groups.” Journal of Chemical Education 69, no. 1
+        !> (January 1, 1992): 83. doi:10.1021/ed069p83.2.
+        !>
+        !> Breneman, G. L. “Crystallographic Symmetry Point Group Notation
+        !> Flow Chart.” Journal of Chemical Education 64, no. 3 (March 1, 1987):
+        !> 216. doi:10.1021/ed064p216.
+        !>
+        !> Adapted from VASP
+        !>
+        !>   pg_code --> point_group_name
+        !>     1 --> c_1       9 --> c_3      17 --> d_4      25 --> c_6v
+        !>     2 --> s_2      10 --> s_6      18 --> c_4v     26 --> d_3h
+        !>     3 --> c_2      11 --> d_3      19 --> d_2d     27 --> d_6h
+        !>     4 --> c_1h     12 --> c_3v     20 --> d_4h     28 --> t
+        !>     5 --> c_2h     13 --> d_3d     21 --> c_6      29 --> t_h
+        !>     6 --> d_2      14 --> c_4      22 --> c_3h     30 --> o
+        !>     7 --> c_2v     15 --> s_4      23 --> c_6h     31 --> t_d
+        !>     8 --> d_2h     16 --> c_4h     24 --> d_6      32 --> o_h
+        !>
+        implicit none
+        !
+        integer, intent(in) :: ps_id(:)
+        integer :: nsyms
+        integer :: ni, nc2, nc3, nc4, nc6, ns2, ns6, ns4, ns3, ne
+        integer :: pg_code
+        !
+        pg_code = 0
+        !
+        ! trivial cases first
+        !
+        nsyms = size(ps_id)
+        if     (nsyms .eq. 1 ) then; pg_code=1;  return
+        elseif (nsyms .eq. 48) then; pg_code=32; return
+        elseif (nsyms .eq. 16) then; pg_code=20; return
+        elseif (nsyms .eq. 3 ) then; pg_code=9;  return
+        endif
+        !
+        ni=0; nc2=0; nc3=0; nc4=0; nc6=0; ns2=0; ns6=0; ns4=0; ns3=0
+        ne  = count(ps_id.eq.1)  ! 'e' identity
+        nc2 = count(ps_id.eq.2)  ! 'c_2'
+        nc3 = count(ps_id.eq.3)  ! 'c_3'
+        nc4 = count(ps_id.eq.4)  ! 'c_4'
+        nc6 = count(ps_id.eq.5)  ! 'c_6'
+        ni  = count(ps_id.eq.6)  ! 'i' inversion
+        ns2 = count(ps_id.eq.7)  ! 's_2'
+        ns6 = count(ps_id.eq.8)  ! 's_6'
+        ns4 = count(ps_id.eq.9)  ! 's_4'
+        ns3 = count(ps_id.eq.10) ! 's_3'
+        !
+        if (ni.gt.1) then
+            call am_print('ERROR','More than one inversion operator found.',flags='E')
+            stop
+        endif
+        !
+        if (ne.gt.1) then
+            call am_print('ERROR','More than one identity operator found.',flags='E')
+        elseif (ne.eq.0) then
+            call am_print('ERROR','No identity operator found.',flags='E')
+            stop
+        endif
+        !
+        if (nsyms.eq.2)   then
+            if (ni.eq.1)  then; pg_code=2;  return; endif
+            if (nc2.eq.1) then; pg_code=3;  return; endif
+            if (ns2.eq.1) then; pg_code=4;  return; endif
+        endif
+        if (nsyms.eq.4)   then
+            if (ni.eq.1)  then; pg_code=5;  return; endif
+            if (nc2.eq.3) then; pg_code=6;  return; endif
+            if (ns2.eq.2) then; pg_code=7;  return; endif
+            if (nc4.eq.1) then; pg_code=14; return; endif
+            if (ns4.eq.2) then; pg_code=15; return; endif
+        endif
+        if (nsyms.eq.6)   then
+            if (ni.eq.1)  then; pg_code=10; return; endif
+            if (nc2.eq.3) then; pg_code=11; return; endif
+            if (ns2.eq.3) then; pg_code=12; return; endif
+            if (nc2.eq.1) then; pg_code=21; return; endif
+            if (ns2.eq.1) then; pg_code=22; return; endif
+        endif
+        if (nsyms.eq.8)  then
+            if (ns2.eq.3) then; pg_code=8;  return; endif
+            if (ns2.eq.1) then; pg_code=16; return; endif
+            if (ns2.eq.0) then; pg_code=17; return; endif
+            if (ns2.eq.4) then; pg_code=18; return; endif
+            if (ns2.eq.2) then; pg_code=19; return; endif
+        endif
+        if (nsyms.eq.12)  then
+            if (ns2.eq.3) then; pg_code=13; return; endif
+            if (ns2.eq.1) then; pg_code=23; return; endif
+            if (nc2.eq.7) then; pg_code=24; return; endif
+            if (ns2.eq.6) then; pg_code=25; return; endif
+            if (ns2.eq.4) then; pg_code=26; return; endif
+            if (nc3.eq.8) then; pg_code=28; return; endif
+        endif
+        if (nsyms.eq.24)  then
+            if (nc6.eq.2) then; pg_code=27; return; endif
+            if (ni.eq.1)  then; pg_code=29; return; endif
+            if (nc4.eq.6) then; pg_code=30; return; endif
+            if (ns4.eq.6) then; pg_code=31; return; endif
+            endif
+        ! if it makes it this far, it means nothing matches. return an error immediately. 
+        call am_print('ERROR','Unable to identify point group',flags='E')
+            write(*,'(" ... ",a)') 'number of symmetry operators'
+            write(*,'(5x,a5,i5)') 'e  ', ne
+            write(*,'(5x,a5,i5)') 'c_2', nc2
+            write(*,'(5x,a5,i5)') 'c_3', nc3
+            write(*,'(5x,a5,i5)') 'c_4', nc4
+            write(*,'(5x,a5,i5)') 'c_6', nc6
+            write(*,'(5x,a5,i5)') 'i  ', ni
+            write(*,'(5x,a5,i5)') 's_2', ns2
+            write(*,'(5x,a5,i5)') 's_6', ns6
+            write(*,'(5x,a5,i5)') 's_4', ns4
+            write(*,'(5x,a5,i5)') 's_3', ns3
+            stop
+    end function   get_pg_code
+
     ! printer for chartab
 
     subroutine     printer_print_definitions(printer)
@@ -1681,6 +1683,7 @@ contains
         enddo
         write(*,*)
         !
+        call printer_print_bar(printer,nclasses)
     end subroutine printer_print_chartab_header
 
     function       printer_chi2symb(printer,chi) result(str)
