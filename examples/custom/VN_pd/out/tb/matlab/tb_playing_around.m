@@ -1,109 +1,46 @@
 %% step 1: fresh start
 clear;clc;
 tiny=1.0E-6;
-%% plot ref
-clear;clc
-dumpdir = '/Volumes/Lenzinho/MyLinux/calc.vasp.5.3.3/development/am_lib/examples/custom/VN_pd/';
+% step 2: oad symmetry rep
+dumpdir = '/Volumes/Lenzinho/MyLinux/calc.vasp.5.3.3/development/am_lib/examples/custom/VN_pd';
 load_dumps
-%% step 2: oad symmetry rep
-dumpdir = '/Volumes/Lenzinho/MyLinux/calc.vasp.5.3.3/development/am_lib/examples/custom/VN_pd/out/tb/debug/tbpg';
-load_dumps
+% dumpdir = '/Volumes/Lenzinho/MyLinux/calc.vasp.5.3.3/development/am_lib/examples/custom/VN_pd/';
+% load_dumps
 %% step 3: set Fermi energy, load dispersion
 EF = 9.50006808;
 [dr,bz]=load_vasp_eigenval('../../../EIGENVAL');
-dr.E=dr.E-EF;
+dr.E=dr.E;%-EF;
 %% step 4: load primitive cell, convert k-points to cart 
 [pc]  = load_poscar('../../uc/outfile.primitive');
 bz.kpt = pc.recbas*bz.kpt;
-%% step 5: set # of bands to skip
-% skip the s band
-band_skip = 1;
-%% generate plot
-band_skip = 1;
-% load xmin
-load VN_pd_optimized_tb_parameters.mat
-% load dumps
-dumpdir = '/Volumes/Lenzinho/MyLinux/calc.vasp.5.3.3/development/am_lib/examples/custom/VN_pd/out/tb/debug/tbpg';
-load_dumps
-% set shells
-shell_mask = [1,2,3,4,5];
-% set kpoint
-kstart=[
-    0.000000   0.000000   0.000000
-    0.000000   0.500000   0.500000
-    0.000000   0.000000   0.000000
-    ]';
-kend=[
-    1.000000   0.500000   0.500000
-    0.000000   0.000000   0.000000
-    0.500000   0.500000   0.500000
-    ]';
-klabel={'G','X','G','L'};
+%% step 5: plot
+X=[...
+% +1.28     -0.49     -3.94     +1.01     +1.03     -0.12     -0.22     -0.08     -0.55     +0.05     +0.14     -0.13     +0.44     +0.30
+ +10.78     +9.01     +5.56     +1.01     +1.03     -0.12     -0.22     -0.08     -0.55     +0.05     +0.14     -0.13     +0.44     +0.30
+  +3.02     +3.47     +2.37     +0.13     +0.62     -0.31     -0.12     +0.06     +0.25     -0.20     +0.05     -0.05     +0.48     +0.10
+  +3.67     +2.49     +2.91     +0.06     +0.53     -0.28     -0.06     -0.00     -0.04     -0.10     +0.26     -0.14     +0.35     +0.03
+  +3.58     +2.66     +2.81     +0.18     +0.50     -0.26     -0.12     -0.14     +0.02     -0.13     +0.25     -0.16     +0.39     +0.10
+  +3.58     +2.66     +2.81     +0.18     +0.50     -0.26     -0.12     -0.14     +0.02     -0.13     +0.25     -0.16     +0.39     +0.10
+  +3.58     +2.66     +2.81     +0.18     +0.50     -0.26     -0.12     -0.14     +0.02     -0.13     +0.25     -0.16     +0.39     +0.10
+  +3.61     +2.62     +2.84     +0.16     +0.51     -0.26     -0.12     -0.10     +0.02     -0.13     +0.25     -0.16     +0.38     +0.09
+  +3.62     +2.60     +2.83     +0.12     +0.49     -0.25     -0.07     -0.03     -0.02     -0.18     +0.24     -0.17     +0.39     +0.09
+  +3.59     +2.67     +2.80     +0.08     +0.49     -0.27     -0.13     -0.04     +0.02     -0.21     +0.24     -0.16     +0.40     +0.10
+  +3.62     +2.61     +2.83     +0.12     +0.49     -0.25     -0.10     -0.03     -0.00     -0.19     +0.25     -0.17     +0.39     +0.09
+  +3.62     +2.60     +2.83     +0.12     +0.49     -0.24     -0.08     -0.03     -0.02     -0.18     +0.25     -0.17     +0.39     +0.09];
 
-dumpdir = '/Volumes/Lenzinho/MyLinux/calc.vasp.5.3.3/development/am_lib/examples/custom/VN_fit/out/tb/debug/tbpg';
-load_dumps
-[pc] = load_poscar('../../uc/outfile.primitive');
-[bz] = get_kpoint_path(pc.bas,kstart,kend,40);
-
-k=0;
-for i = 1:bz.npaths
-for j = 1:bz.ndivs
-    k=k+1;
-%     H(:,:,k) = get_H_numeric_frac(tbpg, xmin, bz.path(i).kpt_frac(:,j),shell_mask);
-    H(:,:,k) = get_H_numeric_cart(tbpg, xmin, bz.path(i).kpt_cart(:,j),shell_mask);
-    if (abs(norm(H(:,:,k)-H(:,:,k)'))>tiny) 
-        fprintf('H is not hermitian\n')
-        return
-    end
-    % bz.path(i).D(:,j) = sort(real(eig(H)));
-end
-end
-% use eigenshuffle for nice band sepearation
-[V,D]=eigenshuffle(H);
-k=0;
-for i = 1:bz.npaths
-for j = 1:bz.ndivs
-k=k+1;
-bz.path(i).D(:,j) = real(D(:,k));
-end
-end
-
-
-figure(1); set(gcf,'color','white'); clf; hold on;
-X = [bz.path(:).x]';
-Y_tb = [bz.path(:).D];
-Y_dft= dr.E;
-inds = round(linspace(1,length(bz.path)*bz.ndivs,30));
-h_dft=plot(X,Y_dft([1:(end-band_skip)]+band_skip,:),'-');
-% h_tb=plot(X,Y_tb,'-');
-h_tb_marker=plot(X(inds),Y_tb(:,inds),'.');
-colors = get(gca,'defaultAxesColorOrder');
-markers= {'o','s','d','^','v','>','<','p','h'};
-for i = 1:length(h_tb_marker)
-%     set(h_tb(i),'color',colors(mod(i,size(colors,1))+1,:));
-    set(h_dft(i),'color',[0.87 0.87 0.95],'linewidth',3);
-    set(h_tb_marker(i),'color',colors(mod(i,size(colors,1))+1,:));
-    set(h_tb_marker(i),'marker',markers{mod(i,length(markers))+1},'markersize',4);
-    set(h_tb_marker(i),'MarkerFaceColor',colors(mod(i,size(colors,1))+1,:));
-end
-set(gca,'XMinorTick','on','YMinorTick','on')
-hold off; axis tight; box on;
-ylim([-10 6])
-
-% get ticks
-ticks(1) = 0;
-for i = 1:bz.npaths
-    ticks(i+1) = bz.path(i).x(end);
-end
-set(gca,'XTick',ticks);
-set(gca,'Xticklabel',klabel);
-ylabel('Energy [eV]')
-xlabel('k')
 %%
-h=line([0,max([bz.path(:).x])],[0,0]);
-set(h,'color',[0.1 0.1 0.1],'linewidth',2,'LineStyle',':');
 
-set(gca,'LooseInset',get(gca,'TightInset'))
-set(gcf,'PaperSize',[10 10])
-set(gcf,'PaperPosition',[0 0, 1.61803398875,1]*3)
-print(gcf,'-depsc','band')
+for j = 1:10
+
+for i = 1:bz.nkpts
+    H(:,:,i) = get_H_numeric_cart(tbpg, X(j,:), bz.kpt(:,i),[1:100]);
+end
+[V,D]=eigenshuffle(H);
+
+clf;
+plot(real(D'))
+hold on;
+plot(dr.E',':')
+drawnow;
+pause(1)
+end

@@ -6,3 +6,4 @@ for i = 1:length(f)
     eval(str)
 end
 clear f i str;
+clear dumpdir;

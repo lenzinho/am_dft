@@ -7,7 +7,10 @@ maxvars = 1000;
 flags = 'frac';
 
 
+dumpdir='../../../debug/tbpg/';
+load_dumps;
 
+%%
 
 
 

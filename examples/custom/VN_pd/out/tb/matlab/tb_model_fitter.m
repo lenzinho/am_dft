@@ -7,7 +7,7 @@ load_dumps
 %% step 3: set Fermi energy, load dispersion
 EF = 9.50006808;
 [dr,bz]=load_vasp_eigenval('../../../EIGENVAL');
-dr.E=dr.E-EF;
+% dr.E=dr.E-EF;
 %% step 4: load primitive cell, convert k-points to cart 
 [pc]  = load_poscar('../../uc/outfile.primitive');
 bz.kpt = pc.recbas*bz.kpt;
@@ -16,18 +16,18 @@ bz.kpt = pc.recbas*bz.kpt;
 band_skip = 1;
 %% step 6: fit gamma
 % choose kpt_mask to only select gamma
-kpt_mask   = 1;
+selector_kpoint = 1;
 % choose shell_mask to only select zero-th neighbors
-shell_mask = [1,2];
+selector_shell = [1,2];
 % set size of x to be the mininmum value that works
-x = zeros(3,1);
+x = rand(3,1);
 % perform fit
-fun = @(x)tb_model_fitter_compute_residual(bz,dr,tbpg,x,kpt_mask,shell_mask,band_skip);
+fun = @(x)tb_model_fitter_compute_residual(bz,dr,tbpg,x,selector_kpoint,selector_shell,band_skip);
 opts= optimoptions('lsqnonlin','Display','iter','MaxIter',5);
 [x,res] = lsqnonlin(fun,x,[],[],opts);
 % plot results
 for j = 1:bz.nkpts
-    H = get_H_numeric_cart(tbpg, x, bz.kpt(:,j), shell_mask);
+    H = get_H_numeric_cart(tbpg, x, bz.kpt(:,j), selector_shell);
     tbdr.E(:,j) = sort(real(eig(H)));
 end
 figure(1); set(gcf,'color','white'); clf;
@@ -40,9 +40,9 @@ ylim([-10 15]);
 xmin = x;
 %% step 7: fit high symmetry points to 1st nearest neighbors
 % add more points to mask
-kpt_mask = round(linspace(1,bz.nkpts,10));
+selector_kpoint = round(linspace(1,bz.nkpts,10));
 % set irreducible shell to include first neighbors
-shell_mask = [1,2,3];
+selector_shell = [1,2,3];
 % simulated annealing temperature 
 kT = 5;
 % simulated annealing-type minimization
@@ -57,30 +57,32 @@ for i = 1:100
         x = xmin + kT.*rand(size(xmin)).*abs(xmin)./max(abs(xmin));
     end
     % perform fit
-    fun = @(x)tb_model_fitter_compute_residual(bz,dr,tbpg,x,kpt_mask,shell_mask,band_skip);
-    opts= optimoptions('lsqnonlin','Display','iter','MaxIter',5);
+    fun = @(x)tb_model_fitter_compute_residual(bz,dr,tbpg,x,selector_kpoint,selector_shell,band_skip);
+    opts= optimoptions('lsqnonlin','Display','iter','MaxIter',5,'Display','off');
     [x,res] = lsqnonlin(fun,x,[],[],opts);
-    % plot result
-    for j = 1:bz.nkpts
-        H = get_H_numeric_cart(tbpg, x, bz.kpt(:,j), shell_mask);
-        tbdr.E(:,j) = sort(real(eig(H)));
-    end
-    figure(1); set(gcf,'color','white'); clf;
-    plot(1:bz.nkpts,dr.E,'-')
-    hold on;
-    plot(1:bz.nkpts,tbdr.E,'.')
-    hold off; axis tight; box on; grid on; ylim([-10 15]); drawnow;
+    %
+    fprintf('%i %f %f\n',i,res,last_res)
     % save best parameter
     if res < last_res
         last_res = res;
         xmin = x;
+        % plot result
+        figure(1); set(gcf,'color','white'); clf;
+        plot(1:bz.nkpts,dr.E,'-')
+        hold on;
+        plot(1:bz.nkpts,tbdr.E,'.')
+        hold off; axis tight; box on; grid on; ylim([-10 15]); drawnow;
+        for j = 1:bz.nkpts
+            H = get_H_numeric_cart(tbpg, x, bz.kpt(:,j), selector_shell);
+            tbdr.E(:,j) = sort(real(eig(H)));
+        end
     end
 end
 %% step 8: repeat with second nearest neighbors
 % add more points to mask
-kpt_mask = round(linspace(1,bz.nkpts,10));
+selector_kpoint = round(linspace(1,bz.nkpts,10));
 % set irreducible shell to include first neighbors
-shell_mask = [1,2,3,4,5];
+selector_shell = [1,2,3,4,5];
 % simulated annealing temperature 
 kT = 5;
 % simulated annealing-type minimization
@@ -95,34 +97,36 @@ for i = 1:100
         x = xmin + kT.*(rand(size(xmin))-0.5).*abs(xmin)./max(abs(xmin));
     end
     % perform fit
-    fun = @(x)tb_model_fitter_compute_residual(bz,dr,tbpg,x,kpt_mask,shell_mask,band_skip);
-    opts= optimoptions('lsqnonlin','Display','iter','MaxIter',5);
+    fun = @(x)tb_model_fitter_compute_residual(bz,dr,tbpg,x,selector_kpoint,selector_shell,band_skip);
+    opts= optimoptions('lsqnonlin','Display','iter','MaxIter',5,'Display','off');
     [x,res] = lsqnonlin(fun,x,[],[],opts);
-    % plot result
-    for j = 1:bz.nkpts
-        H = get_H_numeric_cart(tbpg, x, bz.kpt(:,j), shell_mask);
-        tbdr.E(:,j) = sort(real(eig(H)));
-    end
-    figure(1); set(gcf,'color','white'); clf;
-    plot(1:bz.nkpts,dr.E,'-')
-    hold on;
-    plot(1:bz.nkpts,tbdr.E,'.')
-    hold off; axis tight; box on; grid on; ylim([-10 15]); drawnow;
+    %
+    fprintf('%i %f %f\n',i,res,last_res)
     % save best parameter
     if res < last_res
         last_res = res;
         xmin = x;
+        % plot result
+        figure(1); set(gcf,'color','white'); clf;
+        plot(1:bz.nkpts,dr.E,'-')
+        hold on;
+        plot(1:bz.nkpts,tbdr.E,'.')
+        hold off; axis tight; box on; grid on; ylim([-10 15]); drawnow;
+        for j = 1:bz.nkpts
+            H = get_H_numeric_cart(tbpg, x, bz.kpt(:,j), selector_shell);
+            tbdr.E(:,j) = sort(real(eig(H)));
+        end
     end
 end
 %% generate plot
-band_skip = 1;
-% load xmin
+% band_skip = 1;
+% % load xmin
 load VN_pd_optimized_tb_parameters.mat
-% load dumps
-dumpdir = '/Volumes/Lenzinho/MyLinux/calc.vasp.5.3.3/development/am_lib/examples/custom/VN_pd/out/tb/debug/tbpg';
-load_dumps
+% % load dumps
+% dumpdir = '/Volumes/Lenzinho/MyLinux/calc.vasp.5.3.3/development/am_lib/examples/custom/VN_pd/out/tb/debug/tbpg';
+% load_dumps
 % set shells
-shell_mask = [1,2,3,4,5];
+selector_shell = [1,2,3,4,5];
 % set kpoint
 kstart=[
     0.000000   0.000000   0.000000
@@ -145,8 +149,8 @@ k=0;
 for i = 1:bz.npaths
 for j = 1:bz.ndivs
     k=k+1;
-%     H(:,:,k) = get_H_numeric_frac(tbpg, xmin, bz.path(i).kpt_frac(:,j),shell_mask);
-    H(:,:,k) = get_H_numeric_cart(tbpg, xmin, bz.path(i).kpt_cart(:,j),shell_mask);
+%     H(:,:,k) = get_H_numeric_frac(tbpg, xmin, bz.path(i).kpt_frac(:,j),selector_shell);
+    H(:,:,k) = get_H_numeric_cart(tbpg, xmin, bz.path(i).kpt_cart(:,j),selector_shell);
     if (abs(norm(H(:,:,k)-H(:,:,k)'))>tiny) 
         fprintf('H is not hermitian\n')
         return
