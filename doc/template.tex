@@ -37,7 +37,6 @@
 \newcommand{\seitz}[2]{\{#1|#2\}}
 
 
-
 \begin{document}
 
 \title{VN ARPES}
@@ -191,6 +190,8 @@ H_0^{dd} =
 \end{bmatrix}
 \end{equation}
 
+First and second neighbor interactions produce give to the wavevector-dependence of electronic energies. In the equations presented below, the dependencis on $\vec{k}$ occur through the condensed variables: $c_i = \cos(\pi a k_i)$, $s_i = \sin(\pi a k_i)$, $s_{ij} = s_i s_j$ and $c_{ij} = c_i c_j$, for $k_i = \vec{k}\cdot\hat{i}$ and equilibrium lattice parameter $a$.
+
 $H_1$ in Eq. \ref{eq:ham_explicit} describes first-neighbor interactions. 
 \todo{add: cation and anion}
 The matrix elements are thus determined by the symmetries of $C_{4v}$ the stabilizer group of first-neighbor bonds (see Appendix \ref{appendix:pg}. The lower symmetry of the subgroup, reduces the number of degenerate orbitals. The subduction of $O_h$ irreducible representations onto $C_{2v}$ lifts the triple degeneracy on p orbitals producing a single and two double degenerate orbitals instead: $T_{1u} \rightarrow A_1 \oplus E$. In addition, $E_g \rightarrow A_1 \oplus B_1$ splits into two one-dimensional irreducible representations. $T_{2g} \rightarrow B_2 \oplus E$. The only nonvanishing matrix elements are between $A_1 \otimes A_1$ and $E \otimes E$.
@@ -242,21 +243,6 @@ H^{pp}_2 =
 \end{bmatrix}
 \end{equation}
 
-In Eqs. XX - XX,
-\begin{align}
-\begin{split}
-c_x &= \cos(\pi a k_x) \\
-c_y &= \cos(\pi a k_y) \\
-c_z &= \cos(\pi a k_z)
-\end{split}
-\begin{split}
-s_x &= \sin(\pi a k_x) \\
-s_y &= \sin(\pi a k_y) \\
-s_z &= \sin(\pi a k_z)
-\end{split}
-\end{align}
-and
-$s_{ij} = s_i s_j$ and $c_{ij} = c_i c_j$.
 
 
 
@@ -471,7 +457,49 @@ The sum is over classes $i$, with number of elements $h_i$, and characters corre
 
 
 
-
+\begin{table}
+\caption{\label{table:irreps} irreducible representations}
+\begin{ruledtabular}
+\begin{tabular*}{10cm}{lccccc}
+$E$
+&
+$
+\begin{bmatrix}
+   1  &  0  \\
+   0  &  1  \\
+\end{bmatrix}
+$
+&
+$
+\begin{bmatrix}
+  -1  &  0  \\
+   0  & -1  \\
+\end{bmatrix}
+$
+&
+$
+\begin{bmatrix}
+   i  &  0  \\
+   0  & -i  \\
+\end{bmatrix}
+$
+&
+$
+\begin{bmatrix}
+   0  & -1  \\
+  -1  &  0  \\
+\end{bmatrix}
+$
+&
+$
+\begin{bmatrix}
+   0  &  i  \\
+  -i  &  0  \\
+\end{bmatrix}
+$
+\end{tabular*}
+\end{ruledtabular}
+\end{table}
 
 %
 %
