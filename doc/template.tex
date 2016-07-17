@@ -32,12 +32,13 @@
 \newcommand*{\wignerDl}{D^{(l)}(R)}
 \newcommand*{\id}{\mathcal{E}}
 \newcommand*{\zeromat}{0}
-\newcommand*{\x}{$\times$}
+\newcommand*{\x}{\times}
 \newcommand*{\bondvec}{\vec{\tau}_{ij}}
 \newcommand{\seitz}[2]{\{#1|#2\}}
 
 
 \begin{document}
+\pagenumbering{arabic}
 
 \title{VN ARPES}
 
@@ -62,8 +63,6 @@ University of Illinois, 104 South Goodwin, Urbana, IL 61801}
 University of Illinois, 104 South Goodwin, Urbana, IL 61801}
 \affiliation{Department of Physics, Chemistry and Biology (IFM), Link\"oping University, SE-581 83, Link\"oping, Sweden.}
 
-%\email{olhel@ifm.liu.se}
-
 \begin{abstract}
 
 This highly-efficient basis is able to accurately reproduce both electronic band dispersion determined by ARPES and ab-initio density functional theory simulations with a minimal set of fourteen empirical fitting parameters.
@@ -72,7 +71,9 @@ This highly-efficient basis is able to accurately reproduce both electronic band
 \maketitle
 
 
-A minimal-basis orthogonal tight-binding model based upon V $d$ and N $p$ orbitals is developed, accurately reproducing the electronic properties of NaCl-structure VN. Energy-momenta dispersion relations are obtained from the secular equation:
+ 
+
+The electronic band dispersion and Fermi surface of NaCl-structure VN is modeled using a minimal-basis orthogonal tight-binding model based upon V $d$ and N $p$ orbitals. Energy-momenta dispersion relations are obtained from the secular equation:
 \begin{equation}
 \label{eq:secular}
 \left| \ham^{\alpha\beta}_{ij}(\vec{k}) - E(\vec{k})\delta{\alpha\beta}\delta_{ij} \right| = 0
@@ -82,29 +83,38 @@ in which the tight-binding hamiltonian
 \label{eq:ham}
 \ham^{\alpha\beta}_{ij} = \sum_j v^{\alpha\beta}_{ij} e^{-i\vec{\tau}_{ij} \cdot \vec{k} }.
 \end{equation}
-$v^{\alpha\beta}_{ij} = \bra{i\alpha} \mathbb{V} \ket{j\beta}$ are matrix elements between orbitals $\alpha \equiv \ket{lm}$ and $\beta \equiv \ket{l'm'}$ centered on atoms $i$ and $j$.  $l$ and $m$ are azimuthal and magnetic quantum numbers. $\bondvec$ represents the bond connecting $i$ to $j$. The summation is evaluated explicitly to second neighbor.
+$v^{\alpha\beta}_{ij} = \bra{i\alpha} \mathbb{V} \ket{j\beta}$ are matrix elements between cubic harmonics $\alpha$ and $\beta$ centered on primitive atom $i$ and neighbor $j$. $\bondvec = \vec{r}_i - \vec{r}_j$ represents the bond vector connecting sites $i$ and $j$. The summation is evaluated explicitly to second neighbor.
 
-Intrinsic and crystallographic symmetries relations are utilized to determine an irreducible set of matrix elements. 
-
-Commutativity of $\mathbb{V}$ with $\wignerD$, the representation of symmetry R engendered by the tight-binding basis, yields the relationships:
+Crystallographic symmetries are exploited to obtained an irreducible set of symmetry-adapted matrix elements. Translations which interchange equivalent sites $i$ and $j$ produce the relationships:
+%
+\abmei{double check alpha and beta}
 \begin{equation}
-[\mathbb{V},\wignerD] = 0
+\label{eq:intrinsic}
+v_{ij}^{\alpha\beta} = (-1)^{l+l'}v_{ji}^{\alpha\beta}
 \end{equation}
-or, equivalently,
+%
+The prefactor arises from orbital parity; $l$ and $l'$ are azimuthal quantum number corresponding to orbitals $\alpha$ and $\beta$. Rotations and reflections which stabilize $\bondvec$ yield the relationships:\footnote{Eq. \ref{eq:stab} is equivalent to the commutator requirement: $[\mathbb{V},\wignerD] = 0$.}
+%
 \begin{equation}
 \label{eq:stab}
-v_{ij}^{\alpha\beta} = \sum_{\mu\nu} v_{ij}^{\alpha\beta} \left[\wignerD\right]^{\mu\alpha} \left[\wignerD\right]^{\nu\beta}.
+v_{ij}^{\alpha\beta} = \sum_{\mu\nu} v_{ij}^{\mu\nu} \left[\wignerD\right]_{\mu\alpha} \left[\wignerD\right]_{\nu\beta}.
 \end{equation}
-$\left[\phantom{.}\cdot\phantom{.}\right] ^{\mu\nu}$ selects element $\mu\nu$ of the enclosed matrix. $\wignerD$ are symmetry representations engendered on the tight binding basis and describe the coupling between states with different magnetic quantum numbers under crystallographic symmetry operations. 
+%
+in which $\left[\phantom{.}\cdot\phantom{.}\right]_{\mu\alpha}$ selects element $\mu\alpha$ of the enclosed matrix. $\wignerD$ are symmetry representations engendered by the tight binding basis and describe the coupling of states with different magnetic quantum numbers. Formulations for $\wignerD$ are provided in Appendix \ref{appendix:wigner}.
+%
 
-Point symmetry operations in the tight binding basis are represented as direct sums over azimuthal quantum numbers of primitive atom orbitals:
-\begin{equation}
-\wignerD = \bigoplus_l \wignerDl.
-\end{equation}
-The Wigner functions $\wignerDl =  e^{-i\theta\hat{L}\cdot\hat{n}/\hbar}$ are $(2l+1)$-dimensional square matrix which parameterize proper rotations $\theta$ around axes $\hat{n}$, with $\hat{L}$ being the angular momentum operator. % Lax p 43 Eq 2.5.18
-Improper rotations are obtained by premultiplying $(-1)^l$ the scalar inversion operator. \cite{sharma_general_1979,el-batanouny_symmetry_2008} % Wooten p 604 bottom, under Eq. 14.164 
-Explicit expressions for $\wignerD$ are provided in Appendix \ref{appendix:wigner}
 
+
+
+
+
+
+
+\begin{figure}
+\label{fig:kappa_vs_t}
+\includegraphics[width=0.5\textwidth]{band_structure.eps}
+\caption{Bare electronic bands dispersion obtained from DFT GGA (solid lines) and orthogonal TB with optimized material parameters (symbols). } 
+\end{figure}
 
 
 
@@ -136,10 +146,100 @@ VN pd tb parameters
 
 \appendix
 
+%
+% WIGNER D MATRIX
+%
+\section{wigner D matrix} 
+\label{appendix:wigner}
 
-\section{tight binding model}\label{appendix:tb}
+The second-quantized TB Hilbert space spans:
+%
+\begin{equation}
+\psi = \bigoplus_{ilm} \hat{c}_{ilm}^\dag.
+\end{equation}
+%
+The creation operators $\hat{c}_{ilm}^\dag$ populate electrons on states $\ket{lm}$ of atoms $i$. The basis engenders the symmetry representation:
+%
+\begin{equation}
+\wignerD = \bigoplus_l \wignerDl.
+\end{equation}
+%
+in which the direct sum is over azimuthal quantum numbers in the primitive cell. $\wignerDl$ are Wigner functions, $(2l+1)$-dimensional square matrix which parameterize proper rotations. % Lax p 43 Eq 2.5.18
+Improper rotations are obtained by premultiplying $(-1)^l$ the scalar inversion operator. \cite{sharma_general_1979,el-batanouny_symmetry_2008} 
+% Wooten p 604 bottom, under Eq. 14.164 
 
-The B1 NaCl-structure lattice consists of two interpenetrating cation and anion face-centered cubic sublattices translated by half a primitive-cell with respect to each other. Each cation (anion) has six equivalent first neighbor anions (cations) at $\vec{\tau}_{ij} = \left[0 0 \frac{1}{2}\right]$ and twelve equivalent second neighbor cation (anion) at $\vec{\tau}_{ij} = \left[0 \frac{1}{2} \frac{1}{2}\right]$. Explicitly describing interactions to second neighbors with a minimal basis based on $d$ and $p$ orbitals centered on cation and anion sites yields the tight-binging hamiltonian: 
+In terms of Tait-Bryan angles:
+%
+\footnote{
+Conversion of $3\x3$ rotational matrices $R = R_x(\theta)R_y(\phi)R_z(\gamma)$ to Tait-Bryan angles $\theta$, $\phi$, and $\gamma$ representing rotations around axes $\hat{z}$, $\hat{y}$, and $\hat{x}$ is achieved via:
+\begin{equation}
+\theta = {\rm atan2}(R_{23},R_{33})
+\end{equation}
+\begin{equation}
+\phi   =-{\rm atan2}(-R_{13},\sqrt{R_{11}^2+R_{12}^2})
+\end{equation}
+\begin{equation}
+\begin{split}
+\gamma =-{\rm atan2}(R_{31}\sin{\theta}-R_{21}\cos{\theta}, \\ 
+       \quad         R_{22}\cos{\theta}-R_{32}\sin{\theta})
+\end{split}
+\end{equation}
+${\rm atan2}$ is the four-quadrant arctangent function and $R_{ij}$ are the elements $ij$ of $R$. This formulation avoids gimbal lock without the use of conditional statements.} 
+%
+\begin{equation}
+\wignerDl = e^{-i\theta\hat{L}_x/\hbar} e^{-i\phi\hat{L}_y/\hbar} e^{-i\psi\hat{L}_z/\hbar}
+\end{equation}
+%
+in which angular momentum operators:
+%
+\footnote{For numerical stability, the exponentiated operators are evaluated using the property: \abmei{XX} } \cite{shankar_fundamentals_2014}
+%
+\begin{align}
+\label{eq:angular_momenta}
+% x y z <- z x y
+% Shankar p 327-328, Eq. 12.5.21a-b
+% Wolfram p 85-87
+\hat{L}_x & = \hbar (\hat{L}_{+}-\hat{L}_{-})/2i \\
+\hat{L}_y & = \hbar m \delta_{l,l'}\delta_{m,m'} \\
+\hat{L}_z & = \hbar (\hat{L}_{+}+\hat{L}_{-})/2
+\end{align}
+$\hat{L}_+$ and $\hat{L}_-$ are raising and lowering operators, with matrix elements:
+\begin{equation}
+\label{eq:raising_lowering_operator}
+% Shankar p 327, Eq. 12.5.20
+\hat{L}_{\pm} = \delta_{l,l'}\delta_{m\pm1,m'} \sqrt{(l\mp m)(l\pm m+1)},
+\end{equation}
+
+
+
+The conversion from spherical to cubic harmonics, $\ket{lm} \rightarrow \ket{\alpha}$, is achieved by conjugating $\wignerDl$ with:
+\begin{equation}
+\label{eq:cubic_harmonics}
+Y_{lm} = 
+\begin{cases}
+\delta_{mm}                                      & \text{if } m = 0 \\
+ i[(-1)^{m}\delta_{-mm'}-\delta_{ mm'}]/\sqrt{2} & \text{if } m > 0 \\
+  [(-1)^{m}\delta_{ mm'}+\delta_{-mm'}]/\sqrt{2} & \text{if } m < 0
+\end{cases}
+\end{equation}
+
+
+\abmei{add conversion of basis functions first}
+The resulting cubic-harmonic basis is utilized throughout the paper:
+\begin{equation}
+\psi = [ \hat{d}_{x^2-y^2}^\dag, \hat{d}_{z^2}^\dag, \hat{d}_{zx}^\dag, \hat{d}_{yz}^\dag, \hat{d}_{xy}^\dag, \hat{p}_{x}^\dag, \hat{p}_{y}^\dag, \hat{p}_{z}^\dag ].
+\end{equation}
+
+
+
+
+%
+% TIGHT BINDING MODEL
+%
+\section{tight binding model}
+\label{appendix:tb}
+
+The B1 NaCl-structure lattice consists of two interpenetrating cation and anion face-centered cubic sublattices translated by half a primitive-cell with respect to each other. Each cation (anion) has six equivalent first neighbor anions (cations) at $\vec{\tau}_{ij} = [0 0 \frac{1}{2}]$ and twelve equivalent second neighbor cation (anion) at $\vec{\tau}_{ij} = [0 \frac{1}{2} \frac{1}{2}]$. Explicitly describing interactions to second neighbors with a minimal orthogonal basis based on cation-centered $d$ and anion-centered $p$ orbitals yields the tight-binging hamiltonian: 
 \begin{equation}
 \label{eq:ham_explicit}
 \hat{H} = 
@@ -163,11 +263,18 @@ The B1 NaCl-structure lattice consists of two interpenetrating cation and anion 
 \zeromat       & \hat{H}_2^{pp} \\
 \end{bmatrix}}_{H_2}.
 \end{equation}
-Sub- and superscripts on $\ham_{j}^{\alpha\beta}$ denote coupling of orbitals $\alpha$ and $\beta$ separated $j$ neighbor shells apart. The zero submatrices $\zeromat$ arise from the orthogonality of basis functions, which requires that matrix elements between nonequivalent sites ($i \neq j$) vanish.
+$\ham_{j}^{\alpha\beta}$ are block matrices describing coupling between orbitals $\alpha$ and $\beta$ in neighbor shell $j$.
 
-The first matrix in Eq. \ref{eq:ham_explicit} corresponds to the $0$\textsuperscript{th}-neighbor shell and therefore contains energy integrals between orbitals located on the same site (i.e., $\vec{\tau}_{ij} = 0$). Consequentially, coupling coefficients are independent of $\vec{k}$ wavevector (see Eq. \ref{eq:ham}) and $H_0$ exhibits a block diagonal structure in which the first 5 \x 5 and latter 3 \x 3 entries correspond to V and N orbital self-interactions.
+In order to determine the irreducible set of symmetry-adapted matrix elements, the block hamiltonian matrices $\ham_{j}^{\alpha\beta}$ are analyzed using character representation theory. Irreducible representation characters for the crystallographic octahedral point-group $O_h$ are presented \ref{table:chartab}. Also shown are the characters of the subgroups $C_{2v}$ and $C_{4v}$ that stabilize bond vectors $[0 0 \frac{1}{2}]$ and $[0 \frac{1}{2} \frac{1}{2}]$. Irreducible characters are determined using the algorithm described in Appendix \ref{appendix:chartab}.
 
-Octahedral $O_h$ symmetry preserves the three-fold degeneracy of N $p$ orbitals, yielding one irreducible representation, $p \rightarrow T_{1u}$. Matrix elements between $p$ orbitals transform as the outer product  $p \otimes p \rightarrow A_{1g} \oplus E_g \oplus T_{1g} \oplus T_{2g}$. The \emph{single} occurrence of $A_{1g}$ the identity representation signifies the existence of \emph{one} symmetry-adapted tight-binding matrix element. The sole independent matrix element corresponds to $\epsilon_p$ the energy of triply-degenerate $p$ orbitals. The Hamiltonian block describing zero-th neighbor overlap between N orbitals is thus:
+$H_0$ is the block hamiltonian matrix associated with the $0$ \textsuperscript{th}-neighbor shell and contains, therefore, energy integrals between orbitals located on the same site, for which $\vec{\tau}_{ij} = 0$.
+
+ It contains energy integrals between orbitals located on the same site (i.e., $\vec{\tau}_{ij} = 0$) and therefore describes the eigensenergies of 
+
+Consequentially, coupling coefficients are independent of $\vec{k}$ wavevector (see Eq. \ref{eq:ham}) and $H_0$ exhibits a block diagonal structure in which the first $5\x5$ and latter $3\x3$ entries correspond to $d$ and $p$ self-interactions.
+
+
+Octahedral $O_h$ symmetry preserves the three-fold degeneracy of $p$ orbitals, yielding one irreducible representation, $p \rightarrow T_{1u}$. Matrix elements between $p$ orbitals transform as the outer product  $p \otimes p \rightarrow A_{1g} \oplus E_g \oplus T_{1g} \oplus T_{2g}$. The \emph{single} occurrence of $A_{1g}$ the identity representation signifies the existence of \emph{one} symmetry-adapted tight-binding matrix element. The sole independent matrix element corresponds to $\epsilon_p$ the energy of triply-degenerate $p$ orbitals. The Hamiltonian block describing zero-th neighbor overlap between N orbitals is thus:
 
 \begin{equation}
 H_0^{pp} =
@@ -249,53 +356,6 @@ H^{pp}_2 =
 
 %\section{Film growth and characterization}
 
-%
-% WIGNER D MATRIX
-%
-\section{wigner D matrix} \label{appendix:wigner}
-
-
-
-
-The matrix elements
-
-
-Wigner matrices $D^{(l)}(R)$ corresponding to representations of the three-dimensional special orthogonal group SO(3) are obtained from:\cite{martin_electronic_2004}
-\begin{equation}
-\label{eq:imselfenergy}
-% Shankar p 333, Exercise 12.5.7
-% Wolfram p 85-87
-% In the book, Euler angles are used. Here, I use Tait Bryan angles
-D^{(l)}(R) = \bra{l',m'} R \ket{l,m}
-\end{equation}
-with rotations about axes $\hat{x}$, $\hat{y}$, and $\hat{z}$ parameterized by Tait Bryan angles $\theta$, $\phi$, and $\psi$:
-\begin{equation}
-R = e^{-i\theta\hat{L}_x/\hbar} e^{-i\phi\hat{L}_y/\hbar} e^{-i\psi\hat{L}_z/\hbar}
-\end{equation}
-%
-In the $\hat{L}_y$ basis, the angular momenta matrix elements are:\cite{shankar_fundamentals_2014}
-\begin{align}
-\label{eq:angular_momenta}
-% x y z <- z x y
-% Shankar p 327-328, Eq. 12.5.21a-b
-% Wolfram p 85-87
-\hat{L}_x & = \frac{\hat{L}_{+}-\hat{L}_{-}}{2i} \hbar \\
-\hat{L}_y & = \delta_{l,l'}\delta_{m,m'} \hbar m \\
-\hat{L}_z & = \frac{\hat{L}_{+}+\hat{L}_{-}}{2} \hbar
-\end{align}
-with raising $\hat{L}_+$ and lowering $\hat{L}_-$ matrix elements:
-\begin{equation}
-\label{eq:raising_lowering_operator}
-% Shankar p 327, Eq. 12.5.20
-\hat{L}_{\pm} = \delta_{l,l'}\delta_{m\pm1,m'} \sqrt{(j\mp m)(j\pm m+1)} ,
-\end{equation}
-
-With the scalar $(-1)^l$ representing inversion, the full three-dimensional orthogonal group $O(3)$, which includes improper rotations, may be produced from the products:
-
-
-
-
-
 \section{$O_h$}
 \label{appendix:pg}
 The $O_h$(m$\bar{3}$m) point group consists of forty-eight symmetry operations which restore the NaCl-structure lattice onto itself. Twenty-four symmetries are proper rotations belonging to the chiral octahedral subgroup $O$(432). These are subdivided among five conjugacy classes\footnote{Classes $\class_i$ are mutually distinct sets containing symmetries $R_i$ and $R_j$ related by conjugation with $R_k$ an arbitrary group element: $R_kR_iR_k^{-1}=R_j$} --  $\id$, $3c_4^2$, $6c_2$, $8c_3$, and $6c_4$ -- which correspond to the identity, two-fold rotations about $\left<001\right>$, two-fold rotations around $\left<011\right>$, three-fold rotations about $\left<111\right>$, and four-fold rotations around $\left<001\right>$. The additional twenty-four symmetries are formed by compounding $O$ symmetries with the inversion operator $i$, are improper rotations\footnote{Improper rotations, or rotoinversions, are rotation operations followed by inversion.} and also exhibit a similar structure with five conjugacy classes: $i$, $3\sigma_2$, $6\sigma_2$, $8\sigma_6$, and $6\sigma_4$, associated with inversion $i$, reflection across $\{001\}$, reflection across $\{011\}$, three-fold roto-inversions around $\left<111\right>$, and four-fold roto-inversions about $\left<001\right>$. The group has two generators\footnote{The generating basis of a group is a minimal set of elements which is capable of producing all elements in the group when multiplied together.}, $c_4$ and $\sigma_6$, which fully determine all relations among matrix elements.
@@ -331,47 +391,41 @@ $O_h$
 
 
 
-All ten $O_h$ conjugacy classes produced by the direct product $O \otimes C_i$ are presented in the first row of Table \ref{table:chi}.
+All ten $O_h$ conjugacy classes produced by the direct product $O \otimes C_i$ are presented in the first row of Table \ref{table:chartab}.
 
 
 \section{Calculation of irreducible characters}
-
-Characters of irreducible representations are determined from conjugacy class coefficients using the Burnside algorithm.\cite{burnside_theory_2010,mckay_construction_1970,unger_computing_2006,schneider_dixons_1990,dixon_high_1967} 
-
-Characters corresponding to irreducible representation $\mu$ and conjugacy class i are thus obtained as:
-\begin{equation}
-\label{eq:irrep_characters}
-\chi\left(\Gamma_i^\alpha\right) = \frac{d_\alpha}{n_i} \lambda_{i\alpha}
-\end{equation}
-in which number of elements in the class $i$ is $n_i$ and the dimensions of irreducible representation $\alpha$:
-\begin{equation}
-\label{eq:irrep_dimension}
-d_\alpha = \sqrt{ \frac{g}{\sum_i \lambda_{i\alpha} \lambda_{i\alpha}^\dag / n_i }  }
-\end{equation}
-g is the order of the group.
-
-
-The number of times a class $\class_k$ appears in the decomposition of products of classes $\class_i$ and $\class_j$ is $h_{jk}^{(i)}$. 
-
-Class products decompose into sum of classes:
+\label{appendix:chartab}
+Characters $\chi_{i\mu}$ corresponding to irreducible representation $\Gamma_\mu$ and class $\class_i$ are determined using the Burnside algorithm.\cite{burnside_theory_2010,mckay_construction_1970,unger_computing_2006,schneider_dixons_1990,dixon_high_1967} In this approach, class products are decomposed into class sums:
 \begin{equation}
 \label{eq:class_coefficients}
 \class_i \class_j = \sum_k h_{jk}^{(i)} \class_k
 \end{equation}
-
-
-
-% simultaneous dec
-The similarity transform $\Lambda$:
+with $h_{jk}^{(i)}$ being the frequency at which $\class_k$ appears in the multiplication of classes $\class_i$ and $\class_j$. The collection of class coefficient matrices $h^{(i)}$ are then simultaneously diagonalized using a matrix pencil approach, producing eigenvalues $\lambda_{i\mu}$ from which the dimensions of irreducible representations
 \begin{equation}
-\Lambda^{-1} P \Lambda = \lambda
+\label{eq:irrep_dimension}
+d_\mu = \sqrt{ \frac{|g|}{\sum_i \lambda_{i\mu} \lambda^{\dag}_{i\mu} / n_i }  }
 \end{equation}
-which simultaneously diagonalizes the $i$ commuting expansion matrices $h_{jk}$ is determined using the matrix pencil:
+and their characters
 \begin{equation}
-\label{eq:matrix_pencil}
-P_{jk} = \sum_i r_i h_{ijk}
+\label{eq:irrep_characters}
+\chi_{i\mu} = \frac{d_\mu \lambda_{i\mu}}{n_i}
 \end{equation}
-with arbitrary factors $r_i$ added to lift eigendegeneracies.
+are computed. $n_i$ and $|g|$ are the number of elements in the class $i$ and the group. Elements in the same class have the same character.
+
+Reduction coefficients $n_\mu$, defined as the number of times an irreducible representation $\Gamma^\mu$ appears in a reducible representation $\Gamma$:
+\begin{equation}
+\label{eq:irrep_decomposition}
+\Gamma = \bigoplus_\alpha n_\alpha \Gamma_{i\alpha}
+\end{equation}
+are obtained from:
+\begin{equation}
+\label{eq:irrep_decomposition_coefficients}
+% Wolfram p 20
+n_\alpha = \frac{1}{|g|} \sum_i \chi\left(\Gamma_{i\alpha}\right)^\dag \chi\left(\Gamma_i\right)
+\end{equation}
+The sum is over classes $i$, with number of elements $h_i$, and characters corresponding to the $\alpha$ irreducible representation $\chi(\Gamma_i^\alpha)$.
+
 
 
 
@@ -379,10 +433,9 @@ with arbitrary factors $r_i$ added to lift eigendegeneracies.
 %
 %
 %
-\section{Calculation of irreducible characters}
 
 \begin{table}
-\caption{\label{table:chi} $O_h$ representation characters}
+\caption{\label{table:chartab} $O_h$ representation characters}
 \begin{ruledtabular}
 \begin{tabular*}{10cm}{llrrrrrrrrrr}
 \multicolumn{2}{c}{$O_h$}         &$\id$&3$c_4^2$& 6$c_2$ & 8$c_3$ & 6$c_4$ &  $i$ & 3$\sigma_2$ & 6$\sigma_2$ & 8$\sigma_6$ & 6$\sigma_4$ \\  
@@ -441,89 +494,7 @@ $T_{2u}$ & $B_1 \oplus E$   & $A_{1} \oplus A_{2} \oplus B_{1}$     &   $A_2 \op
 \end{ruledtabular}
 \end{table}
 
-Reducible representations are decomposed into $\alpha$ irreducible representations:
-\begin{equation}
-\label{eq:irrep_decomposition}
-\Gamma = \bigoplus_\alpha n_\alpha \Gamma_{i\alpha}
-\end{equation}
 
-in which the expansion coefficients are:
-\begin{equation}
-\label{eq:irrep_decomposition_coefficients}
-% Wolfram p 20
-n_\alpha = \frac{1}{g} \sum_i h_i \chi\left(\Gamma_{i\alpha}\right)^\dag \chi\left(\Gamma_i\right)
-\end{equation}
-The sum is over classes $i$, with number of elements $h_i$, and characters corresponding to the $\alpha$ irreducible representation $\chi(\Gamma_i^\alpha)$. $g$ is the group order.
-
-
-
-\begin{table}
-\caption{\label{table:irreps} irreducible representations}
-\begin{ruledtabular}
-\begin{tabular*}{10cm}{lccccc}
-$E$
-&
-$
-\begin{bmatrix}
-   1  &  0  \\
-   0  &  1  \\
-\end{bmatrix}
-$
-&
-$
-\begin{bmatrix}
-  -1  &  0  \\
-   0  & -1  \\
-\end{bmatrix}
-$
-&
-$
-\begin{bmatrix}
-   i  &  0  \\
-   0  & -i  \\
-\end{bmatrix}
-$
-&
-$
-\begin{bmatrix}
-   0  & -1  \\
-  -1  &  0  \\
-\end{bmatrix}
-$
-&
-$
-\begin{bmatrix}
-   0  &  i  \\
-  -i  &  0  \\
-\end{bmatrix}
-$
-\end{tabular*}
-\end{ruledtabular}
-\end{table}
-
-%
-%
-%
-\section{Calculation of Tait Bryan angles from rotational matrices}
-Tait Bryan angles $\theta$, $\phi$, and $\gamma$, corresponding to rotations around $\hat{z}$, $\hat{y}$, and $\hat{x}$ axes, are obtained from the rotational matrix:
-\begin{equation}
-\label{eq:rotation}
-R = R_x(\theta)R_y(\phi)R_z(\gamma)
-\end{equation}
-via the relationships:
-\begin{align}
-\label{eq:tait_bryan_angles}
-% This solution avoids gimbal lock cases and does not require conditional statements.
-%i = 1; j = 2; k = 3
-%euler(i) = atan2(R(l,k),R(k,k))
-%euler(l) = atan2(-R(i,k),sqrt(R(i,i)**2+R(i,j)**2))
-%s=sin(euler(1)); c=cos(euler(1))
-%euler(k) = atan2(s*R(k,i)-c*R(l,i),c*R(l,j)-s*R(k,j))
-\theta & = {\rm atan2}\left(R_{23},R_{33}\right) \\
-\phi   & =-{\rm atan2}\left(-R_{13},\sqrt{R_{11}^2+R_{12}^2}\right) \\
-\gamma & =-{\rm atan2}\left(R_{31}\sin{\theta}-R_{21}\cos{\theta},R_{22}\cos{\theta}-R_{32}\sin{\theta}\right)
-\end{align}
-in which ${\rm atan2}$ is the four-quadrant arctangent function and $R_{ij}$ are the elements corresponding to row i and column j of R. 
 
 
 \end{document}
