@@ -41,7 +41,6 @@ module am_symmetry_tables
         integer    , allocatable :: gen_id(:,:)             ! gen_id(i,:) identifies generators which produce element i
         integer    , allocatable :: gen(:)                  ! complete list of group generators
         integer    , allocatable :: commutator_id(:,:)      ! get_commutator_id(i,:) list of group symmetries which commute with symmetry i 
-        integer    , allocatable :: rr(:,:,:)               ! regular representation matrices
     end type am_class_multiplication_table
 
     type, public :: am_class_chartab_printer
@@ -261,6 +260,8 @@ contains
             endif
         enddo
         enddo
+        !
+        gen_id = trim_null(gen_id)
         !
     end function   get_generator_id
 
@@ -654,144 +655,6 @@ contains
         end function   eigenanalysis
     end function   get_chartab
 
-    function       get_mulliken_label(chartab,class_id,ps_id) result(irrep_label)
-        !
-        implicit none
-        !
-        complex(dp), intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
-        integer, intent(in) :: class_id(:)
-        integer, intent(in) :: ps_id(:)
-        character(:), allocatable :: irrep_label(:)
-        integer, allocatable :: v(:)
-        integer :: i, j, k
-        integer :: nirreps
-        integer :: nclasses
-        integer :: class_with_eye
-        integer :: class_with_inv
-        integer :: class_with_paxis  
-        integer :: class_with_c2sv
-
-
-
-        integer :: ax_id(48)
-        ax_id = 0
-
-
-
-
-
-        ! they are always identical...
-        nirreps  = size(chartab,1)
-        nclasses = size(chartab,2)
-        ! lookup tables:
-        ! ps_id: 1  e
-        !        2  c_2
-        !        3  c_3
-        !        4  c_4
-        !        5  c_6
-        !        6  i
-        !        7  s_2
-        !        8  s_6
-        !        9  s_4
-        !        10 s_3
-        ! ax_id: 1  principal axis
-        !        2  rotation   parallel
-        !        3  rotation   perpendicular
-        !        4  reflection parallel (sv)
-        !        5  reflection perpendicular (sh)
-        !        6  reflection diagonal (sd)
-        ! create irrep label
-        allocate(character(20) :: irrep_label(nirreps))
-        ! initialize class_with_stuff
-        class_with_eye   = 0
-        class_with_inv   = 0
-        class_with_paxis = 0
-        class_with_c2sv  = 0
-        ! get class containing identity
-        v = selector(ps_id.eq.1)
-        if (size(v).ne.0) then
-            class_with_eye = class_id(v(1))
-        else
-            stop 'ERROR [get_mulliken_label]: no identity'
-        endif
-        ! get class containing inversion
-        v = selector(ps_id.eq.6)
-        if (size(v).ne.0) class_with_inv = class_id(v(1))
-        ! get class with principal axis (c_6, c_4, c_3, c_2)
-        do i = 5, 2, -1
-            v = selector(ps_id.eq.i)
-            if (size(v).ne.0) then 
-                class_with_paxis = class_id(v(1))
-                ! check if there are other classes which also contain an equally-high symmetry axis
-                if (any(ps_id(selector(class_id.ne.class_with_paxis)).eq.i)) then
-                class_with_paxis = 0
-                endif
-                exit
-            endif
-        enddo
-        !
-        do j = 1, nirreps
-            ! 0) nullify irrep label
-            irrep_label(j) = ''
-            ! 1) find class containing identity (ps_id=1)
-            i = class_with_eye
-            select case (nint(real(chartab(j,i))))
-                case (1)
-                    k = class_with_paxis  
-                    if (k.ne.0) then
-                        ! unique high symmetry axis
-                        if (real(chartab(j,k)).ge.0) then 
-                            ! A is used when the IR is symmetric under Cn or Sn for the highest n in the group
-                            irrep_label(j) = trim(irrep_label(j))//'A'
-                        else
-                            ! B is used when the IR is antisymmetric under Cn or Sn for the highest n in the group
-                            irrep_label(j) = trim(irrep_label(j))//'B'
-                        endif
-                    else
-                        ! no unique high symmetry axis
-                        ! A is also used if there is no Cn or Sn
-                            irrep_label(j) = trim(irrep_label(j))//'A'
-                    endif
-                case (2); irrep_label(j) = trim(irrep_label(j))//'E'
-                case (3); irrep_label(j) = trim(irrep_label(j))//'T'
-                case (4); irrep_label(j) = trim(irrep_label(j))//'G'
-                case (5); irrep_label(j) = trim(irrep_label(j))//'H'
-            end select
-            ! 2) find class containing c2 or sv (ps_id=7)
-            i = class_with_eye
-            if (nint(real(chartab(j,i))).eq.1) then
-                i = class_with_c2sv
-                if (i.ne.0) then
-                select case (sign(1,nint(real(chartab(j,i)))))
-                    case (+1); irrep_label(j) = trim(irrep_label(j))//'_1'
-                    case (-1); irrep_label(j) = trim(irrep_label(j))//'_2'
-                end select
-                endif
-            endif
-            ! 3) find class containing inversion (ps_id=6)
-            i = class_with_inv
-            if (i.ne.0) then
-            select case (sign(1,nint(real(chartab(j,i)))))
-                case (+1)
-                    if (index(irrep_label(j),'_').eq.0) then
-                        irrep_label(j)=trim(irrep_label(j))//'_'
-                    endif
-                    irrep_label(j) = trim(irrep_label(j))//'g'
-                case (-1)
-                    if (index(irrep_label(j),'_').eq.0) then
-                        irrep_label(j)=trim(irrep_label(j))//'_'
-                    endif
-                    irrep_label(j) = trim(irrep_label(j))//'u'
-            end select
-            endif
-            ! add to completely remove ambiguity
-            irrep_label(j) = trim(irrep_label(j))//'('//trim(tostring(j))//')'
-        enddo
-        ! reallocate to remove trailing white spaces
-        irrep_label = vs_trim_null(irrep_label)
-        !
-    end function   get_mulliken_label
-
     function       get_subduced_chi(supergroup_chartab,supergroup_class_id,supergroup_id) result(subduced_chi)
         !
         ! matlab:
@@ -827,8 +690,8 @@ contains
         ! calculate
         do j = 1, nirreps
             try = dot(chi_rep,chartab(j,:)*class_nelements)/real(nsyms,dp)
-            if (abs(aimag(try)).gt.tiny)                stop 'irrep reduction coefficient is not real'
-            if (abs(nint(real(try))-real(try)).gt.tiny) stop 'irrep reduction coefficient is not an integer'
+            if (abs(aimag(try)).gt.tiny)                stop 'ERROR [get_reduction_coefficient]: irrep reduction coefficient is not real'
+            if (abs(nint(real(try))-real(try)).gt.tiny) stop 'ERROR [get_reduction_coefficient]: irrep reduction coefficient is not an integer'
             ! get save integer beta
             beta(j) = nint(real(try))
         enddo
@@ -886,6 +749,211 @@ contains
         enddo
         !
     end function   get_rep_characters
+
+    function       get_irrep_label(chartab,class_id,ps_id,ax_id,flags) result(irrep_label)
+        !
+        implicit none
+        !
+        complex(dp) , intent(in) :: chartab(:,:) ! class constant chartab which becomes character chartab (can be complex!)
+        integer     , intent(in) :: class_id(:)
+        integer     , intent(in) :: ps_id(:)
+        integer     , intent(in) :: ax_id(:)
+        character(*), intent(in) :: flags
+        character(:), allocatable :: irrep_label(:)
+        integer :: try
+        integer, allocatable :: v(:)
+        integer :: i, j, k
+        integer :: nirreps
+        integer :: nclasses
+        integer :: class_with_eye
+        integer :: class_with_inv
+        integer :: class_with_paxis  
+        integer :: class_with_c2sv
+        integer :: class_with_sh
+        ! they are always identical...
+        nirreps  = size(chartab,1)
+        nclasses = size(chartab,2)
+        !
+        if     (index(flags,'number').ne.0) then
+            allocate(character(20) :: irrep_label(nirreps))
+            do j = 1, nirreps
+                irrep_label(j) = '|'//tostring(j)//'|'
+            enddo
+            ! reallocate to remove trailing white spaces
+            irrep_label = vs_trim_null(irrep_label)
+        elseif (index(flags,'mulliken').ne.0) then
+
+
+            stop 'Mullkien labeling not working properly.'
+
+            call disp([1:size(ps_id)],advance='no')
+            call disp(class_id,advance='no')
+            call disp(ps_id,advance='no')
+            call disp(ax_id,advance='yes')
+            ! create irrep label
+            allocate(character(20) :: irrep_label(nirreps))
+            ! initialize class_with_stuff
+            class_with_eye   = 0
+            class_with_inv   = 0
+            class_with_paxis = 0
+            class_with_c2sv  = 0
+            class_with_sh    = 0
+            ! ps_id: 1  e
+            !        2  c_2
+            !        3  c_3
+            !        4  c_4
+            !        5  c_6
+            !        6  i
+            !        7  s_2
+            !        8  s_6
+            !        9  s_4
+            !        10 s_3
+            ! get class containing identity
+            v = selector(ps_id.eq.1)
+            if (size(v).ne.0) then
+                class_with_eye = class_id(v(1))
+            else
+                stop 'ERROR [get_irrep_label]: no identity'
+            endif
+            ! get class containing inversion
+            v = selector(ps_id.eq.6)
+            if (size(v).ne.0) class_with_inv = class_id(v(1))
+            ! get class with principal axis (c_6, c_4, c_3, c_2)
+            do i = 5, 2, -1
+                v = selector(ps_id.eq.i)
+                if (size(v).ne.0) then 
+                    class_with_paxis = class_id(v(1))
+                    ! check if there are equally-high symmetry rotationss
+                    if (count(class_id.eq.class_with_paxis).gt.1) then
+                        class_with_paxis = 0
+                    endif
+                    exit
+                endif
+            enddo
+            ! ax_id: 1  principal axis
+            !        2  rotation   parallel
+            !        3  rotation   perpendicular
+            !        4  reflection parallel (sv)
+            !        5  reflection perpendicular (sh)
+            !        6  reflection diagonal (sd)
+            ! get class containing c2 or sv
+            if (class_with_paxis.ne.0) then
+                v = selector(ax_id.eq.2)
+                if (size(v).ne.0) then
+                                  class_with_c2sv = class_id(v(1))
+                else
+                v = selector(ax_id.eq.4)
+                if (size(v).ne.0) class_with_c2sv = class_id(v(1))
+                endif
+            else
+                v = selector(ax_id.eq.1)
+                if (size(v).ne.0) class_with_c2sv   = class_id(v(1))
+            endif
+            !
+            ! get class containing sh
+            v = selector(ax_id.eq.5)
+            if (size(v).ne.0) class_with_sh   = class_id(v(1))
+            !
+            do j = 1, nirreps
+                ! 0) nullify irrep label
+                irrep_label(j) = ''
+                ! 1) find class containing identity (ps_id=1)
+                try = (nint(real(chartab(j,class_with_eye))))
+                if (try.eq.1) then
+                    k = class_with_paxis
+                    if (k.ne.0) then
+                        ! unique high symmetry axis
+                        if (real(chartab(j,k)).ge.0) then 
+                            ! A is used when the IR is symmetric under Cn or Sn for the highest n in the group
+                            irrep_label(j) = trim(irrep_label(j))//'A'
+                        else
+                            ! B is used when the IR is antisymmetric under Cn or Sn for the highest n in the group
+                            irrep_label(j) = trim(irrep_label(j))//'B'
+                        endif
+                    else
+                        ! no unique high symmetry axis
+                        ! A is also used if there is no Cn or Sn
+                            irrep_label(j) = trim(irrep_label(j))//'A'
+                    endif
+                elseif (try.eq.2) then; irrep_label(j) = trim(irrep_label(j))//'E'
+                elseif (try.eq.3) then; irrep_label(j) = trim(irrep_label(j))//'T'
+                elseif (try.eq.4) then; irrep_label(j) = trim(irrep_label(j))//'G'
+                elseif (try.eq.5) then; irrep_label(j) = trim(irrep_label(j))//'H'
+                else
+                    stop 'ERROR [get_irrep_label]: irrep dimension exceeds 5'
+                endif
+                ! 2) 1 vs 2
+                if (class_with_paxis.ne.0) then
+                    ! if it has a principal axis
+                    i = class_with_eye
+                    try = (nint(real(chartab(j,i))))
+                    if (try.eq.1) then
+                        i = class_with_c2sv
+                        if (i.ne.0) then
+                            try = (nint(real(chartab(j,i))))
+                            if     (try.eq.0) then; ! do nothing
+                            elseif (try.gt.0) then; irrep_label(j) = trim(add_underscore(irrep_label(j)))//'1'
+                            elseif (try.lt.0) then; irrep_label(j) = trim(add_underscore(irrep_label(j)))//'2'
+                            endif
+                        endif
+                    endif
+                else
+                    ! if there is no principal axis
+                    i = class_with_c2sv
+                    if (i.ne.0) then
+                        try = (nint(real(chartab(j,i))))
+                        if     (try.eq.0) then; ! do nothing
+                        elseif (try.gt.0) then; irrep_label(j) = trim(add_underscore(irrep_label(j)))//'1'
+                        elseif (try.lt.0) then; irrep_label(j) = trim(add_underscore(irrep_label(j)))//'2'
+                        endif
+                    endif
+                endif
+                ! 3) g vs u
+                i = class_with_inv
+                if (i.ne.0) then
+                    ! if there is inversion...
+                    if (i.ne.0) then
+                        try = (nint(real(chartab(j,i))))
+                        if     (try.eq.0) then; ! do nothing
+                        elseif (try.gt.0) then; irrep_label(j) = trim(add_underscore(irrep_label(j)))//'g'
+                        elseif (try.lt.0) then; irrep_label(j) = trim(add_underscore(irrep_label(j)))//'u'
+                        endif
+                    endif
+                else
+                    ! if no inversion...
+                    ! 4) prime vs double prime
+                    i = class_with_sh
+                    write(*,*) i
+                    if (i.ne.0) then
+                    select case (sign(1,nint(real(chartab(j,i)))))
+                        case (+1); irrep_label(j) = trim(irrep_label(j))//''''
+                        case (-1); irrep_label(j) = trim(irrep_label(j))//''''''
+                    end select
+                    endif
+                endif
+            enddo
+            ! reallocate to remove trailing white spaces
+            irrep_label = vs_trim_null(irrep_label)
+            !
+        else
+            stop 'ERROR [get_irrep_label]: unknown flag'
+        endif
+        contains
+            function     add_underscore(str) result(str_mod)
+                !
+                implicit none
+                !
+                character(*), intent(in) :: str
+                character(len(str)) :: str_mod
+                !
+                if (index(str,'_').eq.0) then 
+                    str_mod=trim(str)//'_'
+                else
+                    str_mod=trim(str)
+                endif
+                !
+            end function add_underscore
+    end function   get_irrep_label
 
     function       get_irrep_decomp(chi,chartab,class_nelements) result(beta)
         !
@@ -1257,7 +1325,46 @@ contains
         !
     end subroutine print_blocks
 
-
+!     function       get_spherical_harmonic_basis(seitz_cart) result(spherical_harmonic_basis)
+!         !
+!         implicit none
+!         !
+!         real(dp)   , intent(in) :: seitz_cart(:,:,:)
+!         complex(dp),allocatable :: spherical_harmonic_basis(:,:,:)
+!         real(dp)   ,allocatable :: jlist(:)
+!         integer :: nbases
+!         integer :: nsyms
+!         integer :: i,j,k
+!         integer :: n
+!         integer :: S,E
+!         ! list of j values
+!         allocate(jlist,source=[0.5_dp,1.0_dp])
+!         ! get dimensions
+!         nbases  = sum(jlist*2+1)
+!         nsyms   = size(seitz_cart,3)
+!         ! allocate space for spherical_harmonic_basis
+!         allocate(spherical_harmonic_basis(nbases,nbases,nsyms))
+!         spherical_harmonic_basis = 0
+!         !
+!         do i = 1, nsyms
+!             ! initialize counter
+!             k = 0
+!             do j = 1, size(jlist)
+!                 k = k+1
+!                 n = nint(2*jlist(j)+1)
+!                 S = k
+!                 k = k + n - 1
+!                 E = k
+!                 if (modulo(n,2).eq.0) then
+!                     ! even
+!                     spherical_harmonic_basis(S:E,S:E,i) = rot2irrep(j=jlist(j)      ,R=seitz_cart(1:3,1:3,i))
+!                 else
+!                     ! odd
+!                     spherical_harmonic_basis(S:E,S:E,i) = rot2irrep(l=nint(jlist(j)),R=seitz_cart(1:3,1:3,i))
+!                 endif
+!             enddo
+!         enddo
+!     end function   get_spherical_harmonic_basis
 
 !     function       get_irrep_diag(sym,chartab,irrep_proj,irrep_dim,class_member) result(irrep_diag)
 !         !

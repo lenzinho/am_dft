@@ -25,7 +25,7 @@ module am_tight_binding
         integer , allocatable :: V_ind(:,:)            ! their indices
         type(am_class_tensor), allocatable :: tens(:)  ! tens(nshells)
         ! type(am_class_hamiltonian)
-    contains
+        contains
         procedure :: set_Vsk
         procedure :: initialize_tb
         procedure :: get_hamiltonian

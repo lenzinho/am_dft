@@ -158,7 +158,8 @@ module am_symmetry_rep
             if (.not.present(atom_m)) stop 'ERROR [get_flat_point_group]: atom_m required'
             if (.not.present(atom_n)) stop 'ERROR [get_flat_point_group]: atom_n required'
         endif
-        !
+        ! dummy print, otherwise program stops prematurely???
+        write(*,fmt='(a)',advance='no') ''
         ! number of bases functions in representation
         flat_pg%nbases = product(tens%dims)
         ! number of symmetries

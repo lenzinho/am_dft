@@ -45,6 +45,10 @@ module am_matlab
     interface meshgrid
         module procedure dmeshgrid, imeshgrid
     end interface ! meshgrid
+
+    interface rot2irrep
+        module procedure rot2irrep_l, rot2irrep_j
+    end interface ! rot2irrep
     
     interface trace
         module procedure dtrace, ztrace
@@ -72,7 +76,7 @@ module am_matlab
     end interface ! unique_inds
 
     interface trim_null
-        module procedure i_trim_null, vz_trim_null, vd_trim_null, vs_trim_null, s_trim_null
+        module procedure i_trim_null, vi_trim_null, vz_trim_null, vd_trim_null, vs_trim_null, s_trim_null
     end interface ! trim_null
 
     interface issubset
@@ -995,34 +999,31 @@ module am_matlab
         real(dp)   , allocatable :: Y(:,:) ! counter-clockwise rotation (right-hand rule) around Y axis
         real(dp)   , allocatable :: Z(:,:) ! counter-clockwise rotation (right-hand rule) around Z axis
         complex(dp), allocatable :: H(:,:) ! helper matrix
-        !
+        complex(dp), allocatable :: Q(:,:) ! helper matrix
         ! get dimensions of matrices
         n = 2*l+1
-        !
         ! determine similarity transform to convert spherical into tesseral harmonics (complex to real)
         C = tesseral(l=l)
-        !
+        ! if this Q is not set deliberately, sometimes the code will crash
+        Q = Lx(l=l)
         ! determine rotation around X = real( (B*V)*A*(B*V)' )
-        call am_zheev(A=Lx(l),V=V,D=D)
+        call am_zheev(A=Q,V=V,D=D)
         H = matmul(C,V)
         A = diag(exp(-cmplx_i*euler(1)*D))
         X = matmul(H,matmul(A,adjoint(H)))
-        !
         ! determine rotation around Y = real( B*P*B' )
         allocate(Y(n,n))
         B = diag(exp( cmplx_i*euler(2)*D)) ! there should be a minus sign here...
         Y = matmul(C,matmul(B,adjoint(C)))
-        !
         ! determine rotation around Z = real( (B*V)*T*(B*V)' )
         call am_zheev(A=Lz(l),V=V,D=D)
         H = matmul(C,V)
         G = diag(exp(-cmplx_i*euler(3)*D))
         Z = matmul(H,matmul(G,adjoint(H)))
-        !
         ! generate rotation
         allocate(SO3(n,n))
         SO3 = matmul(X,matmul(Y,Z))
-        !
+        !        
         contains
         pure function  tesseral(l) result(B)
             !
@@ -1081,25 +1082,20 @@ module am_matlab
         complex(dp), allocatable :: X(:,:)   ! counter-clockwise rotation (right-hand rule) around X axis
         complex(dp), allocatable :: Y(:,:)   ! counter-clockwise rotation (right-hand rule) around Y axis
         complex(dp), allocatable :: Z(:,:)   ! counter-clockwise rotation (right-hand rule) around Z axis
-        !
         ! get dimensions of matrices
         n = nint(2.0_dp*j+1.0_dp)
-        !
         ! determine rotation around X = real( (B*V)*A*(B*V)' )
         call am_zheev(A=Jx(j),V=V,D=D)
-        A = diag(exp(-cmplx_i*euler(1)*D))
+        A = diag(exp(-cmplx_i*euler(1)*D ))
         X = matmul(V,matmul(A,adjoint(V)))
-        !
         ! determine rotation around Y = real( B*P*B' )
         allocate(Y(n,n))
-        B = diag(exp( cmplx_i*euler(2)*D))
+        B = diag(exp( cmplx_i*euler(2)*D ))
         Y = B
-        !
         ! determine rotation around Z = real( (B*V)*T*(B*V)' )
         call am_zheev(A=Jz(j),V=V,D=D)
-        G = diag(exp( cmplx_i*euler(3)*D))
+        G = diag(exp( cmplx_i*euler(3)*D ))
         Z = matmul(V,matmul(G,adjoint(V)))
-        !
         ! generate rotation
         allocate(SU2(n,n))
         SU2 = matmul(X,matmul(Y,Z))
@@ -1129,10 +1125,8 @@ module am_matlab
         !
     end function  rot2O3
 
-    function      rot2irrep(l,R) result(irrep)
-        !
+    function      rot2irrep_l(l,R) result(irrep)
         ! generates n-dimensional irreducible representation matrix corresponding to (im)proper rotation R 
-        !
         implicit none
         !
         integer , intent(in) :: l
@@ -1140,27 +1134,43 @@ module am_matlab
         complex(dp), allocatable :: irrep(:,:)
         integer  :: improper_fac
         real(dp) :: d ! det
-        real(dp) :: n
-        !
         ! convert rotoinversion to pure rotation then back to rotoinversion
         d = R(1,1)*R(2,2)*R(3,3)-R(1,1)*R(2,3)*R(3,2)-R(1,2)*R(2,1)*R(3,3)+R(1,2)*R(2,3)*R(3,1)+R(1,3)*R(2,1)*R(3,2)-R(1,3)*R(2,2)*R(3,1)
-        !
         ! check that the rotation is unitary, with determinant equalt to plus or minus one
         if (abs(abs(d)-1.0_dp).gt.tiny) stop 'Rotation is not unitary. det /= +1 or -1'
-        !
         ! remove rouding errors
         d = nint(sign(1.0_dp,d))
-        !
-        ! determine dimension n
-        n = (2*l+1)
-        !
         ! rotoinversions factor : (-1)**l <= this corresponds to inversion matrix, use d instead of conditional statement
         improper_fac = (d)**l
-        !
         ! converts (im)rotation -> proper rotation -> builds S03 rpresentation -> tack on (im)proper factor to recover inversion
         irrep = euler2SO3(l=l, euler=rot2euler(R*d)) * improper_fac
         !
-    end function  rot2irrep
+    end function  rot2irrep_l
+
+    function      rot2irrep_j(j,R) result(irrep)
+        ! generates n-dimensional irreducible representation matrix corresponding to (im)proper rotation R 
+        implicit none
+        !
+        real(dp), intent(in) :: j
+        real(dp), intent(in) :: R(3,3)
+        complex(dp), allocatable :: irrep(:,:)
+        real(dp) :: d ! det
+        ! check that j is a half or full integer
+        if (mod(j+tiny,0.5_dp)-tiny.gt.tiny) then
+            stop 'ERROR [rot2irrep_j]: j is not a half/full integer'
+        endif
+        ! convert rotoinversion to pure rotation then back to rotoinversion
+        d = R(1,1)*R(2,2)*R(3,3)-R(1,1)*R(2,3)*R(3,2)-R(1,2)*R(2,1)*R(3,3)+R(1,2)*R(2,3)*R(3,1)+R(1,3)*R(2,1)*R(3,2)-R(1,3)*R(2,2)*R(3,1)
+        ! check that the rotation is unitary, with determinant equalt to plus or minus one
+        if (abs(abs(d)-1.0_dp).gt.tiny) stop 'Rotation is not unitary. det /= +1 or -1'
+        ! remove rouding errors
+        d = nint(sign(1.0_dp,d))
+        ! Improper rotations in SU(2): Multiply the matrix elements by +1.
+        ! pg 58 of Simon L. Altmann, Peter Herzig "Point-Group Theory Tables".
+        ! Also see: Altmann, S. L. (1986). Rotations, quaternions, and double groups. Clarendon Press, Oxford.
+        irrep = euler2SU2(j=j, euler=rot2euler(R*d))
+        !
+    end function  rot2irrep_j
 
     ! statistics
 
@@ -1820,6 +1830,35 @@ module am_matlab
         allocate(B, source=A(selector(A.ne.0)) )
         !
     end function  i_trim_null
+
+    pure function vi_trim_null(A) result(B)
+        !
+        implicit none
+        !
+        integer, intent(in) :: A(:,:)
+        integer,allocatable :: B(:,:)
+        integer,allocatable :: zeros(:)
+        logical,allocatable :: mask(:)
+        integer,allocatable :: inds(:)
+        integer :: n, i
+        !
+        n = size(A,2)
+        allocate(inds, source = [1:n] )
+        allocate(zeros(size(A,1)))
+        zeros = 0
+        !
+        allocate(mask(n))
+        do i = 1, n
+            if (isequal(A(:,i),zeros)) then
+                mask(i) = .false.
+            else
+                mask(i) = .true.
+            endif
+        enddo
+        !
+        allocate(B, source = A(:,pack(inds,mask)))
+        !
+    end function  vi_trim_null
 
     pure function vd_trim_null(A) result(B)
         !

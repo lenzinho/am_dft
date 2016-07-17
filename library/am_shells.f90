@@ -459,7 +459,7 @@ contains
             do i = 1, ip%nshells
                 if (pg_id_unique(k).eq. get_pg_code(ip%shell(i)%stab%ps_id) ) then
                     ! print point group
-                    write(*,'(a,a)') flare, 'point group '//trim(get_pg_name(pg_id_unique(k)))
+                    call print_title(trim(get_pg_name(pg_id_unique(k))))
                     ! print character table
                     call ip%shell(i)%stab%print_character_table()
                     ! dump debugging

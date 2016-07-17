@@ -23,6 +23,7 @@ module am_symmetry
         type(am_class_character_table)      :: ct     ! character table
         type(am_class_multiplication_table) :: mt     ! multiplication table
         integer , allocatable :: supergroup_id(:)     ! if this is a subgroup, supergroup_id identifis the symmetry in the encompassing group (used for stabilizer group)
+        integer , allocatable :: ax_id(:)
         contains
         procedure :: sort_symmetries
         procedure :: get_multiplication_table
@@ -102,13 +103,14 @@ contains
             grp%seitz_cart = grp%seitz_cart(:,:,inds)
             ! symmetries [recfrac]
             grp%seitz_recfrac = grp%seitz_recfrac(:,:,inds)
+            ! regular representation
+            if (allocated(grp%sym)) grp%sym = grp%sym(inds,inds,inds)
         class default
             stop 'ERROR [sort_symmetries]: class unknown'
         end select
         ! reshape(pack( .true.),shape())
         if (allocated(grp%ps_id))             grp%ps_id             =                            grp%ps_id(inds)
         if (allocated(grp%mt%multab))         grp%mt%multab         =         reshape(rinds(pack(grp%mt%multab(inds,inds)           , .true.)),shape(grp%mt%multab))
-        if (allocated(grp%mt%rr))             grp%mt%rr             =                            grp%mt%rr(inds,inds,inds)      
         if (allocated(grp%mt%corder))         grp%mt%corder         =                            grp%mt%corder(inds)        
         if (allocated(grp%mt%commutator_id))  grp%mt%commutator_id  = sort_nz(reshape(rinds(pack(grp%mt%commutator_id(inds,:)       , .true.)),shape(grp%mt%commutator_id)))
         if (allocated(grp%cc%id))             grp%cc%id             =                            grp%cc%id(inds)
@@ -175,11 +177,12 @@ contains
         if (allocated(grp%sym              )) call dump(A=grp%sym              ,fname=trim(fname)//'.sym'              )
                                               call dump(A=grp%ps_id            ,fname=trim(fname)//'.ps_id'            )
         if (allocated(grp%supergroup_id    )) call dump(A=grp%supergroup_id    ,fname=trim(fname)//'.supergroup_id'    )
-        if (allocated(grp%mt%commutator_id )) call dump(A=grp%mt%commutator_id ,fname=trim(fname)//'.mt.commutator_id' )
         if (allocated(grp%mt%multab        )) call dump(A=grp%mt%multab        ,fname=trim(fname)//'.mt.multab'        )
         if (allocated(grp%mt%gen_id        )) call dump(A=grp%mt%gen_id        ,fname=trim(fname)//'.mt.gen_id'        )
+        if (allocated(grp%mt%gen           )) call dump(A=grp%mt%gen           ,fname=trim(fname)//'.mt.gen'           )
+        if (allocated(grp%mt%inv_id        )) call dump(A=grp%mt%inv_id        ,fname=trim(fname)//'.mt.inv_id'        )
         if (allocated(grp%mt%corder        )) call dump(A=grp%mt%corder        ,fname=trim(fname)//'.mt.order'         )
-        if (allocated(grp%mt%rr            )) call dump(A=grp%mt%rr            ,fname=trim(fname)//'.mt.rr'            )
+        if (allocated(grp%mt%commutator_id )) call dump(A=grp%mt%commutator_id ,fname=trim(fname)//'.mt.commutator_id' )
                                               call dump(A=grp%cc%nclasses      ,fname=trim(fname)//'.cc.nclasses'      )
         if (allocated(grp%cc%id            )) call dump(A=grp%cc%id            ,fname=trim(fname)//'.cc.id'            )
         if (allocated(grp%cc%nelements     )) call dump(A=grp%cc%nelements     ,fname=trim(fname)//'.cc.nelements'     )
@@ -276,7 +279,7 @@ contains
         ! get character table (ps_id is required for sorting the irreps: proper before improper)
         grp%ct%chartab      = get_chartab(            multab=grp%mt%multab, class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
         ! get muliken labels for irreps
-        grp%ct%irrep_label  = get_mulliken_label(    chartab=grp%ct%chartab, class_id=grp%cc%id, ps_id=grp%ps_id)
+        grp%ct%irrep_label  = get_irrep_label(      chartab=grp%ct%chartab,                                           class_id=grp%cc%id, ps_id=grp%ps_id,flags='number',ax_id=grp%ax_id)
         ! get irrep dimensions
         grp%ct%irrep_dim    = get_irrep_dimension(  chartab=grp%ct%chartab, class_nelements=grp%cc%nelements, class_member=grp%cc%member, ps_id=grp%ps_id)
         ! get rep character
@@ -319,6 +322,7 @@ contains
             enddo
             write(*,*)
         enddo
+        write(*,*)
         call printer%printer_print_definitions()
         ! ------------------------------------------------------------------------------------------
         ! print irrep decompositions
@@ -370,6 +374,11 @@ contains
             ! ------------------------------------------------------------------------------------------
             ! initialize decomposition
             if (allocated(grp%ct%subduced_chi)) then
+                ! initialize decomposition
+                write(*,'(a,a)') flare, 'decompositions of subduced supergroup irrep products:'
+                ! print decomposition
+                call print_product_decomp(chartab=grp%ct%chartab,class_nelements=grp%cc%nelements,&
+                    irrep_label=grp%ct%irrep_label,rep_label=grp%ct%subduced_label,chi=grp%ct%subduced_chi)
                 write(*,'(a,a)') flare, 'decompositions of subduced supergroup irreps:'
                 ! print decomposition
                 call print_rep_decomp(chartab=grp%ct%chartab,class_nelements=grp%cc%nelements,&
@@ -432,18 +441,10 @@ contains
 
             ! [ Note: x means allowed ]
 
-
-            ! get_chi_symmeterized_irrep(multab,chartab,class_id,class_member,flags)
-
         class is (am_class_space_group) 
             ! do nothing.
         class is (am_class_symrep_group)
-!             nreps = 1
-!             allocate(chi_rep(nreps,grp%cc%nclasses))
-!             allocate(rep_label(nreps))
-!             ! representation based on basis functions
-!             rep_label = 'rep'
-!             chi_rep = get_rep_characters(sym=grp%sym, class_member=grp%cc%member)
+            ! do nothing.
         class default
             stop 'ERROR [print_character_table]: class unknown'
         end select
@@ -588,7 +589,7 @@ contains
             beta = 0
             ! get reduction coefficients
             do i = 1, nreps
-            do j = i, nreps
+            do j = 1, i
                 beta(:,i,j) = get_reduction_coefficient(chartab=chartab,class_nelements=class_nelements,chi_rep=chi(i,:)*chi(j,:))
             enddo
             enddo
@@ -604,7 +605,11 @@ contains
                         do k = 1, nirreps
                         if (beta(k,i,j).ne.0) then
                             if     (beta(k,i,j).eq.+1) then
-                                str(j) = trim(str(j))//'+'
+                                if (len_trim(str(j)).eq.0) then
+                                    ! do nothing
+                                else
+                                    str(j) = trim(str(j))//'+'
+                                endif
                             else
                                 str(j) = trim(str(j))//trim(tostring(X=beta(k,i,j),fmt='SP,i5'))
                             endif
@@ -658,10 +663,15 @@ contains
             do i = 1, nreps
             if (any(beta(:,i).ne.0)) then
                 write(*,'(5x,a,a)',advance='no') trim(rep_label(i)), ' = '
+                str = ''
                 do j = 1, nirreps
                 if (beta(j,i).ne.0) then
                     if     (beta(j,i).eq.1) then
-                        str = '+'
+                        if (len_trim(str).eq.0) then
+                            ! do nothing
+                        else
+                            str = '+'
+                        endif
                     else
                         str = trim(tostring(X=beta(j,i),fmt='SP,i5'))
                     endif
@@ -716,7 +726,9 @@ contains
         ! correct rounding error in cart
         call correct_rounding_error(sg%seitz_cart)
         ! identify point symmetries
-        sg%ps_id = get_ps_id(R=sg%seitz_frac)
+        sg%ps_id = get_ps_id(R=sg%seitz_cart)
+        ! get ax_id
+        sg%ax_id = get_ax_id(R=sg%seitz_cart)
         ! sort symmetries based on parameters 
         call sg%sort_symmetries(criterion=sg%seitz_frac(1,4,:)      , flags='ascend')
         call sg%sort_symmetries(criterion=sg%seitz_frac(2,4,:)      , flags='ascend')
@@ -1753,10 +1765,13 @@ contains
         ! 
     end subroutine put_identity_first
 
-
-
     function       get_ax_id(R) result(ax_id)
-        ! 0 principal rotation axis, +1 parallel-rotation, 2 perp.-rotation, 4 reflection parallel (sv), 5 reflection perpendicular (sh), 6 reflection diagonal (sd)
+        ! ax_id: 1  principal axis
+        !        2  rotation   parallel
+        !        3  rotation   perpendicular
+        !        4  reflection parallel (sv)
+        !        5  reflection perpendicular (sh)
+        !        6  reflection diagonal (sd)
         implicit none
         !
         real(dp), intent(in) :: R(:,:,:)
@@ -1868,12 +1883,6 @@ contains
             endif
         endif
         enddo
-
-        call disp(X=[1:nsyms],advance='no')
-        call disp(X=ps_ns_rank,advance='no')
-        call disp(X=ax_id,advance='yes')
-
-        stop
     end function   get_ax_id
 
 end module am_symmetry

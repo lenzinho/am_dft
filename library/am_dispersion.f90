@@ -126,7 +126,13 @@ contains
         !
     end subroutine get_dispersion
 
+!     subroutine     write_dispersion(tb)
+!         !
+!         implicit none
+!         !
+! !         ! write it in fractional coordinates so that  
 
+! !     end subroutine
 
 
 
