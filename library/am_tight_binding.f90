@@ -9,7 +9,7 @@ module am_tight_binding
     use am_irre_cell
     use am_prim_cell
     use am_symmetry
-    use am_symmetry_rep
+    use am_symmetry_tensor
     use am_symmetry_relations
     use am_mkl
     use am_brillouin_zone
@@ -24,7 +24,6 @@ module am_tight_binding
         real(dp), allocatable :: V(:)                  ! their values
         integer , allocatable :: V_ind(:,:)            ! their indices
         type(am_class_tensor), allocatable :: tens(:)  ! tens(nshells)
-        ! type(am_class_hamiltonian)
         contains
         procedure :: set_Vsk
         procedure :: initialize_tb

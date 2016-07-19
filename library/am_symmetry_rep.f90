@@ -1,4 +1,4 @@
-module am_symmetry_rep
+module am_symmetry_tensor
 
     use am_constants
     use am_stdout
@@ -18,11 +18,7 @@ module am_symmetry_rep
 
     public :: ps2tb ! used in am_tight_binding
 
-    public :: print_relations, combine_relations, dump_relations
-
     public :: get_null, get_independent, get_depenent
-
-    public :: transp_parity_sign
 
     type, public :: am_class_tensor
         character(100)        :: property       ! name of propertty
@@ -111,12 +107,12 @@ module am_symmetry_rep
             tens%relations = combine_relations(flat_ig%relations, flat_pg%relations)
             ! correct rounding error
             call correct_rounding_error(tens%relations)
-            ! debug?
-            if (debug) then
-                allocate(str, source = strrep(property,' ','_') )
-                call execute_command_line('mkdir -p '//trim(debug_dir)//'/tensors/'//str)
-                call flat_pg%debug_dump(fname=         trim(debug_dir)//'/tensors/'//str//'/outfile.'//str)
-            endif
+            ! ! debug?
+            ! if (debug) then
+            !     allocate(str, source = strrep(property,' ','_') )
+            !     call execute_command_line('mkdir -p '//trim(debug_dir)//'/tensors/'//str)
+            !     call flat_pg%debug_dump(fname=         trim(debug_dir)//'/tensors/'//str//'/outfile.'//str)
+            ! endif
         endif
         ! print relations
         if (opts%verbosity.ge.1) then
@@ -594,7 +590,7 @@ module am_symmetry_rep
         !
     end function   orbital_parity
 
-end module am_symmetry_rep
+end module am_symmetry_tensor
 
 
 

@@ -6,7 +6,6 @@ module am_optimizer
     use am_matlab
     use am_options
     use am_shells
-    use am_symmetry_rep
     use am_symmetry_relations
     use am_mkl
     use am_brillouin_zone

@@ -10,7 +10,6 @@ module am_dispersion
     use am_options
     use am_histogram
     use am_shells
-    use am_symmetry_rep
     use am_tight_binding
 
     implicit none
