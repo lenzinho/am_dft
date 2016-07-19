@@ -141,7 +141,6 @@ contains
         integer :: sub(2)
         integer :: i,j,k
         !
-        !
         if (opts%verbosity.ge.1) call print_title('Symmetry-adapted tight-binding parameters')
         !
         tb%nshells = ip%nshells
@@ -195,68 +194,6 @@ contains
             call tb%write_matrix_elements_irr()
         endif
         !
-        contains
-        subroutine     initialize_tens(tens,pc,ic,shell)
-            !
-            implicit none
-            !
-            type(am_class_tensor) , intent(out) :: tens
-            type(am_class_prim_cell), intent(in)  :: pc
-            type(am_class_irre_cell), intent(in)  :: ic
-            type(am_shell_cell)     , intent(in)  :: shell
-            integer :: i
-            !
-            tens%property = 'tight binding'
-            tens%rank  = 2
-            ! detetmine if irreducible atoms are the same
-            if (shell%i.eq.shell%j) then
-                tens%flags = 'i==j'
-            else
-                tens%flags = 'i/=j'
-            endif
-            ! set dimensions of matrix elements
-            allocate(tens%dims(tens%rank))
-            tens%dims = 0 
-            ! dimension of Hamiltonian subsection corresponding to primitive atom m (irreducible atoms i)
-            do i = 1, ic%atom(shell%i)%nazimuthals
-                tens%dims(1) = tens%dims(1) + ic%atom(shell%i)%azimuthal(i)*2+1
-            enddo
-            ! dimension of Hamiltonian subsection corresponding to primitive atom n (irreducible atoms j)
-            do i = 1, ic%atom(shell%j)%nazimuthals
-                tens%dims(2) = tens%dims(2) + ic%atom(shell%j)%azimuthal(i)*2+1
-            enddo
-            ! allocate space for matrix elements
-            allocate(tens%V(tens%dims(1)*tens%dims(2)))
-            !
-        end subroutine initialize_tens
-        subroutine     get_shell_relations(tens,pg,ic,shell,opts)
-                !
-                implicit none
-                !
-                type(am_class_tensor)   , intent(inout) :: tens
-                type(am_class_point_group), intent(in) :: pg   ! seitz point group
-                type(am_class_irre_cell)  , intent(in) :: ic
-                type(am_shell_cell)       , intent(in) :: shell
-                type(am_class_options)    , intent(in) :: opts
-                type(am_class_flat_group)  :: flat_pg
-                type(am_class_flat_group)  :: flat_ig
-                type(am_class_point_group) :: stab
-                !
-                ! determine intrinsic symmetries (if both irreducible atoms are of the same irreducible type)
-                ! Interchange of indices: (l,l',m) = (-1)^(l+l') * (l',l,m), due to parity of wavefunction. (s,d are even under inversion, p,f are odd)
-                ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245. Also see R. Martin.
-                ! NOTE: FOR SOME REASON, MUST CALL atom_m with shell%j and atom_n with shell%i (INDICES FLIPPED) - probably has to do with reshape and column-major ordering
-                call flat_ig%get_flat_intrinsic_group(tens=tens, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i) )
-                ! determine stabilizers relations
-                call stab%get_stabilizer_group(pg=pg, v=shell%tau_cart(1:3,1), opts=opts, flags='cart')
-                ! get stabilizer symmetries in the flattened hamiltonin basis
-                call flat_pg%get_flat_point_group(tens=tens, pg=stab, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i))
-                ! get combined relations
-                tens%relations = combine_relations(relationsA=flat_pg%relations, relationsB=flat_ig%relations)
-                ! correct rounding error
-                call correct_rounding_error(tens%relations)
-                ! 
-        end subroutine get_shell_relations
     end subroutine initialize_tb
 
     function       get_hamiltonian(tb,tbpg,pp,kpt,selector_shell) result(H)

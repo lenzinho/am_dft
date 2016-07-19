@@ -24,15 +24,6 @@ module am_symmetry_rep
 
     public :: transp_parity_sign
 
-    type, public, extends(am_class_symrep_group) :: am_class_flat_group
-        real(dp), allocatable :: relations(:,:)
-        contains
-        procedure :: get_flat_intrinsic_group
-        procedure :: get_flat_point_group
-        procedure :: get_direct_product
-        procedure :: get_relations
-    end type am_class_flat_group
-
     type, public :: am_class_tensor
         character(100)        :: property       ! name of propertty
         character(100)        :: flags          ! axial/polar/tight
@@ -44,7 +35,224 @@ module am_symmetry_rep
         procedure :: symmetrize
     end type am_class_tensor
 
+    type, private, extends(am_class_symrep_group) :: am_class_flat_group
+        real(dp), allocatable :: relations(:,:)
+        contains
+        procedure :: get_flat_intrinsic_group
+        procedure :: get_flat_point_group
+        procedure :: get_relations
+    end type am_class_flat_group
+
 	contains
+
+    ! operates on tens
+
+    subroutine     symmetrize(tens,pg,opts,property,pc,ic,shell)
+        !                                          |-----------| tight binding input
+        !
+        implicit none
+        !
+        class(am_class_tensor),      intent(out):: tens
+        class(am_class_point_group), intent(in) :: pg
+        type(am_class_options),      intent(in) :: opts
+        character(*),                intent(in) :: property
+        type(am_class_prim_cell)   , optional, intent(in) :: pc   ! primitive cell
+        type(am_class_irre_cell)   , optional, intent(in) :: ic    ! required for tight binding input
+        type(am_shell_cell)        , optional, intent(in) :: shell ! required for tight binding input
+        type(am_class_flat_group) :: flat_ig
+        type(am_class_flat_group) :: flat_pg
+        character(:), allocatable :: str
+        integer :: m, n, o, nterms
+        !
+        if (opts%verbosity.ge.1) call print_title('Symmeterized '//trim(property))
+        ! check intput for tight binding
+        if    (index(property,'tight binding').ne.0) then
+            ! tb matrix element
+            if (.not.present(pc))    stop 'ERROR [symmetrize]: missing pc for tight-binding intput'
+            if (.not.present(ic))    stop 'ERROR [symmetrize]: missing ic for tight-binding intput'
+            if (.not.present(shell)) stop 'ERROR [symmetrize]: missing shell for tight-binding intput'
+            ! initialize
+            call initialize_tensor(tens=tens, pc=pc, ic=ic, shell=shell, property=property)
+            ! determine intrinsic symmetries (if both irreducible atoms are of the same irreducible type)
+            ! Interchange of indices: (l,l',m) = (-1)^(l+l') * (l',l,m), due to parity of wavefunction. (s,d are even under inversion, p,f are odd)
+            ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245. Also see R. Martin.
+            ! NOTE: FOR SOME REASON, MUST CALL atom_m with shell%j and atom_n with shell%i (INDICES FLIPPED) - probably has to do with reshape and column-major ordering
+            call flat_ig%get_flat_intrinsic_group(tens=tens, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i) )
+            ! get stabilizer symmetries in the flattened hamiltonin basis
+            call flat_pg%get_flat_point_group(tens=tens, pg=shell%stab, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i))
+            ! combined relations
+            tens%relations = combine_relations(flat_ig%relations, flat_pg%relations)
+            ! correct rounding error
+            call correct_rounding_error(tens%relations)
+            ! print stabilzier group parameters
+            if (opts%verbosity.ge.1) then
+                write(*,'(a,a)') flare, 'atomic pair = '//trim(atm_symb(pc%Z( shell%i )))//'-'//trim(atm_symb(pc%Z( shell%j )))
+                write(*,'(a,a)') flare, 'stabilizer group = '//trim(get_pg_name(get_pg_code( shell%stab%ps_id )))
+                write(*,'(a,a)') flare, 'orbit = '
+                call disp_indent()
+                call disp(X=[1:shell%natoms]         ,title='#'     ,style='underline',advance='no')
+                call disp(X=transpose(shell%tau_cart),title='atomic basis [cart]',style='underline',advance='no')
+                call disp(X=transpose(shell%tau_frac),title='atomic basis [frac]',style='underline',advance='yes')
+            endif
+            ! debug?
+            if (debug) then
+                allocate(str, source = 'shell' )
+                call execute_command_line('mkdir -p '//trim(debug_dir)//'/tb/pair_rep/'//str)
+                call flat_pg%debug_dump(fname=         trim(debug_dir)//'/tb/pair_rep/'//str//'/outfile.'//str)
+            endif
+        else
+            ! initialize
+            call initialize_tensor(tens=tens, property=property)
+            ! get intrinsic symmetries
+            call flat_ig%get_flat_intrinsic_group(tens=tens)
+            ! get point symmetries
+            call flat_pg%get_flat_point_group(tens=tens, pg=pg)
+            ! combined relations
+            tens%relations = combine_relations(flat_ig%relations, flat_pg%relations)
+            ! correct rounding error
+            call correct_rounding_error(tens%relations)
+            ! debug?
+            if (debug) then
+                allocate(str, source = strrep(property,' ','_') )
+                call execute_command_line('mkdir -p '//trim(debug_dir)//'/tensors/'//str)
+                call flat_pg%debug_dump(fname=         trim(debug_dir)//'/tensors/'//str//'/outfile.'//str)
+            endif
+        endif
+        ! print relations
+        if (opts%verbosity.ge.1) then
+            ! print statistics about parameters
+            write(*,'(a,a)') flare, 'matrix elements = '
+            write(*,'(5x,2a6,3a14)') 'shell', 'terms', 'null', 'dependent', 'independent'
+            write(*,'(5x,a)') repeat(' '//repeat('-',5),2)//repeat(' '//repeat('-',13),3)
+            ! intrinsic symmetries
+            m = count(get_null(flat_ig%relations))
+            n = count(get_depenent(flat_ig%relations)) 
+            o = count(get_independent(flat_ig%relations))
+            nterms = m+n+o
+            write(*,'(5x,a6)'        ,advance='no') 'intr.'
+            write(*,'(i6)'           ,advance='no') nterms
+            write(*,'(i5,a2,f5.1,a2)',advance='no') m, '(', (m*100_dp)/real(nterms,dp) , '%)'
+            write(*,'(i5,a2,f5.1,a2)',advance='no') n, '(', (n*100_dp)/real(nterms,dp) , '%)'
+            write(*,'(i5,a2,f5.1,a2)',advance='no') o, '(', (o*100_dp)/real(nterms,dp) , '%)'
+            write(*,*)
+            ! point symmetries
+            m = count(get_null(flat_pg%relations))
+            n = count(get_depenent(flat_pg%relations)) 
+            o = count(get_independent(flat_pg%relations))
+            nterms = m+n+o
+            write(*,'(5x,a6)'        ,advance='no') 'pnt.'
+            write(*,'(i6)'           ,advance='no') nterms
+            write(*,'(i5,a2,f5.1,a2)',advance='no') m, '(', (m*100_dp)/real(nterms,dp) , '%)'
+            write(*,'(i5,a2,f5.1,a2)',advance='no') n, '(', (n*100_dp)/real(nterms,dp) , '%)'
+            write(*,'(i5,a2,f5.1,a2)',advance='no') o, '(', (o*100_dp)/real(nterms,dp) , '%)'
+            write(*,*)
+            ! total
+            m = count(get_null(tens%relations))
+            n = count(get_depenent(tens%relations)) 
+            o = count(get_independent(tens%relations))
+            nterms = m+n+o
+            write(*,'(5x,a6)'        ,advance='no') 'total'
+            write(*,'(i6)'           ,advance='no') nterms
+            write(*,'(i5,a2,f5.1,a2)',advance='no') m, '(', (m*100_dp)/real(nterms,dp) , '%)'
+            write(*,'(i5,a2,f5.1,a2)',advance='no') n, '(', (n*100_dp)/real(nterms,dp) , '%)'
+            write(*,'(i5,a2,f5.1,a2)',advance='no') o, '(', (o*100_dp)/real(nterms,dp) , '%)'
+            write(*,*)
+            ! print symmetry relations
+            if (m.ne.nterms) then
+                write(*,'(a,a)') flare, 'irreducible symmetry relations:'
+                call print_relations(relations=tens%relations, dims=tens%dims, flags='print:dependent,independent')
+            endif
+            ! show block structure
+            write(*,'(a,a)') flare, 'irreducible block structure [flattened point group, ignores intrinsic symmetries]:'
+            call print_blocks(sym=flat_pg%sym,block_proj=flat_pg%ct%block_proj)
+        endif
+        !
+        contains
+        subroutine     initialize_tensor(tens,property,pc,ic,shell)
+            !
+            implicit none
+            !
+            class(am_class_tensor)  , intent(out) :: tens
+            character(*)            , intent(in)  :: property
+            type(am_class_prim_cell), intent(in), optional :: pc    ! required for tb
+            type(am_class_irre_cell), intent(in), optional :: ic    ! required for tb
+            type(am_shell_cell)     , intent(in), optional :: shell ! required for tb
+            integer :: i
+            !
+            !----------------------------------------------------------------------------------------------------------------------
+            !
+            ! Tensors transferm differently whether they are axial or polar:
+            ! POLAR ( odd under inv.):  T_{i,j,k,l,...} =        sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
+            ! AXIAL (even under inv.):  T_{i,j,k,l,...} = det(R) sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
+            ! Thus, all axial tensors of even rank and polar tensors of odd rank are null are null.  Wooten p 485. Eq. 13.21. 
+            !
+            ! Onsager’s Principle requires that the electric resistivity and thermal conductivity tensors be symmetric.
+            ! This does not hold for the Seebeck and Peltier (thermoelectric) tensors which relate two different flows. Thus
+            ! there are, at most, nine independent parameters rather than six. [Newnham "Properties of Materials"]
+            !
+            tens%property = property
+            !------------------------------------------------- FIRST-RANK TENSORS --------------------------------------------------
+            if     (index(tens%property,'pyroelectricity')          .ne.0) then; tens%rank = 1                       !    ! P_{i}     = p_{i} \Delta T
+            !------------------------------------------------- SECOND-RANK TENSORS -------------------------------------------------
+            elseif (index(tens%property,'dielectric')               .ne.0) then; tens%rank = 2; tens%flags = 'polar' 
+            elseif (index(tens%property,'electrical susceptibility').ne.0) then; tens%rank = 2; tens%flags = 'polar' ! S  ! P_{i}     = \alpha_{ij}  E_{j}
+            elseif (index(tens%property,'magnetic susceptibility')  .ne.0) then; tens%rank = 2; tens%flags = 'axial' ! S  ! M_{i}     = \mu_{ij}     H_{j}
+            elseif (index(tens%property,'magneto electric')         .ne.0) then; tens%rank = 2; tens%flags = 'axial' 
+            elseif (index(tens%property,'thermal expansion')        .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
+            elseif (index(tens%property,'electrical conductivity')  .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! S  ! J_{i}     = \sigma_{ij}  E_{i}
+            elseif (index(tens%property,'electrical resistivity')   .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! S  ! E_{i}     = \rho_{ij}    J_{j}
+            elseif (index(tens%property,'thermal conductivity')     .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! S  ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
+            elseif (index(tens%property,'thermoelectricity')        .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! N  ! 
+            elseif (index(tens%property,'seebeck')                  .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
+            elseif (index(tens%property,'peltier')                  .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! N  ! q_{i}     = \pi_{ij}     J_{j}
+            !------------------------------------------------- THIRD-RANK TENSORS -------------------------------------------------
+            elseif (index(tens%property,'hall')                     .ne.0) then; tens%rank = 3;                      !    ! E_{i}     = h_{ijk}      J_{j} H_{k} - has two polar componnts {ij} and one axial component {k}
+            elseif (index(tens%property,'piezoelectricity')         .ne.0) then; tens%rank = 3; tens%flags = 'polar' !    ! P_{i}     = d_{ijk}      \sigma_{jk}
+            elseif (index(tens%property,'piezomagnetic')            .ne.0) then; tens%rank = 3; tens%flags = 'axial' !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
+            !------------------------------------------------- FOURTH-RANK TENSORS ------------------------------------------------
+            elseif (index(tens%property,'elasticity')               .ne.0) then; tens%rank = 4; tens%flags = 'polar' !    ! 
+            elseif (index(tens%property,'piezo optic')              .ne.0) then; tens%rank = 4                       !    ! 
+            elseif (index(tens%property,'kerr')                     .ne.0) then; tens%rank = 4                       !    ! 
+            elseif (index(tens%property,'electrostriction')         .ne.0) then; tens%rank = 4                       !    ! 
+            !------------------------------------------------- SXITH-RANK TENSORS -------------------------------------------------
+            elseif (index(tens%property,'third-order elasticity')   .ne.0) then; tens%rank = 6; tens%flags = 'polar' !    ! 
+            !----------------------------------------------------------------------------------------------------------------------
+            elseif (index(tens%property,'tight binding')            .ne.0) then
+                ! set rank
+                tens%rank  = 2
+                ! detetmine if irreducible atoms are the same
+                if (shell%i.eq.shell%j) then
+                    tens%flags = 'i==j'
+                else
+                    tens%flags = 'i/=j'
+                endif
+                ! set dimensions of matrix elements
+                allocate(tens%dims(tens%rank))
+                tens%dims = 0 
+                ! dimension of Hamiltonian subsection corresponding to primitive atom m (irreducible atoms i)
+                do i = 1, ic%atom(shell%i)%nazimuthals
+                    tens%dims(1) = tens%dims(1) + ic%atom(shell%i)%azimuthal(i)*2+1
+                enddo
+                ! dimension of Hamiltonian subsection corresponding to primitive atom n (irreducible atoms j)
+                do i = 1, ic%atom(shell%j)%nazimuthals
+                    tens%dims(2) = tens%dims(2) + ic%atom(shell%j)%azimuthal(i)*2+1
+                enddo
+                ! allocate space for matrix elements
+                allocate(tens%V(tens%dims(1)*tens%dims(2)))
+                !
+            else
+                stop 'ERROR [initialize_tensor]: unknown property'
+            endif
+            !----------------------------------------------------------------------------------------------------------------------
+            ! if property is macroscopic enter if condition
+            ! if tight binding, skip it.
+            if (index(tens%property,'tight binding').eq.0) then
+                allocate(tens%dims(tens%rank))
+                tens%dims = 3
+            endif
+            !
+        end subroutine initialize_tensor
+    end subroutine symmetrize
 
     subroutine     get_flat_intrinsic_group(flat_ig,tens,atom_m,atom_n)
         !
@@ -182,7 +390,7 @@ module am_symmetry_rep
         enddo
         ! correct basic rounding error
         where (abs(flat_pg%sym).lt.tiny) flat_pg%sym = 0
-        ! get unique symmetry indices
+        ! get unique symmetry indices (may change the point group!)
         uinds = unique_inds(flat_pg%sym)
         ! update nsyms
         flat_pg%nsyms = size(uinds)
@@ -258,264 +466,6 @@ module am_symmetry_rep
         allocate(relations, source=RHS)
         !
     end function   get_relations
-
-    ! operates on tens
-
-    subroutine     symmetrize(tens,pg,opts,property,pc,ic,shell)
-        !                                           ----------- tight binding input
-        !
-        implicit none
-        !
-        class(am_class_tensor),      intent(out):: tens
-        class(am_class_point_group), intent(in) :: pg
-        type(am_class_options),      intent(in) :: opts
-        character(*),                intent(in) :: property
-        type(am_class_prim_cell)   , optional, intent(in) :: pc   ! primitive cell
-        type(am_class_irre_cell)   , optional, intent(in) :: ic    ! required for tight binding input
-        type(am_shell_cell)        , optional, intent(in) :: shell ! required for tight binding input
-        type(am_class_flat_group) :: flat_ig
-        type(am_class_flat_group) :: flat_pg
-        character(:), allocatable :: str
-        integer :: m, n, o, nterms
-        !
-        if (opts%verbosity.ge.1) call print_title('Symmeterized '//trim(property))
-        ! check intput for tight binding
-        if    (index(property,'tight binding').ne.0) then
-            ! tb matrix element
-            if (.not.present(pc))    stop 'ERROR [symmetrize]: missing pc for tight-binding intput'
-            if (.not.present(ic))    stop 'ERROR [symmetrize]: missing ic for tight-binding intput'
-            if (.not.present(shell)) stop 'ERROR [symmetrize]: missing shell for tight-binding intput'
-            ! initialize
-            call initialize_tensor(tens=tens, pc=pc, ic=ic, shell=shell, property=property)
-            ! determine intrinsic symmetries (if both irreducible atoms are of the same irreducible type)
-            ! Interchange of indices: (l,l',m) = (-1)^(l+l') * (l',l,m), due to parity of wavefunction. (s,d are even under inversion, p,f are odd)
-            ! E. Scheer, Molecular Electronics: An Introduction to Theory and Experiment, p 245. Also see R. Martin.
-            ! NOTE: FOR SOME REASON, MUST CALL atom_m with shell%j and atom_n with shell%i (INDICES FLIPPED) - probably has to do with reshape and column-major ordering
-            call flat_ig%get_flat_intrinsic_group(tens=tens, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i) )
-            ! get stabilizer symmetries in the flattened hamiltonin basis
-            call flat_pg%get_flat_point_group(tens=tens, pg=shell%stab, atom_m=ic%atom(shell%j), atom_n=ic%atom(shell%i))
-            ! combined relations
-            tens%relations = combine_relations(flat_ig%relations, flat_pg%relations)
-            ! correct rounding error
-            call correct_rounding_error(tens%relations)
-            ! print stabilzier group parameters
-            if (opts%verbosity.ge.1) then
-                write(*,'(a,a)') flare, 'atomic pair = '//trim(atm_symb(pc%Z( shell%i )))//'-'//trim(atm_symb(pc%Z( shell%j )))
-                write(*,'(a,a)') flare, 'stabilizer group = '//trim(get_pg_name(get_pg_code( shell%stab%ps_id )))
-                write(*,'(a,a)') flare, 'orbit = '
-                call disp_indent()
-                call disp(X=[1:shell%natoms]         ,title='#'     ,style='underline',advance='no')
-                call disp(X=transpose(shell%tau_cart),title='atomic basis [cart]',style='underline',advance='no')
-                call disp(X=transpose(shell%tau_frac),title='atomic basis [frac]',style='underline',advance='yes')
-            endif
-        else
-            ! initialize
-            call initialize_tensor(tens=tens, property=property)
-            ! get intrinsic symmetries
-            call flat_ig%get_flat_intrinsic_group(tens=tens)
-            ! get point symmetries
-            call flat_pg%get_flat_point_group(tens=tens, pg=pg)
-            ! combined relations
-            tens%relations = combine_relations(flat_ig%relations, flat_pg%relations)
-            ! correct rounding error
-            call correct_rounding_error(tens%relations)
-            ! dump
-            if (debug) then
-                allocate(str, source = strrep(property,' ','_') )
-                call execute_command_line ('mkdir -p '//trim(outfile_dir_sym)//'/debug/'//str)
-                call flat_pg%debug_dump(fname=          trim(outfile_dir_sym)//'/debug/'//str//'/outfile.'//str)
-            endif
-        endif
-        ! print relations
-        if (opts%verbosity.ge.1) then
-            ! print statistics about parameters
-            write(*,'(a,a)') flare, 'matrix elements = '
-            write(*,'(5x,2a6,3a14)') 'shell', 'terms', 'null', 'dependent', 'independent'
-            write(*,'(5x,a)') repeat(' '//repeat('-',5),2)//repeat(' '//repeat('-',13),3)
-            ! intrinsic symmetries
-            m = count(get_null(flat_ig%relations))
-            n = count(get_depenent(flat_ig%relations)) 
-            o = count(get_independent(flat_ig%relations))
-            nterms = m+n+o
-            write(*,'(5x,a6)'        ,advance='no') 'intr.'
-            write(*,'(i6)'           ,advance='no') nterms
-            write(*,'(i5,a2,f5.1,a2)',advance='no') m, '(', (m*100_dp)/real(nterms,dp) , '%)'
-            write(*,'(i5,a2,f5.1,a2)',advance='no') n, '(', (n*100_dp)/real(nterms,dp) , '%)'
-            write(*,'(i5,a2,f5.1,a2)',advance='no') o, '(', (o*100_dp)/real(nterms,dp) , '%)'
-            write(*,*)
-            ! point symmetries
-            m = count(get_null(flat_pg%relations))
-            n = count(get_depenent(flat_pg%relations)) 
-            o = count(get_independent(flat_pg%relations))
-            nterms = m+n+o
-            write(*,'(5x,a6)'        ,advance='no') 'pnt.'
-            write(*,'(i6)'           ,advance='no') nterms
-            write(*,'(i5,a2,f5.1,a2)',advance='no') m, '(', (m*100_dp)/real(nterms,dp) , '%)'
-            write(*,'(i5,a2,f5.1,a2)',advance='no') n, '(', (n*100_dp)/real(nterms,dp) , '%)'
-            write(*,'(i5,a2,f5.1,a2)',advance='no') o, '(', (o*100_dp)/real(nterms,dp) , '%)'
-            write(*,*)
-            ! total
-            m = count(get_null(tens%relations))
-            n = count(get_depenent(tens%relations)) 
-            o = count(get_independent(tens%relations))
-            nterms = m+n+o
-            write(*,'(5x,a6)'        ,advance='no') 'total'
-            write(*,'(i6)'           ,advance='no') nterms
-            write(*,'(i5,a2,f5.1,a2)',advance='no') m, '(', (m*100_dp)/real(nterms,dp) , '%)'
-            write(*,'(i5,a2,f5.1,a2)',advance='no') n, '(', (n*100_dp)/real(nterms,dp) , '%)'
-            write(*,'(i5,a2,f5.1,a2)',advance='no') o, '(', (o*100_dp)/real(nterms,dp) , '%)'
-            write(*,*)
-            ! print symmetry relations
-            if (m.ne.nterms) then
-                write(*,'(a,a)') flare, 'irreducible symmetry relations:'
-                call print_relations(relations=tens%relations, dims=tens%dims, flags='print:dependent,independent')
-            endif
-            ! show block structure
-            write(*,'(a,a)') flare, 'irreducible block structure [flattened point group, ignores intrinsic symmetries]:'
-            call print_blocks(sym=flat_pg%sym,block_proj=flat_pg%ct%block_proj)
-        endif
-        !
-        contains
-        subroutine     initialize_tensor(tens,property,pc,ic,shell)
-            !
-            implicit none
-            !
-            class(am_class_tensor)  , intent(out) :: tens
-            character(*)            , intent(in)  :: property
-            type(am_class_prim_cell), intent(in), optional :: pc    ! required for tb
-            type(am_class_irre_cell), intent(in), optional :: ic    ! required for tb
-            type(am_shell_cell)     , intent(in), optional :: shell ! required for tb
-            integer :: i
-            !
-            !----------------------------------------------------------------------------------------------------------------------
-            !
-            ! Tensors transferm differently whether they are axial or polar:
-            ! POLAR ( odd under inv.):  T_{i,j,k,l,...} =        sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
-            ! AXIAL (even under inv.):  T_{i,j,k,l,...} = det(R) sum_{ip,jp,kp,lp,...} R_{i,ip} R_{j,jp} R_{k,kp} R_{l,lp} T_{ip,jp,kp,lp,...}
-            ! Thus, all axial tensors of even rank and polar tensors of odd rank are null are null.  Wooten p 485. Eq. 13.21. 
-            !
-            ! Onsager’s Principle requires that the electric resistivity and thermal conductivity tensors be symmetric.
-            ! This does not hold for the Seebeck and Peltier (thermoelectric) tensors which relate two different flows. Thus
-            ! there are, at most, nine independent parameters rather than six. [Newnham "Properties of Materials"]
-            !
-            tens%property = property
-            !------------------------------------------------- FIRST-RANK TENSORS --------------------------------------------------
-            if     (index(tens%property,'pyroelectricity')          .ne.0) then; tens%rank = 1                       !    ! P_{i}     = p_{i} \Delta T
-            !------------------------------------------------- SECOND-RANK TENSORS -------------------------------------------------
-            elseif (index(tens%property,'dielectric')               .ne.0) then; tens%rank = 2; tens%flags = 'polar' 
-            elseif (index(tens%property,'electrical susceptibility').ne.0) then; tens%rank = 2; tens%flags = 'polar' ! S  ! P_{i}     = \alpha_{ij}  E_{j}
-            elseif (index(tens%property,'magnetic susceptibility')  .ne.0) then; tens%rank = 2; tens%flags = 'axial' ! S  ! M_{i}     = \mu_{ij}     H_{j}
-            elseif (index(tens%property,'magneto electric')         .ne.0) then; tens%rank = 2; tens%flags = 'axial' 
-            elseif (index(tens%property,'thermal expansion')        .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! S  ! \eps_{ij} = \alpha_{ij}  \Delta T
-            elseif (index(tens%property,'electrical conductivity')  .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! S  ! J_{i}     = \sigma_{ij}  E_{i}
-            elseif (index(tens%property,'electrical resistivity')   .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! S  ! E_{i}     = \rho_{ij}    J_{j}
-            elseif (index(tens%property,'thermal conductivity')     .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! S  ! q_{i}     = \kappa_{ij}  \frac{\partial T}/{\partial r_{j}}
-            elseif (index(tens%property,'thermoelectricity')        .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! N  ! 
-            elseif (index(tens%property,'seebeck')                  .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! N  ! E_{i}     = \beta_{ij}   \frac{\partial T}/{\partial r_{j}}
-            elseif (index(tens%property,'peltier')                  .ne.0) then; tens%rank = 2; tens%flags = 'polar' ! N  ! q_{i}     = \pi_{ij}     J_{j}
-            !------------------------------------------------- THIRD-RANK TENSORS -------------------------------------------------
-            elseif (index(tens%property,'hall')                     .ne.0) then; tens%rank = 3;                      !    ! E_{i}     = h_{ijk}      J_{j} H_{k} - has two polar componnts {ij} and one axial component {k}
-            elseif (index(tens%property,'piezoelectricity')         .ne.0) then; tens%rank = 3; tens%flags = 'polar' !    ! P_{i}     = d_{ijk}      \sigma_{jk}
-            elseif (index(tens%property,'piezomagnetic')            .ne.0) then; tens%rank = 3; tens%flags = 'axial' !    ! M_{i}     = Q_{ijk}      \sigma_{jk}
-            !------------------------------------------------- FOURTH-RANK TENSORS ------------------------------------------------
-            elseif (index(tens%property,'elasticity')               .ne.0) then; tens%rank = 4; tens%flags = 'polar' !    ! 
-            elseif (index(tens%property,'piezo optic')              .ne.0) then; tens%rank = 4                       !    ! 
-            elseif (index(tens%property,'kerr')                     .ne.0) then; tens%rank = 4                       !    ! 
-            elseif (index(tens%property,'electrostriction')         .ne.0) then; tens%rank = 4                       !    ! 
-            !------------------------------------------------- SXITH-RANK TENSORS -------------------------------------------------
-            elseif (index(tens%property,'third-order elasticity')   .ne.0) then; tens%rank = 6; tens%flags = 'polar' !    ! 
-            !----------------------------------------------------------------------------------------------------------------------
-            elseif (index(tens%property,'tight binding')            .ne.0) then
-                ! set rank
-                tens%rank  = 2
-                ! detetmine if irreducible atoms are the same
-                if (shell%i.eq.shell%j) then
-                    tens%flags = 'i==j'
-                else
-                    tens%flags = 'i/=j'
-                endif
-                ! set dimensions of matrix elements
-                allocate(tens%dims(tens%rank))
-                tens%dims = 0 
-                ! dimension of Hamiltonian subsection corresponding to primitive atom m (irreducible atoms i)
-                do i = 1, ic%atom(shell%i)%nazimuthals
-                    tens%dims(1) = tens%dims(1) + ic%atom(shell%i)%azimuthal(i)*2+1
-                enddo
-                ! dimension of Hamiltonian subsection corresponding to primitive atom n (irreducible atoms j)
-                do i = 1, ic%atom(shell%j)%nazimuthals
-                    tens%dims(2) = tens%dims(2) + ic%atom(shell%j)%azimuthal(i)*2+1
-                enddo
-                ! allocate space for matrix elements
-                allocate(tens%V(tens%dims(1)*tens%dims(2)))
-                !
-            else
-                stop 'ERROR [initialize_tensor]: unknown property'
-            endif
-            !----------------------------------------------------------------------------------------------------------------------
-            !
-            ! if property is macroscopic enter if condition
-            ! if tight binding, skip it.
-            if (index(tens%property,'tight binding').eq.0) then
-                allocate(tens%dims(tens%rank))
-                tens%dims = 3
-            endif
-            !
-        end subroutine initialize_tensor
-    end subroutine symmetrize
-
-    ! other stuff
-
-    subroutine     get_direct_product(C,A,B)
-        !
-        implicit none
-        !
-        class(am_class_flat_group) :: C
-        type(am_class_flat_group)  :: A
-        type(am_class_flat_group)  :: B
-        real(dp), allocatable :: wkr(:,:,:)
-        real(dp), allocatable :: try(:,:)
-        integer :: i, j, k
-        !
-        if (A%nbases/=B%nbases) stop 'dimension mismatch'
-        !
-        C%nbases = A%nbases
-        !
-        allocate(C%ps_id(A%nsyms*B%nsyms))
-        C%ps_id = default_ps_id_value ! default
-        !
-        allocate(try(C%nbases,C%nbases))
-        allocate(wkr(C%nbases,C%nbases,A%nsyms*B%nsyms))
-        !
-        k = 0
-        do i = 1, A%nsyms
-        do j = 1, B%nsyms
-            !
-            k = k + 1
-            wkr(:,:,k) = matmul(A%sym(:,:,i),B%sym(:,:,j))
-            !
-            if(mod(k,10).eq.0) call show_progress(iteration=k, maximum=A%nsyms*B%nsyms)
-            !
-            ! ps_id has very little meaning here
-            if (A%ps_id(i).ne.0) C%ps_id(k) = A%ps_id(i)
-            if (B%ps_id(j).ne.0) C%ps_id(k) = B%ps_id(j)
-            !
-        end do
-        end do
-        !
-        allocate(C%sym,source=unique(wkr))
-        C%nsyms = size(C%sym,3)
-        !
-        ! get multiplication table (and conjugacy classes in the process)
-        call C%get_multiplication_table()
-        !
-        ! sort symmetries based on parameters
-        call C%sort_symmetries(criterion=real(C%ps_id,dp), flags='acsend')
-        call C%sort_symmetries(criterion=real(C%cc%id,dp), flags='ascend')
-        !
-        ! get character table
-        call C%get_character_table()
-        !
-    end subroutine get_direct_product
 
     ! produces rotation which operates on a subsection of the Hamiltonian (useful for determining symmetry relations)
 

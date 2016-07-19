@@ -139,7 +139,6 @@ contains
                 call pp%shell(k)%revg%get_reversal_group(pg=pg  , v=pp%shell(k)%tau_cart(1:3,1), opts=opts, flags='cart')
             enddo
         enddo
-        !
         ! print stuff
         if (opts%verbosity.ge.1) then
             write(*,'(5a,a,a)') flare, 'pair cutoff radius = ', tostring(pair_cutoff)
