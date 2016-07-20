@@ -24,9 +24,8 @@ OBJS  = mkl_rci.o 						\
 		am_symmetry_relations.o 		\
 		am_symmetry_rep.o 				\
 		am_brillouin_zone.o             \
-        am_tight_binding.o              \
 		am_dispersion.o                 \
-		am_optimizer.o
+        am_tight_binding.o              \
 
 		# am_tet_mesh.o                   \
 		# am_tetrahedra.o                 \

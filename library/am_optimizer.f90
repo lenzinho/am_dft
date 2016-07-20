@@ -16,7 +16,7 @@ module am_optimizer
 
     public :: optimize_matrix_elements
 
-    type, private :: am_class_tb_optimizer
+    type, private :: am_class_tightbinding_fitter
         integer  :: maxiter  ! maximum number of iterations  
         integer  :: nbands   ! number of bands
         integer  :: nkpts    ! numnbr of kpoints
@@ -26,64 +26,66 @@ module am_optimizer
         integer               :: skip_band
         integer , allocatable :: selector_shell(:)
         integer , allocatable :: selector_kpoint(:)
+        integer , allocatable :: selector_x(:)
         real(dp), allocatable :: x(:) 
         real(dp), allocatable :: r(:)
         real(dp)              :: rms
-    end type am_class_tb_optimizer
+    end type am_class_tightbinding_fitter
 
 contains
 
-    subroutine     optimize_matrix_elements(tb,tbpg,bz,dr_dft,pp,opts)
+    subroutine     optimize_matrix_elements(tb,tb_pg,bz,dr_dft,pp,opts)
         !
         implicit none
         !   
-        class(am_class_tight_binding) , intent(inout) :: tb
-        type(am_class_tb_group)       , intent(in) :: tbpg
+        class(am_class_tightbinding) , intent(inout) :: tb
+        type(am_class_tightbinding_pointgroup), intent(in) :: tb_pg
         type(am_class_bz)             , intent(in) :: bz
         type(am_class_dispersion_dft) , intent(in) :: dr_dft
         type(am_class_prim_pair)      , intent(in) :: pp
         type(am_class_options)        , intent(in) :: opts
-        type(am_class_tb_optimizer) :: ft
+        type(am_class_tightbinding_fitter) :: ft
         !
         if (opts%verbosity.ge.1) call print_title('Optimized matrix elements')
         !
-        ! initialize optimizer
         ft%maxiter    = 10
-        ft%nbands     = maxval(tbpg%E)
+        ft%nbands     = maxval(tb_pg%E)
         ft%nkpts      = bz%nkpts
         ft%nxs        = tb%nVs
         ft%skip_band  = opts%skip_band
         ft%nrs        = bz%nkpts * ft%nbands
-        allocate(ft%selector_shell,  source=[1:50]) ! first fifty shells
-        allocate(ft%selector_kpoint, source=[1:bz%nkpts])
-        allocate(ft%r(ft%nrs))
-        ft%r = 0
-        allocate(ft%x(ft%nxs))
-        ft%x = 0
+        allocate(ft%selector_shell,  source=[1:50])       ! first fifty shells
+        allocate(ft%selector_kpoint, source=[1:bz%nkpts]) ! all kpoints
+        allocate(ft%selector_x,      source=[1:ft%nxs])   ! all parameters
+        allocate(ft%r(ft%nrs)) ! residual vector
+        allocate(ft%x(ft%nxs)) ! x vector
+        ft%r   = 0             ! residual vector
+        ft%x   = 0             ! parameter vector
+        ft%rms = 0             ! rms error
         !
         if (debug) then
-        write(*,'(a,a,a)') flare, 'irreducible matrix elements = '//tostring(ft%nxs)
-        write(*,'(a,a,a)') flare, 'k-points = '                   //tostring(ft%nkpts)
-        write(*,'(a,a,a)') flare, 'bands = '                      //tostring(ft%nbands)
-        write(*,'(a,a,a)') flare, 'number of bands to skip = '    //tostring(ft%skip_band)
-        write(*,'(a,a,a)') flare, 'residual vector length = '     //tostring(ft%nrs)
-        write(*,'(a,a,a)') flare, 'max iterations = '             //tostring(ft%maxiter)
+            write(*,'(a,a,a)') flare, 'irreducible matrix elements = '//tostring(ft%nxs)
+            write(*,'(a,a,a)') flare, 'k-points = '                   //tostring(ft%nkpts)
+            write(*,'(a,a,a)') flare, 'bands = '                      //tostring(ft%nbands)
+            write(*,'(a,a,a)') flare, 'number of bands to skip = '    //tostring(ft%skip_band)
+            write(*,'(a,a,a)') flare, 'residual vector length = '     //tostring(ft%nrs)
+            write(*,'(a,a,a)') flare, 'max iterations = '             //tostring(ft%maxiter)
         endif
         !
-        call perform_optimization(ft=ft, tb=tb, tbpg=tbpg, bz=bz, dr_dft=dr_dft, pp=pp)
+        call perform_optimization(ft=ft, tb=tb, tb_pg=tb_pg, bz=bz, dr_dft=dr_dft, pp=pp)
         !
     end subroutine optimize_matrix_elements
 
-    subroutine     perform_optimization(ft,tb,tbpg,bz,dr_dft,pp)
+    subroutine     perform_optimization(ft,tb,tb_pg,bz,dr_dft,pp)
         !
         use mkl_rci
         use mkl_rci_type
         !
         implicit none
         !
-        class(am_class_tb_optimizer)  , intent(inout) :: ft
-        type(am_class_tight_binding)  , intent(inout) :: tb
-        type(am_class_tb_group)       , intent(in) :: tbpg
+        class(am_class_tightbinding_fitter)  , intent(inout) :: ft
+        type(am_class_tightbinding)  , intent(inout) :: tb
+        type(am_class_tightbinding_pointgroup)       , intent(in) :: tb_pg
         type(am_class_bz)             , intent(in) :: bz
         type(am_class_dispersion_dft) , intent(in) :: dr_dft
         type(am_class_prim_pair)      , intent(in) :: pp
@@ -141,9 +143,9 @@ contains
                 successful = 1
             case (1)
                 ! update x in tb model
-                call tb%set_Vsk(V=x)
+                call tb%set_matrix_element(V=x)
                 ! recalculate function
-                FVEC = compute_residual(ft=ft, tb=tb, tbpg=tbpg, bz=bz, dr_dft=dr_dft, pp=pp)
+                FVEC = compute_residual(ft=ft, tb=tb, tb_pg=tb_pg, bz=bz, dr_dft=dr_dft, pp=pp)
                 ! save result
                 ft%r   = FVEC 
                 ft%rms = sqrt(sum(FVEC**2)/ft%nrs)
@@ -159,9 +161,9 @@ contains
                 ft%x = x
             case (2)
                 ! update x in tb model
-                call tb%set_Vsk(V=x)
+                call tb%set_matrix_element(V=x)
                 ! compute jacobian matrix (uses central difference)
-                FJAC = compute_jacobian(ft=ft, tb=tb, tbpg=tbpg, bz=bz, dr_dft=dr_dft,  pp=pp)
+                FJAC = compute_jacobian(ft=ft, tb=tb, tb_pg=tb_pg, bz=bz, dr_dft=dr_dft,  pp=pp)
             end select
         end do
         ! clean up
@@ -173,18 +175,18 @@ contains
         endif
     end subroutine perform_optimization
 
-    function       compute_residual(ft,tb,tbpg,bz,dr_dft,pp) result(R)
+    function       compute_residual(ft,tb,tb_pg,bz,dr_dft,pp) result(R)
         !
         implicit none
         !
-        class(am_class_tb_optimizer)  , intent(in) :: ft
-        type(am_class_tight_binding)  , intent(in) :: tb
-        type(am_class_tb_group)       , intent(in) :: tbpg
+        class(am_class_tightbinding_fitter)  , intent(in) :: ft
+        type(am_class_tightbinding)  , intent(in) :: tb
+        type(am_class_tightbinding_pointgroup)       , intent(in) :: tb_pg
         type(am_class_bz)             , intent(in) :: bz
         type(am_class_dispersion_dft) , intent(in) :: dr_dft 
         type(am_class_prim_pair)      , intent(in) :: pp
         real(dp), allocatable        :: R(:)
-        type(am_class_dispersion_tb) :: dr_tb 
+        type(am_class_tightbinding_dispersion) :: dr_tb 
         integer, allocatable :: inds(:)
         integer :: i
         ! index vector
@@ -193,7 +195,7 @@ contains
         allocate(R(ft%nrs))
         R = 0
         ! get tb dispersion 
-        call dr_tb%get_dispersion(tb=tb,tbpg=tbpg,bz=bz,pp=pp)
+        call dr_tb%get_dispersion(tb=tb,tb_pg=tb_pg,bz=bz,pp=pp)
         ! loop over kpoints
         do i = 1, bz%nkpts
             ! get indices
@@ -204,15 +206,15 @@ contains
         !
     end function   compute_residual
 
-    function       compute_jacobian(ft,tb,tbpg,bz,dr_dft,pp) result(FJAC)
+    function       compute_jacobian(ft,tb,tb_pg,bz,dr_dft,pp) result(FJAC)
         !
         use mkl_rci
         !
         implicit none 
         !
-        class(am_class_tb_optimizer)  , intent(in) :: ft
-        type(am_class_tight_binding)  , intent(inout) :: tb
-        type(am_class_tb_group)       , intent(in) :: tbpg
+        class(am_class_tightbinding_fitter)  , intent(in) :: ft
+        type(am_class_tightbinding)  , intent(inout) :: tb
+        type(am_class_tightbinding_pointgroup)       , intent(in) :: tb_pg
         type(am_class_bz)             , intent(in) :: bz
         type(am_class_dispersion_dft) , intent(in) :: dr_dft
         type(am_class_prim_pair)      , intent(in) :: pp
@@ -248,14 +250,14 @@ contains
             end if
             if (rci_request .eq. 1) then
                 ! update x in TB model
-                call tb%set_Vsk(V=x)
+                call tb%set_matrix_element(V=x)
                 ! compute jacobian
-                f1 = compute_residual(ft=ft,tb=tb,tbpg=tbpg,bz=bz,dr_dft=dr_dft,pp=pp)
+                f1 = compute_residual(ft=ft,tb=tb,tb_pg=tb_pg,bz=bz,dr_dft=dr_dft,pp=pp)
             else if (rci_request .eq. 2) then
                 ! update x in TB model
-                call tb%set_Vsk(V=x)
+                call tb%set_matrix_element(V=x)
                 ! compute jacobian
-                f2 = compute_residual(ft=ft,tb=tb,tbpg=tbpg,bz=bz,dr_dft=dr_dft,pp=pp)
+                f2 = compute_residual(ft=ft,tb=tb,tb_pg=tb_pg,bz=bz,dr_dft=dr_dft,pp=pp)
             else if (rci_request .eq. 0) then
                 successful = 1 
             end if

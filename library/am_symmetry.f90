@@ -33,9 +33,9 @@ module am_symmetry
         procedure :: debug_dump => debug_dump_grp
     end type am_class_group
 
-    type, public, extends(am_class_group)       :: am_class_symrep_group
+    type, public, extends(am_class_group)       :: am_class_representation_group
         ! generic symmetry group
-    end type am_class_symrep_group
+    end type am_class_representation_group
 
     type, public, extends(am_class_group)       :: am_class_seitz_group
         real(dp) :: bas(3,3)                          ! basis in which [frac.] are defined
@@ -93,7 +93,7 @@ contains
         rinds(inds) = [1:grp%nsyms]
         ! sort symmetries
         select type (grp)
-        class is (am_class_symrep_group)
+        class is (am_class_representation_group)
             ! [undefined units]  
             grp%sym = grp%sym(:,:,inds)
         class is (am_class_seitz_group)
@@ -198,7 +198,7 @@ contains
         if (allocated(grp%ct%block_proj    )) call dump(A=grp%ct%block_proj    ,fname=trim(fname)//'.ct.block_proj'    )
         ! dump group specific data                                                                                        
         select type (grp)                                                                                         
-        class is (am_class_symrep_group)                                                                                          
+        class is (am_class_representation_group)                                                                                          
         if (allocated(grp%sym              )) call dump(A=grp%sym              ,fname=trim(fname)//'.seitz_cart'       )
         class is (am_class_seitz_group)                                                                           
         if (allocated(grp%seitz_cart       )) call dump(A=grp%seitz_cart       ,fname=trim(fname)//'.seitz_cart'       )
@@ -216,7 +216,7 @@ contains
         !
         ! get multiplication table
         select type (grp)
-        class is (am_class_symrep_group)
+        class is (am_class_representation_group)
             ! [unitless]
             grp%mt%multab = get_multab(sym=grp%sym, flags='') !//'prog')
         class is (am_class_seitz_group)
@@ -238,8 +238,7 @@ contains
         grp%mt%gen = nint(sort(real(unique(grp%mt%gen),dp)))
         ! identifty commutators
         grp%mt%commutator_id = get_commutator_id(multab=grp%mt%multab)
-        ! get subgroups
-        ! call disp( get_subgroup_member( get_cstruct(multab=grp%mt%multab), ps_id=grp%ps_id ) ) 
+        !
     end subroutine get_multiplication_table
 
     subroutine     get_conjugacy_classes(grp)
@@ -443,7 +442,7 @@ contains
 
         class is (am_class_space_group) 
             ! do nothing.
-        class is (am_class_symrep_group)
+        class is (am_class_representation_group)
             ! do nothing.
         class default
             stop 'ERROR [print_character_table]: class unknown'

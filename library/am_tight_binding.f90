@@ -2,7 +2,7 @@ module am_tight_binding
 
     use dispmodule
     use am_constants
-    use am_stdout
+    use am_mkl
     use am_matlab
     use am_options
     use am_shells
@@ -11,97 +11,190 @@ module am_tight_binding
     use am_symmetry
     use am_symmetry_tensor
     use am_symmetry_relations
-    use am_mkl
+    use am_dispersion
     use am_brillouin_zone
 
     implicit none
 
     private
 
-    type, public :: am_class_tight_binding
+    type :: am_class_tightbinding_fitter
+        integer  :: maxiter  ! maximum number of iterations  
+        integer  :: nbands   ! number of bands
+        integer  :: nkpts    ! numnbr of kpoints
+        integer  :: nxs      ! number of parameters to fit
+        integer  :: nrs      ! size of residual vector
+        real(dp) :: eps      ! stopping criterion
+        integer               :: skip_band
+        integer , allocatable :: selector_shell(:)
+        integer , allocatable :: selector_kpoint(:)
+        integer , allocatable :: selector_x(:)
+        real(dp), allocatable :: x(:) 
+        real(dp), allocatable :: r(:)
+        real(dp)              :: rms
+    end type am_class_tightbinding_fitter
+
+    type, extends(am_class_representation_group) :: am_class_tightbinding_pointgroup
+        integer, allocatable :: S(:) ! Hstart(m) start of hamiltonian section corresponding to atom m
+        integer, allocatable :: E(:) ! Hend(m)   end of hamiltonian section corresponding to atom m
+    end type am_class_tightbinding_pointgroup
+
+    type, extends(am_class_dispersion) :: am_class_tightbinding_dispersion
+        complex(dp), allocatable :: C(:,:,:) ! tight binding coefficients
+    end type am_class_tightbinding_dispersion
+
+    type, public :: am_class_tightbinding
         integer :: nshells                             ! how many shells irreducible atoms
         integer , allocatable :: nVs                   ! number of irreducible matrix element values
         real(dp), allocatable :: V(:)                  ! their values
-        integer , allocatable :: V_ind(:,:)            ! their indices
-        type(am_class_tensor), allocatable :: tens(:)  ! tens(nshells)
+        integer , allocatable :: V_ind(:,:)            ! their indices: [ip_id, alpha, beta]
+        type(am_class_tensor), allocatable :: tens(:)  ! tens(nshells) describes symmetry-adapted matrix elementes
+        type(am_class_tightbinding_pointgroup) :: pg   ! point group in tight binding representation
+        type(am_class_tightbinding_dispersion) :: dr   ! band dispersion computed using the tightbinding model
+        type(am_class_tightbinding_fitter)     :: ft   ! fitter
         contains
-        procedure :: set_Vsk
         procedure :: initialize_tb
         procedure :: get_hamiltonian
-        procedure :: test_hamiltonian
+        procedure :: get_dispersion
+        procedure :: optimize_matrix_element
+        procedure :: read_irreducible_matrix_element
+        procedure :: write_irreducible_matrix_element
+        procedure :: write_all_matrix_element
+        procedure :: set_matrix_element
         procedure :: export_to_matlab
-        procedure :: read_matrix_elements_irr
-        procedure :: write_matrix_elements_irr
-        procedure :: write_matrix_elements_full
-    end type am_class_tight_binding
-
-    type, public, extends(am_class_symrep_group) :: am_class_tb_group
-        integer, allocatable :: S(:) ! Hstart(m) start of hamiltonian section corresponding to atom m
-        integer, allocatable :: E(:) ! Hend(m)   end of hamiltonian section corresponding to atom m
-        contains
-        procedure :: get_tight_binding_point_group
-    end type am_class_tb_group
+    end type am_class_tightbinding
 
 contains
 
-    subroutine     get_tight_binding_point_group(tbpg,pg,pc,ic)
+    subroutine     initialize_tb(tb,pg,ip,ic,pc,opts)
         !
         implicit none
         !
-        class(am_class_tb_group)   , intent(out) :: tbpg ! point symmetries in tight binding basis
-        class(am_class_point_group), intent(in)  :: pg   ! seitz point group (rev stab rot groups as well)
-        type(am_class_prim_cell)   , intent(in)  :: pc   ! primitive cell
-        type(am_class_irre_cell)   , intent(in)  :: ic   ! irreducible cell
-        integer  :: i
+        class(am_class_tightbinding), intent(out) :: tb   ! tight binding parameters
+        type(am_class_point_group)   , intent(in)  :: pg   ! seitz point group
+        type(am_class_prim_cell)     , intent(in)  :: pc   ! primitive cell
+        type(am_class_irre_cell)     , intent(in)  :: ic   ! irreducible cell
+        type(am_class_irre_pair)     , intent(in)  :: ip   ! irreducible pairs
+        type(am_class_options)       , intent(in)  :: opts
+        logical, allocatable :: is_independent(:)
+        integer :: sub(2)
+        integer :: i,j,k
         !
-        ! get number of bases functions in representation (see below) ...
-        tbpg%nbases = 0
-        ! ... and also determine subsections of rotations in Hamiltonian basis corresponding to each atom
-        allocate(tbpg%S(pc%natoms))
-        allocate(tbpg%E(pc%natoms))
-        do i = 1, pc%natoms
-            tbpg%S(i)   = tbpg%nbases + 1
-            tbpg%nbases = tbpg%nbases + ic%atom(pc%ic_id(i))%norbitals
-            tbpg%E(i)   = tbpg%nbases
+        if (opts%verbosity.ge.1) call print_title('Symmetry-adapted tight-binding parameters')
+        !
+        ! get point group in tight binding basis
+        tb%pg = get_tightbinding_pointgroup(pg=pg, pc=pc, ic=ic)
+        ! set number of shells
+        tb%nshells = ip%nshells
+        ! get symmeterized tight binding matrix elements
+        allocate(tb%tens(tb%nshells))
+        do k = 1, tb%nshells
+            call tb%tens(k)%symmetrize(pg=pg,pc=pc,ic=ic,shell=ip%shell(k),opts=opts,property='irreducible tight binding shell '//tostring(k))
         enddo
-        ! number of symmetries
-        tbpg%nsyms = pg%nsyms
-        ! generate intrinsic symmetries
-        allocate(tbpg%sym(tbpg%nbases,tbpg%nbases,tbpg%nsyms))
-        tbpg%sym = 0
-        ! determine rotation in the hamiltonian basis
-        ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
-        do i = 1, pg%nsyms
-            ! convert rotation R to symmetry representation in tight-binding basis (direct sum of wigner matrices)
-            tbpg%sym(:,:,i) = ps2D(S=tbpg%S, E=tbpg%E, R_cart=pg%seitz_cart(1:3,1:3,i), pc=pc, ic=ic)
+        ! get number of independent (irreducible) matrix elements
+        tb%nVs = 0
+        do i = 1, tb%nshells
+            tb%nVs = tb%nVs + count(get_independent(tb%tens(i)%relations)) 
         enddo
-        ! check that identity is first
-        if (.not.isequal(tbpg%sym(:,:,1),eye(tbpg%nbases))) stop 'ERROR [get_tight_binding_point_group]: Identity is not first.'
-        ! correct basic rounding errors
-        call correct_rounding_error(tbpg%sym)
-        ! copy symmetry ids
-        allocate(tbpg%ps_id, source=pg%ps_id)
-        ! copy classes
-        allocate(tbpg%cc%id, source=pg%cc%id)
-        ! check that multiplication table is identical to pg%mt
-        call tbpg%get_multiplication_table()
-        if (.not.isequal(tbpg%mt%multab,pg%mt%multab)) stop 'ERROR [get_tight_binding_point_group]: Multiplication table mismatch.'
-        ! get conjugacy clases
-        call tbpg%get_conjugacy_classes()
-        ! get character table
-        call tbpg%get_character_table()
-        ! create tb dir
-        call execute_command_line('mkdir -p '//trim(outfile_dir_tb))
-        ! write point group
-        call dump(A=tbpg%sym,fname=trim(outfile_dir_tb)//'/outfile.tbpg.sym')
-        ! dump debug files
-        if (debug) then
-        call execute_command_line('mkdir -p '//trim(debug_dir)//'/tbpg')
-        call tbpg%debug_dump(fname=            trim(debug_dir)//'/tbpg'//'/outfile.tbpg')
+        ! allocate space for independent (irreducible) matrix elements V
+        allocate(tb%V(tb%nVs))
+        tb%V = 0
+        ! set indices : V_ind( [i, subd2ind(dims=tb%tens(i)%dims,sub=[alpha,beta])], nVs)
+        allocate(tb%V_ind(3,tb%nVs))
+        tb%V_ind = 0
+        k=0
+        do i = 1, tb%nshells
+            is_independent = get_independent(tb%tens(i)%relations)
+            do j = 1, product(tb%tens(i)%dims)
+            if (is_independent(j)) then
+                k=k+1
+                sub = ind2sub(dims=tb%tens(i)%dims, ind=j)
+                tb%V_ind(1,k) = i      ! shell
+                tb%V_ind(2,k) = sub(1) ! alpha
+                tb%V_ind(3,k) = sub(2) ! beta
+            endif
+            enddo
+        enddo
+        ! write template for irreducible matrix elements
+        if (fexists('infile.tb_matrix_elements_irreducible').ne.0) then 
+            ! print title
+            call print_title('Input tight-binding matrix elements')
+            ! read matrix elements
+            call tb%read_irreducible_matrix_element()
+            ! display input file on stdout
+            call disp(x=[0],zeroas=' ',advance='no')
+            call disp(x=tb%V,title='V',style='underline',advance='no')
+            call disp(x=tb%V_ind(1,:),title='shell',style='underline',advance='no')
+            call disp(x=tb%V_ind(2,:),title='alpha',style='underline',advance='no')
+            call disp(x=tb%V_ind(3,:),title='beta',style='underline',advance='yes')
+        else
+            ! print title
+            write(*,'(a,a)') flare, 'infile.tb_matrix_elements_irreducible not found. Using template instead.'
+            !
+            call tb%set_matrix_element(flags='seq')
+            !
+            call tb%write_irreducible_matrix_element()
         endif
         !
         contains
-        function       ps2D(S,E,R_cart,pc,ic) result(Dsum)
+        function     get_tightbinding_pointgroup(pg,pc,ic) result(tb_pg)
+            !
+            implicit none
+            !
+            type(am_class_point_group), intent(in)  :: pg   ! seitz point group (rev stab rot groups as well)
+            type(am_class_prim_cell)  , intent(in)  :: pc   ! primitive cell
+            type(am_class_irre_cell)  , intent(in)  :: ic   ! irreducible cell
+            type(am_class_tightbinding_pointgroup)   :: tb_pg ! point symmetries in tight binding basis
+            integer  :: i
+            !
+            ! get number of bases functions in representation (see below) ...
+            tb_pg%nbases = 0
+            ! ... and also determine subsections of rotations in Hamiltonian basis corresponding to each atom
+            allocate(tb_pg%S(pc%natoms))
+            allocate(tb_pg%E(pc%natoms))
+            do i = 1, pc%natoms
+                tb_pg%S(i)   = tb_pg%nbases + 1
+                tb_pg%nbases = tb_pg%nbases + ic%atom(pc%ic_id(i))%norbitals
+                tb_pg%E(i)   = tb_pg%nbases
+            enddo
+            ! number of symmetries
+            tb_pg%nsyms = pg%nsyms
+            ! generate intrinsic symmetries
+            allocate(tb_pg%sym(tb_pg%nbases,tb_pg%nbases,tb_pg%nsyms))
+            tb_pg%sym = 0
+            ! determine rotation in the hamiltonian basis
+            ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
+            do i = 1, pg%nsyms
+                ! convert rotation R to symmetry representation in tight-binding basis (direct sum of wigner matrices)
+                tb_pg%sym(:,:,i) = ps2D(S=tb_pg%S, E=tb_pg%E, R_cart=pg%seitz_cart(1:3,1:3,i), pc=pc, ic=ic)
+            enddo
+            ! check that identity is first
+            if (.not.isequal(tb_pg%sym(:,:,1),eye(tb_pg%nbases))) stop 'ERROR [get_tight_binding_point_group]: Identity is not first.'
+            ! correct basic rounding errors
+            call correct_rounding_error(tb_pg%sym)
+            ! copy symmetry ids
+            allocate(tb_pg%ps_id, source=pg%ps_id)
+            ! copy classes
+            allocate(tb_pg%cc%id, source=pg%cc%id)
+            ! check that multiplication table is identical to pg%mt
+            call tb_pg%get_multiplication_table()
+            if (.not.isequal(tb_pg%mt%multab,pg%mt%multab)) stop 'ERROR [get_tight_binding_point_group]: Multiplication table mismatch.'
+            ! get conjugacy clases
+            call tb_pg%get_conjugacy_classes()
+            ! get character table
+            call tb_pg%get_character_table()
+            ! create tb dir
+            call execute_command_line('mkdir -p '//trim(outfile_dir_tb))
+            ! write point group
+            call dump(A=tb_pg%sym,fname=trim(outfile_dir_tb)//'/outfile.tb_pg.sym')
+            ! dump debug files
+            if (debug) then
+            call execute_command_line('mkdir -p '//trim(debug_dir)//'/tb_pg')
+            call tb_pg%debug_dump(fname=            trim(debug_dir)//'/tb_pg'//'/outfile.tb_pg')
+            endif
+            !
+        end function get_tightbinding_pointgroup
+        function     ps2D(S,E,R_cart,pc,ic) result(Dsum)
             ! produces rotation which commutes with the entire Hamiltonian (useful building Hamiltonian and probably later for kpoints stuff too)
             implicit none
             !
@@ -123,133 +216,57 @@ contains
                 Dsum(S(i):E(i), S(i):E(i)) = ps2tb(R_cart=R_cart, atom=ic%atom(pc%ic_id(i)) )
             enddo
             !
-        end function   ps2D
-    end subroutine get_tight_binding_point_group
-
-    subroutine     initialize_tb(tb,pg,ip,ic,pc,opts)
-        !
-        implicit none
-        !
-        class(am_class_tight_binding), intent(out) :: tb   ! tight binding parameters
-        type(am_class_point_group)   , intent(in)  :: pg   ! seitz point group
-        type(am_class_prim_cell)     , intent(in)  :: pc   ! primitive cell
-        type(am_class_irre_cell)     , intent(in)  :: ic   ! irreducible cell
-        type(am_class_irre_pair)     , intent(in)  :: ip   ! irreducible pairs
-        type(am_class_options)       , intent(in)  :: opts
-        logical, allocatable :: is_independent(:)
-        integer :: sub(2)
-        integer :: i,j,k
-        !
-        if (opts%verbosity.ge.1) call print_title('Symmetry-adapted tight-binding parameters')
-        !
-        tb%nshells = ip%nshells
-        allocate(tb%tens(tb%nshells))
-        ! get rank, dims, flags, property, and symmetry relations
-        do k = 1, tb%nshells
-            call tb%tens(k)%symmetrize(pg=pg,pc=pc,ic=ic,shell=ip%shell(k),opts=opts,property='irreducible tight binding shell '//tostring(k))
-        enddo
-        ! get number of independent (irreducible) matrix elements
-        tb%nVs = 0
-        do i = 1, tb%nshells
-            tb%nVs = tb%nVs + count(get_independent(tb%tens(i)%relations)) 
-        enddo
-        ! allocate space for independent (irreducible) matrix elements V
-        allocate(tb%V(tb%nVs))
-        tb%V = 0
-        ! indices : V_ind( [i, subd2ind(dims=tb%tens(i)%dims,sub=[alpha,beta])], nVs)
-        allocate(tb%V_ind(3,tb%nVs))
-        tb%V_ind = 0
-        k=0
-        do i = 1, tb%nshells
-            is_independent = get_independent(tb%tens(i)%relations)
-            do j = 1, product(tb%tens(i)%dims)
-            if (is_independent(j)) then
-                k=k+1
-                sub = ind2sub(dims=tb%tens(i)%dims, ind=j)
-                tb%V_ind(1,k) = i      ! shell
-                tb%V_ind(2,k) = sub(1) ! alpha
-                tb%V_ind(3,k) = sub(2) ! beta
-            endif
-            enddo
-        enddo
-        ! write template for irreducible matrix elements
-        if (fexists('infile.tb_matrix_elements_irreducible').ne.0) then 
-            ! print title
-            call print_title('Input tight-binding matrix elements')
-            ! read matrix elements
-            call tb%read_matrix_elements_irr()
-            ! display input file on stdout
-            call disp(x=[0],zeroas=' ',advance='no')
-            call disp(x=tb%V,title='V',style='underline',advance='no')
-            call disp(x=tb%V_ind(1,:),title='shell',style='underline',advance='no')
-            call disp(x=tb%V_ind(2,:),title='alpha',style='underline',advance='no')
-            call disp(x=tb%V_ind(3,:),title='beta',style='underline',advance='yes')
-        else
-            ! print title
-            write(*,'(a,a)') flare, 'infile.tb_matrix_elements_irreducible not found. Using template instead.'
-            !
-            call tb%set_Vsk(flags='seq')
-            !
-            call tb%write_matrix_elements_irr()
-        endif
-        !
+        end function ps2D
     end subroutine initialize_tb
 
-    function       get_hamiltonian(tb,tbpg,pp,kpt,selector_shell) result(H)
+    function       get_hamiltonian(tb,pp,kpt) result(H)
         ! 
         ! Get tight binding Hamiltonian at kpt.
         ! 
         implicit none
         !
-        class(am_class_tight_binding), intent(in) :: tb     ! tight binding matrix elements
-        type(am_class_tb_group)      , intent(in) :: tbpg   ! point group in tight binding representation
-        type(am_class_prim_pair)     , intent(in) :: pp     ! primitive pairs
-        real(dp)                     , intent(in) :: kpt(3) ! cart
-        integer, optional            , intent(in) :: selector_shell(:)
-        integer    , allocatable :: selector_shell_internal(:)
-        integer    , allocatable :: S(:),E(:)
+        class(am_class_tightbinding), intent(in) :: tb     ! tight binding matrix elements
+        type(am_class_prim_pair)    , intent(in) :: pp     ! primitive pairs
+        real(dp)                    , intent(in) :: kpt(3) ! cart
         complex(dp), allocatable, target :: Hsub_target(:,:)
         real(dp)   , allocatable, target :: pg_target(:,:,:)
+        integer    , allocatable :: selector_shell(:)
+        real(dp)   , pointer     :: Dm(:,:), Dn(:,:)
+        integer    , allocatable :: S(:),E(:)
         complex(dp), allocatable :: H(:,:)
-        complex(dp), pointer :: Hsub(:,:)
-        real(dp), pointer :: Dm(:,:), Dn(:,:)
+        complex(dp), pointer     :: Hsub(:,:)
         integer :: m ! primitive atom 1 index 
         integer :: n ! primitive atom 2 index
-        integer :: i ! irreducible atom 1 index 
-        integer :: j ! irreducible atom 2 index
         integer :: k ! shell (primitive)
         integer :: l ! shell (irreducible)
         integer :: p ! atoms
         integer :: ip_nshells
         ! get number of irreducile shell
         ip_nshells = maxval(abs(pp%ip_id(:)))
-        ! set selector
-        if (present(selector_shell)) then
-            allocate(selector_shell_internal,source=selector_shell)
+        ! selector
+        if (allocated(tb%ft%selector_shell)) then
+            allocate(selector_shell, source=tb%ft%selector_shell)
         else
-            allocate(selector_shell_internal,source=[1:ip_nshells])
+            allocate(selector_shell, source=[1:ip_nshells])
         endif
         ! allocate space for vectors demarking start and end of Hamiltonian subsection
-        allocate(S, source=tbpg%S)
-        allocate(E, source=tbpg%E)
+        allocate(S, source=tb%pg%S)
+        allocate(E, source=tb%pg%E)
         ! allocate workspace for H subsection (initialized later)
-        allocate(Hsub_target(tbpg%nbases,tbpg%nbases))
+        allocate(Hsub_target(tb%pg%nbases,tb%pg%nbases))
         ! allocate workspace for H subsection (initialized later)
-        allocate(pg_target, source=tbpg%sym)
+        allocate(pg_target, source=tb%pg%sym)
         ! allocate and initialize
-        allocate(H(tbpg%nbases,tbpg%nbases))
+        allocate(H(tb%pg%nbases,tb%pg%nbases))
         H = cmplx(0,0,dp)
         ! construct Hamiltonian
         do l = 1, ip_nshells
-        if ( any(selector_shell_internal.eq.l) ) then
+        if ( any(selector_shell.eq.l) ) then
             do k = 1, pp%nshells
             if (abs(pp%ip_id(k)).eq.l) then
                 ! primitive atom indicies
                 m = pp%shell(k)%m
                 n = pp%shell(k)%n
-                ! irreducible atom indicies
-                i = pp%shell(k)%i
-                j = pp%shell(k)%j
                 ! compute bloch sum by loop over atoms in shell
                 do p = 1, pp%shell(k)%natoms
                     ! set pointers
@@ -257,7 +274,7 @@ contains
                     Dm   =>   pg_target(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p))
                     Dn   =>   pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p))
                     ! get matrix elements (initialize Hsub)
-                    Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k))
+                    Hsub = get_matrix_element(tb=tb, ip_id=pp%ip_id(k))
                     ! rotate matrix elements as needed to get from the tau_frac(:,1) => tau_frac(:,x)
                     Hsub = matmul(matmul(transpose(Dm), Hsub), Dn)
                     ! multiply exponential factor from Bloch sum
@@ -275,291 +292,47 @@ contains
         enddo
     end function   get_hamiltonian
 
-    subroutine     test_hamiltonian(tb,tbpg,pp)
-        ! makes sure Hamiltonian at Gamma commutes with all point symmetry operations
-        implicit none
-        !
-        class(am_class_tight_binding), intent(inout) :: tb   ! tight binding matrix elements
-        type(am_class_tb_group)      , intent(in)    :: tbpg ! point group in tight binding representation
-        type(am_class_prim_pair)     , intent(in)    :: pp   ! primitive pairs
-        complex(dp), allocatable :: H(:,:)
-        real(dp)   , allocatable :: R(:,:)
-        integer :: i, j, k
-        integer :: ip_nshells
-        real(dp):: kpt(3,1)
-        !
-        call print_title('Checking model Hamiltonian at Gamma')
-        !
-        ! get number of irreducile shell
-        ip_nshells = maxval(abs(pp%ip_id(:)))
-        ! allocate space for symmetry in tb basis
-        allocate(R(tbpg%nbases,tbpg%nbases))
-        ! initilize tb matrix elements
-        call tb%set_Vsk(flags='zero')
-        ! loop over irreducible shells
-        do j = 1, ip_nshells
-            !
-            H = tb%get_hamiltonian(tbpg=tbpg, pp=pp, kpt=real([0,0,0],dp),selector_shell=[j])
-            !
-            ! check that H commutes with all point symmetries
-            do i = 1, tbpg%nsyms
-                R = tbpg%sym(:,:,i)
-                if (.not.isequal(matmul(H,R),matmul(R,H))) then
-                    call disp('H',H,style='above')
-                    call disp('R',R,style='above')
-                    call disp('[H,R]',matmul(H,R)-matmul(R,H),style='above')
-                    call disp("R'*H*R - H",matmul(matmul(transpose(R),H),R)-H,style='above')
-                    stop 'ERROR [test_hamiltonian]: H does not commute with point symmetries.'
-                endif
-            enddo
-            !
-            write(*,'(a,a)') flare ,'shell '//tostring(j)//': OK!'
-        enddo
-        !
-        call print_title('Checking model Hamiltonian at arbitrary k-points')
-        !
-        do k = 1, 10
-            kpt = reshape([rand(),rand(),rand()],[3,1])
-            ! kpt = matmul(uc%recbas,kpt), ideally... it should be in cart.
-            write(*,'(a,a)') flare, 'k-point '//tostring(k)//' = '//tostring(pack(kpt,.true.),fmt='f18.10')
-            do j = 1, ip_nshells
-                write(*,'(a,a)',advance='no') flare, 'shell '//tostring(j)//' '
-                ! ignore all irreducible shells, except j
-                H = tb%get_hamiltonian(tbpg=tbpg, pp=pp, kpt=real([0,0,0],dp),selector_shell=[j])
-                !
-                if (.not.ishermitian(H)) then
-                    stop 'ERROR [test_hamiltonian]: H is not Hermitian'
-                endif
-                write(*,*) 'OK!'
-            enddo
-        enddo
-        ! reset tb matrix elments to zero
-        call tb%set_Vsk(flags='zero')
-    end subroutine test_hamiltonian
-
-    function       get_Vsk(tb,ip_id) result(V)
-        ! irreducible pair (ip_id), can be negative (corresponds to pair n-m rathet than m-n, on the
-        ! opposite [upper/lower] side of the Hamiltonian), in which case adjoint of V is returned
+    subroutine     get_dispersion(tb,pp,bz)
         !
         implicit none
         !
-        class(am_class_tight_binding), intent(in) :: tb
-        integer , intent(in) :: ip_id
-        real(dp), allocatable :: V(:,:)
-        integer :: id
-        integer :: m,n
-        !
-        ! note the absolute value
-        id = abs(ip_id)
-        ! get primitive atom indices
-        m = tb%tens(id)%dims(1)
-        n = tb%tens(id)%dims(2)
-        ! if irreducible pair id is negative, it means the pair was flipped
-        if (ip_id.lt.0) then
-            allocate(V, source=adjoint(reshape(tb%tens(id)%V,[m,n])) )
-        else
-            allocate(V, source=        reshape(tb%tens(id)%V,[m,n])  )
-        endif
-        !
-    end function   get_Vsk
-
-    subroutine     set_Vsk(tb,V,flags)
-        ! flags = seq/rand
-        implicit none
-        !
-        class(am_class_tight_binding), intent(inout) :: tb
-        real(dp)    , optional       , intent(in)    :: V(:)
-        character(*), optional       , intent(in)    :: flags
-        integer :: i, j, k, alpha, beta
-        !
-        ! set irreducible matrix elements
-        if      (index(flags,   'seq').ne.0) then
-            do i = 1, tb%nVs
-                tb%V(i) = i
-            enddo
-        elseif  (index(flags,  'rand').ne.0) then
-            stop 'rand does not seem to be working here'
-            do i = 1, tb%nVs
-                tb%V(i) = rand()
-            enddo
-        elseif  (index(flags,  'zero').ne.0) then
-            do i = 1, tb%nVs
-                tb%V(i) = 0
-            enddo
-        elseif  (present(V)                ) then
-            if (size(V).ne.tb%nVs) stop 'ERROR: V /= nVs dimension mismatch'
-            do i = 1, tb%nVs
-                tb%V(i) = V(i)
-            enddo
-        else
-            stop 'Unknown flag set_Vsk_dummies'
-        endif
-        ! clear irreducible matrix elements in each shell
-        do k = 1, tb%nshells
-            tb%tens(k)%V = 0
-        enddo
-        ! transfer irreducible matrix elements to each shell
-        do i = 1, tb%nVs
-            k     = tb%V_ind(1,i)
-            alpha = tb%V_ind(2,i)
-            beta  = tb%V_ind(3,i)
-            j     = sub2ind(dims=tb%tens(k)%dims, sub=[alpha,beta])
-            !
-            tb%tens(k)%V(j) = tb%V(i)
-        enddo
-        ! once the irreducible matrix elements have been copied, symmetrize
-        do k = 1, tb%nshells
-            tb%tens(k)%V(:) = matmul(tb%tens(k)%relations,tb%tens(k)%V(:))
-        enddo
-        ! things are looking good up to this point.
-        !  ... tb%tens(k)%V(:) =
-        !              1.00000        0.00000        0.00000        0.00000
-        !              0.00000        2.00000        0.00000        0.00000
-        !              0.00000        0.00000        2.00000        0.00000
-        !              0.00000        0.00000        0.00000        2.00000
-        !  ... tb%tens(k)%V(:) =
-        !              3.00000        4.00000        4.00000        4.00000
-        !             -4.00000        6.00000        5.00000        5.00000
-        !             -4.00000        5.00000        6.00000        5.00000
-        !             -4.00000        5.00000        5.00000        6.00000
-    end subroutine set_Vsk
-
-    subroutine     write_matrix_elements_irr(tb)
-        !
-        implicit none
-        !
-        class(am_class_tight_binding), intent(in) :: tb
-        integer :: k ! shell index
-        integer :: alpha
-        integer :: beta
+        class(am_class_tightbinding), intent(inout) :: tb
+        type(am_class_prim_pair)    , intent(in) :: pp
+        type(am_class_bz)           , intent(in) :: bz
+        integer    , allocatable :: selector_kpoint(:)
+        complex(dp), allocatable :: H(:,:), V(:,:)
+        real(dp)   , allocatable :: D(:)
         integer :: i
-        integer :: fid
-        ! create tb dir
-        call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
-        ! write point group
-        fid = 1
-        open(unit=fid,file=trim(outfile_dir_tb)//'/'//'outfile.tb_matrix_elements_irreducible',status='replace',action='write')
-            !
-            write(fid,'(a,a16,3a6)') '#', 'V', 'shell', 'alpha', 'beta'
-            do i = 1, tb%nVs
-                ! get shell index
-                k     = tb%V_ind(1,i)
-                ! get orbital indices
-                alpha = tb%V_ind(2,i)
-                beta  = tb%V_ind(3,i)
-                ! write 
-                write(fid,'(i5,f16.8,3i6)') i, tb%V(i), k, alpha, beta
-            enddo
-            !
-        close(fid)
-    end subroutine write_matrix_elements_irr
+        ! selector
+        if (allocated(tb%ft%selector_kpoint)) then
+            allocate(selector_kpoint, source=tb%ft%selector_kpoint)
+        else
+            allocate(selector_kpoint, source=[1:bz%nkpts])
+        endif
+        ! tight binding coefficients
+        if (.not.allocated(tb%dr%C)) allocate(tb%dr%C(tb%pg%nbases,tb%pg%nbases,bz%nkpts))
+        ! eigenvalues
+        if (.not.allocated(tb%dr%E)) allocate(tb%dr%E(tb%pg%nbases,bz%nkpts))
+        ! loop over kpoints
+        do i = 1, bz%nkpts
+        if ( any(selector_kpoint.eq.i) ) then
+            ! construct hamiltonian
+            H = tb%get_hamiltonian(pp=pp, kpt=bz%kpt_cart(:,i))
+            ! diagonalize hamiltonian
+            call am_zheev(A=H,V=V,D=D)
+            tb%dr%C(:,:,i) = V
+            tb%dr%E(:,i) = D
+        endif
+        enddo
+    end subroutine get_dispersion
 
-    subroutine     read_matrix_elements_irr(tb)
-        !
-        implicit none
-        !
-        class(am_class_tight_binding), intent(inout) :: tb
-        character(maximum_buffer_size) :: buffer ! read buffer
-        character(len=:), allocatable :: word(:) ! read buffer
-        integer :: fid
-        real(dp), allocatable :: V(:)
-        integer :: k
-        integer :: alpha
-        integer :: beta
-        integer :: i
-        integer :: j
-        !
-        allocate(V(tb%nVs))
-        !
-        fid = 1
-        open(unit=fid,file='infile.tb_matrix_elements_irreducible',status="old",action='read')
-            ! skip header
-            read(fid,*)
-            ! read matrix elements
-            do j = 1, tb%nVs
-                read(unit=fid,fmt='(a)') buffer
-                word = strsplit(buffer,delimiter=' ')
-                !
-                read(word(1),*) i
-                read(word(2),*) V(i)
-                read(word(3),*) k
-                read(word(4),*) alpha
-                read(word(5),*) beta
-                !
-                if (.not.isequal(    k,tb%V_ind(1,i))) stop 'ERROR [read_matrix_elements_irr]: k /= V_ind(1,i)'
-                if (.not.isequal(alpha,tb%V_ind(2,i))) stop 'ERROR [read_matrix_elements_irr]: alpha /= V_ind(2,i)'
-                if (.not.isequal( beta,tb%V_ind(3,i))) stop 'ERROR [read_matrix_elements_irr]: beta /= V_ind(3,i)'
-            enddo
-            call tb%set_Vsk(V)
-        close(fid)
-    end subroutine read_matrix_elements_irr
+    ! export to matlab
 
-    subroutine     write_matrix_elements_full(tb,tbpg,pp)
-        !
-        implicit none
-        !
-        class(am_class_tight_binding)     , intent(in) :: tb    ! irreducible tight binding matrix elements
-        type(am_class_tb_group)           , intent(in) :: tbpg  ! point group in tight binding representation
-        type(am_class_prim_pair)          , intent(in) :: pp    ! primitive pairs
-        real(dp), allocatable, target :: Hsub_target(:,:)
-        real(dp), allocatable, target :: pg_target(:,:,:)
-        integer , allocatable :: S(:) ,E(:)
-        real(dp), pointer :: Dm(:,:), Dn(:,:)
-        real(dp), pointer :: Hsub(:,:)
-        integer :: fid
-        integer :: k,p, i,j, m,n
-        !
-        ! allocate space for vectors demarking start and end of Hamiltonian subsection
-        allocate(Hsub_target(tbpg%nbases,tbpg%nbases))
-        allocate(pg_target, source=tbpg%sym)
-        allocate(S, source=tbpg%S)
-        allocate(E, source=tbpg%E)
-        !
-        call tostring_set(sep=' ')
-            ! create directory
-            call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
-            ! export symmetry
-            fid = 1
-            open(unit=fid,file=trim(outfile_dir_tb)//'/'//'outfile.tb_matrix_elements',status='replace',action='write')
-                ! print stuff
-                write(fid,'(a,a)')                 tostring(pp%nshells), ' primitive shells'
-                write(fid,'(a,a)')                          tostring(S), ' subregion start'
-                write(fid,'(a,a)')                          tostring(E), ' subregion end'
-                do k = 1, pp%nshells
-                ! abbreviations
-                m = pp%shell(k)%m
-                n = pp%shell(k)%n
-                i = pp%shell(k)%i
-                j = pp%shell(k)%j
-                ! print stuff
-                write(fid,'(a,a)')                       repeat('=',79), repeat('=',79)
-                write(fid,'(a,a)')              centertitle(tostring(k)//' shell',158)
-                write(fid,'(a,a)')                          tostring(m), ' primitive m'
-                write(fid,'(a,a)')                          tostring(n), ' primitive n'
-                write(fid,'(a,a)')         tostring(pp%shell(k)%natoms), ' atoms in shell'
-                do p = 1, pp%shell(k)%natoms
-                ! abbreviations
-                Dm   => pg_target(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p) )
-                Dn   => pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
-                Hsub => Hsub_target(S(m):E(m), S(n):E(n))
-                ! print stuff
-                Hsub = get_Vsk(tb=tb, ip_id=pp%ip_id(k)) 
-                ! print
-                call disp(unit=fid, fmt='f18.10',x=matmul(matmul(transpose(Dm), Hsub), Dn),title=tostring(pp%shell(k)%tau_cart(1:3,p),fmt='f10.5')//' [cart.]',style='above')
-                enddo
-                enddo
-            close(fid)
-        ! return delimiter to ","
-        call tostring_set(sep=',')
-        !
-    end subroutine write_matrix_elements_full
-
-    subroutine     export_to_matlab(tb,ip,tbpg,pp,flags)
+    subroutine     export_to_matlab(tb,ip,pp,flags)
         ! flags = symbolic/numerical cart/frac
         implicit none
         !
-        class(am_class_tight_binding), intent(in) :: tb     ! tight binding matrix elements
-        type(am_class_tb_group)      , intent(in) :: tbpg   ! point group in tight binding representation
+        class(am_class_tightbinding), intent(in) :: tb     ! tight binding matrix elements
         type(am_class_prim_pair)     , intent(in) :: pp     ! primitive pairs
         type(am_class_irre_pair)     , intent(in) :: ip     ! irreducible pairs
         character(*)                 , intent(in) :: flags  ! symbolic/numerical cart/frac
@@ -617,9 +390,9 @@ contains
         !
         V_fnc_name = 'getV'
         ! create abbreviations
-        allocate(S, source=tbpg%S)
-        allocate(E, source=tbpg%E)
-        end = size(tbpg%E)
+        allocate(S, source=tb%pg%S)
+        allocate(E, source=tb%pg%E)
+        end = size(tb%pg%E)
         ! allocate start and end vectors
         allocate(Sv(ip%nshells))
         allocate(Ev(ip%nshells))
@@ -679,39 +452,444 @@ contains
         close(fid)
     end subroutine export_to_matlab
 
+    ! matrix element stuff
 
+    function       get_matrix_element(tb,ip_id) result(V)
+        ! irreducible pair (ip_id), can be negative (corresponds to pair n-m rathet than m-n, on the
+        ! opposite [upper/lower] side of the Hamiltonian), in which case adjoint of V is returned
+        implicit none
+        !
+        class(am_class_tightbinding), intent(in) :: tb
+        integer , intent(in) :: ip_id
+        real(dp), allocatable :: V(:,:)
+        integer :: id
+        integer :: m,n
+        !
+        ! note the absolute value
+        id = abs(ip_id)
+        ! get primitive atom indices
+        m = tb%tens(id)%dims(1)
+        n = tb%tens(id)%dims(2)
+        ! if irreducible pair id is negative, it means the pair was flipped
+        if (ip_id.lt.0) then
+            allocate(V, source=adjoint(reshape(tb%tens(id)%V,[m,n])) )
+        else
+            allocate(V, source=        reshape(tb%tens(id)%V,[m,n])  )
+        endif
+        !
+    end function   get_matrix_element
 
+    subroutine     set_matrix_element(tb,V,flags)
+        ! flags = seq/rand
+        implicit none
+        !
+        class(am_class_tightbinding), intent(inout) :: tb
+        real(dp)    , optional       , intent(in)    :: V(:)
+        character(*), optional       , intent(in)    :: flags
+        integer :: i, j, k, alpha, beta
+        !
+        ! set irreducible matrix elements
+        if      (index(flags,   'seq').ne.0) then
+            do i = 1, tb%nVs
+                tb%V(i) = i
+            enddo
+        elseif  (index(flags,  'rand').ne.0) then
+            stop 'rand does not seem to be working here'
+            do i = 1, tb%nVs
+                tb%V(i) = rand()
+            enddo
+        elseif  (index(flags,  'zero').ne.0) then
+            do i = 1, tb%nVs
+                tb%V(i) = 0
+            enddo
+        elseif  (present(V)                ) then
+            if (size(V).ne.tb%nVs) stop 'ERROR: V /= nVs dimension mismatch'
+            do i = 1, tb%nVs
+                tb%V(i) = V(i)
+            enddo
+        else
+            stop 'Unknown flag set_matrix_element_dummies'
+        endif
+        ! clear irreducible matrix elements in each shell
+        do k = 1, tb%nshells
+            tb%tens(k)%V = 0
+        enddo
+        ! transfer irreducible matrix elements to each shell
+        do i = 1, tb%nVs
+            k     = tb%V_ind(1,i)
+            alpha = tb%V_ind(2,i)
+            beta  = tb%V_ind(3,i)
+            j     = sub2ind(dims=tb%tens(k)%dims, sub=[alpha,beta])
+            !
+            tb%tens(k)%V(j) = tb%V(i)
+        enddo
+        ! once the irreducible matrix elements have been copied, symmetrize
+        do k = 1, tb%nshells
+            tb%tens(k)%V(:) = matmul(tb%tens(k)%relations,tb%tens(k)%V(:))
+        enddo
+        ! things are looking good up to this point.
+        !  ... tb%tens(k)%V(:) =
+        !              1.00000        0.00000        0.00000        0.00000
+        !              0.00000        2.00000        0.00000        0.00000
+        !              0.00000        0.00000        2.00000        0.00000
+        !              0.00000        0.00000        0.00000        2.00000
+        !  ... tb%tens(k)%V(:) =
+        !              3.00000        4.00000        4.00000        4.00000
+        !             -4.00000        6.00000        5.00000        5.00000
+        !             -4.00000        5.00000        6.00000        5.00000
+        !             -4.00000        5.00000        5.00000        6.00000
+    end subroutine set_matrix_element
 
+    subroutine     write_irreducible_matrix_element(tb)
+        !
+        implicit none
+        !
+        class(am_class_tightbinding), intent(in) :: tb
+        integer :: k ! shell index
+        integer :: alpha
+        integer :: beta
+        integer :: i
+        integer :: fid
+        ! create tb dir
+        call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
+        ! write point group
+        fid = 1
+        open(unit=fid,file=trim(outfile_dir_tb)//'/'//'outfile.tb_matrix_elements_irreducible',status='replace',action='write')
+            !
+            write(fid,'(a,a16,3a6)') '#', 'V', 'shell', 'alpha', 'beta'
+            do i = 1, tb%nVs
+                ! get shell index
+                k     = tb%V_ind(1,i)
+                ! get orbital indices
+                alpha = tb%V_ind(2,i)
+                beta  = tb%V_ind(3,i)
+                ! write 
+                write(fid,'(i5,f16.8,3i6)') i, tb%V(i), k, alpha, beta
+            enddo
+            !
+        close(fid)
+    end subroutine write_irreducible_matrix_element
 
+    subroutine     read_irreducible_matrix_element(tb)
+        !
+        implicit none
+        !
+        class(am_class_tightbinding), intent(inout) :: tb
+        character(maximum_buffer_size) :: buffer ! read buffer
+        character(len=:), allocatable :: word(:) ! read buffer
+        integer :: fid
+        real(dp), allocatable :: V(:)
+        integer :: k
+        integer :: alpha
+        integer :: beta
+        integer :: i
+        integer :: j
+        !
+        allocate(V(tb%nVs))
+        !
+        fid = 1
+        open(unit=fid,file='infile.tb_matrix_elements_irreducible',status="old",action='read')
+            ! skip header
+            read(fid,*)
+            ! read matrix elements
+            do j = 1, tb%nVs
+                read(unit=fid,fmt='(a)') buffer
+                word = strsplit(buffer,delimiter=' ')
+                !
+                read(word(1),*) i
+                read(word(2),*) V(i)
+                read(word(3),*) k
+                read(word(4),*) alpha
+                read(word(5),*) beta
+                !
+                if (.not.isequal(    k,tb%V_ind(1,i))) stop 'ERROR [read_irreducible_matrix_element]: k /= V_ind(1,i)'
+                if (.not.isequal(alpha,tb%V_ind(2,i))) stop 'ERROR [read_irreducible_matrix_element]: alpha /= V_ind(2,i)'
+                if (.not.isequal( beta,tb%V_ind(3,i))) stop 'ERROR [read_irreducible_matrix_element]: beta /= V_ind(3,i)'
+            enddo
+            call tb%set_matrix_element(V)
+        close(fid)
+    end subroutine read_irreducible_matrix_element
 
+    subroutine     write_all_matrix_element(tb,pp)
+        !
+        implicit none
+        !
+        class(am_class_tightbinding)     , intent(in) :: tb    ! irreducible tight binding matrix elements
+        type(am_class_prim_pair)          , intent(in) :: pp    ! primitive pairs
+        real(dp), allocatable, target :: Hsub_target(:,:)
+        real(dp), allocatable, target :: pg_target(:,:,:)
+        integer , allocatable :: S(:) ,E(:)
+        real(dp), pointer :: Dm(:,:), Dn(:,:)
+        real(dp), pointer :: Hsub(:,:)
+        integer :: fid
+        integer :: k,p, m,n
+        !
+        ! allocate space for vectors demarking start and end of Hamiltonian subsection
+        allocate(Hsub_target(tb%pg%nbases,tb%pg%nbases))
+        allocate(pg_target, source=tb%pg%sym)
+        allocate(S, source=tb%pg%S)
+        allocate(E, source=tb%pg%E)
+        !
+        call tostring_set(sep=' ')
+            ! create directory
+            call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
+            ! export symmetry
+            fid = 1
+            open(unit=fid,file=trim(outfile_dir_tb)//'/'//'outfile.tb_matrix_elements',status='replace',action='write')
+                ! print stuff
+                write(fid,'(a,a)')                 tostring(pp%nshells), ' primitive shells'
+                write(fid,'(a,a)')                          tostring(S), ' subregion start'
+                write(fid,'(a,a)')                          tostring(E), ' subregion end'
+                do k = 1, pp%nshells
+                ! abbreviations
+                m = pp%shell(k)%m
+                n = pp%shell(k)%n
+                ! print stuff
+                write(fid,'(a,a)')                       repeat('=',79), repeat('=',79)
+                write(fid,'(a,a)')              centertitle(tostring(k)//' shell',158)
+                write(fid,'(a,a)')                          tostring(m), ' primitive m'
+                write(fid,'(a,a)')                          tostring(n), ' primitive n'
+                write(fid,'(a,a)')         tostring(pp%shell(k)%natoms), ' atoms in shell'
+                do p = 1, pp%shell(k)%natoms
+                ! abbreviations
+                Dm   => pg_target(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p) )
+                Dn   => pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
+                Hsub => Hsub_target(S(m):E(m), S(n):E(n))
+                ! print stuff
+                Hsub = get_matrix_element(tb=tb, ip_id=pp%ip_id(k)) 
+                ! print
+                call disp(unit=fid, fmt='f18.10',x=matmul(matmul(transpose(Dm), Hsub), Dn),title=tostring(pp%shell(k)%tau_cart(1:3,p),fmt='f10.5')//' [cart.]',style='above')
+                enddo
+                enddo
+            close(fid)
+        ! return delimiter to ","
+        call tostring_set(sep=',')
+        !
+    end subroutine write_all_matrix_element
 
+    ! optimizer
 
+    subroutine     optimize_matrix_element(tb,bz,dr_dft,pp,opts)
+        !
+        implicit none
+        !   
+        class(am_class_tightbinding) , intent(inout) :: tb
+        type(am_class_bz)            , intent(in) :: bz
+        type(am_class_dispersion_dft), intent(in) :: dr_dft
+        type(am_class_prim_pair)     , intent(in) :: pp
+        type(am_class_options)       , intent(in) :: opts
+        !
+        if (opts%verbosity.ge.1) call print_title('Optimized matrix elements')
+        !
+        tb%ft%maxiter   = 10
+        tb%ft%nbands    = maxval(tb%pg%E)
+        tb%ft%nkpts     = bz%nkpts
+        tb%ft%nxs       = tb%nVs
+        tb%ft%skip_band = opts%skip_band
+        tb%ft%nrs       = bz%nkpts * tb%ft%nbands
+        allocate(tb%ft%selector_shell, source=[1:size(tb%tens)]) ! all shells
+        allocate(tb%ft%selector_kpoint,source=[1:bz%nkpts])  ! all kpoints
+        allocate(tb%ft%selector_x,     source=[1:tb%ft%nxs]) ! all parameters
+        allocate(tb%ft%r(tb%ft%nrs)) ! residual vector
+        allocate(tb%ft%x(tb%ft%nxs)) ! x vector
+        tb%ft%r   = 0             ! residual vector
+        tb%ft%x   = 0             ! parameter vector
+        tb%ft%rms = 0             ! rms error
+        !
+        if (debug) then
+            write(*,'(a,a,a)') flare, 'irreducible matrix elements = '//tostring(tb%ft%nxs)
+            write(*,'(a,a,a)') flare, 'k-points = '                   //tostring(tb%ft%nkpts)
+            write(*,'(a,a,a)') flare, 'bands = '                      //tostring(tb%ft%nbands)
+            write(*,'(a,a,a)') flare, 'number of bands to skip = '    //tostring(tb%ft%skip_band)
+            write(*,'(a,a,a)') flare, 'residual vector length = '     //tostring(tb%ft%nrs)
+            write(*,'(a,a,a)') flare, 'max iterations = '             //tostring(tb%ft%maxiter)
+        endif
+        !
+        call perform_optimization(tb=tb, bz=bz, dr_dft=dr_dft, pp=pp)
+        !
+    end subroutine optimize_matrix_element
 
+    subroutine     perform_optimization(tb,bz,pp,dr_dft)
+        !
+        use mkl_rci
+        use mkl_rci_type
+        !
+        implicit none
+        !
+        type(am_class_tightbinding)  , intent(inout) :: tb
+        type(am_class_bz)            , intent(in) :: bz
+        type(am_class_dispersion_dft), intent(in) :: dr_dft
+        type(am_class_prim_pair)     , intent(in) :: pp
+        real(dp), allocatable :: x(:)
+        real(dp), allocatable :: FVEC(:)
+        real(dp), allocatable :: FJAC(:,:)
+        type(handle_tr) :: handle
+        real(dp) :: eps(6)
+        integer  :: info(6)
+        integer  :: rci_request
+        integer  :: successful
+        integer  :: i
+        ! precisions for stop-criteria
+        eps(1:6) = 1.0D-6
+        ! initialize fitting parameters (irreducible matrix elements) 
+        allocate(x(tb%ft%nxs))
+        x = tb%V 
+        ! initialize residual vector
+        allocate(FVEC(tb%ft%nrs))
+        FVEC = 0.0_dp
+        ! initialize jacobian matrix
+        allocate(FJAC(tb%ft%nrs,tb%ft%nxs))
+        FJAC = 0
+        ! initializes the solver of a nonlinear least squares problem
+        if (dtrnlsp_init(handle=handle, n=tb%ft%nxs, m=tb%ft%nrs, x=x, eps=eps, iter1=tb%ft%maxiter, iter2=100, rs=100.0D0) /= tr_success) then
+            call mkl_free_buffers
+            stop 'ERROR [perform_optimization]: dtrnlsp_init'
+        end if
+        ! check the correctness of handle and arrays containing Jacobian matrix, objective function, and stopping criteria
+        if (dtrnlsp_check(handle=handle, n=tb%ft%nxs, m=tb%ft%nrs, FJAC=FJAC, FVEC=FVEC, eps=eps, info=info) /= tr_success) then
+            call mkl_free_buffers
+            stop 'ERROR [perform_optimization]: dtrnlspbc_init'
+        else
+            if ( info(1) /= 0 .or. info(2) /= 0 .or. info(3) /= 0 .or. info(4) /= 0 ) then
+                call mkl_free_buffers
+                stop 'ERROR [perform_optimization]: dtrnlspbc_init, invalid input parameters'
+            endif
+        endif
+        ! set initial rci variables
+        rci_request = 0
+        successful = 0
+        i = 0
+        ! write header
+        write(*,'(5x,a8,a10,a10,a)') 'iter', 'rms ', 'log(d rms)',centertitle('parameters',tb%ft%nxs*10)
+        write(*,'(5x,a8,a10,a10,a)') ' '//repeat('-',8-1), ' '//repeat('-',10-1), ' '//repeat('-',10-1), ' '//repeat('-',tb%ft%nxs*10-1)
+        ! enter optimization loop
+        do while (successful == 0)
+            ! solve nonlinear least squares problem using the TR algorithm
+            if (dtrnlsp_solve(handle=handle, FVEC=FVEC, FJAC=FJAC, rci_request=rci_request) /= tr_success) then
+                call mkl_free_buffers
+                stop 'ERROR [perform_optimization]: dtrnlsp_solve'
+            endif
+            select case (rci_request)
+            case (-1, -2, -3, -4, -5, -6)
+                successful = 1
+            case (1)
+                ! update x in tb model
+                call tb%set_matrix_element(V=x)
+                ! recalculate function
+                FVEC = compute_residual(tb=tb, bz=bz, pp=pp, dr_dft=dr_dft)
+                ! save result
+                tb%ft%r   = FVEC 
+                tb%ft%rms = sqrt(sum(FVEC**2)/tb%ft%nrs)
+                ! increase counter
+                i = i + 1
+                ! print results
+                if (i.eq.1) then
+                    write(*,'(5x,i8,f10.2,10x,SP,1000f10.2)')   i, tb%ft%rms, x
+                else
+                    write(*,'(5x,i8,f10.2,f10.2,SP,1000f10.2)') i, tb%ft%rms, log10(abs(norm(1.0D-14 + x-tb%ft%x ))), x
+                endif
+                ! save results
+                tb%ft%x = x
+            case (2)
+                ! update x in tb model
+                call tb%set_matrix_element(V=x)
+                ! compute jacobian matrix (uses central difference)
+                FJAC = compute_jacobian(tb=tb, bz=bz, pp=pp, dr_dft=dr_dft)
+            end select
+        end do
+        ! clean up
+        if (dtrnlsp_delete(handle) /= tr_success) then
+            call mkl_free_buffers
+            stop 'ERROR [perform_optimization]: dtrnlsp_delete'
+        else
+            call mkl_free_buffers
+        endif
+    end subroutine perform_optimization
 
+    function       compute_residual(tb,bz,dr_dft,pp) result(R)
+        !
+        implicit none
+        !
+        type(am_class_tightbinding)  , intent(inout) :: tb
+        type(am_class_bz)            , intent(in) :: bz
+        type(am_class_prim_pair)     , intent(in) :: pp
+        type(am_class_dispersion_dft), intent(in) :: dr_dft
+        real(dp), allocatable :: R(:)
+        integer , allocatable :: inds(:)
+        ! index vector
+        allocate(inds(tb%ft%nbands))
+        ! create residual vector
+        allocate(R(tb%ft%nrs))
+        R = 0
+        ! get tb dispersion 
+        call tb%get_dispersion(bz=bz, pp=pp)
+        ! calculate residual vector indices
+        R = pack(dr_dft%E([1:tb%ft%nbands]+tb%ft%skip_band, tb%ft%selector_kpoint) - tb%dr%E(:,tb%ft%selector_kpoint) , .true.)
+        !
+    end function   compute_residual
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    function       compute_jacobian(tb,bz,pp,dr_dft) result(FJAC)
+        !
+        use mkl_rci
+        !
+        implicit none 
+        !
+        type(am_class_tightbinding)  , intent(inout) :: tb
+        type(am_class_bz)            , intent(in) :: bz
+        type(am_class_prim_pair)     , intent(in) :: pp
+        type(am_class_dispersion_dft), intent(in) :: dr_dft
+        real(dp), allocatable :: FJAC(:,:) ! fjac(m,n) jacobian matrix
+        real(dp), allocatable :: f1(:)     ! f1(m)     residual vector
+        real(dp), allocatable :: f2(:)     ! f1(m)     residual vector
+        real(dp), allocatable :: x(:)      ! x(n)      parameter vector
+        real(dp) :: eps_jac
+        integer*8:: handle 
+        integer  :: successful
+        integer  :: rci_request
+        ! set epsilon for jacobian calc
+        eps_jac = 1.d-5
+        ! allocate space
+        allocate(  f1(tb%ft%nrs))
+        allocate(  f2(tb%ft%nrs))
+        allocate(FJAC(tb%ft%nrs,tb%ft%nxs))
+        ! initialize x
+        allocate(x, source=tb%V)
+        ! begin jacobian computation
+        if (djacobi_init(handle=handle, n=tb%ft%nxs, m=tb%ft%nrs, x=x, FJAC=FJAC, eps=eps_jac) .ne. tr_success) then
+            print *, '#fail: error in djacobi_init' 
+            call mkl_free_buffers
+            stop 1
+        end if
+        rci_request = 0
+        successful  = 0
+        do while (successful.eq.0)
+            if (djacobi_solve(handle=handle, f1=f1, f2=f2, rci_request=rci_request) .ne. tr_success) then
+                print *, '#fail: error in djacobi_solve'
+                call mkl_free_buffers
+                stop 1
+            end if
+            if (rci_request .eq. 1) then
+                ! update x in TB model
+                call tb%set_matrix_element(V=x)
+                ! compute jacobian
+                f1 = compute_residual(tb=tb,bz=bz,pp=pp,dr_dft=dr_dft)
+            else if (rci_request .eq. 2) then
+                ! update x in TB model
+                call tb%set_matrix_element(V=x)
+                ! compute jacobian
+                f2 = compute_residual(tb=tb,bz=bz,pp=pp,dr_dft=dr_dft)
+            else if (rci_request .eq. 0) then
+                successful = 1 
+            end if
+        end do
+        if (djacobi_delete(handle) .ne. tr_success) then
+            print *, '#fail: error in djacobi_delete' 
+            call mkl_free_buffers
+            stop 1
+        else
+            call mkl_free_buffers
+        end if
+    end function   compute_jacobian
 
 
 end module am_tight_binding

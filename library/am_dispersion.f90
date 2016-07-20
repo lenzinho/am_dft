@@ -10,7 +10,6 @@ module am_dispersion
     use am_options
     use am_histogram
     use am_shells
-    use am_tight_binding
 
     implicit none
 
@@ -28,12 +27,6 @@ module am_dispersion
         contains
         procedure :: load
     end type am_class_dispersion_dft
-
-    type, public, extends(am_class_dispersion) :: am_class_dispersion_tb
-        complex(dp), allocatable :: C(:,:,:) ! tight binding coefficients
-        contains
-        procedure :: get_dispersion
-    end type am_class_dispersion_tb
 
 contains
 
@@ -96,40 +89,11 @@ contains
         !
     end subroutine load
 
-    subroutine     get_dispersion(dr,tb,tbpg,bz,pp)
-        !
-        implicit none
-        !
-        class(am_class_dispersion_tb),intent(out) :: dr
-        type(am_class_tb_group)      , intent(in) :: tbpg ! point group in tight binding representation
-        type(am_class_tight_binding) , intent(in) :: tb
-        type(am_class_bz)            , intent(in) :: bz
-        type(am_class_prim_pair)     , intent(in) :: pp
-        complex(dp), allocatable :: H(:,:), V(:,:)
-        real(dp)   , allocatable :: D(:)
-        integer :: i
-        !
-        ! tight binding coefficients
-        allocate(dr%C(tbpg%nbases,tbpg%nbases,bz%nkpts))
-        ! eigenvalues
-        allocate(dr%E(tbpg%nbases,bz%nkpts))
-        ! loop over kpoints
-        do i = 1, bz%nkpts
-            ! construct hamiltonian
-            H = tb%get_hamiltonian(tbpg=tbpg, pp=pp, kpt=bz%kpt_cart(:,i))
-            ! diagonalize hamiltonian
-            call am_zheev(A=H,V=V,D=D)
-            dr%C(:,:,i) = V
-            dr%E(:,i) = D
-        enddo
-        !
-    end subroutine get_dispersion
-
 !     subroutine     write_dispersion(tb)
 !         !
 !         implicit none
-!         !
-! !         ! write it in fractional coordinates so that  
+!         ! dump dispersion
+! !         ! write it in fractional coordinates so that fermi surface can be plotted
 
 ! !     end subroutine
 

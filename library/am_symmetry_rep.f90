@@ -31,7 +31,7 @@ module am_symmetry_tensor
         procedure :: symmetrize
     end type am_class_tensor
 
-    type, private, extends(am_class_symrep_group) :: am_class_flat_group
+    type, private, extends(am_class_representation_group) :: am_class_flat_group
         real(dp), allocatable :: relations(:,:)
         contains
         procedure :: get_flat_intrinsic_group

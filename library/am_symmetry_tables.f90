@@ -137,6 +137,35 @@ contains
         !
     end function   get_inverse_indices
 
+    function       get_cyclic_struct(multab) result(cstruct)
+        !
+        implicit none
+        !
+        integer, intent(in) :: multab(:,:)
+        logical,allocatable :: cstruct(:,:)
+        integer :: power
+        integer :: i, j
+        integer :: nsyms
+        !
+        nsyms = size(multab,2)
+        !
+        allocate(cstruct(nsyms,nsyms))
+        cstruct = .false.
+        !
+        do i = 1, nsyms
+            power = 1
+            ! apply operation until identity (1) is returned
+            do j = 1, 100
+                power = multab(power,i)
+                cstruct(power,i) = .true.
+                if (power.eq.1) then
+                    exit
+                endif
+            enddo
+        enddo
+        !
+    end function   get_cyclic_struct
+
     function       get_cyclic_order(multab) result(corder)
         !
         implicit none
@@ -290,93 +319,6 @@ contains
         enddo
         !
     end function   get_commutator_id
-
-    ! subgroup
-
-    function       get_cstruct(multab) result(cstruct)
-        !
-        implicit none
-        !
-        integer, intent(in) :: multab(:,:)
-        logical,allocatable :: cstruct(:,:)
-        integer :: power
-        integer :: i, j
-        integer :: nsyms
-        !
-        nsyms = size(multab,2)
-        !
-        allocate(cstruct(nsyms,nsyms))
-        cstruct = .false.
-        !
-        do i = 1, nsyms
-            power = 1
-            ! apply operation until identity (1) is returned
-            do j = 1, 100
-                power = multab(power,i)
-                cstruct(power,i) = .true.
-                if (power.eq.1) then
-                    exit
-                endif
-            enddo
-        enddo
-        !
-    end function   get_cstruct
-
-!     function       get_subgroup_member(cstruct,ps_id) result(subgroup_member)
-!         !
-!         implicit none
-!         !
-!         logical, intent(in) :: cstruct(:,:)
-!         integer, intent(in) :: ps_id(:)
-!         integer,allocatable :: subgroup_member(:,:)
-!         integer,allocatable :: pg_id(:)
-!         logical,allocatable :: mask(:,:)
-!         logical,allocatable :: mask_x2(:,:)
-!         integer,allocatable :: inds(:)
-!         integer :: ncyclics, ncyclics_x2, nsyms
-!         integer :: k,i,j
-!         !
-!         ! initialize mask
-!         mask = unique(cstruct)
-!         ! get number of symmerties
-!         nsyms = size(mask,1)
-!         ! initialize loop
-!         ncyclics_x2 = size(mask,2)
-!         ! do loop
-!         do
-!             ! st cyclic 
-!             ncyclics = ncyclics_x2
-!             ! need to figure out a better way of doing this without reallocating...
-!             if (allocated(mask_x2)) deallocate(mask_x2)
-!             allocate(mask_x2(nsyms,ncyclics**2))
-!             writE(*,*) shape(mask_x2)
-!             ! construct mask_x2
-!             k=0
-!             do i = 1, ncyclics
-!             do j = 1, ncyclics
-!                 k=k+1
-!                 mask_x2(:,k) = mask(:,i) .or. mask(:,j)
-!             enddo
-!             enddo
-!             ! update mask
-!             mask = unique(mask_x2)
-!             ! update number of cycle structures
-!             ncyclics_x2 = size(mask,2)
-!             ! check if number of subgroups did not change
-!             if (ncyclics.eq.ncyclics_x2) then
-!                 ! if same number of subgroups since last iteration: done
-!                 exit
-!             endif
-!         enddo
-!         !
-!         allocate(subgroup_member(ncyclics,nsyms))
-!         subgroup_member = 0
-!         do i = 1, ncyclics
-!             inds = selector(mask(:,i))
-!             subgroup_member(i,1:size(inds)) = nint(sort(real(inds,dp)))
-!         enddo
-!         !
-!     end function   get_subgroup_member
 
     ! conjugacy classes
 
@@ -1324,47 +1266,6 @@ contains
         call spy( sum(abs(M),3).gt.tiny )
         !
     end subroutine print_blocks
-
-!     function       get_spherical_harmonic_basis(seitz_cart) result(spherical_harmonic_basis)
-!         !
-!         implicit none
-!         !
-!         real(dp)   , intent(in) :: seitz_cart(:,:,:)
-!         complex(dp),allocatable :: spherical_harmonic_basis(:,:,:)
-!         real(dp)   ,allocatable :: jlist(:)
-!         integer :: nbases
-!         integer :: nsyms
-!         integer :: i,j,k
-!         integer :: n
-!         integer :: S,E
-!         ! list of j values
-!         allocate(jlist,source=[0.5_dp,1.0_dp])
-!         ! get dimensions
-!         nbases  = sum(jlist*2+1)
-!         nsyms   = size(seitz_cart,3)
-!         ! allocate space for spherical_harmonic_basis
-!         allocate(spherical_harmonic_basis(nbases,nbases,nsyms))
-!         spherical_harmonic_basis = 0
-!         !
-!         do i = 1, nsyms
-!             ! initialize counter
-!             k = 0
-!             do j = 1, size(jlist)
-!                 k = k+1
-!                 n = nint(2*jlist(j)+1)
-!                 S = k
-!                 k = k + n - 1
-!                 E = k
-!                 if (modulo(n,2).eq.0) then
-!                     ! even
-!                     spherical_harmonic_basis(S:E,S:E,i) = rot2irrep(j=jlist(j)      ,R=seitz_cart(1:3,1:3,i))
-!                 else
-!                     ! odd
-!                     spherical_harmonic_basis(S:E,S:E,i) = rot2irrep(l=nint(jlist(j)),R=seitz_cart(1:3,1:3,i))
-!                 endif
-!             enddo
-!         enddo
-!     end function   get_spherical_harmonic_basis
 
 !     function       get_irrep_diag(sym,chartab,irrep_proj,irrep_dim,class_member) result(irrep_diag)
 !         !
