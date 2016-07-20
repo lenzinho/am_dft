@@ -1818,6 +1818,7 @@ module am_matlab
         deallocate(temp)
     end function  z_rref
 
+
     ! trim
 
     pure function i_trim_null(A) result(B)

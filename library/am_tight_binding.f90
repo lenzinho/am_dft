@@ -286,7 +286,7 @@ contains
             enddo
             !
             if (debug) then
-            if (.not.ishermitian(H)) stop 'ERROR [get_hamiltonian]: H is not Hermitian!'
+                if (.not.ishermitian(H)) stop 'ERROR [get_hamiltonian]: H is not Hermitian!'
             endif
         endif
         enddo
@@ -454,38 +454,13 @@ contains
 
     ! matrix element stuff
 
-    function       get_matrix_element(tb,ip_id) result(V)
-        ! irreducible pair (ip_id), can be negative (corresponds to pair n-m rathet than m-n, on the
-        ! opposite [upper/lower] side of the Hamiltonian), in which case adjoint of V is returned
-        implicit none
-        !
-        class(am_class_tightbinding), intent(in) :: tb
-        integer , intent(in) :: ip_id
-        real(dp), allocatable :: V(:,:)
-        integer :: id
-        integer :: m,n
-        !
-        ! note the absolute value
-        id = abs(ip_id)
-        ! get primitive atom indices
-        m = tb%tens(id)%dims(1)
-        n = tb%tens(id)%dims(2)
-        ! if irreducible pair id is negative, it means the pair was flipped
-        if (ip_id.lt.0) then
-            allocate(V, source=adjoint(reshape(tb%tens(id)%V,[m,n])) )
-        else
-            allocate(V, source=        reshape(tb%tens(id)%V,[m,n])  )
-        endif
-        !
-    end function   get_matrix_element
-
     subroutine     set_matrix_element(tb,V,flags)
-        ! flags = seq/rand
+        ! flags = seq/rand/zero/selector/decompress
         implicit none
         !
-        class(am_class_tightbinding), intent(inout) :: tb
-        real(dp)    , optional       , intent(in)    :: V(:)
-        character(*), optional       , intent(in)    :: flags
+        class(am_class_tightbinding)      , intent(inout)        :: tb
+        real(dp)    , optional            , intent(in)           :: V(:)
+        character(*), optional            , intent(in)           :: flags
         integer :: i, j, k, alpha, beta
         !
         ! set irreducible matrix elements
@@ -504,12 +479,29 @@ contains
             enddo
         elseif  (present(V)                ) then
             if (size(V).ne.tb%nVs) stop 'ERROR: V /= nVs dimension mismatch'
-            do i = 1, tb%nVs
-                tb%V(i) = V(i)
-            enddo
+            if (index(flags,'selector').ne.0) then
+                ! copy matrix elements beloning to select shells only
+                do i = 1, tb%nVs
+                    if ( any(tb%ft%selector_shell.eq.tb%V_ind(1,i)) ) then
+                        tb%V(i) = V(i)
+                    else
+                        tb%V(i) = 0
+                    endif
+                enddo
+
+
+                ! STILL NEED TO CODE DECOMPRESS, which will be used to take a masked array X (based on selector shells) and expand it as though no shells were masked
+
+            else
+                ! copy all matrix elements
+                do i = 1, tb%nVs
+                    tb%V(i) = V(i)
+                enddo
+            endif
         else
             stop 'Unknown flag set_matrix_element_dummies'
         endif
+        !
         ! clear irreducible matrix elements in each shell
         do k = 1, tb%nshells
             tb%tens(k)%V = 0
@@ -539,6 +531,31 @@ contains
         !             -4.00000        5.00000        6.00000        5.00000
         !             -4.00000        5.00000        5.00000        6.00000
     end subroutine set_matrix_element
+
+    function       get_matrix_element(tb,ip_id) result(V)
+        ! irreducible pair (ip_id), can be negative (corresponds to pair n-m rathet than m-n, on the
+        ! opposite [upper/lower] side of the Hamiltonian), in which case adjoint of V is returned
+        implicit none
+        !
+        class(am_class_tightbinding), intent(in) :: tb
+        integer , intent(in) :: ip_id
+        real(dp), allocatable :: V(:,:)
+        integer :: id
+        integer :: m,n
+        !
+        ! note the absolute value
+        id = abs(ip_id)
+        ! get primitive atom indices
+        m = tb%tens(id)%dims(1)
+        n = tb%tens(id)%dims(2)
+        ! if irreducible pair id is negative, it means the pair was flipped
+        if (ip_id.lt.0) then
+            allocate(V, source=adjoint(reshape(tb%tens(id)%V,[m,n])) )
+        else
+            allocate(V, source=        reshape(tb%tens(id)%V,[m,n])  )
+        endif
+        !
+    end function   get_matrix_element
 
     subroutine     write_irreducible_matrix_element(tb)
         !
@@ -678,29 +695,50 @@ contains
         type(am_class_dispersion_dft), intent(in) :: dr_dft
         type(am_class_prim_pair)     , intent(in) :: pp
         type(am_class_options)       , intent(in) :: opts
+        integer :: i
         !
         if (opts%verbosity.ge.1) call print_title('Optimized matrix elements')
         !
-        tb%ft%maxiter   = 10
-        tb%ft%nbands    = maxval(tb%pg%E)
-        tb%ft%nkpts     = bz%nkpts
-        tb%ft%nxs       = tb%nVs
-        tb%ft%skip_band = opts%skip_band
-        tb%ft%nrs       = bz%nkpts * tb%ft%nbands
+        ! defaults
         allocate(tb%ft%selector_shell, source=[1:size(tb%tens)]) ! all shells
-        allocate(tb%ft%selector_kpoint,source=[1:bz%nkpts])  ! all kpoints
-        allocate(tb%ft%selector_x,     source=[1:tb%ft%nxs]) ! all parameters
-        allocate(tb%ft%r(tb%ft%nrs)) ! residual vector
-        allocate(tb%ft%x(tb%ft%nxs)) ! x vector
-        tb%ft%r   = 0             ! residual vector
-        tb%ft%x   = 0             ! parameter vector
-        tb%ft%rms = 0             ! rms error
+        allocate(tb%ft%selector_kpoint,source=[1:bz%nkpts])      ! all kpoints
+        ! set number of bands to fit
+        tb%ft%nbands = maxval(tb%pg%E)
+        ! set parameter selector based on shells
+        allocate(tb%ft%selector_x(tb%nVs))
+        do i = 1, tb%nVs
+            if ( any(tb%ft%selector_shell.eq.tb%V_ind(1,i)) ) then
+                tb%ft%selector_x(i) = i
+            else
+                tb%ft%selector_x(i) = 0
+            endif
+        enddo
+        ! get number of fitting parameters
+        tb%ft%nxs = count(tb%ft%selector_x.ne.0)
+        ! set number of iterations
+        tb%ft%maxiter = 10
+        ! initialize parameter vector
+        allocate(tb%ft%x(tb%ft%nxs))
+        tb%ft%x     = 0             
+        ! get number of kpoints to fit
+        tb%ft%nkpts = size(tb%ft%selector_kpoint)
+        ! get size of residual vector
+        tb%ft%nrs   = tb%ft%nkpts * tb%ft%nbands
+        ! initialize residual vector
+        allocate(tb%ft%r(tb%ft%nrs))
+        tb%ft%r     = 0             
+        ! initialize rms error
+        tb%ft%rms   = 0              ! rms error
+        ! set number of bands to skip
+        tb%ft%skip_band = opts%skip_band
         !
+        ! print stuff
         if (debug) then
             write(*,'(a,a,a)') flare, 'irreducible matrix elements = '//tostring(tb%ft%nxs)
-            write(*,'(a,a,a)') flare, 'k-points = '                   //tostring(tb%ft%nkpts)
+            write(*,'(a,a,a)') flare, 'k-points = '                   //tostring(bz%nkpts)
+            write(*,'(a,a,a)') flare, 'selected k-points = '          //tostring(tb%ft%nkpts)
             write(*,'(a,a,a)') flare, 'bands = '                      //tostring(tb%ft%nbands)
-            write(*,'(a,a,a)') flare, 'number of bands to skip = '    //tostring(tb%ft%skip_band)
+            write(*,'(a,a,a)') flare, 'bands to skip = '              //tostring(tb%ft%skip_band)
             write(*,'(a,a,a)') flare, 'residual vector length = '     //tostring(tb%ft%nrs)
             write(*,'(a,a,a)') flare, 'max iterations = '             //tostring(tb%ft%maxiter)
         endif
@@ -774,7 +812,7 @@ contains
                 successful = 1
             case (1)
                 ! update x in tb model
-                call tb%set_matrix_element(V=x)
+                call tb%set_matrix_element(V=x,flags='selector,decompress')
                 ! recalculate function
                 FVEC = compute_residual(tb=tb, bz=bz, pp=pp, dr_dft=dr_dft)
                 ! save result
@@ -784,7 +822,7 @@ contains
                 i = i + 1
                 ! print results
                 if (i.eq.1) then
-                    write(*,'(5x,i8,f10.2,10x,SP,1000f10.2)')   i, tb%ft%rms, x
+                    write(*,'(5x,i8,f10.2, 10x ,SP,1000f10.2)') i, tb%ft%rms, x
                 else
                     write(*,'(5x,i8,f10.2,f10.2,SP,1000f10.2)') i, tb%ft%rms, log10(abs(norm(1.0D-14 + x-tb%ft%x ))), x
                 endif
@@ -792,7 +830,7 @@ contains
                 tb%ft%x = x
             case (2)
                 ! update x in tb model
-                call tb%set_matrix_element(V=x)
+                call tb%set_matrix_element(V=x,flags='selector,decompress')
                 ! compute jacobian matrix (uses central difference)
                 FJAC = compute_jacobian(tb=tb, bz=bz, pp=pp, dr_dft=dr_dft)
             end select
@@ -815,12 +853,6 @@ contains
         type(am_class_prim_pair)     , intent(in) :: pp
         type(am_class_dispersion_dft), intent(in) :: dr_dft
         real(dp), allocatable :: R(:)
-        integer , allocatable :: inds(:)
-        ! index vector
-        allocate(inds(tb%ft%nbands))
-        ! create residual vector
-        allocate(R(tb%ft%nrs))
-        R = 0
         ! get tb dispersion 
         call tb%get_dispersion(bz=bz, pp=pp)
         ! calculate residual vector indices
@@ -870,12 +902,12 @@ contains
             end if
             if (rci_request .eq. 1) then
                 ! update x in TB model
-                call tb%set_matrix_element(V=x)
+                call tb%set_matrix_element(V=x,flags='selector,decompress')
                 ! compute jacobian
                 f1 = compute_residual(tb=tb,bz=bz,pp=pp,dr_dft=dr_dft)
             else if (rci_request .eq. 2) then
                 ! update x in TB model
-                call tb%set_matrix_element(V=x)
+                call tb%set_matrix_element(V=x,flags='selector,decompress')
                 ! compute jacobian
                 f2 = compute_residual(tb=tb,bz=bz,pp=pp,dr_dft=dr_dft)
             else if (rci_request .eq. 0) then
@@ -890,7 +922,6 @@ contains
             call mkl_free_buffers
         end if
     end function   compute_jacobian
-
 
 end module am_tight_binding
 
