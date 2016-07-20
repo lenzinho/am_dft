@@ -36,12 +36,11 @@ module am_symmetry_tensor
         contains
         procedure :: get_flat_intrinsic_group
         procedure :: get_flat_point_group
-        procedure :: get_relations
     end type am_class_flat_group
 
 	contains
 
-    ! operates on tens
+    ! operates on tensors
 
     subroutine     symmetrize(tens,pg,opts,property,pc,ic,shell)
         !                                          |-----------| tight binding input
@@ -250,6 +249,8 @@ module am_symmetry_tensor
         end subroutine initialize_tensor
     end subroutine symmetrize
 
+    ! creates flattened representation
+
     subroutine     get_flat_intrinsic_group(flat_ig,tens,atom_m,atom_n)
         !
         implicit none
@@ -342,7 +343,7 @@ module am_symmetry_tensor
         ! get character table
         call flat_ig%get_character_table()
         ! get relations
-        flat_ig%relations = flat_ig%get_relations()
+        flat_ig%relations = get_relations(sym=flat_ig%sym, nbases=flat_ig%nbases, gen=flat_ig%mt%gen)
         !
     end subroutine get_flat_intrinsic_group
 
@@ -401,67 +402,13 @@ module am_symmetry_tensor
         ! get character table
         call flat_pg%get_character_table()
         ! get relations
-        flat_pg%relations = flat_pg%get_relations()
+        flat_pg%relations = get_relations(sym=flat_pg%sym, nbases=flat_pg%nbases, gen=flat_pg%mt%gen)
         ! check that identity is first
         if (.not.isequal(flat_pg%sym(:,:,1),eye(flat_pg%nbases))) then
             stop 'ERROR [get_flat_point_group]: identity is not first.'
         endif
         !
     end subroutine get_flat_point_group
-
-    function       get_relations(flat) result(relations)
-        ! 
-        implicit none
-        !
-        class(am_class_flat_group), intent(inout) :: flat
-        real(dp), allocatable :: relations(:,:)     !
-        integer , allocatable :: class_member(:,:)  ! 
-        real(dp), allocatable :: A(:,:)             ! A(2*flat%nbases,2*flat%nbases) - augmented matrix equation
-        real(dp), allocatable :: LHS(:,:)           ! LHS(flat%nbases,flat%nbases)   - left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
-        real(dp), allocatable :: RHS(:,:)           ! RHS(flat%nbases,flat%nbases)   - right hand side of augmented matrix equation
-        integer , allocatable :: indices(:)         ! used for clarity
-        integer :: i, j                             ! loop variables
-        !
-        !
-        ! get conjugacy class members
-        class_member = id_member(id=flat%cc%id)
-        ! intialize indices
-        allocate(indices,source=[1:flat%nbases])
-        ! initialize augmented workspace matrix A
-        allocate(A(3*flat%nbases,2*flat%nbases))
-        A = 0
-        ! use LU factorization to incorporate, one symmetry at a time, the effect of all symmetries on the flattened basis
-        ! enough to loop over class representatives, which are group generators
-        do j = 1, size(class_member,1) ! loop over classes
-            ! get index of class representative
-            i=class_member(j,1)
-            ! construct slice of A
-            A(2*flat%nbases+indices,0*flat%nbases+indices) = flat%sym(:,:,i)
-            A(2*flat%nbases+indices,1*flat%nbases+indices) = eye(flat%nbases)
-            ! incorporate symmetry via lu factorization (equivalent to applying rref)
-            call lu(A)
-        enddo
-        ! Apply Gram-Schmidt orthogonalization to obtain A in reduced row echelon form
-        A = rref(A)
-        ! correct basic rounding error
-        where (abs(nint(A)-A).lt.tiny) A = nint(A)
-        ! correct basic rounding errors
-        ! At this point, A = [ LHS | RHS ], in which LHS = E, identity matrix; A completely specifies all relationships between variables: LHS = RHS.
-        allocate(LHS(flat%nbases,flat%nbases))
-        allocate(RHS(flat%nbases,flat%nbases))
-        LHS = A(0*flat%nbases+indices,0*flat%nbases+indices)
-        RHS = A(0*flat%nbases+indices,1*flat%nbases+indices)
-        ! checks
-        if (.not.isequal(LHS,eye(flat%nbases))) then
-            stop 'Failed to reduce matrix to row echlon form.'
-        endif
-        if (count(get_null(RHS))+count(get_independent(RHS))+count(get_depenent(RHS)).ne.flat%nbases) then
-            stop 'Number of null, independent, and dependent terms do not sum to the number of terms.'
-        endif
-        !
-        allocate(relations, source=RHS)
-        !
-    end function   get_relations
 
     ! produces rotation which operates on a subsection of the Hamiltonian (useful for determining symmetry relations)
 

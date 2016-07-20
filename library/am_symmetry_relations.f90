@@ -11,6 +11,61 @@ module am_symmetry_relations
 
 	contains
 
+    function       get_relations(sym,nbases,gen) result(relations)
+        !  
+        implicit none
+        !
+        real(dp), intent(in) :: sym(:,:,:)          ! symmetries in the flattened basis
+        integer , intent(in) :: nbases              ! size of basis
+        integer , intent(in) :: gen(:)              ! indices of group generators
+        integer :: ngens                            ! number of group generators 
+        real(dp), allocatable :: relations(:,:)     !
+        real(dp), allocatable :: A(:,:)             ! A(2*nbases,2*nbases) - augmented matrix equation
+        real(dp), allocatable :: LHS(:,:)           ! LHS(nbases,nbases)   - left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
+        real(dp), allocatable :: RHS(:,:)           ! RHS(nbases,nbases)   - right hand side of augmented matrix equation
+        integer , allocatable :: indices(:)         ! used for clarity
+        integer :: i, j                             ! loop variables
+        !
+        ! get generators
+        ngens = size(gen,1)
+        ! intialize indices
+        allocate(indices,source=[1:nbases])
+        ! initialize augmented workspace matrix A
+        allocate(A(3*nbases,2*nbases))
+        A = 0
+        ! use LU factorization to incorporate, one symmetry at a time, the effect of all symmetries on the flattened basis
+        ! enough to loop over class representatives, which are group generators
+        do j = 1, ngens  ! loop over generators
+            ! get index of class representative
+            i = gen(j)
+            ! construct slice of A
+            A(2*nbases+indices,0*nbases+indices) = sym(:,:,i)
+            A(2*nbases+indices,1*nbases+indices) = eye(nbases)
+            ! incorporate symmetry via lu factorization (equivalent to applying rref)
+            call lu(A)
+        enddo
+        ! Apply Gram-Schmidt orthogonalization to obtain A in reduced row echelon form
+        A = rref(A)
+        ! correct basic rounding error
+        where (abs(nint(A)-A).lt.tiny) A = nint(A)
+        ! correct basic rounding errors
+        ! At this point, A = [ LHS | RHS ], in which LHS = E, identity matrix; A completely specifies all relationships between variables: LHS = RHS.
+        allocate(LHS(nbases,nbases))
+        allocate(RHS(nbases,nbases))
+        LHS = A(0*nbases+indices,0*nbases+indices)
+        RHS = A(0*nbases+indices,1*nbases+indices)
+        ! checks
+        if (.not.isequal(LHS,eye(nbases))) then
+            stop 'ERROR [get_relations]: failed to reduce matrix to row echlon form.'
+        endif
+        if (count(get_null(RHS))+count(get_independent(RHS))+count(get_depenent(RHS)).ne.nbases) then
+            stop 'ERROR [get_relations]: number of null, independent, and dependent terms do not sum to the number of terms.'
+        endif
+        !
+        allocate(relations, source=RHS)
+        !
+    end function   get_relations
+
     function       combine_relations(relationsA,relationsB,relationsC) result(relations)
         !
         ! combins up to three relations
@@ -21,9 +76,9 @@ module am_symmetry_relations
         real(dp), intent(in) :: relationsB(:,:)
         real(dp), intent(in), optional :: relationsC(:,:)
         real(dp), allocatable :: relations(:,:)     !
-        real(dp), allocatable :: A(:,:)             ! A(2*flat%nbases,2*flat%nbases) - augmented matrix equation
-        real(dp), allocatable :: LHS(:,:)           ! LHS(flat%nbases,flat%nbases)   - left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
-        real(dp), allocatable :: RHS(:,:)           ! RHS(flat%nbases,flat%nbases)   - right hand side of augmented matrix equation
+        real(dp), allocatable :: A(:,:)             ! A(2*nbases,2*nbases) - augmented matrix equation
+        real(dp), allocatable :: LHS(:,:)           ! LHS(nbases,nbases)   - left hand side of augmented matrix equation (should be identity after reducing to row echlon form)
+        real(dp), allocatable :: RHS(:,:)           ! RHS(nbases,nbases)   - right hand side of augmented matrix equation
         integer , allocatable :: indices(:)         ! used for clarity
         integer :: nbases
         !
