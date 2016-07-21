@@ -19,9 +19,7 @@ module am_vasp_io
     !
     contains
 
-    !
     ! vasp
-    !
 
     subroutine     read_ibzkpt(nkpts,kpt,w,ntets,vtet,tet,wtet,iopt_filename,iopt_verbosity) 
         !>
@@ -651,6 +649,87 @@ module am_vasp_io
         !
     end subroutine read_eigenval
 
+    subroutine     read_doscar(natoms,efermi,nedos,dos,E,iopt_filename,iopt_verbosity)
+        !
+        implicit none
+        !
+        integer :: nbands_without_spin
+        integer :: ispin !> vasp ispin flag
+        integer              , intent(out), optional :: natoms 
+        real(dp)             , intent(out), optional :: efermi
+        integer              , intent(out), optional :: nedos
+        real(dp), allocatable, intent(out), optional :: dos(:)
+        real(dp), allocatable, intent(out), optional :: E(:)
+        integer :: internal_nedos
+        integer :: fid
+        character(maximum_buffer_size) :: buffer
+        character(len=:), allocatable :: word(:)
+        integer :: i
+        ! standard optionals
+        character(*), intent(in), optional :: iopt_filename
+        integer, intent(in), optional :: iopt_verbosity
+        character(max_argument_length) :: fname
+        integer :: verbosity
+        !
+        if (present(iopt_filename)) then
+            fname = iopt_filename
+        else
+            fname = "DOSCAR"
+        endif
+        !
+        if (present(iopt_verbosity)) then
+            verbosity = iopt_verbosity
+        else
+            verbosity = 1
+        endif
+        !
+        if (verbosity.ge.1) call print_title('DOSCAR')
+        !
+        fid = 1
+        open(unit=fid,file=trim(fname),status="old",action='read')
+            !
+            if (verbosity.ge.1) call am_print('actual file read',trim(fname),flare)
+            ! (LINE 1)     2    2    1    1
+            read(unit=fid,fmt='(a)') buffer
+            word = strsplit(buffer,delimiter=' ')
+            !> vasp ispin flag
+            if (present(natoms)) read(word(1),*) natoms
+            ! (LINE 2) skip - 0.8434557E+01  0.2878740E-09  0.2878740E-09  0.2878740E-09  0.5000000E-15
+            read(fid,*)
+            ! (LINE 3) skip - 1.000000000000000E-004
+            read(fid,*)
+            ! (LINE 4) skip - CAR
+            read(fid,*)
+            ! (LINE 5) skip - unknown system
+            read(fid,*)
+            ! (LINE 6) 53.80543798    -11.57073848  301      9.53971757      1.00000000
+            read(unit=fid,fmt='(a)') buffer
+            word = strsplit(buffer,delimiter=' ')
+            ! save fermi energy
+            if (present(efermi)) then
+                read(word(4),*) efermi
+                if (verbosity.ge.1) then
+                    write(*,'(a,a,a)') flare, 'fermi energy = ', tostring(efermi)
+                endif
+            endif
+            ! number of dos enegies
+            read(word(3),*) internal_nedos
+            if (present(nedos)) nedos = internal_nedos
+            if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'energies = ', tostring(internal_nedos)
+            ! allocate space for dos
+            allocate(E(internal_nedos))
+            allocate(dos(internal_nedos))
+            ! (LINE 7) -11.571  0.0000E+00  0.0000E+00
+            do i = 1, internal_nedos
+                read(unit=fid,fmt='(a)') buffer
+                word = strsplit(buffer,delimiter=' ')
+                read(word(1),*) E(i)
+                read(word(1),*) dos(i)
+            enddo
+            !
+        close(fid)
+    end subroutine read_doscar
+
     subroutine     read_poscar(bas,natoms,nspecies,symb,tau_frac,atype,iopt_filename,iopt_verbosity)
         ! Reads poscar into variables performing basic checks on the way. Call it like this:
         !
@@ -913,9 +992,7 @@ module am_vasp_io
         close(fid)
     end subroutine write_poscar
 
-    !
     ! wannier90
-    !
 
     subroutine     read_amn(U,nbands,nkpts,nwanniers,iopt_filename,iopt_verbosity)
         !>

@@ -25,11 +25,12 @@ OBJS  = mkl_rci.o 						\
 		am_symmetry_rep.o 				\
 		am_brillouin_zone.o             \
 		am_dispersion.o                 \
-        am_tight_binding.o              \
+		am_dos.o                        \
+		am_dft.o 						\
+        am_tight_binding.o              
 
 		# am_tet_mesh.o                   \
 		# am_tetrahedra.o                 \
-		# am_dos.o                        \
 		# am_wannier.o                    \
 
 all: $(LIBS)

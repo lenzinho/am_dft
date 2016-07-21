@@ -50,8 +50,8 @@ module am_tight_binding
         integer , allocatable :: V_ind(:,:)            ! their indices: [ip_id, alpha, beta]
         type(am_class_tensor), allocatable :: tens(:)  ! tens(nshells) describes symmetry-adapted matrix elementes
         type(am_class_tightbinding_pointgroup) :: pg   ! point group in tight binding representation
-        type(am_class_tightbinding_dispersion) :: dr   ! band dispersion computed using the tightbinding model
-        type(am_class_tightbinding_fitter)     :: ft   ! fitter
+        type(am_class_tightbinding_dispersion) :: dr   ! band dispersion computed using the tight binding model
+        type(am_class_tightbinding_fitter)     :: ft   ! fitter for optimizing tight binding matrix elements
         contains
         procedure :: initialize_tb
         procedure :: get_hamiltonian
@@ -72,11 +72,11 @@ contains
         implicit none
         !
         class(am_class_tightbinding), intent(out) :: tb   ! tight binding parameters
-        type(am_class_point_group)   , intent(in)  :: pg   ! seitz point group
-        type(am_class_prim_cell)     , intent(in)  :: pc   ! primitive cell
-        type(am_class_irre_cell)     , intent(in)  :: ic   ! irreducible cell
-        type(am_class_irre_pair)     , intent(in)  :: ip   ! irreducible pairs
-        type(am_class_options)       , intent(in)  :: opts
+        type(am_class_point_group)  , intent(in)  :: pg   ! seitz point group
+        type(am_class_prim_cell)    , intent(in)  :: pc   ! primitive cell
+        type(am_class_irre_cell)    , intent(in)  :: ic   ! irreducible cell
+        type(am_class_irre_pair)    , intent(in)  :: ip   ! irreducible pairs
+        type(am_class_options)      , intent(in)  :: opts
         logical, allocatable :: is_independent(:)
         integer :: sub(2)
         integer :: i,j,k
@@ -90,7 +90,7 @@ contains
         ! get symmeterized tight binding matrix elements
         allocate(tb%tens(tb%nshells))
         do k = 1, tb%nshells
-            call tb%tens(k)%symmetrize(pg=pg,pc=pc,ic=ic,shell=ip%shell(k),opts=opts,property='irreducible tight binding shell '//tostring(k))
+            call tb%tens(k)%symmetrize(pg=pg, pc=pc, ic=ic, shell=ip%shell(k), opts=opts, property='irreducible tight binding shell '//tostring(k))
         enddo
         ! get number of independent (irreducible) matrix elements
         tb%nVs = 0
@@ -130,9 +130,9 @@ contains
             call disp(x=tb%V_ind(3,:),title='beta',style='underline',advance='yes')
         else
             ! print title
-            write(*,'(a,a)') flare, 'infile.tb_matrix_elements_irreducible not found. Using template instead.'
+            write(*,'(a,a)') flare, 'infile.tb_matrix_elements_irreducible not found -- starting from zeros instead...'
             !
-            call tb%set_matrix_element(flags='seq')
+            call tb%set_matrix_element(flags='zero')
             !
             call tb%write_irreducible_matrix_element()
         endif
@@ -145,7 +145,7 @@ contains
             type(am_class_point_group), intent(in)  :: pg   ! seitz point group (rev stab rot groups as well)
             type(am_class_prim_cell)  , intent(in)  :: pc   ! primitive cell
             type(am_class_irre_cell)  , intent(in)  :: ic   ! irreducible cell
-            type(am_class_tightbinding_pointgroup)   :: tb_pg ! point symmetries in tight binding basis
+            type(am_class_tightbinding_pointgroup)  :: tb_pg ! point symmetries in tight binding basis
             integer  :: i
             !
             ! get number of bases functions in representation (see below) ...
@@ -683,14 +683,80 @@ contains
         type(am_class_dispersion_dft), intent(in) :: dr_dft
         type(am_class_prim_pair)     , intent(in) :: pp
         type(am_class_options)       , intent(in) :: opts
+        type(am_class_options) :: notalk
+        character(:), allocatable :: flags
+        real(dp) :: best_rms
+        real(dp), allocatable :: best_V(:)
+        integer, allocatable :: selector_kpoint(:)
+        integer :: i,j
         !
         if (opts%verbosity.ge.1) call print_title('Optimized matrix elements')
+        ! eventually get rid of this flag.
+        allocate(flags, source='zero')
+        ! supress output
+        notalk = opts
+        notalk%verbosity = 0
         !
-        ! [1:size(tb%tens)] ! all shells
-        ! [1:bz%nkpts]      ! all kpoints
-        call tb%initialize_ft(selector_shell=[1:size(tb%tens)],selector_kpoint=[1:bz%nkpts],opts=opts)
-        !
-        call perform_optimization(tb=tb, bz=bz, dr_dft=dr_dft, pp=pp)
+        if      (index(flags,'input').ne.0) then
+            ! optimize matrix elements starting from input matrix elements
+            ! [1:size(tb%tens)] ! all shells
+            ! [1:bz%nkpts]      ! all kpoints
+            call tb%initialize_ft(selector_shell=[1:tb%nshells],selector_kpoint=[1:bz%nkpts],opts=opts)
+            ! 
+            call perform_optimization(tb=tb, bz=bz, dr_dft=dr_dft, pp=pp, opts=opts)
+            !
+        elseif  (index(flags, 'zero').ne.0) then
+            !
+            if (opts%verbosity.ge.1) then
+                ! make sure there are enough kpoints
+                if (bz%nkpts.lt.tb%nVs) stop 'ERROR [optimize_matrix_element]: not enough kpoints'
+                ! set kpoint selector
+                allocate(selector_kpoint(tb%nVs))
+                selector_kpoint(1:tb%nVs) = floor(linspace(1, bz%nkpts, tb%nVs ))
+                ! write kpoints selected
+                write(*,'(a,a)') flare, 'kpoints selected for course optimization ='
+                call disp_indent()
+                call disp(selector_kpoint,orient='row')
+            endif
+            ! optimize matrix elements starting from zeros
+            ! intialize rsm at a large number
+            best_rms = 1.0D15
+            ! intialize best matrix elements
+            allocate(best_V(tb%nVs))
+            best_V = 0
+            ! loop to find best (semi-stochastic + NNLS)
+            do i = 1, 50
+                ! 1) fit same-shell matrix elements at gamma point
+                call tb%initialize_ft(selector_shell=[1:tb%nshells],selector_kpoint=selector_kpoint,opts=notalk)
+                !
+                call perform_optimization(tb=tb, bz=bz, dr_dft=dr_dft, pp=pp, opts=notalk)
+                !
+                if (tb%ft%rms.lt.best_rms) then
+                    best_rms = tb%ft%rms
+                    best_V   = tb%V
+                else
+                    do j = 1, tb%nVs
+                    if ( any(tb%ft%selector_x.eq.j) ) then
+                        tb%V(j) = tb%V(j) + 5.0_dp*(rand() - 0.50_dp)*best_rms
+                    endif
+                    enddo
+                endif
+                ! 
+                if (i.eq.1) write(*,'(5x,a10,a10,a10)') 'iteration', 'best rms', 'pres. rms'
+                write(*,'(5x,i10,f10.2,f10.2)') i, best_rms, tb%ft%rms
+            enddo
+            ! initialize final optimization using best matrix elements found thus far
+            tb%V = best_V
+            ! initialize final optimization using all kpoints
+            call tb%initialize_ft(selector_shell=[1:tb%nshells],selector_kpoint=[1:bz%nkpts],opts=opts)
+            ! perform final optimization
+            call perform_optimization(tb=tb, bz=bz, dr_dft=dr_dft, pp=pp, opts=opts)
+            ! output results
+            write(*,'(a,a)') flare, 'final rms = '//tostring(tb%ft%rms)
+            write(*,'(a,a)') flare, 'final matrix elements = '
+            call disp_indent()
+            call disp(tb%V,orient='row')
+        endif
         !
     end subroutine optimize_matrix_element
 
@@ -704,11 +770,15 @@ contains
         type(am_class_options)      , intent(in) :: opts
         integer :: i
         ! defaults
+        if (allocated(tb%ft%selector_shell)) deallocate(tb%ft%selector_shell)
         allocate(tb%ft%selector_shell, source=selector_shell)
+        ! defaults
+        if (allocated(tb%ft%selector_kpoint)) deallocate(tb%ft%selector_kpoint)
         allocate(tb%ft%selector_kpoint,source=selector_kpoint)
         ! set number of bands to fit
         tb%ft%nbands = maxval(tb%pg%E)
         ! set parameter selector based on irreducible shells
+        if (allocated(tb%ft%selector_x)) deallocate(tb%ft%selector_x)
         allocate(tb%ft%selector_x(tb%nVs))
         do i = 1, tb%nVs
             if ( any(tb%ft%selector_shell.eq.tb%V_ind(1,i)) ) then
@@ -723,6 +793,7 @@ contains
         ! set number of iterations
         tb%ft%maxiter = 10
         ! initialize parameter vector
+        if (allocated(tb%ft%x)) deallocate(tb%ft%x)
         allocate(tb%ft%x(tb%ft%nxs))
         tb%ft%x     = 0             
         ! get number of kpoints to fit
@@ -730,6 +801,7 @@ contains
         ! get size of residual vector
         tb%ft%nrs   = tb%ft%nkpts * tb%ft%nbands
         ! initialize residual vector
+        if (allocated(tb%ft%r)) deallocate(tb%ft%r)
         allocate(tb%ft%r(tb%ft%nrs))
         tb%ft%r     = 0             
         ! initialize rms error
@@ -737,7 +809,7 @@ contains
         ! set number of bands to skip
         tb%ft%skip_band = opts%skip_band
         ! print stuff
-        if (debug) then
+        if (opts%verbosity.ge.1) then
             write(*,'(a,a,a)') flare, 'irreducible matrix elements = '//tostring(tb%ft%nxs)
             write(*,'(a,a,a)') flare, 'selected k-points = '          //tostring(tb%ft%nkpts)
             write(*,'(a,a,a)') flare, 'bands = '                      //tostring(tb%ft%nbands)
@@ -747,7 +819,7 @@ contains
         endif
     end subroutine initialize_ft
 
-    subroutine     perform_optimization(tb,bz,pp,dr_dft)
+    subroutine     perform_optimization(tb,bz,pp,dr_dft,opts)
         !
         use mkl_rci
         use mkl_rci_type
@@ -758,6 +830,7 @@ contains
         type(am_class_bz)            , intent(in) :: bz
         type(am_class_dispersion_dft), intent(in) :: dr_dft
         type(am_class_prim_pair)     , intent(in) :: pp
+        type(am_class_options)       , intent(in) :: opts
         real(dp), allocatable :: x(:)
         real(dp), allocatable :: FVEC(:)
         real(dp), allocatable :: FJAC(:,:)
@@ -798,8 +871,8 @@ contains
         successful = 0
         i = 0
         ! write header
-        write(*,'(5x,a8,a10,a10,a)') 'iter', 'rms ', 'log(d rms)',centertitle('parameters',tb%ft%nxs*10)
-        write(*,'(5x,a8,a10,a10,a)') ' '//repeat('-',8-1), ' '//repeat('-',10-1), ' '//repeat('-',10-1), ' '//repeat('-',tb%ft%nxs*10-1)
+        if (opts%verbosity.ge.1) write(*,'(5x,a8,a10,a10,a)') 'iter', 'rms ', 'log(d rms)',centertitle('parameters',tb%ft%nxs*10)
+        if (opts%verbosity.ge.1) write(*,'(5x,a8,a10,a10,a)') ' '//repeat('-',8-1), ' '//repeat('-',10-1), ' '//repeat('-',10-1), ' '//repeat('-',tb%ft%nxs*10-1)
         ! enter optimization loop
         do while (successful == 0)
             ! solve nonlinear least squares problem using the TR algorithm
@@ -821,10 +894,12 @@ contains
                 ! increase counter
                 i = i + 1
                 ! print results
-                if (i.eq.1) then
-                    write(*,'(5x,i8,f10.2, 10x ,SP,1000f10.2)') i, tb%ft%rms, x
-                else
-                    write(*,'(5x,i8,f10.2,f10.2,SP,1000f10.2)') i, tb%ft%rms, log10(abs(norm(1.0D-14 + x-tb%ft%x ))), x
+                if (opts%verbosity.ge.1) then
+                    if (i.eq.1) then
+                        write(*,'(5x,i8,f10.2, 10x ,SP,1000f10.2)') i, tb%ft%rms, x
+                    else
+                        write(*,'(5x,i8,f10.2,f10.2,SP,1000f10.2)') i, tb%ft%rms, log10(abs(norm(1.0D-14 + x-tb%ft%x ))), x
+                    endif
                 endif
                 ! save results
                 tb%ft%x = x
