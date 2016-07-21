@@ -56,6 +56,7 @@ module am_tight_binding
         procedure :: initialize_tb
         procedure :: get_hamiltonian
         procedure :: get_dispersion
+        procedure :: initialize_ft
         procedure :: optimize_matrix_element
         procedure :: read_irreducible_matrix_element
         procedure :: write_irreducible_matrix_element
@@ -189,8 +190,8 @@ contains
             call dump(A=tb_pg%sym,fname=trim(outfile_dir_tb)//'/outfile.tb_pg.sym')
             ! dump debug files
             if (debug) then
-            call execute_command_line('mkdir -p '//trim(debug_dir)//'/tb_pg')
-            call tb_pg%debug_dump(fname=            trim(debug_dir)//'/tb_pg'//'/outfile.tb_pg')
+                call execute_command_line('mkdir -p '//trim(debug_dir)//'/tb_pg')
+                call tb_pg%debug_dump(fname=           trim(debug_dir)//'/tb_pg'//'/outfile.tb_pg')
             endif
             !
         end function get_tightbinding_pointgroup
@@ -465,41 +466,28 @@ contains
         !
         ! set irreducible matrix elements
         if      (index(flags,   'seq').ne.0) then
-            do i = 1, tb%nVs
-                tb%V(i) = i
-            enddo
+            tb%V = [1:tb%nVs]
         elseif  (index(flags,  'rand').ne.0) then
-            stop 'rand does not seem to be working here'
+            stop 'ERROR [set_matrix_element]: rand does not seem to be working here'
             do i = 1, tb%nVs
                 tb%V(i) = rand()
             enddo
         elseif  (index(flags,  'zero').ne.0) then
-            do i = 1, tb%nVs
-                tb%V(i) = 0
-            enddo
+            tb%V = 0
         elseif  (present(V)                ) then
-            if (size(V).ne.tb%nVs) stop 'ERROR: V /= nVs dimension mismatch'
+            if (size(V).ne.tb%nVs) stop 'ERROR [set_matrix_element]: V /= nVs dimension mismatch'
             if (index(flags,'selector').ne.0) then
-                ! copy matrix elements beloning to select shells only
-                do i = 1, tb%nVs
-                    if ( any(tb%ft%selector_shell.eq.tb%V_ind(1,i)) ) then
-                        tb%V(i) = V(i)
-                    else
-                        tb%V(i) = 0
-                    endif
-                enddo
-
-
-                ! STILL NEED TO CODE DECOMPRESS, which will be used to take a masked array X (based on selector shells) and expand it as though no shells were masked
-
+                if (.not.allocated(tb%ft%selector_x)) stop 'ERROR [set_matrix_element]: selector must be allocated'
+                ! initialize as zero
+                tb%V = 0
+                ! copy matrix elements belonging to select shells only
+                tb%V( tb%ft%selector_x ) = V
             else
                 ! copy all matrix elements
-                do i = 1, tb%nVs
-                    tb%V(i) = V(i)
-                enddo
+                tb%V = V
             endif
         else
-            stop 'Unknown flag set_matrix_element_dummies'
+            stop 'ERROR [set_matrix_element]: unknown flag set_matrix_element_dummies'
         endif
         !
         ! clear irreducible matrix elements in each shell
@@ -695,16 +683,32 @@ contains
         type(am_class_dispersion_dft), intent(in) :: dr_dft
         type(am_class_prim_pair)     , intent(in) :: pp
         type(am_class_options)       , intent(in) :: opts
-        integer :: i
         !
         if (opts%verbosity.ge.1) call print_title('Optimized matrix elements')
         !
+        ! [1:size(tb%tens)] ! all shells
+        ! [1:bz%nkpts]      ! all kpoints
+        call tb%initialize_ft(selector_shell=[1:size(tb%tens)],selector_kpoint=[1:bz%nkpts],opts=opts)
+        !
+        call perform_optimization(tb=tb, bz=bz, dr_dft=dr_dft, pp=pp)
+        !
+    end subroutine optimize_matrix_element
+
+    subroutine     initialize_ft(tb,selector_shell,selector_kpoint,opts)
+        !
+        implicit none
+        !
+        class(am_class_tightbinding), intent(inout) :: tb
+        integer                     , intent(in) :: selector_shell(:)
+        integer                     , intent(in) :: selector_kpoint(:)
+        type(am_class_options)      , intent(in) :: opts
+        integer :: i
         ! defaults
-        allocate(tb%ft%selector_shell, source=[1:size(tb%tens)]) ! all shells
-        allocate(tb%ft%selector_kpoint,source=[1:bz%nkpts])      ! all kpoints
+        allocate(tb%ft%selector_shell, source=selector_shell)
+        allocate(tb%ft%selector_kpoint,source=selector_kpoint)
         ! set number of bands to fit
         tb%ft%nbands = maxval(tb%pg%E)
-        ! set parameter selector based on shells
+        ! set parameter selector based on irreducible shells
         allocate(tb%ft%selector_x(tb%nVs))
         do i = 1, tb%nVs
             if ( any(tb%ft%selector_shell.eq.tb%V_ind(1,i)) ) then
@@ -713,6 +717,7 @@ contains
                 tb%ft%selector_x(i) = 0
             endif
         enddo
+        tb%ft%selector_x = trim_null(tb%ft%selector_x)
         ! get number of fitting parameters
         tb%ft%nxs = count(tb%ft%selector_x.ne.0)
         ! set number of iterations
@@ -731,21 +736,16 @@ contains
         tb%ft%rms   = 0              ! rms error
         ! set number of bands to skip
         tb%ft%skip_band = opts%skip_band
-        !
         ! print stuff
         if (debug) then
             write(*,'(a,a,a)') flare, 'irreducible matrix elements = '//tostring(tb%ft%nxs)
-            write(*,'(a,a,a)') flare, 'k-points = '                   //tostring(bz%nkpts)
             write(*,'(a,a,a)') flare, 'selected k-points = '          //tostring(tb%ft%nkpts)
             write(*,'(a,a,a)') flare, 'bands = '                      //tostring(tb%ft%nbands)
             write(*,'(a,a,a)') flare, 'bands to skip = '              //tostring(tb%ft%skip_band)
             write(*,'(a,a,a)') flare, 'residual vector length = '     //tostring(tb%ft%nrs)
             write(*,'(a,a,a)') flare, 'max iterations = '             //tostring(tb%ft%maxiter)
         endif
-        !
-        call perform_optimization(tb=tb, bz=bz, dr_dft=dr_dft, pp=pp)
-        !
-    end subroutine optimize_matrix_element
+    end subroutine initialize_ft
 
     subroutine     perform_optimization(tb,bz,pp,dr_dft)
         !
