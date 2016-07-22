@@ -3,7 +3,6 @@ include makefile.inc
 LIBS  = libam.a
 
 OBJS  = mkl_rci.o 						\
-		text_viz.o 						\
 		dispmodule.o 					\
 		am_constants.o              	\
 		am_mkl.o                    	\
@@ -22,7 +21,7 @@ OBJS  = mkl_rci.o 						\
 		am_irre_cell.o              	\
 		am_shells.o                 	\
 		am_symmetry_relations.o 		\
-		am_symmetry_rep.o 				\
+		am_symmetry_tensor.o 			\
 		am_brillouin_zone.o             \
 		am_dispersion.o                 \
 		am_dos.o                        \

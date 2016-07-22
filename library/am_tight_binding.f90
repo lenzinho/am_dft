@@ -13,6 +13,7 @@ module am_tight_binding
     use am_symmetry_relations
     use am_dispersion
     use am_brillouin_zone
+    use am_dft
 
     implicit none
 
@@ -674,13 +675,13 @@ contains
 
     ! optimizer
 
-    subroutine     optimize_matrix_element(tb,bz,dr_dft,pp,opts)
+    subroutine     optimize_matrix_element(tb,bz,dft,pp,opts)
         !
         implicit none
         !   
         class(am_class_tightbinding) , intent(inout) :: tb
         type(am_class_bz)            , intent(in) :: bz
-        type(am_class_dispersion_dft), intent(in) :: dr_dft
+        type(am_class_dft)           , intent(in) :: dft
         type(am_class_prim_pair)     , intent(in) :: pp
         type(am_class_options)       , intent(in) :: opts
         type(am_class_options) :: notalk
@@ -703,7 +704,7 @@ contains
             ! [1:bz%nkpts]      ! all kpoints
             call tb%initialize_ft(selector_shell=[1:tb%nshells],selector_kpoint=[1:bz%nkpts],opts=opts)
             ! 
-            call perform_optimization(tb=tb, bz=bz, dr_dft=dr_dft, pp=pp, opts=opts)
+            call perform_optimization(tb=tb, bz=bz, dft=dft, pp=pp, opts=opts)
             !
         elseif  (index(flags, 'zero').ne.0) then
             !
@@ -729,7 +730,7 @@ contains
                 ! 1) fit same-shell matrix elements at gamma point
                 call tb%initialize_ft(selector_shell=[1:tb%nshells],selector_kpoint=selector_kpoint,opts=notalk)
                 !
-                call perform_optimization(tb=tb, bz=bz, dr_dft=dr_dft, pp=pp, opts=notalk)
+                call perform_optimization(tb=tb, bz=bz, dft=dft, pp=pp, opts=notalk)
                 !
                 if (tb%ft%rms.lt.best_rms) then
                     best_rms = tb%ft%rms
@@ -750,7 +751,7 @@ contains
             ! initialize final optimization using all kpoints
             call tb%initialize_ft(selector_shell=[1:tb%nshells],selector_kpoint=[1:bz%nkpts],opts=opts)
             ! perform final optimization
-            call perform_optimization(tb=tb, bz=bz, dr_dft=dr_dft, pp=pp, opts=opts)
+            call perform_optimization(tb=tb, bz=bz, dft=dft, pp=pp, opts=opts)
             ! output results
             write(*,'(a,a)') flare, 'final rms = '//tostring(tb%ft%rms)
             write(*,'(a,a)') flare, 'final matrix elements = '
@@ -819,7 +820,7 @@ contains
         endif
     end subroutine initialize_ft
 
-    subroutine     perform_optimization(tb,bz,pp,dr_dft,opts)
+    subroutine     perform_optimization(tb,bz,pp,dft,opts)
         !
         use mkl_rci
         use mkl_rci_type
@@ -828,7 +829,7 @@ contains
         !
         type(am_class_tightbinding)  , intent(inout) :: tb
         type(am_class_bz)            , intent(in) :: bz
-        type(am_class_dispersion_dft), intent(in) :: dr_dft
+        type(am_class_dft)           , intent(in) :: dft
         type(am_class_prim_pair)     , intent(in) :: pp
         type(am_class_options)       , intent(in) :: opts
         real(dp), allocatable :: x(:)
@@ -887,7 +888,7 @@ contains
                 ! update x in tb model
                 call tb%set_matrix_element(V=x,flags='selector,decompress')
                 ! recalculate function
-                FVEC = compute_residual(tb=tb, bz=bz, pp=pp, dr_dft=dr_dft)
+                FVEC = compute_residual(tb=tb, bz=bz, pp=pp, dft=dft)
                 ! save result
                 tb%ft%r   = FVEC 
                 tb%ft%rms = sqrt(sum(FVEC**2)/tb%ft%nrs)
@@ -907,7 +908,7 @@ contains
                 ! update x in tb model
                 call tb%set_matrix_element(V=x,flags='selector,decompress')
                 ! compute jacobian matrix (uses central difference)
-                FJAC = compute_jacobian(tb=tb, bz=bz, pp=pp, dr_dft=dr_dft)
+                FJAC = compute_jacobian(tb=tb, bz=bz, pp=pp, dft=dft)
             end select
         end do
         ! clean up
@@ -919,32 +920,32 @@ contains
         endif
     end subroutine perform_optimization
 
-    function       compute_residual(tb,bz,dr_dft,pp) result(R)
+    function       compute_residual(tb,bz,dft,pp) result(R)
         !
         implicit none
         !
-        type(am_class_tightbinding)  , intent(inout) :: tb
-        type(am_class_bz)            , intent(in) :: bz
-        type(am_class_prim_pair)     , intent(in) :: pp
-        type(am_class_dispersion_dft), intent(in) :: dr_dft
+        type(am_class_tightbinding), intent(inout) :: tb
+        type(am_class_bz)          , intent(in) :: bz
+        type(am_class_prim_pair)   , intent(in) :: pp
+        type(am_class_dft)         , intent(in) :: dft
         real(dp), allocatable :: R(:)
         ! get tb dispersion 
         call tb%get_dispersion(bz=bz, pp=pp)
         ! calculate residual vector indices
-        R = pack(dr_dft%E([1:tb%ft%nbands]+tb%ft%skip_band, tb%ft%selector_kpoint) - tb%dr%E(:,tb%ft%selector_kpoint) , .true.)
+        R = pack(dft%dr%E([1:tb%ft%nbands]+tb%ft%skip_band, tb%ft%selector_kpoint) - tb%dr%E(:,tb%ft%selector_kpoint) , .true.)
         !
     end function   compute_residual
 
-    function       compute_jacobian(tb,bz,pp,dr_dft) result(FJAC)
+    function       compute_jacobian(tb,bz,pp,dft) result(FJAC)
         !
         use mkl_rci
         !
         implicit none 
         !
-        type(am_class_tightbinding)  , intent(inout) :: tb
-        type(am_class_bz)            , intent(in) :: bz
-        type(am_class_prim_pair)     , intent(in) :: pp
-        type(am_class_dispersion_dft), intent(in) :: dr_dft
+        type(am_class_tightbinding), intent(inout) :: tb
+        type(am_class_bz)          , intent(in) :: bz
+        type(am_class_prim_pair)   , intent(in) :: pp
+        type(am_class_dft)         , intent(in) :: dft
         real(dp), allocatable :: FJAC(:,:) ! fjac(m,n) jacobian matrix
         real(dp), allocatable :: f1(:)     ! f1(m)     residual vector
         real(dp), allocatable :: f2(:)     ! f1(m)     residual vector
@@ -979,12 +980,12 @@ contains
                 ! update x in TB model
                 call tb%set_matrix_element(V=x,flags='selector,decompress')
                 ! compute jacobian
-                f1 = compute_residual(tb=tb,bz=bz,pp=pp,dr_dft=dr_dft)
+                f1 = compute_residual(tb=tb,bz=bz,pp=pp,dft=dft)
             else if (rci_request .eq. 2) then
                 ! update x in TB model
                 call tb%set_matrix_element(V=x,flags='selector,decompress')
                 ! compute jacobian
-                f2 = compute_residual(tb=tb,bz=bz,pp=pp,dr_dft=dr_dft)
+                f2 = compute_residual(tb=tb,bz=bz,pp=pp,dft=dft)
             else if (rci_request .eq. 0) then
                 successful = 1 
             end if

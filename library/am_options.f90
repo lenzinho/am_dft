@@ -1,6 +1,7 @@
 module am_options
     !
     use am_constants 
+    use am_matlab
     !
     type am_class_options
         integer  :: verbosity
@@ -12,6 +13,7 @@ module am_options
         character(max_argument_length) :: procar
         character(max_argument_length) :: prjcar
         character(max_argument_length) :: eigenval
+        character(max_argument_length) :: doscar
         character(max_argument_length) :: poscar
         character(max_argument_length) :: wan_amn
         character(max_argument_length) :: wan_mmn
@@ -45,6 +47,7 @@ module am_options
         opts%ibzkpt   = 'IBZKPT'
         opts%procar   = 'PROCAR'
         opts%prjcar   = 'PRJCAR'
+        opts%doscar   = 'DOSCAR'
         opts%eigenval = 'EIGENVAL'
         opts%poscar   = 'POSCAR'
         opts%wan_amn  = 'wannier90.amn'
@@ -96,23 +99,27 @@ module am_options
                 case('-ibzkpt')
                     i=i+1
                     call get_command_argument(i,opts%ibzkpt)
-                    opts%ibzkpt = trim(opts%ibzkpt)
+                    opts%ibzkpt = trim_null(opts%ibzkpt)
                 case('-procar')
                     i=i+1
                     call get_command_argument(i,opts%procar)
-                    opts%procar = trim(opts%procar)
+                    opts%procar = trim_null(opts%procar)
+                case('-doscar')
+                    i=i+1
+                    call get_command_argument(i,opts%doscar)
+                    opts%doscar = trim_null(opts%doscar)
                 case('-prjcar')
                     i=i+1
                     call get_command_argument(i,opts%prjcar)
-                    opts%prjcar = trim(opts%prjcar)
+                    opts%prjcar = trim_null(opts%prjcar)
                 case('-eigenval')
                     i=i+1
                     call get_command_argument(i,opts%eigenval)
-                    opts%eigenval = trim(opts%eigenval)
+                    opts%eigenval = trim_null(opts%eigenval)
                 case('-poscar')
                     i=i+1
                     call get_command_argument(i,opts%poscar)
-                    opts%poscar = trim(opts%poscar)
+                    opts%poscar = trim_null(opts%poscar)
                 ! ************************************************
                 ! prog_tb : TIGHT BINDING
                 case('-pair_cutoff')

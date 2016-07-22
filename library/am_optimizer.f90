@@ -34,14 +34,14 @@ module am_optimizer
 
 contains
 
-    subroutine     optimize_matrix_elements(tb,tb_pg,bz,dr_dft,pp,opts)
+    subroutine     optimize_matrix_elements(tb,tb_pg,bz,dft_dr,pp,opts)
         !
         implicit none
         !   
         class(am_class_tightbinding) , intent(inout) :: tb
         type(am_class_tightbinding_pointgroup), intent(in) :: tb_pg
         type(am_class_bz)             , intent(in) :: bz
-        type(am_class_dispersion_dft) , intent(in) :: dr_dft
+        type(am_class_dispersion_dft) , intent(in) :: dft_dr
         type(am_class_prim_pair)      , intent(in) :: pp
         type(am_class_options)        , intent(in) :: opts
         type(am_class_tightbinding_fitter) :: ft
@@ -72,11 +72,11 @@ contains
             write(*,'(a,a,a)') flare, 'max iterations = '             //tostring(ft%maxiter)
         endif
         !
-        call perform_optimization(ft=ft, tb=tb, tb_pg=tb_pg, bz=bz, dr_dft=dr_dft, pp=pp)
+        call perform_optimization(ft=ft, tb=tb, tb_pg=tb_pg, bz=bz, dft_dr=dft_dr, pp=pp)
         !
     end subroutine optimize_matrix_elements
 
-    subroutine     perform_optimization(ft,tb,tb_pg,bz,dr_dft,pp)
+    subroutine     perform_optimization(ft,tb,tb_pg,bz,dft_dr,pp)
         !
         use mkl_rci
         use mkl_rci_type
@@ -87,7 +87,7 @@ contains
         type(am_class_tightbinding)  , intent(inout) :: tb
         type(am_class_tightbinding_pointgroup)       , intent(in) :: tb_pg
         type(am_class_bz)             , intent(in) :: bz
-        type(am_class_dispersion_dft) , intent(in) :: dr_dft
+        type(am_class_dispersion_dft) , intent(in) :: dft_dr
         type(am_class_prim_pair)      , intent(in) :: pp
         real(dp), allocatable :: x(:)
         real(dp), allocatable :: FVEC(:)
@@ -145,7 +145,7 @@ contains
                 ! update x in tb model
                 call tb%set_matrix_element(V=x)
                 ! recalculate function
-                FVEC = compute_residual(ft=ft, tb=tb, tb_pg=tb_pg, bz=bz, dr_dft=dr_dft, pp=pp)
+                FVEC = compute_residual(ft=ft, tb=tb, tb_pg=tb_pg, bz=bz, dft_dr=dft_dr, pp=pp)
                 ! save result
                 ft%r   = FVEC 
                 ft%rms = sqrt(sum(FVEC**2)/ft%nrs)
@@ -163,7 +163,7 @@ contains
                 ! update x in tb model
                 call tb%set_matrix_element(V=x)
                 ! compute jacobian matrix (uses central difference)
-                FJAC = compute_jacobian(ft=ft, tb=tb, tb_pg=tb_pg, bz=bz, dr_dft=dr_dft,  pp=pp)
+                FJAC = compute_jacobian(ft=ft, tb=tb, tb_pg=tb_pg, bz=bz, dft_dr=dft_dr,  pp=pp)
             end select
         end do
         ! clean up
@@ -175,7 +175,7 @@ contains
         endif
     end subroutine perform_optimization
 
-    function       compute_residual(ft,tb,tb_pg,bz,dr_dft,pp) result(R)
+    function       compute_residual(ft,tb,tb_pg,bz,dft_dr,pp) result(R)
         !
         implicit none
         !
@@ -183,10 +183,10 @@ contains
         type(am_class_tightbinding)  , intent(in) :: tb
         type(am_class_tightbinding_pointgroup)       , intent(in) :: tb_pg
         type(am_class_bz)             , intent(in) :: bz
-        type(am_class_dispersion_dft) , intent(in) :: dr_dft 
+        type(am_class_dispersion_dft) , intent(in) :: dft_dr 
         type(am_class_prim_pair)      , intent(in) :: pp
         real(dp), allocatable        :: R(:)
-        type(am_class_tightbinding_dispersion) :: dr_tb 
+        type(am_class_tightbinding_dispersion) :: tb_dr 
         integer, allocatable :: inds(:)
         integer :: i
         ! index vector
@@ -195,18 +195,18 @@ contains
         allocate(R(ft%nrs))
         R = 0
         ! get tb dispersion 
-        call dr_tb%get_dispersion(tb=tb,tb_pg=tb_pg,bz=bz,pp=pp)
+        call tb_dr%get_dispersion(tb=tb,tb_pg=tb_pg,bz=bz,pp=pp)
         ! loop over kpoints
         do i = 1, bz%nkpts
             ! get indices
             inds = [1:ft%nbands] + (i-1)*ft%nbands
             ! calculate residual vector indices
-            R(inds) = dr_dft%E([1:ft%nbands]+ft%skip_band, i ) - dr_tb%E(:,i)
+            R(inds) = dft_dr%E([1:ft%nbands]+ft%skip_band, i ) - tb_dr%E(:,i)
         enddo
         !
     end function   compute_residual
 
-    function       compute_jacobian(ft,tb,tb_pg,bz,dr_dft,pp) result(FJAC)
+    function       compute_jacobian(ft,tb,tb_pg,bz,dft_dr,pp) result(FJAC)
         !
         use mkl_rci
         !
@@ -216,7 +216,7 @@ contains
         type(am_class_tightbinding)  , intent(inout) :: tb
         type(am_class_tightbinding_pointgroup)       , intent(in) :: tb_pg
         type(am_class_bz)             , intent(in) :: bz
-        type(am_class_dispersion_dft) , intent(in) :: dr_dft
+        type(am_class_dispersion_dft) , intent(in) :: dft_dr
         type(am_class_prim_pair)      , intent(in) :: pp
         real(dp), allocatable :: FJAC(:,:) ! fjac(m,n) jacobian matrix
         real(dp), allocatable :: f1(:)     ! f1(m)     residual vector
@@ -252,12 +252,12 @@ contains
                 ! update x in TB model
                 call tb%set_matrix_element(V=x)
                 ! compute jacobian
-                f1 = compute_residual(ft=ft,tb=tb,tb_pg=tb_pg,bz=bz,dr_dft=dr_dft,pp=pp)
+                f1 = compute_residual(ft=ft,tb=tb,tb_pg=tb_pg,bz=bz,dft_dr=dft_dr,pp=pp)
             else if (rci_request .eq. 2) then
                 ! update x in TB model
                 call tb%set_matrix_element(V=x)
                 ! compute jacobian
-                f2 = compute_residual(ft=ft,tb=tb,tb_pg=tb_pg,bz=bz,dr_dft=dr_dft,pp=pp)
+                f2 = compute_residual(ft=ft,tb=tb,tb_pg=tb_pg,bz=bz,dft_dr=dft_dr,pp=pp)
             else if (rci_request .eq. 0) then
                 successful = 1 
             end if
