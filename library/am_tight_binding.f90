@@ -614,6 +614,11 @@ contains
         close(fid)
     end subroutine read_irreducible_matrix_element
 
+    ! DEPRECATED: 
+    ! TODO, convert write_all_matrix_element into an extenral subroutine for getting the hamiltonian which takes as input a vector of irreducible matrix elements ... 
+    ! make it such that the subroutine can be compiled afterwards...
+    ! if this is done, the model is set. do not need to go through everything again.
+
     subroutine     write_all_matrix_element(tb,pp)
         !
         implicit none

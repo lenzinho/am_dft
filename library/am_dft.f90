@@ -19,6 +19,8 @@ module am_dft
 
 contains
 
+	! TO DO: CREATE DUMP FOR DFT see debug_dump_bz for inspiration
+
     subroutine     load(dft,opts,flags)
         ! flags = dispersion: fermi/(eigenval,procar)
         implicit none

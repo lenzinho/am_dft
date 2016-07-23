@@ -107,7 +107,7 @@ contains
             bz%kpt_frac = matmul(bz%bas,kpt_cart)
             bz%kpt_cart = kpt_cart
         else
-            stop 'Either kpt_cart or kpt_frac must be present'
+            stop 'ERROR [create_bz]: either kpt_cart or kpt_frac must be present'
         endif
         ! generate voronoi points [cart]
         grid_points = meshgrid([-1:1],[-1:1],[-1:1])
