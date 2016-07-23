@@ -850,6 +850,7 @@ contains
         call sg%debug_dump(fname=              trim(debug_dir)//'/space_group/outfile.sg')
         endif
         ! write action table
+        call execute_command_line('mkdir -p '//trim(outfile_dir_sym))
         call sg%write_action_table(uc=pc,fname=trim(outfile_dir_sym)//'/'//'outfile.space_group_action',opts=opts)
         !
         contains

@@ -24,7 +24,7 @@ module am_brillouin_zone
         real(dp), allocatable :: w(:)           ! w(nkpts) normalized weights (CURRENTLY NOT USED!!!!)
         integer , allocatable :: fbz_id(:)
         integer , allocatable :: ibz_id(:)
-    contains
+        contains
         procedure :: create_bz
         procedure :: load
         procedure :: write_kpoints
@@ -35,14 +35,14 @@ module am_brillouin_zone
     ! FBZ (wigner-seitz cell defined in cartesian coordinates, but kpoints are saved as fractional coordinates)
 
     type, public, extends(am_class_bz) :: am_class_fbz
-    contains
+        contains
 !         procedure :: get_fbz
     end type am_class_fbz
 
     ! IBZ (irreducible wedge)
 
     type, public, extends(am_class_bz) :: am_class_ibz
-    contains
+        contains
 !         procedure :: get_ibz
     end type am_class_ibz
 
@@ -120,8 +120,8 @@ contains
         bz%kpt_frac = modulo(bz%kpt_frac+prec,1.0_dp)-prec
         ! debug dump
         if (debug) then
-        call execute_command_line ('mkdir -p '//trim(debug_dir)//'/bz')
-        call bz%debug_dump(fname=               trim(debug_dir)//'/bz/outfile.bz')
+            call execute_command_line ('mkdir -p '//trim(debug_dir)//'/bz')
+            call bz%debug_dump(fname=               trim(debug_dir)//'/bz/outfile.bz')
         endif
         !
         contains
@@ -167,8 +167,7 @@ contains
         type(am_class_options)    , intent(in) :: opts
         character(*)              , intent(in) :: flags
         real(dp), allocatable :: kpt(:,:) ! kpoint coordinates
-        real(dp), allocatable :: w(:) ! normalized weights
-        !
+        real(dp), allocatable :: w(:)     ! normalized weights
         !
         if (opts%verbosity.ge.1) call print_title('Input kpoints')
         !

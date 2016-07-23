@@ -521,6 +521,7 @@ module am_vasp_io
         integer :: internal_norbitals !> norbitals number of ions - NO INFORMATION ABOUT THIS IN EIGEVAL, SET TO 1
         integer :: internal_nions     !> nions number of ions - NO INFORMATION ABOUT THIS IN EIGEVAL, SET TO 1
         ! i/o
+        real(dp) :: try
         integer :: fid
         character(maximum_buffer_size) :: buffer
         character(len=:), allocatable :: word(:)
@@ -604,11 +605,19 @@ module am_vasp_io
                 j_and_m = 0
                 do j = 1, nbands_without_spin
                     ! (LINE 9)    1      -52.220889   1.000000
+                    ! (LINE 9)    1      -46.290491  -- sometimes 1.00000 is missing.
                     read(unit=fid,fmt='(a)') buffer
                     word = strsplit(buffer,delimiter=' ')
                     if ( (i .eq. 1) .and. (j .eq. 1) ) then
-                        !> nspins number of spins
-                        internal_nspins = size(word)-2
+                        ! determine which format
+                        read(word(size(word)),*) try
+                        if (abs(try-1.0_dp).lt.tiny) then
+                            !> nspins number of spins
+                            internal_nspins = size(word)-2
+                        else
+                            !> nspins number of spins
+                            internal_nspins = size(word)-1
+                        endif
                         if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'spins = ', tostring(internal_nspins)
                         if (present(nspins)) then
                             nspins = internal_nspins

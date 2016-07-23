@@ -166,12 +166,12 @@ contains
             ! create basis on each irreducible atoms
             allocate(ic%atom(ic%natoms))
             do i = 1, ic%natoms
-                call ic%atom(i)%gen_orbitals(orbital_flags='2s,2p')
+                call ic%atom(i)%gen_orbitals(orbital_flags='1s,2p,3d,4f')
             enddo
             call write_orbital_basis(ic)
             !
             if (opts%verbosity.ge.1)  then
-                write(*,'(a,a)') flare, 'Template produced: '//trim(outfile_dir_tb)//'/'//'infile.tb_orbitals'
+                write(*,'(a,a)') flare, 'Template produced: '//trim(outfile_dir_tb)//'/'//'outfile.tb_orbitals'
                 call print_title('Done!')
             endif
             !
@@ -180,9 +180,11 @@ contains
             ! END PROGRAM HERE IF INFILE.TB_ORBITALS DOES NOT EXIST!
             !************************************************************************************
         endif
-        !
+        ! check for error
         do i = 1, ic%natoms
-            if (ic%atom(i)%norbitals.le.0) stop 'no orbitals set on an atom. check input.'
+            if (ic%atom(i)%norbitals.le.0) then
+                stop 'ERROR [initialize_orbitals]: no orbitals set on an atom. check input.'
+            endif
         enddo
         !
         if (opts%verbosity.ge.1) call print_orbital_basis(ic)

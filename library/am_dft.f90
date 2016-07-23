@@ -45,8 +45,12 @@ contains
 	        else
 	            stop 'ERROR [load]: eigenval or procar flag required'
 	        endif
-	        ! check if flags is asking to set fermi level at zero
-	        if     (index(flags,'fermi').ne.0) then
+	        ! check for flags asking for shift in energy
+	        if     (index(flags,'minimum').ne.0) then
+	        	! shift lowest band energy to zero; E(nbands,nkpts)
+				dft%dr%E  = dft%dr%E  - minval(dft%dr%E((opts%skip_band+1):,:))
+        	elseif (index(flags,'fermi').ne.0) then
+        		! shift fermi level to zero
 	        	call read_doscar(efermi=Ef, nedos=dft%dos%nEs, dos=dft%dos%D, E=dft%dos%E, iopt_filename=opts%doscar, iopt_verbosity=0)
 	        	! shift energies
 	        	dft%dos%E = dft%dos%E - Ef
@@ -60,7 +64,7 @@ contains
 	            write(*,'(5x,a,a)')      'lowest = ', tostring(minval(pack(dft%dr%E,.true.)))
 	            write(*,'(5x,a,a)')     'highest = ', tostring(maxval(pack(dft%dr%E,.true.)))
 	            write(*,'(5x,a,a)')        'mean = ', tostring(sum(pack(dft%dr%E,.true.))/size(pack(dft%dr%E,.true.)))
-	            if (index(flags,'fermi')) write(*,'(5x,a)') 'Note, energies have been shifted, putting Ef at zero. Originally, Ef = '//tostring(Ef)
+	            if (index(flags,'fermi')) write(*,'(a,a)') flare, 'Energies have been shifted (Ef = 0; originally, '//tostring(Ef)//')'
 	            ! make nice dos histogram
 	            write(*,'(a,a)') flare, 'density of states'
 	            call plot_histogram(binned_data=histogram(x=pack(dft%dr%E,.true.),m=98))

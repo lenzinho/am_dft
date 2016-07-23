@@ -30,7 +30,7 @@ module am_tight_binding
         integer , allocatable :: selector_shell(:)
         integer , allocatable :: selector_kpoint(:)
         integer , allocatable :: selector_x(:)
-        real(dp), allocatable :: x(:) 
+        real(dp), allocatable :: x(:)
         real(dp), allocatable :: r(:)
         real(dp)              :: rms
     end type am_class_tightbinding_fitter
@@ -130,11 +130,9 @@ contains
             call disp(x=tb%V_ind(2,:),title='alpha',style='underline',advance='no')
             call disp(x=tb%V_ind(3,:),title='beta',style='underline',advance='yes')
         else
-            ! print title
-            write(*,'(a,a)') flare, 'infile.tb_matrix_elements_irreducible not found -- starting from zeros instead...'
-            !
+            ! set matrix elements at zero
             call tb%set_matrix_element(flags='zero')
-            !
+            ! write template for irreducible matrix elements
             call tb%write_irreducible_matrix_element()
         endif
         !
@@ -620,8 +618,8 @@ contains
         !
         implicit none
         !
-        class(am_class_tightbinding)     , intent(in) :: tb    ! irreducible tight binding matrix elements
-        type(am_class_prim_pair)          , intent(in) :: pp    ! primitive pairs
+        class(am_class_tightbinding), intent(in) :: tb    ! irreducible tight binding matrix elements
+        type(am_class_prim_pair)    , intent(in) :: pp    ! primitive pairs
         real(dp), allocatable, target :: Hsub_target(:,:)
         real(dp), allocatable, target :: pg_target(:,:,:)
         integer , allocatable :: S(:) ,E(:)
@@ -675,25 +673,23 @@ contains
 
     ! optimizer
 
-    subroutine     optimize_matrix_element(tb,bz,dft,pp,opts)
+    subroutine     optimize_matrix_element(tb,bz,dft,pp,opts,flags)
         !
         implicit none
         !   
-        class(am_class_tightbinding) , intent(inout) :: tb
-        type(am_class_bz)            , intent(in) :: bz
-        type(am_class_dft)           , intent(in) :: dft
-        type(am_class_prim_pair)     , intent(in) :: pp
-        type(am_class_options)       , intent(in) :: opts
+        class(am_class_tightbinding), intent(inout) :: tb
+        type(am_class_bz)           , intent(in) :: bz
+        type(am_class_dft)          , intent(in) :: dft
+        type(am_class_prim_pair)    , intent(in) :: pp
+        type(am_class_options)      , intent(in) :: opts
+        character(*)                , intent(in) :: flags
         type(am_class_options) :: notalk
-        character(:), allocatable :: flags
         real(dp) :: best_rms
         real(dp), allocatable :: best_V(:)
         integer, allocatable :: selector_kpoint(:)
-        integer :: i,j
+        integer :: i,j,k
         !
         if (opts%verbosity.ge.1) call print_title('Optimized matrix elements')
-        ! eventually get rid of this flag.
-        allocate(flags, source='zero')
         ! supress output
         notalk = opts
         notalk%verbosity = 0
@@ -706,45 +702,61 @@ contains
             ! 
             call perform_optimization(tb=tb, bz=bz, dft=dft, pp=pp, opts=opts)
             !
-        elseif  (index(flags, 'zero').ne.0) then
-            !
-            if (opts%verbosity.ge.1) then
-                ! make sure there are enough kpoints
-                if (bz%nkpts.lt.tb%nVs) stop 'ERROR [optimize_matrix_element]: not enough kpoints'
-                ! set kpoint selector
-                allocate(selector_kpoint(tb%nVs))
-                selector_kpoint(1:tb%nVs) = floor(linspace(1, bz%nkpts, tb%nVs ))
-                ! write kpoints selected
-                write(*,'(a,a)') flare, 'kpoints selected for course optimization ='
-                call disp_indent()
-                call disp(selector_kpoint,orient='row')
-            endif
-            ! optimize matrix elements starting from zeros
-            ! intialize rsm at a large number
+        elseif  (index(flags, 'shell_progressive').ne.0) then
+            ! course optimization: use the same number of kpoints as there are matrix elements in the total model 
+            ! progressively add on one shell at a time to the model 
+            ! each time, search optimal parameters starting at 10 stochastically choosen staring conditions
+            ! keep the best one. the goal here is to deal with cases where bands are crossing when they shouldn't and vice versa
+            ! fine optimization: perform 1 minimization using all kpoints. use as starting condition the best value of the course optimization
+            ! ----------------------------------------------------
+            ! intialize rms at a large number
             best_rms = 1.0D15
             ! intialize best matrix elements
             allocate(best_V(tb%nVs))
             best_V = 0
+            ! check for enough kpoints
+            if (bz%nkpts.lt.tb%nVs) stop 'ERROR [optimize_matrix_element]: not enough kpoints'
+            ! set kpoint selector
+            allocate(selector_kpoint(tb%nVs))
+            selector_kpoint(1:tb%nVs) = floor(linspace(1, bz%nkpts, tb%nVs ))
             ! loop to find best (semi-stochastic + NNLS)
-            do i = 1, 50
-                ! 1) fit same-shell matrix elements at gamma point
-                call tb%initialize_ft(selector_shell=[1:tb%nshells],selector_kpoint=selector_kpoint,opts=notalk)
-                !
-                call perform_optimization(tb=tb, bz=bz, dft=dft, pp=pp, opts=notalk)
-                !
-                if (tb%ft%rms.lt.best_rms) then
-                    best_rms = tb%ft%rms
-                    best_V   = tb%V
-                else
-                    do j = 1, tb%nVs
-                    if ( any(tb%ft%selector_x.eq.j) ) then
-                        tb%V(j) = tb%V(j) + 5.0_dp*(rand() - 0.50_dp)*best_rms
-                    endif
-                    enddo
+            do k = 1, tb%nshells
+                ! initialize fitter
+                call tb%initialize_ft(selector_shell=[1:k],selector_kpoint=selector_kpoint,opts=notalk)
+                ! print stdout
+                if (k.eq.1) then
+                    write(*,'(5x,a8,a10,a10,a)') 'iter', 'rms ', 'log(d rms)',centertitle('parameters',tb%nVs*10)
                 endif
-                ! 
-                if (i.eq.1) write(*,'(5x,a10,a10,a10)') 'iteration', 'best rms', 'pres. rms'
-                write(*,'(5x,i10,f10.2,f10.2)') i, best_rms, tb%ft%rms
+                ! stochastic part
+                do i = 1, 10
+                    if (i.eq.1) then
+                        ! write stdout header
+                        if (opts%verbosity.ge.1) then
+                            write(*,'(5x,a8,a10,a10,a,a)') 'shell '//tostring(k), ' '//repeat('-',10-1), ' '//repeat('-',10-1), ' '//repeat('-',tb%ft%nxs*10-1)
+                        endif
+                    else
+                        ! stochastically determine a new starting condition based on best value
+                        do j = 1, tb%nVs
+                            if ( any(tb%ft%selector_x.eq.j) ) then
+                                tb%V(j) = tb%V(j) + 5.0_dp*(rand() - 0.50_dp)*best_rms
+                                ! tb%V(j) = tb%V(j) + (rand() - 0.50_dp)*abs(tb%V(j))
+                            endif
+                        enddo
+                    endif
+                    ! perform optimization utilizing jacobian
+                    call perform_optimization(tb=tb, bz=bz, dft=dft, pp=pp, opts=notalk)
+                    ! check rms
+                    if (tb%ft%rms.lt.best_rms) then
+                        ! if the current rms is better, update best value
+                        best_rms = tb%ft%rms
+                        best_V   = tb%V
+                    else
+                        ! otherwise reset to best value
+                        tb%V = best_V
+                    endif
+                    ! write stdout
+                    if (opts%verbosity.ge.1) write(*,'(5x,i8,f10.2, 10x ,SP,1000f10.2)') i, tb%ft%rms, tb%ft%x
+                enddo
             enddo
             ! initialize final optimization using best matrix elements found thus far
             tb%V = best_V
@@ -754,11 +766,18 @@ contains
             call perform_optimization(tb=tb, bz=bz, dft=dft, pp=pp, opts=opts)
             ! output results
             write(*,'(a,a)') flare, 'final rms = '//tostring(tb%ft%rms)
-            write(*,'(a,a)') flare, 'final matrix elements = '
-            call disp_indent()
-            call disp(tb%V,orient='row')
+            !
         endif
         !
+        if (debug) then
+            write(*,'(a,a)')   flare, 'optimization parameters and conditions:'
+            write(*,'(5x,a,a)') 'irreducible matrix elements = '//tostring(tb%ft%nxs)
+            write(*,'(5x,a,a)') 'selected k-points = '          //tostring(tb%ft%nkpts)
+            write(*,'(5x,a,a)') 'bands = '                      //tostring(tb%ft%nbands)
+            write(*,'(5x,a,a)') 'bands skipped = '              //tostring(tb%ft%skip_band)
+            write(*,'(5x,a,a)') 'residual vector length = '     //tostring(tb%ft%nrs)
+            write(*,'(5x,a,a)') 'max iterations = '             //tostring(tb%ft%maxiter)
+        endif
     end subroutine optimize_matrix_element
 
     subroutine     initialize_ft(tb,selector_shell,selector_kpoint,opts)
@@ -809,15 +828,6 @@ contains
         tb%ft%rms   = 0              ! rms error
         ! set number of bands to skip
         tb%ft%skip_band = opts%skip_band
-        ! print stuff
-        if (opts%verbosity.ge.1) then
-            write(*,'(a,a,a)') flare, 'irreducible matrix elements = '//tostring(tb%ft%nxs)
-            write(*,'(a,a,a)') flare, 'selected k-points = '          //tostring(tb%ft%nkpts)
-            write(*,'(a,a,a)') flare, 'bands = '                      //tostring(tb%ft%nbands)
-            write(*,'(a,a,a)') flare, 'bands to skip = '              //tostring(tb%ft%skip_band)
-            write(*,'(a,a,a)') flare, 'residual vector length = '     //tostring(tb%ft%nrs)
-            write(*,'(a,a,a)') flare, 'max iterations = '             //tostring(tb%ft%maxiter)
-        endif
     end subroutine initialize_ft
 
     subroutine     perform_optimization(tb,bz,pp,dft,opts)
@@ -899,7 +909,7 @@ contains
                     if (i.eq.1) then
                         write(*,'(5x,i8,f10.2, 10x ,SP,1000f10.2)') i, tb%ft%rms, x
                     else
-                        write(*,'(5x,i8,f10.2,f10.2,SP,1000f10.2)') i, tb%ft%rms, log10(abs(norm(1.0D-14 + x-tb%ft%x ))), x
+                        write(*,'(5x,i8,f10.2,g10.2,SP,1000f10.2)') i, tb%ft%rms, abs(norm(1.0D-14 + x-tb%ft%x )), x
                     endif
                 endif
                 ! save results

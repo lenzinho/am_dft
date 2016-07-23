@@ -2,6 +2,8 @@ include makefile.inc
 
 LIBS  = libam.a
 
+# goal get rid of am_stdout
+
 OBJS  = mkl_rci.o 						\
 		dispmodule.o 					\
 		am_constants.o              	\
