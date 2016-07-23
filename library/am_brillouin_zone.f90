@@ -26,7 +26,6 @@ module am_brillouin_zone
         integer , allocatable :: ibz_id(:)
         contains
         procedure :: create_bz
-        procedure :: load
         procedure :: write_kpoints
         procedure :: debug_dump => debug_dump_bz
         ! add sort procedure
@@ -71,7 +70,7 @@ contains
         !
     end subroutine debug_dump_bz
 
-    subroutine     create_bz(bz,kpt_frac,kpt_cart,bas,prec)
+    subroutine     create_bz(bz,kpt_frac,kpt_cart,bas,prec,w)
         !
         ! kpt_frac points are shifted to be between [0,1)
         ! kpt_cart        are shifted to be in the wigner-seitz bz
@@ -81,6 +80,7 @@ contains
         class(am_class_bz), intent(out) :: bz
         real(dp), intent(in), optional :: kpt_frac(:,:)
         real(dp), intent(in), optional :: kpt_cart(:,:)
+        real(dp), intent(in), optional :: w(:)
         real(dp), intent(in) :: bas(3,3)
         real(dp), intent(in) :: prec
         real(dp) :: grid_points(3,27) ! voronoi points
@@ -108,6 +108,10 @@ contains
             bz%kpt_cart = kpt_cart
         else
             stop 'ERROR [create_bz]: either kpt_cart or kpt_frac must be present'
+        endif
+        ! weights
+        if (present(w)) then
+            allocate(bz%w, source = w)
         endif
         ! generate voronoi points [cart]
         grid_points = meshgrid([-1:1],[-1:1],[-1:1])
@@ -156,44 +160,6 @@ contains
             !
         end function   reduce_kpoint_to_fbz
     end subroutine create_bz
-
-    subroutine     load(bz,uc,pg,opts,flags)
-        !
-        implicit none
-        !
-        class(am_class_bz)        , intent(out):: bz
-        type(am_class_unit_cell)  , intent(in) :: uc
-        type(am_class_point_group), intent(in) :: pg
-        type(am_class_options)    , intent(in) :: opts
-        character(*)              , intent(in) :: flags
-        real(dp), allocatable :: kpt(:,:) ! kpoint coordinates
-        real(dp), allocatable :: w(:)     ! normalized weights
-        !
-        if (opts%verbosity.ge.1) call print_title('Input kpoints')
-        !
-        if     (index(flags,'ibzkpt')) then
-            write(*,'(a,a,a)') flare, 'file = ', 'ibzkpt'
-            call read_ibzkpt(  kpt=kpt, w=w, iopt_filename=opts%ibzkpt  , iopt_verbosity=0)
-        elseif (index(flags,'procar')) then
-            write(*,'(a,a,a)') flare, 'file = ', 'procar'
-            call read_procar(  kpt=kpt, w=w, iopt_filename=opts%procar  , iopt_verbosity=0)
-        elseif (index(flags,'eigenval')) then
-            write(*,'(a,a,a)') flare, 'file = ', 'eigenval'
-            call read_eigenval(kpt=kpt, w=w, iopt_filename=opts%eigenval, iopt_verbosity=0)
-        else
-            stop 'Unknown flag. Nothing read.'
-        endif
-        !
-        call bz%create_bz(kpt_frac=kpt, bas=uc%bas, prec=opts%prec)
-        !
-        ! call bz%get_weights(pg=pg, opts=opts)
-        ! if (.not.isequal(bz%w,w)) stop 'Computed weights do not match vasp input'
-        !
-        if (opts%verbosity.ge.1) then
-            write(*,'(a,a,a)') flare, 'kpoints = ', tostring(bz%nkpts)
-        endif
-        !
-    end subroutine load
 
     subroutine     write_kpoints(bz,fname)
         !

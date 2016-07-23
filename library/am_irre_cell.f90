@@ -155,7 +155,7 @@ contains
         integer :: i
         character(100) :: fname
         !
-        call print_title('Atomic orbitals')
+        if (opts%verbosity.ge.1) call print_title('Atomic orbitals')
         !
         fname = 'infile.tb_orbitals'
         if (fexists(fname)) then
@@ -237,7 +237,7 @@ contains
             fid = 1
             open(unit=fid,file=trim(fname),status="old",action='read')
                 !
-                write(*,'(a,a,a)') flare, 'atomic orbitals read = ', trim(fname)
+                if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'atomic orbitals read = ', trim(fname)
                 ! spin polarized?
                 read(unit=fid,fmt='(a)') buffer
                 word = strsplit(buffer,delimiter=' ')
@@ -246,7 +246,7 @@ contains
                 read(unit=fid,fmt='(a)') buffer
                 word = strsplit(buffer,delimiter=' ')
                 read(word(3),*) ic_natoms
-                write(*,'(a,a,a)') flare, 'irreducible atoms = ', tostring(ic_natoms)
+                if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'irreducible atoms = ', tostring(ic_natoms)
                 ! set irreducible atoms
                 if (ic%natoms.ne.ic_natoms) stop 'number of irreducible atoms input does not match internally calculated.'
                 allocate(ic%atom(ic_natoms))
@@ -257,15 +257,15 @@ contains
                     read(word(1),*) i
                     !
                     nazimuthals = size(word) - 1
-                    write(*,'(a,a,a,a)', advance='no') flare, 'atom ', tostring(j), ' azimuthals ('//tostring(nazimuthals)//'):'
+                    if (verbosity.ge.1) write(*,'(a,a,a,a)', advance='no') flare, 'atom ', tostring(j), ' azimuthals ('//tostring(nazimuthals)//'):'
                     if (nazimuthals.le.0) stop 'number of azimuthals < 0'
                     !
                     orbital_flags=trim(spin_polarized_flag)
                     do k = 1, nazimuthals
                         orbital_flags=trim(orbital_flags)//','//trim(word(k+1))
-                        write(*,'(a)',advance='no') ' '//trim(word(k+1))
+                        if (verbosity.ge.1) write(*,'(a)',advance='no') ' '//trim(word(k+1))
                     enddo
-                    write(*,*)
+                    if (verbosity.ge.1) write(*,*)
                     !
                     call ic%atom(i)%gen_orbitals(orbital_flags=orbital_flags)
                     !

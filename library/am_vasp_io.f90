@@ -55,7 +55,8 @@ module am_vasp_io
         if (verbosity.ge.1) call print_title('Reading IBZKPT')
         !
         fid = 1
-        open(unit=fid,file=trim(fname),status="old",action='read')
+        open(unit=fid,file=trim(fname),status='old',action='read',iostat=iostat)
+            if (iostat.ne. 0) stop 'ERROR [read_ibzkpt]: problem reading ibzkpt. check if file exists'
             !
             if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'file read = ', trim(fname)
             !
@@ -192,6 +193,7 @@ module am_vasp_io
         integer :: internal_norbitals !> norbitals number of orbitals
         integer :: internal_nspins    !> nspins number of spins
         integer :: fid ! file id
+        integer :: iostat
         character(maximum_buffer_size) :: buffer ! read buffer
         character(len=:), allocatable :: word(:) ! read buffer
         integer :: i, j, l, m ! loop variables
@@ -209,7 +211,8 @@ module am_vasp_io
         if (verbosity.ge.1) call print_title('Reading PROCAR')
         !
         fid = 1
-        open(unit=fid,file=trim(fname),status="old",action='read')
+        open(unit=fid,file=trim(fname),status='old',action='read',iostat=iostat)
+            if (iostat.ne. 0) stop 'ERROR [read_procar]: problem reading procar. check if file exists'
             !
             if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'tetrahedra = ', trim(fname)
             ! (LINE 1) PROCAR lm decomposed
@@ -363,7 +366,8 @@ module am_vasp_io
         ! SKIM FILE TO DETEMRINE PARAMETERS NECESSARY TO ALLOCATE SPACE
         !
         fid = 1
-        open(unit=fid,file=trim(fname),status="old",action='read')
+        open(unit=fid,file=trim(fname),status='old',action='read',iostat=iostat)
+            if (iostat.ne. 0) stop 'ERROR [read_prjcar]: problem reading prjcar. check if file exists'
             !
             if ( verbosity .ge. 1) write(*,'(a,a,a)') flare, 'file = ', trim(fname)
             !
@@ -523,6 +527,7 @@ module am_vasp_io
         ! i/o
         real(dp) :: try
         integer :: fid
+        integer :: iostat
         character(maximum_buffer_size) :: buffer
         character(len=:), allocatable :: word(:)
         ! loop variables
@@ -548,7 +553,8 @@ module am_vasp_io
         if (verbosity.ge.1) call print_title('Reading EIGENVAL')
         !
         fid = 1
-        open(unit=fid,file=trim(fname),status="old",action='read')
+        open(unit=fid,file=trim(fname),status='old',action='read',iostat=iostat)
+            if (iostat.ne. 0) stop 'ERROR [read_eigenval]: problem reading eigenval. check if file exists'
             !
             if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'file = ', trim(fname)
             ! (LINE 1)     2    2    1    1
@@ -673,6 +679,7 @@ module am_vasp_io
         character(len=:), allocatable  :: word(:)
         character(max_argument_length) :: fname
         integer :: verbosity
+        integer :: iostat
         integer :: internal_nedos
         integer :: fid
         integer :: i
@@ -692,7 +699,8 @@ module am_vasp_io
         if (verbosity.ge.1) call print_title('DOSCAR')
         !
         fid = 1
-        open(unit=fid,file=trim(fname),status="old",action='read')
+        open(unit=fid,file=trim(fname),status='old',action='read',iostat=iostat)
+            if (iostat.ne. 0) stop 'ERROR [read_doscar]: problem reading doscar. check if file exists'
             !
             if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'file = ', trim(fname)
             ! (LINE 1) skip -    2    2    1    1
@@ -772,6 +780,7 @@ module am_vasp_io
         ! output string
         character(:), allocatable :: disp_str(:)
         ! optional i/o
+        integer :: iostat
         character(*), optional :: iopt_filename
         character(max_argument_length) :: fname
         integer, optional :: iopt_verbosity
@@ -786,7 +795,8 @@ module am_vasp_io
         if (verbosity.ge.1) call print_title('Unit cell')
         !
         fid = 1
-        open(unit=fid,file=trim(fname),status="old",action='read')
+        open(unit=fid,file=trim(fname),status='old',action='read',iostat=iostat)
+            if (iostat.ne. 0) stop 'ERROR [read_poscar]: problem reading poscar. check if file exists'
             !
             if (verbosity.ge.1) write(*,'(a,a)') flare, 'file read = '//trim(fname)
             ! (LINE 1) header
@@ -944,8 +954,6 @@ module am_vasp_io
         header = 'POSCAR'
         if ( present(iopt_header) )  header = iopt_header
         !
-        !
-        !
         call print_title('Writing POSCAR')
         !
         fid = 1
@@ -1010,6 +1018,7 @@ module am_vasp_io
         character(maximum_buffer_size) :: buffer ! read buffer
         character(len=:), allocatable :: word(:) ! read buffer
         !
+        integer :: iostat
         integer :: fid
         character(*), optional :: iopt_filename
         character(max_argument_length) :: fname
@@ -1021,12 +1030,11 @@ module am_vasp_io
         verbosity = 1
         if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
         !
-        !
-        !
         if (verbosity.ge.1) call print_title('Reading wannier unitary matrix (U matrix)')
         !
         fid = 1
-        open(unit=fid,file=trim(fname),status="old",action='read')
+        open(unit=fid,file=trim(fname),status='old',action='read',iostat=iostat)
+            if (iostat.ne. 0) stop 'ERROR [read_amn]: problem reading wannier amn file. check if it exists'
             !
             if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'file = ', trim(fname)
             !
@@ -1095,7 +1103,8 @@ module am_vasp_io
         ! SKIM FILE TO DETEMRINE PARAMETERS NECESSARY TO ALLOCATE SPACE
         !
         fid = 1
-        open(unit=fid,file=trim(fname),status="old",action='read')
+        open(unit=fid,file=trim(fname),status='old',action='read',iostat=iostat)
+            if (iostat.ne. 0) stop 'ERROR [read_eig]: problem reading wannier eig file. check if it exists'
             !
             if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'file = ', trim(fname)
             !

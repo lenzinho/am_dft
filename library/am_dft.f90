@@ -1,16 +1,20 @@
 module am_dft
 
     use dispmodule
+    use am_constants
     use am_options
 	use am_vasp_io
-    use am_constants
     use am_histogram
+    use am_unit_cell
+    use am_brillouin_zone
     use am_dispersion
     use am_dos
 
     private
 
     type, public :: am_class_dft
+    	type(am_class_unit_cell)  :: uc
+		type(am_class_bz) 		  :: bz
     	type(am_class_dispersion) :: dr
 		type(am_class_dos) 		  :: dos
 		contains
@@ -28,6 +32,8 @@ contains
         class(am_class_dft)   ,intent(out) :: dft
         type(am_class_options), intent(in) :: opts
         character(*)          , intent(in) :: flags
+        real(dp), allocatable :: kpt(:,:) ! kpoint coordinates
+        real(dp), allocatable :: w(:)     ! normalized weights
         real(dp) :: Ef
         !
         if (opts%verbosity.ge.1) call print_title('DFT')
@@ -36,14 +42,25 @@ contains
 			! load dispersion relations
 	        if     (index(flags,'eigenval').ne.0) then
 	        	! load dispersion form eigenval
-	            write(*,'(a,a,a)') flare, 'file = ', trim(opts%eigenval)
+	            if (opts%verbosity.ge.1) write(*,'(a,a,a)') flare, 'file = ', trim(opts%eigenval)
+	            ! load band energies
 	            call read_eigenval(E=dft%dr%E, nspins=dft%dr%nspins, nbands=dft%dr%nbands, iopt_filename=opts%eigenval, iopt_verbosity=0) ! , lmproj=dft%dr%lmproj)
+	            ! load kpoints from eigenval
+	            call read_eigenval(kpt=kpt, w=w, iopt_filename=opts%eigenval, iopt_verbosity=0)
+	            ! create instance
+	            call dft%bz%create_bz(kpt_frac=kpt, bas=dft%uc%bas, w=w, prec=opts%prec)
+	            !
 	        elseif (index(flags,'procar').ne.0) then
 	        	! load dispersion from procar
-	            write(*,'(a,a,a)') flare, 'file = ', trim(opts%procar)
+	            if (opts%verbosity.ge.1) write(*,'(a,a,a)') flare, 'file = ', trim(opts%procar)
 	            stop ' ERROR [load]: PROCAR NOT YET SUPPORTED.'
 	            !     call read_procar(E=dft%dr%E, iopt_filename=opts%procar, iopt_verbosity=0, &
 	            !         nbands=dft%dr%nbands, nions=dft%dr%nions, nspins=dft%dr%nspins, norbitals=dft%dr%norbitals, orbitals=dft%dr%orbitals, lmproj=dft%dr%lmproj)
+	            ! load kpoints
+	            call read_procar(kpt=kpt, w=w, iopt_filename=opts%procar, iopt_verbosity=0)
+	            ! create instance
+	            call dft%bz%create_bz(kpt_frac=kpt, bas=dft%uc%bas, w=w, prec=opts%prec)
+	            !
 	        else
 	            stop 'ERROR [load]: eigenval or procar flag required'
 	        endif
@@ -58,8 +75,9 @@ contains
 	        	dft%dos%E = dft%dos%E - Ef
 	        	dft%dr%E  = dft%dr%E  - Ef
 	        endif
-	        ! print stdout
+	        ! stdout
 	        if (opts%verbosity.ge.1) then
+	        	write(*,'(a,a,a)') flare, 'bands = ', tostring(dft%dr%nbands)
 	            write(*,'(a,a,a)') flare, 'bands = ', tostring(dft%dr%nbands)
 	            write(*,'(a,a,a)') flare, 'spins = ', tostring(dft%dr%nspins)
 	            write(*,'(a,a)  ') flare, 'band energies = '
@@ -72,12 +90,21 @@ contains
 	            call plot_histogram(binned_data=histogram(x=pack(dft%dr%E,.true.),m=98))
 	        endif
 	        !
-	        if (dft%dr%nbands.eq.0) stop 'ERROR: nbands = 0'
-
+	        if (dft%dr%nbands.eq.0) stop 'ERROR: nbands = 0' 
+	    else
+	    	stop 'ERROR [load]: unknown flag'
 	    endif
+	    ! could incorporate above:
+	    ! call read_ibzkpt(  kpt=kpt, w=w, iopt_filename=opts%ibzkpt  , iopt_verbosity=0)
         !
     end subroutine load
 
-
-
 end module am_dft
+
+
+
+
+
+
+
+

@@ -13,7 +13,7 @@ module am_matlab
 #else
     logical, private :: use_escape_codes = .false.
 #endif
-    
+
     interface adjoint
         module procedure zadjoint, dadjoint
     end interface ! adjoint
@@ -204,6 +204,31 @@ module am_matlab
             allocate(seq_out, source='')
         endif
     end function   style
+
+    pure function  lowercase(str) result(str_lwr)
+        !
+        implicit none
+        !
+        character(len=*), intent(in) :: str
+        character(len=maximum_buffer_size) :: str_lwr
+        !
+        integer :: iA,iZ,idiff,ipos,ilett
+        !
+        iA = ichar('A')
+        iZ = ichar('Z')
+        idiff = iZ-ichar('z')
+        !
+        str_lwr = str
+        !
+        do ipos=1,len(str)
+           ilett = ichar(str(ipos:ipos))
+           if ((ilett.ge.iA).and.(ilett.le.iZ)) &
+                str_lwr(ipos:ipos)=char(ilett-idiff)
+        enddo
+        !
+        str_lwr = trim(adjustl(str_lwr))
+        !
+    end function   lowercase
 
     ! basic file io
 
@@ -1927,20 +1952,34 @@ module am_matlab
         !
         character(*), intent(in) :: A(:)
         character(:),allocatable :: B(:)
-        integer :: m,j
+        integer :: m,n,lt,i,j
         integer :: maxlen
+        integer, allocatable :: selector_array(:)
         !
         m = size(A)
-        !
+        ! initialize selector
+        allocate(selector_array(m))
+        selector_array = 0
+        ! initialize maxlen to get largest string length
         maxlen = 0
+        ! loop over string array
+        n = 0
         do j = 1, m
-            if (len_trim(A(j)).gt.maxlen) maxlen = len_trim(A(j))
+            lt = len_trim(A(j))
+            ! check if array is not empty
+            if (lt.ne.0) then
+                n = n + 1
+                selector_array(n) = j
+            endif
+            ! check whether it is the largest array
+            if (lt.gt.maxlen) maxlen = len_trim(A(j))
         enddo
-        !
-        allocate(character(maxlen)::B(m))
-        !
-        do j = 1, m
-            B(j) = trim(A(j))
+        ! allocate new array
+        allocate(character(maxlen)::B(n))
+        ! create new array
+        do i = 1, n
+            j = selector_array(i)
+            B(i) = trim(A(j))
         enddo
         !
     end function  vs_trim_null
