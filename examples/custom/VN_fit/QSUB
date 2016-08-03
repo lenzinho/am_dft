@@ -1,9 +1,0 @@
-#!/bin/bash
-#PBS -l nodes=1:ppn=12
-#PBS -N scf
-#PBS -l walltime=02:00:00
-#PBS -V
-cd $PBS_O_WORKDIR
-module load openmpi/1.4-gcc
-module load intel/11.1
-mpiexec /home/amei2/vasp.5.3.3 > output
