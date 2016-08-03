@@ -339,7 +339,9 @@ contains
         real(dp), allocatable :: d(:)
         integer , allocatable :: ind(:), rind(:)
         integer , allocatable :: pg_id_unique(:)
-        integer :: i,k
+        character(20) :: str
+        integer :: mpl
+        integer :: i,j,k
         !
         if (opts%verbosity.ge.1) call print_title('Irreducible neighbor pairs')
         !
@@ -459,6 +461,21 @@ contains
                 if (pg_id_unique(k).eq. get_pg_code(ip%shell(i)%stab%ps_id) ) then
                     ! print point group
                     call print_title(trim(get_pg_name(pg_id_unique(k))))
+                    ! left coset expansion
+                    write(*,'(a,a)') flare, 'left coset representatives '//tostring(ip%shell(i)%stab%nlcrs)
+                    mpl=2 ! matrices per line
+                    do j = 1,ip%shell(i)%stab%nlcrs
+                        str = tostring(j)
+                        if ((mod(j,mpl).eq.0).or.(j.eq.ip%shell(i)%stab%nlcrs)) then
+                            call disp_indent()
+                            call disp(title=trim(str)//' [frac]', X=pg%seitz_frac(:,:,ip%shell(i)%stab%lcr_id(j)) ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
+                            call disp(title=trim(str)//' [cart]', X=pg%seitz_cart(:,:,ip%shell(i)%stab%lcr_id(j)) ,style='underline',fmt='f5.2',zeroas='0',advance='yes', trim='no')
+                        else
+                            call disp_indent()
+                            call disp(title=trim(str)//' [frac]', X=pg%seitz_frac(:,:,ip%shell(i)%stab%lcr_id(j)) ,style='underline',fmt='f5.2',zeroas='0',advance='no' , trim='no')
+                            call disp(title=trim(str)//' [cart]', X=pg%seitz_cart(:,:,ip%shell(i)%stab%lcr_id(j)) ,style='underline',fmt='f5.2',zeroas='0',advance='no ', trim='no')
+                        endif
+                    enddo
                     ! print character table
                     call ip%shell(i)%stab%print_character_table()
                     ! dump debugging

@@ -333,9 +333,9 @@ contains
         implicit none
         !
         class(am_class_tightbinding), intent(in) :: tb     ! tight binding matrix elements
-        type(am_class_prim_pair)     , intent(in) :: pp     ! primitive pairs
-        type(am_class_irre_pair)     , intent(in) :: ip     ! irreducible pairs
-        character(*)                 , intent(in) :: flags  ! symbolic/numerical cart/frac
+        type(am_class_prim_pair)    , intent(in) :: pp     ! primitive pairs
+        type(am_class_irre_pair)    , intent(in) :: ip     ! irreducible pairs
+        character(*)                , intent(in) :: flags  ! symbolic/numerical cart/frac
         integer, allocatable :: Sv(:) ! start and end of irreducible vector
         integer, allocatable :: Ev(:) ! start and end of irreducible vector
         integer, allocatable :: S(:)  ! start and end of hamiltonian subsection
@@ -349,9 +349,6 @@ contains
         character(100) :: str_Dn
         character(100) :: str_tau
         character(100) :: str_Vab
-        ! tau substitution
-        ! integer :: ntaus
-        ! real(dp), allocatable :: taus(:)
         !
         ! set function names
         if     (index(flags,'symbolic').ne.0) then
@@ -370,30 +367,12 @@ contains
             stop 'ERROR [export_to_matlab]: flags != cart/frac'
         endif
         !
-        ! get number of unique coordinates
-        ! if     (index(flags, 'symbolic').ne.0) then
-        ! allocate(taus( pp%nshells * maxval(pp%shell(:)%natoms)))
-        ! ntaus = 0
-        ! do i = 1, pp%nshells
-        ! do j = 1, pp%shell(k)%natoms
-        ! do k = 1, 3
-        !     if (abs(pp%shell(i)%tau_frac(k,j))).gt.opts%prec) then
-        !     if (.not.issubset(taus(1:k),pp%shell(i)%tau_frac(k,j))) then
-        !         ntaus = ntaus+1
-        !         tau(ntaus) = pp%shell(i)%tau_frac(k,j)
-        !     endif
-        !     endif
-        ! enddo
-        ! enddo
-        ! enddo
-        ! endif
-        !
         V_fnc_name = 'getV'
         ! create abbreviations
         allocate(S, source=tb%pg%S)
         allocate(E, source=tb%pg%E)
         end = size(tb%pg%E)
-        ! allocate start and end vectors
+        ! allocate start and end vectors for irreducible matrix elements
         allocate(Sv(ip%nshells))
         allocate(Ev(ip%nshells))
         j = 0
@@ -678,12 +657,11 @@ contains
 
     ! optimizer
 
-    subroutine     optimize_matrix_element(tb,bz,dft,pp,opts,flags)
+    subroutine     optimize_matrix_element(tb,dft,pp,opts,flags)
         !
         implicit none
         !   
         class(am_class_tightbinding), intent(inout) :: tb
-        type(am_class_bz)           , intent(in) :: bz
         type(am_class_dft)          , intent(in) :: dft
         type(am_class_prim_pair)    , intent(in) :: pp
         type(am_class_options)      , intent(in) :: opts
@@ -702,10 +680,10 @@ contains
         if      (index(flags,'input').ne.0) then
             ! optimize matrix elements starting from input matrix elements
             ! [1:size(tb%tens)] ! all shells
-            ! [1:bz%nkpts]      ! all kpoints
-            call tb%initialize_ft(selector_shell=[1:tb%nshells],selector_kpoint=[1:bz%nkpts],opts=opts)
+            ! [1:dft%bz%nkpts]  ! all kpoints
+            call tb%initialize_ft(selector_shell=[1:tb%nshells],selector_kpoint=[1:dft%bz%nkpts],opts=opts)
             ! 
-            call perform_optimization(tb=tb, bz=bz, dft=dft, pp=pp, opts=opts)
+            call perform_optimization(tb=tb, dft=dft, pp=pp, opts=opts)
             !
         elseif  (index(flags, 'shell_progressive').ne.0) then
             ! course optimization: use the same number of kpoints as there are matrix elements in the total model 
@@ -720,10 +698,11 @@ contains
             allocate(best_V(tb%nVs))
             best_V = 0
             ! check for enough kpoints
-            if (bz%nkpts.lt.tb%nVs) stop 'ERROR [optimize_matrix_element]: not enough kpoints'
+            write(*,*)
+            if (dft%bz%nkpts.lt.tb%nVs) stop 'ERROR [optimize_matrix_element]: not enough kpoints'
             ! set kpoint selector
             allocate(selector_kpoint(tb%nVs))
-            selector_kpoint(1:tb%nVs) = floor(linspace(1, bz%nkpts, tb%nVs ))
+            selector_kpoint(1:tb%nVs) = floor(linspace(1, dft%bz%nkpts, tb%nVs ))
             ! loop to find best (semi-stochastic + NNLS)
             do k = 1, tb%nshells
                 ! initialize fitter
@@ -749,7 +728,7 @@ contains
                         enddo
                     endif
                     ! perform optimization utilizing jacobian
-                    call perform_optimization(tb=tb, bz=bz, dft=dft, pp=pp, opts=notalk)
+                    call perform_optimization(tb=tb, dft=dft, pp=pp, opts=notalk)
                     ! check rms
                     if (tb%ft%rms.lt.best_rms) then
                         ! if the current rms is better, update best value
@@ -766,9 +745,9 @@ contains
             ! initialize final optimization using best matrix elements found thus far
             tb%V = best_V
             ! initialize final optimization using all kpoints
-            call tb%initialize_ft(selector_shell=[1:tb%nshells],selector_kpoint=[1:bz%nkpts],opts=opts)
+            call tb%initialize_ft(selector_shell=[1:tb%nshells],selector_kpoint=[1:dft%bz%nkpts],opts=opts)
             ! perform final optimization
-            call perform_optimization(tb=tb, bz=bz, dft=dft, pp=pp, opts=opts)
+            call perform_optimization(tb=tb, dft=dft, pp=pp, opts=opts)
             ! output results
             write(*,'(a,a)') flare, 'final rms = '//tostring(tb%ft%rms)
             !
@@ -835,7 +814,7 @@ contains
         tb%ft%skip_band = opts%skip_band
     end subroutine initialize_ft
 
-    subroutine     perform_optimization(tb,bz,pp,dft,opts)
+    subroutine     perform_optimization(tb,dft,pp,opts)
         !
         use mkl_rci
         use mkl_rci_type
@@ -843,7 +822,6 @@ contains
         implicit none
         !
         type(am_class_tightbinding)  , intent(inout) :: tb
-        type(am_class_bz)            , intent(in) :: bz
         type(am_class_dft)           , intent(in) :: dft
         type(am_class_prim_pair)     , intent(in) :: pp
         type(am_class_options)       , intent(in) :: opts
@@ -903,7 +881,7 @@ contains
                 ! update x in tb model
                 call tb%set_matrix_element(V=x,flags='selector,decompress')
                 ! recalculate function
-                FVEC = compute_residual(tb=tb, bz=bz, pp=pp, dft=dft)
+                FVEC = compute_residual(tb=tb, dft=dft, pp=pp)
                 ! save result
                 tb%ft%r   = FVEC 
                 tb%ft%rms = sqrt(sum(FVEC**2)/tb%ft%nrs)
@@ -923,7 +901,7 @@ contains
                 ! update x in tb model
                 call tb%set_matrix_element(V=x,flags='selector,decompress')
                 ! compute jacobian matrix (uses central difference)
-                FJAC = compute_jacobian(tb=tb, bz=bz, pp=pp, dft=dft)
+                FJAC = compute_jacobian(tb=tb, dft=dft, pp=pp)
             end select
         end do
         ! clean up
@@ -935,30 +913,28 @@ contains
         endif
     end subroutine perform_optimization
 
-    function       compute_residual(tb,bz,dft,pp) result(R)
+    function       compute_residual(tb,dft,pp) result(R)
         !
         implicit none
         !
         type(am_class_tightbinding), intent(inout) :: tb
-        type(am_class_bz)          , intent(in) :: bz
         type(am_class_prim_pair)   , intent(in) :: pp
         type(am_class_dft)         , intent(in) :: dft
         real(dp), allocatable :: R(:)
         ! get tb dispersion 
-        call tb%get_dispersion(bz=bz, pp=pp)
+        call tb%get_dispersion(pp=pp, bz=dft%bz)
         ! calculate residual vector indices
         R = pack(dft%dr%E([1:tb%ft%nbands]+tb%ft%skip_band, tb%ft%selector_kpoint) - tb%dr%E(:,tb%ft%selector_kpoint) , .true.)
         !
     end function   compute_residual
 
-    function       compute_jacobian(tb,bz,pp,dft) result(FJAC)
+    function       compute_jacobian(tb,dft,pp) result(FJAC)
         !
         use mkl_rci
         !
         implicit none 
         !
         type(am_class_tightbinding), intent(inout) :: tb
-        type(am_class_bz)          , intent(in) :: bz
         type(am_class_prim_pair)   , intent(in) :: pp
         type(am_class_dft)         , intent(in) :: dft
         real(dp), allocatable :: FJAC(:,:) ! fjac(m,n) jacobian matrix
@@ -995,12 +971,12 @@ contains
                 ! update x in TB model
                 call tb%set_matrix_element(V=x,flags='selector,decompress')
                 ! compute jacobian
-                f1 = compute_residual(tb=tb,bz=bz,pp=pp,dft=dft)
+                f1 = compute_residual(tb=tb,dft=dft,pp=pp)
             else if (rci_request .eq. 2) then
                 ! update x in TB model
                 call tb%set_matrix_element(V=x,flags='selector,decompress')
                 ! compute jacobian
-                f2 = compute_residual(tb=tb,bz=bz,pp=pp,dft=dft)
+                f2 = compute_residual(tb=tb,dft=dft,pp=pp)
             else if (rci_request .eq. 0) then
                 successful = 1 
             end if

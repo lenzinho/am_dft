@@ -42,7 +42,7 @@ module am_options
         procedure :: get_keyword
     end type am_class_file
 
-    contains
+contains
 
     subroutine     set_default(opts)
         !
@@ -94,7 +94,10 @@ module am_options
         fid = 1
         ! get number of lines
         open(unit=fid,file=trim(fname),status='old',action='read',iostat=istat)
-            if (istat.ne. 0) stop 'ERROR [param_in_file]: problem reading control file'
+            if (istat.ne. 0) then 
+                call template_infile_control()
+                stop 'ERROR [param_in_file]: problem reading infile.control. Creating template.control'
+            endif
             nlines=0
             file_loop : do
                 ! read line
@@ -133,6 +136,29 @@ module am_options
         ! trim
         file%line = trim_null(file%line)
         file%nlines = size(file%line)
+        contains
+        subroutine     template_infile_control()
+            !
+            implicit none
+            !
+            integer :: fid
+            !
+            fid = 1
+            open(unit=fid,file='template.control',status='replace',action='write')
+                write(unit=fid,fmt='(a)') 'verbosity   = 1'
+                write(unit=fid,fmt='(a)') 'prec        = 1E-8'
+                write(unit=fid,fmt='(a)') 'pair_cutoff = 3.2'
+                write(unit=fid,fmt='(a)') 'fit_tb      = eigenval'
+                write(unit=fid,fmt='(a)') 'skip_bands  = 5'
+                write(unit=fid,fmt='(a)') '# vasp outputs'
+                write(unit=fid,fmt='(a)') 'ibzkpt      = ./vasp/IBZKPT'
+                write(unit=fid,fmt='(a)') 'doscar      = ./vasp/DOSCAR'
+                write(unit=fid,fmt='(a)') 'prjcar      = ./vasp/PRJCAR'
+                write(unit=fid,fmt='(a)') 'poscar      = ./vasp/POSCAR'
+                write(unit=fid,fmt='(a)') 'procar      = ./vasp/PROCAR'
+                write(unit=fid,fmt='(a)') 'eigenval    = ./vasp/EIGENVAL'
+            close(fid)
+        end subroutine template_infile_control
     end subroutine load
 
     subroutine     get_keyword(file,keyword,isfound,c_value,l_value,i_value,r_value)
@@ -344,7 +370,7 @@ module am_options
             endif
             call file%get_keyword(keyword='skip_band'   ,isfound=isfound, i_value=opts%skip_band)
             if (.not.isfound) then
-                stop 'ERROR [parse_control_file]: skip_bands is required for fitting'
+                stop 'ERROR [parse_control_file]: skip_band is required for fitting'
             endif
         endif
     end subroutine  parse_control_file

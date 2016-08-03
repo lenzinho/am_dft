@@ -1,4 +1,4 @@
-MAKE    = make -s
+MAKE    = make
 FC      = ifort
 OPTS    = -DCOLOR
 MKL     = -mkl

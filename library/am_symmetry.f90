@@ -22,7 +22,7 @@ module am_symmetry
         type(am_class_conjugacy_class)      :: cc     ! conjugacy classes
         type(am_class_character_table)      :: ct     ! character table
         type(am_class_multiplication_table) :: mt     ! multiplication table
-        integer , allocatable :: supergroup_id(:)     ! if this is a subgroup, supergroup_id identifis the symmetry in the encompassing group (used for stabilizer group)
+        integer , allocatable :: supergroup_id(:)     ! if this is a subgroup, supergroup_id identifies the symmetry in the encompassing group (used for stabilizer group)
         integer , allocatable :: ax_id(:)
         contains
         procedure :: sort_symmetries
@@ -43,6 +43,8 @@ module am_symmetry
         real(dp), allocatable :: seitz_cart(:,:,:)    ! symmetry elements [cart.]
         real(dp), allocatable :: seitz_frac(:,:,:)    ! symmetry elements [frac, direct]; acts on atoms
         real(dp), allocatable :: seitz_recfrac(:,:,:) ! symmetry elements [frac, reciprocal]; acts on kpoints
+        integer  :: nlcrs                             ! number of left coset representatives
+        integer , allocatable :: lcr_id(:)            ! identifies supergroup symmetries corresponding to left coset rep
         contains
         procedure :: create_seitz_group
         procedure :: write_action_table
@@ -1159,7 +1161,7 @@ contains
         character(*)               , intent(in) :: flags
         integer, allocatable :: indicies(:)
         logical, allocatable :: mask(:)
-        integer :: i,j
+        integer :: i,j,k
         !
         allocate(mask(pg%nsyms))
         mask = .false.
@@ -1194,6 +1196,30 @@ contains
             endif
         enddo search
         enddo
+        ! reset mask to get coset representatives of left coset expansion
+        mask = .true.
+        ! initialize lcr_id
+        allocate(stab%lcr_id(pg%nsyms))
+        stab%lcr_id = 0
+        ! initailize k
+        k = 0
+        ! choose R_i from set of mask = .true.
+        do i = 1, pg%nsyms
+            if (mask(i)) then
+                ! add R_i to basket
+                k=k+1
+                stab%lcr_id(k) = i
+                ! multiply R_i by each symmetry in subgroup
+                do j = 1, stab%nsyms
+                    ! check off products from mask
+                    mask( pg%mt%multab(i, stab%supergroup_id(j)) ) = .false.
+                enddo
+            endif
+        enddo
+        ! save left coset representative id
+        stab%lcr_id = reallocate(stab%lcr_id(1:k))
+        ! save number of left coset representative (lcr)
+        stab%nlcrs = k
         ! get subduced chi
         stab%ct%subduced_chi = get_subduced_chi(supergroup_chartab=pg%ct%chartab,&
             supergroup_class_id=pg%cc%id,supergroup_id=stab%supergroup_id)
