@@ -8,11 +8,11 @@ module am_matlab
     
     public
 
-#ifdef COLOR
+#:if COLOR > 0
     logical, private :: use_escape_codes = .true.
-#else
+#:else
     logical, private :: use_escape_codes = .false.
-#endif
+#:endif
 
     interface adjoint
         module procedure zadjoint, dadjoint

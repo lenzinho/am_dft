@@ -28,19 +28,18 @@ module am_constants
 
     ! color
 
-#ifdef COLOR
+#:if DEBUG > 0
     character(18) , parameter :: flare = char(27)//'[1;31m'//' ... '//char(27)//'[0;0m'
-#else
+#:else
     character(5)  , parameter :: flare = ' ... '
-#endif
+#:endif
 
     ! DEBUG
 
-#ifdef DEBUG
+#:if DEBUG > 0
     logical, parameter :: debug = .true.
-#else
+#:else
     logical, parameter :: debug = .false.
-#endif
+#:endif
 
-    !
 end module am_constants
