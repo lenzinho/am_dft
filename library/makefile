@@ -4,6 +4,8 @@ LIBS  = libam.a
 
 # goal get rid of am_stdout
 
+FYPPINC = fypp_inc.py
+
 OBJS  = mkl_rci.o 						\
 		dispmodule.o 					\
 		am_constants.o              	\
@@ -48,6 +50,9 @@ $(LIBS): $(OBJS)
 clean:
 	rm -f $(OBJS) *.mod *.o *.i90
 
+%.f90: %.fpp
+	fypp $(FYPPFLAGS) -i $(FYPPINC) $< $@
+
 %: %.o
 	$(FC) $(FFLAGS) $(LFLAGS) $(DEBUG) $(OPTS) -o $@ $^ $(LDFLAGS)
 
@@ -56,6 +61,7 @@ clean:
 
 %.o: %.F90
 	$(FC) $(FFLAGS) $(LFLAGS) $(DEBUG) $(OPTS) -c $<
+
 
 .PHONY: all
 

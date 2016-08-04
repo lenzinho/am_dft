@@ -55,41 +55,43 @@ module am_matlab
     end interface ! trace
 
     interface isequal
-        module procedure d_isequal, dv_isequal, dm_isequal, &
-                         z_isequal, zv_isequal, zm_isequal, &
-                         i_isequal, iv_isequal, im_isequal, &
-                         b_isequal, bv_isequal, bm_isequal
+        module procedure r0_isequal, r1_isequal, r2_isequal, &
+                         c0_isequal, c1_isequal, c2_isequal, &
+                         i0_isequal, i1_isequal, i2_isequal, &
+                         l0_isequal, l1_isequal, l2_isequal
     end interface ! isequal
     
-    interface unique
-        module procedure dv_unique, dm_unique, dt_unique, &
-                         zv_unique, zm_unique, zt_unique, &
-                         iv_unique, im_unique, it_unique, &
-                         bv_unique, bm_unique, bt_unique
-    end interface ! unique
-
-    interface unique_inds
-        module procedure d_unique_inds, dv_unique_inds, dm_unique_inds, &
-                         z_unique_inds, zv_unique_inds, zm_unique_inds, &
-                         i_unique_inds, iv_unique_inds, im_unique_inds, &
-                         b_unique_inds, bv_unique_inds, bm_unique_inds
-    end interface ! unique_inds
-
     interface trim_null
         module procedure i_trim_null, vi_trim_null, vz_trim_null, vd_trim_null, vs_trim_null, s_trim_null
     end interface ! trim_null
 
+#:setvar KINDS_issubset ['real(dp)', 'complex(dp)', 'integer']
+#:setvar RANKS_issubset range(1,3)
+#:setvar PREFS_issubset ['{}{}_'.format(KIND[0], RANK) for KIND in KINDS_issubset for RANK in RANKS_issubset]
+
     interface issubset
-        module procedure d_issubset, dv_issubset, dm_issubset, &
-                         z_issubset, zv_issubset, zm_issubset, &
-                         i_issubset, im_issubset, iv_issubset
+        module procedure ${variants('issubset', prefixes=PREFS_issubset)}$
     end interface ! issubset
 
+#:setvar KINDS_reallocate ['real(dp)', 'complex(dp)', 'integer', 'logical']
+#:setvar RANKS_reallocate range(1,4)
+#:setvar PREFS_reallocate ['{}{}_'.format(KIND[0], RANK) for KIND in KINDS_reallocate for RANK in RANKS_reallocate]
+
     interface reallocate
-        module procedure dt_reallocate, zt_reallocate, it_reallocate, bt_reallocate, &
-                         dm_reallocate, zm_reallocate, im_reallocate, bm_reallocate, &
-                         dv_reallocate, zv_reallocate, iv_reallocate, bv_reallocate
+        module procedure ${variants('reallocate', prefixes=PREFS_reallocate)}$
     end interface ! reallocate
+
+#:setvar KINDS_unique ['real(dp)', 'complex(dp)', 'integer', 'logical']
+#:setvar RANKS_unique range(1,4)
+#:setvar PREFS_unique ['{}{}_'.format(KIND[0], RANK) for KIND in KINDS_unique for RANK in RANKS_unique]
+
+    interface unique_inds
+        module procedure ${variants('unique_inds', prefixes=PREFS_unique)}$
+    end interface ! unique_inds
+
+    interface unique
+        module procedure ${variants('unique', prefixes=PREFS_unique)}$
+    end interface ! unique
 
     interface cumsum
         module procedure dcumsum, icumsum
@@ -1845,7 +1847,6 @@ module am_matlab
         deallocate(temp)
     end function  z_rref
 
-
     ! trim
 
     pure function i_trim_null(A) result(B)
@@ -2697,7 +2698,7 @@ module am_matlab
 
     ! isequal
 
-    pure function  d_isequal(x,y,iopt_prec) result(bool)
+    pure function r0_isequal(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
@@ -2719,9 +2720,9 @@ module am_matlab
             bool = .false.
         endif
         !        
-    end function   d_isequal
+    end function  r0_isequal
 
-    pure function dv_isequal(x,y,iopt_prec) result(bool)
+    pure function r1_isequal(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
@@ -2747,9 +2748,9 @@ module am_matlab
             endif
         enddo
         !          
-    end function  dv_isequal
+    end function  r1_isequal
 
-    pure function dm_isequal(x,y,iopt_prec) result(bool)
+    pure function r2_isequal(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
@@ -2778,9 +2779,9 @@ module am_matlab
         enddo
         enddo
         !        
-    end function  dm_isequal
+    end function  r2_isequal
 
-    pure function  z_isequal(x,y,iopt_prec) result(bool)
+    pure function c0_isequal(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
@@ -2795,8 +2796,8 @@ module am_matlab
             prec = tiny
         endif
         !
-        if     (d_isequal( real(x), real(y),prec)) then
-            if (d_isequal(aimag(x),aimag(y),prec)) then
+        if     (isequal( real(x), real(y),prec)) then
+            if (isequal(aimag(x),aimag(y),prec)) then
                 bool = .true.
             else
                 bool = .false.
@@ -2805,9 +2806,9 @@ module am_matlab
             bool = .false.
         endif
         !
-    end function   z_isequal
+    end function  c0_isequal
 
-    pure function zv_isequal(x,y,iopt_prec) result(bool)
+    pure function c1_isequal(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
@@ -2822,8 +2823,8 @@ module am_matlab
             prec = tiny
         endif
         !
-        if     (dv_isequal( real(x), real(y),prec)) then
-            if (dv_isequal(aimag(x),aimag(y),prec)) then
+        if     (isequal( real(x), real(y),prec)) then
+            if (isequal(aimag(x),aimag(y),prec)) then
                 bool = .true.
             else
                 bool = .false.
@@ -2831,9 +2832,9 @@ module am_matlab
         else
             bool = .false.
         endif
-    end function  zv_isequal
+    end function  c1_isequal
 
-    pure function zm_isequal(x,y,iopt_prec) result(bool)
+    pure function c2_isequal(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
@@ -2848,8 +2849,8 @@ module am_matlab
             prec = tiny
         endif
         !
-        if     (dm_isequal( real(x), real(y),prec)) then
-            if (dm_isequal(aimag(x),aimag(y),prec)) then
+        if     (isequal( real(x), real(y),prec)) then
+            if (isequal(aimag(x),aimag(y),prec)) then
                 bool = .true.
             else
                 bool = .false.
@@ -2858,9 +2859,9 @@ module am_matlab
             bool = .false.
         endif
         !
-    end function  zm_isequal
+    end function  c2_isequal
 
-    pure function  i_isequal(x,y) result(bool)
+    pure function i0_isequal(x,y) result(bool)
         !
         implicit none
         !
@@ -2873,9 +2874,9 @@ module am_matlab
             bool = .false.
         endif
         !        
-    end function   i_isequal
+    end function  i0_isequal
 
-    pure function iv_isequal(x,y) result(bool)
+    pure function i1_isequal(x,y) result(bool)
         !
         implicit none
         !
@@ -2893,9 +2894,9 @@ module am_matlab
             endif
         enddo
         !          
-    end function  iv_isequal
+    end function  i1_isequal
 
-    pure function im_isequal(x,y) result(bool)
+    pure function i2_isequal(x,y) result(bool)
         !
         implicit none
         !
@@ -2916,9 +2917,9 @@ module am_matlab
         enddo
         enddo
         !        
-    end function  im_isequal
+    end function  i2_isequal
 
-    pure function  b_isequal(x,y) result(bool)
+    pure function l0_isequal(x,y) result(bool)
         !
         implicit none
         !
@@ -2931,9 +2932,9 @@ module am_matlab
             bool = .false.
         endif
         !        
-    end function   b_isequal
+    end function  l0_isequal
 
-    pure function bv_isequal(x,y) result(bool)
+    pure function l1_isequal(x,y) result(bool)
         !
         implicit none
         !
@@ -2951,9 +2952,9 @@ module am_matlab
             endif
         enddo
         !          
-    end function  bv_isequal
+    end function  l1_isequal
 
-    pure function bm_isequal(x,y) result(bool)
+    pure function l2_isequal(x,y) result(bool)
         !
         implicit none
         !
@@ -2974,18 +2975,23 @@ module am_matlab
         enddo
         enddo
         !        
-    end function  bm_isequal
+    end function  l2_isequal
 
     ! issubset
 
-    pure function zm_issubset(A,B,iopt_prec) result(bool)
-        ! returns true if B(:,:) is a subset of A(:,:,i)
-        implicit none
+#:for KIND in KINDS_issubset
+#:for RANK in RANKS_issubset
+    #:if KIND == 'real(dp)' or KIND == 'complex(dp)'
+    pure function ${KIND[0]}$${RANK}$_issubset(A,B,iopt_prec) result(bool)
+    #:else
+    pure function ${KIND[0]}$${RANK}$_issubset(A,B) result(bool)
+    #:endif
         !
-        complex(dp), intent(in) :: A(:,:,:)
-        complex(dp), intent(in) :: B(:,:)
+        ${KIND}$, intent(in) :: A${ranksuffix(RANK)}$
+        ${KIND}$, intent(in) :: B${ranksuffix(RANK-1)}$
         logical :: bool
         integer :: i,n
+    #:if KIND == 'real(dp)' or KIND == 'complex(dp)'
         real(dp), intent(in), optional :: iopt_prec
         real(dp) :: prec
         !
@@ -2994,347 +3000,55 @@ module am_matlab
         else
             prec = tiny
         endif
+    #:endif
         !
-        n = size(A,3)
-        !
+        n = size(A,${RANK}$)
         bool = .false.
         do i = 1, n
-            if (isequal(A(:,:,i),B,iopt_prec=prec)) then
+            #:if KIND == 'real(dp)' or KIND == 'complex(dp)'
+            if (isequal(A${ranksuffix_last(RANK,last='i')}$,B,iopt_prec=prec)) then
+            #:else
+            if (isequal(A${ranksuffix_last(RANK,last='i')}$,B)) then
+            #:endif
                 bool = .true.
                 return 
             endif
         enddo
         !
-    end function  zm_issubset
+    end function  ${KIND[0]}$${RANK}$_issubset
 
-    pure function zv_issubset(A,B,iopt_prec) result(bool)
-        ! returns true if B(:,:) is a subset of A(:,:,i)
-        implicit none
-        !
-        complex(dp), intent(in) :: A(:,:)
-        complex(dp), intent(in) :: B(:)
-        logical :: bool
-        integer :: i,n
-        real(dp), intent(in), optional :: iopt_prec
-        real(dp) :: prec
-        !
-        if ( present(iopt_prec) ) then
-            prec = iopt_prec
-        else
-            prec = tiny
-        endif
-        !
-        n = size(A,2)
-        !
-        bool = .false.
-        do i = 1, n
-            if (isequal(A(:,i),B,iopt_prec=prec)) then
-                bool = .true.
-                return 
-            endif
-        enddo
-        !
-    end function  zv_issubset
-
-    pure function  z_issubset(A,B,iopt_prec) result(bool)
-        !
-        implicit none
-        !
-        complex(dp), intent(in) :: A(:)
-        complex(dp), intent(in) :: B
-        logical :: bool
-        integer :: i,n
-        real(dp), intent(in), optional :: iopt_prec
-        real(dp) :: prec
-        !
-        if ( present(iopt_prec) ) then
-            prec = iopt_prec
-        else
-            prec = tiny
-        endif
-        !
-        n = size(A,1)
-        !
-        bool = .false.
-        do i = 1, n
-            if (isequal(A(i),B,iopt_prec=prec)) then
-                bool = .true.
-                return 
-            endif
-        enddo
-        !
-    end function   z_issubset
-
-    pure function dm_issubset(A,B,iopt_prec) result(bool)
-        ! returns true if B(:,:) is a subset of A(:,:,i)
-        implicit none
-        !
-        real(dp), intent(in) :: A(:,:,:)
-        real(dp), intent(in) :: B(:,:)
-        logical :: bool
-        integer :: i,n
-        real(dp), intent(in), optional :: iopt_prec
-        real(dp) :: prec
-        !
-        if ( present(iopt_prec) ) then
-            prec = iopt_prec
-        else
-            prec = tiny
-        endif
-        !
-        n = size(A,3)
-        !
-        bool = .false.
-        do i = 1, n
-            if (isequal(A(:,:,i),B,iopt_prec=prec)) then
-                bool = .true.
-                return 
-            endif
-        enddo
-        !
-    end function  dm_issubset
-
-    pure function dv_issubset(A,B,iopt_prec) result(bool)
-        ! returns true if B(:,:) is a subset of A(:,:,i)
-        implicit none
-        !
-        real(dp), intent(in) :: A(:,:)
-        real(dp), intent(in) :: B(:)
-        logical :: bool
-        integer :: i,n
-        real(dp), intent(in), optional :: iopt_prec
-        real(dp) :: prec
-        !
-        if ( present(iopt_prec) ) then
-            prec = iopt_prec
-        else
-            prec = tiny
-        endif
-        !
-        n = size(A,2)
-        !
-        bool = .false.
-        do i = 1, n
-            if (isequal(A(:,i),B,iopt_prec=prec)) then
-                bool = .true.
-                return 
-            endif
-        enddo
-        !
-    end function  dv_issubset
-
-    pure function  d_issubset(A,B,iopt_prec) result(bool)
-        ! returns true if B is a subset of Ai)
-        implicit none
-        !
-        real(dp), intent(in) :: A(:)
-        real(dp), intent(in) :: B
-        logical :: bool
-        integer :: i,n
-        real(dp), intent(in), optional :: iopt_prec
-        real(dp) :: prec
-        !
-        if ( present(iopt_prec) ) then
-            prec = iopt_prec
-        else
-            prec = tiny
-        endif
-        !
-        n = size(A,1)
-        !
-        bool = .false.
-        do i = 1, n
-            if (isequal(A(i),B,iopt_prec=prec)) then
-                bool = .true.
-                return 
-            endif
-        enddo
-        !
-    end function   d_issubset
-
-    pure function im_issubset(A,B) result(bool)
-        ! returns true if B(:,:) is a subset of A(:,:,i)
-        implicit none
-        !
-        integer, intent(in) :: A(:,:,:)
-        integer, intent(in) :: B(:,:)
-        logical :: bool
-        integer :: i,n
-        !
-        n = size(A,3)
-        !
-        bool = .false.
-        do i = 1, n
-            if (isequal(A(:,:,i),B)) then
-                bool = .true.
-                return 
-            endif
-        enddo
-        !
-    end function  im_issubset
-
-    pure function iv_issubset(A,B) result(bool)
-        ! returns true if B(:,:) is a subset of A(:,:,i)
-        implicit none
-        !
-        integer, intent(in) :: A(:,:)
-        integer, intent(in) :: B(:)
-        logical :: bool
-        integer :: i,n
-        !
-        n = size(A,2)
-        !
-        bool = .false.
-        do i = 1, n
-            if (isequal(A(:,i),B)) then
-                bool = .true.
-                return 
-            endif
-        enddo
-        !
-    end function  iv_issubset
-
-    pure function  i_issubset(A,B) result(bool)
-        ! returns true if B is a subset of A(i)
-        implicit none
-        !
-        integer, intent(in) :: A(:)
-        integer, intent(in) :: B
-        logical :: bool
-        integer :: i,n
-        !
-        n = size(A,1)
-        !
-        bool = .false.
-        do i = 1, n
-            if (A(i).eq.B) then
-                bool = .true.
-                return 
-            endif
-        enddo
-        !
-    end function   i_issubset
-
+#:endfor
+#:endfor
     ! reallocate
 
-    pure function dt_reallocate(A) result(B)
+#:for KIND in KINDS_reallocate
+#:for RANK in RANKS_reallocate
+    pure function ${KIND[0]}$${RANK}$_reallocate(A) result(B)
         !
-        real(dp), intent(in) :: A(:,:,:)
-        real(dp),allocatable :: B(:,:,:)
-        !
-        allocate(B,source=A)
-        !
-    end function  dt_reallocate
-
-    pure function dm_reallocate(A) result(B)
-        !
-        real(dp), intent(in) :: A(:,:)
-        real(dp),allocatable :: B(:,:)
+        ${KIND}$, intent(in) :: A${ranksuffix(RANK)}$
+        ${KIND}$,allocatable :: B${ranksuffix(RANK)}$
         !
         allocate(B,source=A)
         !
-    end function  dm_reallocate
+    end function  ${KIND[0]}$${RANK}$_reallocate
 
-    pure function dv_reallocate(A) result(B)
-        !
-        real(dp), intent(in) :: A(:)
-        real(dp),allocatable :: B(:)
-        !
-        allocate(B,source=A)
-        !
-    end function  dv_reallocate
-
-    pure function zt_reallocate(A) result(B)
-        !
-        complex(dp), intent(in) :: A(:,:,:)
-        complex(dp),allocatable :: B(:,:,:)
-        !
-        allocate(B,source=A)
-        !
-    end function  zt_reallocate
-
-    pure function zm_reallocate(A) result(B)
-        !
-        complex(dp), intent(in) :: A(:,:)
-        complex(dp),allocatable :: B(:,:)
-        !
-        allocate(B,source=A)
-        !
-    end function  zm_reallocate
-
-    pure function zv_reallocate(A) result(B)
-        !
-        complex(dp), intent(in) :: A(:)
-        complex(dp),allocatable :: B(:)
-        !
-        allocate(B,source=A)
-        !
-    end function  zv_reallocate
-
-    pure function it_reallocate(A) result(B)
-        !
-        integer, intent(in) :: A(:,:,:)
-        integer,allocatable :: B(:,:,:)
-        !
-        allocate(B,source=A)
-        !
-    end function  it_reallocate
-
-    pure function im_reallocate(A) result(B)
-        !
-        integer, intent(in) :: A(:,:)
-        integer,allocatable :: B(:,:)
-        !
-        allocate(B,source=A)
-        !
-    end function  im_reallocate
-
-    pure function iv_reallocate(A) result(B)
-        !
-        integer, intent(in) :: A(:)
-        integer,allocatable :: B(:)
-        !
-        allocate(B,source=A)
-        !
-    end function  iv_reallocate
-
-    pure function bt_reallocate(A) result(B)
-        !
-        logical, intent(in) :: A(:,:,:)
-        logical,allocatable :: B(:,:,:)
-        !
-        allocate(B,source=A)
-        !
-    end function  bt_reallocate
-
-    pure function bm_reallocate(A) result(B)
-        !
-        logical, intent(in) :: A(:,:)
-        logical,allocatable :: B(:,:)
-        !
-        allocate(B,source=A)
-        !
-    end function  bm_reallocate
-
-    pure function bv_reallocate(A) result(B)
-        !
-        logical, intent(in) :: A(:)
-        logical,allocatable :: B(:)
-        !
-        allocate(B,source=A)
-        !
-    end function  bv_reallocate
-
+#:endfor
+#:endfor
     ! unique_inds
 
-    pure function dm_unique_inds(A,iopt_prec) result(inds)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
+#:for KIND in KINDS_unique
+#:for RANK in RANKS_unique
+    #:if KIND == 'real(dp)' or KIND == 'complex(dp)'
+    pure function ${KIND[0]}$${RANK}$_unique_inds(A,iopt_prec) result(inds)
+    #:else
+    pure function ${KIND[0]}$${RANK}$_unique_inds(A) result(inds)
+    #:endif
         !
-        real(dp), intent(in) :: A(:,:,:)
+        ${KIND}$, intent(in) :: A${ranksuffix(RANK)}$
+        integer , allocatable :: inds(:)
+        integer :: i,j,k,n
+    #:if KIND == 'real(dp)' or KIND == 'complex(dp)'
         real(dp), intent(in), optional :: iopt_prec
-        integer , allocatable :: inds(:)
-        integer :: i,j,k,n
         real(dp) :: prec
         !
         if ( present(iopt_prec) ) then
@@ -3342,16 +3056,20 @@ module am_matlab
         else
             prec = tiny
         endif
+    #:endif
         !
-        n = size(A,3)
-        !
+        n = size(A,${RANK}$)
         allocate(inds(n))
         inds = 0
         !
         k=0
         try_loop : do i = 1, n
             do j = 1, k
-                if ( isequal(A(:,:,i),A(:,:,inds(j)),prec) ) cycle try_loop
+                #:if KIND == 'real(dp)' or KIND == 'complex(dp)'
+                if ( isequal(A${ranksuffix_last(RANK,last='i')}$,A${ranksuffix_last(RANK,last='inds(j)')}$,prec) ) cycle try_loop
+                #:else
+                if ( isequal(A${ranksuffix_last(RANK,last='i')}$,A${ranksuffix_last(RANK,last='inds(j)')}$) ) cycle try_loop
+                #:endif
             enddo
             k = k + 1
             inds(k) = i
@@ -3359,496 +3077,38 @@ module am_matlab
         !
         inds = trim_null(inds)
         !
-    end function  dm_unique_inds
+    end function  ${KIND[0]}$${RANK}$_unique_inds
 
-    pure function dv_unique_inds(A,iopt_prec) result(inds)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        real(dp), intent(in) :: A(:,:)
-        real(dp), intent(in), optional :: iopt_prec
-        integer , allocatable :: inds(:)
-        integer :: i,j,k,n
-        real(dp) :: prec
-        !
-        if ( present(iopt_prec) ) then
-            prec = iopt_prec
-        else
-            prec = tiny
-        endif
-        !
-        n = size(A,2)
-        !
-        allocate(inds(n))
-        inds = 0
-        !
-        k=0
-        try_loop : do i = 1, n
-            do j = 1, k
-                if ( isequal(A(:,i),A(:,inds(j)),prec) ) cycle try_loop
-            enddo
-            k = k + 1
-            inds(k) = i
-        enddo try_loop
-        !
-        inds = trim_null(inds)
-        !
-    end function  dv_unique_inds
-
-    pure function  d_unique_inds(A,iopt_prec) result(inds)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        real(dp), intent(in) :: A(:)
-        real(dp), intent(in), optional :: iopt_prec
-        integer , allocatable :: inds(:)
-        integer :: i,j,k,n
-        real(dp) :: prec
-        !
-        if ( present(iopt_prec) ) then
-            prec = iopt_prec
-        else
-            prec = tiny
-        endif
-        !
-        n = size(A)
-        !
-        allocate(inds(n))
-        inds = 0
-        !
-        k=0
-        try_loop : do i = 1, n
-            do j = 1, k
-                if ( isequal(A(i),A(inds(j)),prec) ) cycle try_loop
-            enddo
-            k = k + 1
-            inds(k) = i
-        enddo try_loop
-        !
-        inds = trim_null(inds)
-        !
-    end function   d_unique_inds
-
-    pure function zm_unique_inds(A,iopt_prec) result(inds)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        complex(dp), intent(in) :: A(:,:,:)
-        real(dp)   , intent(in), optional :: iopt_prec
-        integer , allocatable :: inds(:)
-        integer :: i,j,k,n
-        real(dp) :: prec
-        !
-        if ( present(iopt_prec) ) then
-            prec = iopt_prec
-        else
-            prec = tiny
-        endif
-        !
-        n = size(A,3)
-        !
-        allocate(inds(n))
-        inds = 0
-        !
-        k=0
-        try_loop : do i = 1, n
-            do j = 1, k
-                if ( isequal(A(:,:,i),A(:,:,inds(j)),prec) ) cycle try_loop
-            enddo
-            k = k + 1
-            inds(k) = i
-        enddo try_loop
-        !
-        inds = trim_null(inds)
-        !
-    end function  zm_unique_inds
-
-    pure function zv_unique_inds(A,iopt_prec) result(inds)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        complex(dp), intent(in) :: A(:,:)
-        real(dp), intent(in), optional :: iopt_prec
-        integer , allocatable :: inds(:)
-        integer :: i,j,k,n
-        real(dp) :: prec
-        !
-        if ( present(iopt_prec) ) then
-            prec = iopt_prec
-        else
-            prec = tiny
-        endif
-        !
-        n = size(A,2)
-        !
-        allocate(inds(n))
-        inds = 0
-        !
-        k=0
-        try_loop : do i = 1, n
-            do j = 1, k
-                if ( isequal(A(:,i),A(:,inds(j)),prec) ) cycle try_loop
-            enddo
-            k = k + 1
-            inds(k) = i
-        enddo try_loop
-        !
-        inds = trim_null(inds)
-        !
-    end function  zv_unique_inds
-
-    pure function  z_unique_inds(A,iopt_prec) result(inds)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        complex(dp), intent(in) :: A(:)
-        real(dp), intent(in), optional :: iopt_prec
-        integer , allocatable :: inds(:)
-        integer :: i,j,k,n
-        real(dp) :: prec
-        !
-        if ( present(iopt_prec) ) then
-            prec = iopt_prec
-        else
-            prec = tiny
-        endif
-        !
-        n = size(A)
-        !
-        allocate(inds(n))
-        inds = 0
-        !
-        k=0
-        try_loop : do i = 1, n
-            do j = 1, k
-                if ( isequal(A(i),A(inds(j)),prec) ) cycle try_loop
-            enddo
-            k = k + 1
-            inds(k) = i
-        enddo try_loop
-        !
-        inds = trim_null(inds)
-        !
-    end function   z_unique_inds
-
-    pure function im_unique_inds(A) result(inds)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        integer, intent(in) :: A(:,:,:)
-        integer, allocatable :: inds(:)
-        integer :: i,j,k,n
-        !
-        n = size(A,3)
-        !
-        allocate(inds(n))
-        inds = 0
-        !
-        k=0
-        try_loop : do i = 1, n
-            do j = 1, k
-                if ( isequal(A(:,:,i),A(:,:,inds(j))) ) cycle try_loop
-            enddo
-            k = k + 1
-            inds(k) = i
-        enddo try_loop
-        !
-        inds = trim_null(inds)
-        !
-    end function  im_unique_inds
-
-    pure function iv_unique_inds(A) result(inds)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        integer, intent(in) :: A(:,:)
-        integer, allocatable :: inds(:)
-        integer :: i,j,k,n
-        !
-        n = size(A,2)
-        !
-        allocate(inds(n))
-        inds = 0
-        !
-        k=0
-        try_loop : do i = 1, n
-            do j = 1, k
-                if ( isequal(A(:,i),A(:,inds(j))) ) cycle try_loop
-            enddo
-            k = k + 1
-            inds(k) = i
-        enddo try_loop
-        !
-        inds = trim_null(inds)
-        !
-    end function  iv_unique_inds
-
-    pure function  i_unique_inds(A) result(inds)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        integer, intent(in) :: A(:)
-        integer, allocatable :: inds(:)
-        integer :: i,j,k,n
-        !
-        n = size(A)
-        !
-        allocate(inds(n))
-        inds = 0
-        !
-        k=0
-        try_loop : do i = 1, n
-            do j = 1, k
-                if ( isequal(A(i),A(inds(j))) ) cycle try_loop
-            enddo
-            k = k + 1
-            inds(k) = i
-        enddo try_loop
-        !
-        inds = trim_null(inds)
-        !
-    end function   i_unique_inds
-
-    pure function bm_unique_inds(A) result(inds)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        logical, intent(in) :: A(:,:,:)
-        integer , allocatable :: inds(:)
-        integer :: i,j,k,n
-        !
-        n = size(A,3)
-        !
-        allocate(inds(n))
-        inds = 0
-        !
-        k=0
-        try_loop : do i = 1, n
-            do j = 1, k
-                if ( isequal(A(:,:,i),A(:,:,inds(j))) ) cycle try_loop
-            enddo
-            k = k + 1
-            inds(k) = i
-        enddo try_loop
-        !
-        inds = trim_null(inds)
-        !
-    end function  bm_unique_inds
-
-    pure function bv_unique_inds(A) result(inds)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        logical, intent(in) :: A(:,:)
-        integer, allocatable :: inds(:)
-        integer :: i,j,k,n
-        !
-        n = size(A,2)
-        !
-        allocate(inds(n))
-        inds = 0
-        !
-        k=0
-        try_loop : do i = 1, n
-            do j = 1, k
-                if ( isequal(A(:,i),A(:,inds(j))) ) cycle try_loop
-            enddo
-            k = k + 1
-            inds(k) = i
-        enddo try_loop
-        !
-        inds = trim_null(inds)
-        !
-    end function  bv_unique_inds
-
-    pure function  b_unique_inds(A) result(inds)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        logical, intent(in) :: A(:)
-        integer, allocatable :: inds(:)
-        integer :: i,j,k,n
-        !
-        n = size(A)
-        !
-        allocate(inds(n))
-        inds = 0
-        !
-        k=0
-        try_loop : do i = 1, n
-            do j = 1, k
-                if ( isequal(A(i),A(inds(j))) ) cycle try_loop
-            enddo
-            k = k + 1
-            inds(k) = i
-        enddo try_loop
-        !
-        inds = trim_null(inds)
-        !
-    end function   b_unique_inds
-
+#:endfor
+#:endfor
     ! unique
 
-    pure function dt_unique(A,prec) result(B)
-        !> returns unique matrices of A(:,:,i) within numerical precision
+#:for KIND in KINDS_unique
+#:for RANK in RANKS_unique
+    #:if KIND == 'real(dp)' or KIND == 'complex(dp)'
+    pure function ${KIND[0]}$${RANK}$_unique(A,prec) result(B)
+    #:else
+    pure function ${KIND[0]}$${RANK}$_unique(A) result(B)
+    #:endif
+        !
         implicit none
         !
-        real(dp), intent(in) :: A(:,:,:)
+        ${KIND}$, intent(in) :: A${ranksuffix(RANK)}$
+        ${KIND}$, allocatable :: B${ranksuffix(RANK)}$
+    #:if KIND == 'real(dp)' or KIND == 'complex(dp)'
         real(dp), intent(in), optional :: prec
-        real(dp), allocatable :: B(:,:,:)
-        !
         if ( present(prec) ) then
-            allocate(B, source=A(:,:,unique_inds(A,prec)))
+            allocate(B, source=A${ranksuffix_last(RANK,last='unique_inds(A,prec)')}$)
         else
-            allocate(B, source=A(:,:,unique_inds(A,tiny)))
+            allocate(B, source=A${ranksuffix_last(RANK,last='unique_inds(A,tiny)')}$)
         endif
+    #:else
+        allocate(B, source=A${ranksuffix_last(RANK,last='unique_inds(A)')}$)
+    #:endif
         !
-    end function  dt_unique
+    end function  ${KIND[0]}$${RANK}$_unique
 
-    pure function dm_unique(A,prec) result(B)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        real(dp), intent(in) :: A(:,:)
-        real(dp), intent(in), optional :: prec
-        real(dp), allocatable :: B(:,:)
-        !
-        if ( present(prec) ) then
-            allocate(B, source=A(:,unique_inds(A,prec)))
-        else
-            allocate(B, source=A(:,unique_inds(A,tiny)))
-        endif
-        !
-    end function  dm_unique
-
-    pure function dv_unique(A,prec) result(B)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        real(dp), intent(in) :: A(:)
-        real(dp), intent(in), optional :: prec
-        real(dp), allocatable :: B(:)
-        !
-        if ( present(prec) ) then
-            allocate(B, source=A(unique_inds(A,prec)))
-        else
-            allocate(B, source=A(unique_inds(A,tiny)))
-        endif
-        !
-    end function  dv_unique
-
-    pure function zt_unique(A,prec) result(B)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        complex(dp), intent(in) :: A(:,:,:)
-        real(dp)   , intent(in), optional :: prec
-        complex(dp), allocatable :: B(:,:,:)
-        !
-        if ( present(prec) ) then
-            allocate(B, source=A(:,:,unique_inds(A,prec)))
-        else
-            allocate(B, source=A(:,:,unique_inds(A,tiny)))
-        endif
-        !
-    end function  zt_unique
-
-    pure function zm_unique(A,prec) result(B)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        complex(dp), intent(in) :: A(:,:)
-        real(dp)   , intent(in), optional :: prec
-        complex(dp), allocatable :: B(:,:)
-        !
-        if ( present(prec) ) then
-            allocate(B, source=A(:,unique_inds(A,prec)))
-        else
-            allocate(B, source=A(:,unique_inds(A,tiny)))
-        endif
-        !
-    end function  zm_unique
-
-    pure function zv_unique(A,prec) result(B)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        complex(dp), intent(in) :: A(:)
-        real(dp)   , intent(in), optional :: prec
-        complex(dp), allocatable :: B(:)
-        !
-        if ( present(prec) ) then
-            allocate(B, source=A(unique_inds(A,prec)))
-        else
-            allocate(B, source=A(unique_inds(A,tiny)))
-        endif
-        !
-    end function  zv_unique
-
-    pure function it_unique(A) result(B)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        integer, intent(in) :: A(:,:,:)
-        integer,allocatable :: B(:,:,:)
-        !
-        allocate(B, source=A(:,:,unique_inds(A)))
-        !
-    end function  it_unique
-
-    pure function im_unique(A) result(B)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        integer, intent(in) :: A(:,:)
-        integer,allocatable :: B(:,:)
-        !
-        allocate(B, source=A(:,unique_inds(A)))
-        !
-    end function  im_unique
-
-    pure function iv_unique(A) result(B)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        integer, intent(in) :: A(:)
-        integer,allocatable :: B(:)
-        !
-        allocate(B, source=A(unique_inds(A)))
-        !
-    end function  iv_unique
-
-    pure function bt_unique(A) result(B)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        logical, intent(in) :: A(:,:,:)
-        logical,allocatable :: B(:,:,:)
-        !
-        allocate(B, source=A(:,:,unique_inds(A)))
-        !
-    end function  bt_unique
-
-    pure function bm_unique(A) result(B)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        logical, intent(in) :: A(:,:)
-        logical,allocatable :: B(:,:)
-        !
-        allocate(B, source=A(:,unique_inds(A)))
-        !
-    end function  bm_unique
-
-    pure function bv_unique(A) result(B)
-        !> returns unique matrices of A(:,:,i) within numerical precision
-        implicit none
-        !
-        logical, intent(in) :: A(:)
-        logical,allocatable :: B(:)
-        !
-        allocate(B, source=A(unique_inds(A)))
-        !
-    end function  bv_unique
+#:endfor
+#:endfor
 
 end module am_matlab

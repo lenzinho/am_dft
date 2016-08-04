@@ -49,7 +49,7 @@ module am_tight_binding
         integer , allocatable :: nVs                   ! number of irreducible matrix element values
         real(dp), allocatable :: V(:)                  ! their values
         integer , allocatable :: V_ind(:,:)            ! their indices: [ip_id, alpha, beta]
-        type(am_class_tensor), allocatable :: tens(:)  ! tens(nshells) describes symmetry-adapted matrix elementes
+        type(am_class_tensor), allocatable :: tens(:)  ! tens(nshells) describes symmetry-adapted matrix elementes (corresponds to irreducible pair shells)
         type(am_class_tightbinding_pointgroup) :: pg   ! point group in tight binding representation
         type(am_class_tightbinding_dispersion) :: dr   ! band dispersion computed using the tight binding model
         type(am_class_tightbinding_fitter)     :: ft   ! fitter for optimizing tight binding matrix elements
@@ -83,7 +83,6 @@ contains
         integer :: i,j,k
         !
         if (opts%verbosity.ge.1) call print_title('Symmetry-adapted tight-binding parameters')
-        !
         ! get point group in tight binding basis
         tb%pg = get_tightbinding_pointgroup(pg=pg, pc=pc, ic=ic)
         ! set number of shells

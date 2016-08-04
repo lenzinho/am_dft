@@ -83,7 +83,7 @@ in which the tight-binding hamiltonian
 \label{eq:ham}
 \ham^{\alpha\beta}_{ij} = \sum_j v^{\alpha\beta}_{ij} e^{-i\vec{\tau}_{ij} \cdot \vec{k} }.
 \end{equation}
-$v^{\alpha\beta}_{ij} = \bra{i\alpha} \mathbb{V} \ket{j\beta}$ are matrix elements between cubic harmonics $\alpha$ and $\beta$ centered on primitive atom $i$ and neighbor $j$. $\bondvec = \vec{r}_i - \vec{r}_j$ represents the bond vector connecting sites $i$ and $j$. The summation is evaluated explicitly to second neighbor.
+$v^{\alpha\beta}_{ij} = \bra{i\alpha} \mathbb{V} \ket{j\beta}$ are matrix elements between cubic harmonics $\alpha$ and $\beta$ centered on primitive atom $i$ and neighbor $j$. $\bondvec = \vec{r}_i - \vec{r}_j$ represents the bond vector connecting sites $i$ and $j$. The summation is evaluated explicitly to second neighbor. % yielding an irreducible set of fourteen matrix elements which are able to accurately reproduce the band dispersion relations obtained from both synchrotron angle-resolved photoelectron experiments and first-principles density functional theory calculations.
 
 Crystallographic symmetries are exploited to obtained an irreducible set of symmetry-adapted matrix elements. The interchange of orbitals produces the relationships:
 %
@@ -170,7 +170,7 @@ Improper rotations are obtained by premultiplying $(-1)^l$ the scalar inversion 
 In terms of Tait-Bryan angles:
 %
 \footnote{
-Conversion of $3\x3$ rotational matrices $R = R_x(\theta)R_y(\phi)R_z(\gamma)$ to Tait-Bryan angles $\theta$, $\phi$, and $\gamma$ representing rotations around axes $\hat{z}$, $\hat{y}$, and $\hat{x}$ is achieved via:
+Conversion of $3\x3$ transformation matrices $R = R_x(\theta)R_y(\phi)R_z(\gamma)$ to Tait-Bryan angles $\theta$, $\phi$, and $\gamma$ representing rotations about $\hat{z}$, $\hat{y}$, and $\hat{x}$ axes is achieved via:
 \begin{equation}
 \theta = {\rm atan2}(R_{23},R_{33})
 \end{equation}
@@ -183,7 +183,7 @@ Conversion of $3\x3$ rotational matrices $R = R_x(\theta)R_y(\phi)R_z(\gamma)$ t
        \quad         R_{22}\cos{\theta}-R_{32}\sin{\theta})
 \end{split}
 \end{equation}
-${\rm atan2}$ is the four-quadrant arctangent function and $R_{ij}$ are the elements $ij$ of $R$. This formulation avoids gimbal lock without the use of conditional statements.} 
+${\rm atan2}$ is the four-quadrant arctangent function and $R_{ij}$ are the elements $ij$ of $R$. This formulation avoids gimbal lock.} 
 %
 \begin{equation}
 \wignerDl = e^{-i\theta\hat{L}_x/\hbar} e^{-i\phi\hat{L}_y/\hbar} e^{-i\psi\hat{L}_z/\hbar}
@@ -238,7 +238,20 @@ The resulting cubic-harmonic basis is utilized throughout the paper:
 \section{tight binding model}
 \label{appendix:tb}
 
-The B1 NaCl-structure lattice consists of two interpenetrating cation and anion face-centered cubic sublattices translated by half a primitive-cell with respect to each other. Each cation (anion) has six equivalent first neighbor anions (cations) at $\vec{\tau}_{ij} = [0 0 \frac{1}{2}]$ and twelve equivalent second neighbor cation (anion) at $\vec{\tau}_{ij} = [0 \frac{1}{2} \frac{1}{2}]$. Explicitly describing interactions to second neighbors with a minimal orthogonal basis based on cation-centered $d$ and anion-centered $p$ orbitals produces the tight-binging Hamiltonian: 
+The B1 NaCl-structure lattice consists of two interpenetrating cation and anion face-centered cubic sublattices offset with respect to each other by half a primitive cell. Each cation (anion) has six equivalent first neighbor anions (cations) at $\vec{\tau}_{ij} = [0 0 \frac{1}{2}]$ and twelve equivalent second neighbor cation (anion) at $\vec{\tau}_{ij} = [0 \frac{1}{2} \frac{1}{2}]$. 
+
+
+% which restore the NaCl-structure lattice onto itself
+
+Explicitly describing interactions to second neighbors with a minimal orthogonal basis based on cation-centered $d$ and anion-centered $p$ orbitals engenders the tight-binging Hamiltonian: 
+
+
+% add version of hamiltonian which includes coset expansion and stabilizer group.    
+
+...
+
+
+The Hamiltonian, written explicitly, is:
 \begin{equation}
 \label{eq:ham_explicit}
 \hat{H} = 
@@ -365,7 +378,10 @@ H^{pp}_2 =
 
 \section{$O_h$}
 \label{appendix:pg}
-The $O_h$(m$\bar{3}$m) point group consists of forty-eight symmetry operations which restore the NaCl-structure lattice onto itself. Twenty-four symmetries are proper rotations belonging to the chiral octahedral subgroup $O$(432). These are subdivided among five conjugacy classes\footnote{Classes $\class_i$ are mutually distinct sets containing symmetries $R_i$ and $R_j$ related by conjugation with $R_k$ an arbitrary group element: $R_kR_iR_k^{-1}=R_j$} --  $\id$, $3c_4^2$, $6c_2$, $8c_3$, and $6c_4$ -- which correspond to the identity, two-fold rotations about $\left<001\right>$, two-fold rotations around $\left<011\right>$, three-fold rotations about $\left<111\right>$, and four-fold rotations around $\left<001\right>$. The additional twenty-four symmetries, formed by compounding $O$ symmetries with the inversion operator $i$, are improper rotations\footnote{Improper rotations, or rotoinversions, are rotation operations followed by inversion.} and also exhibit a similar structure with five conjugacy classes: $i$, $3\sigma_2$, $6\sigma_2$, $8\sigma_6$, and $6\sigma_4$, associated with inversion $i$, reflection across $\{001\}$, reflection across $\{011\}$, three-fold roto-inversions around $\left<111\right>$, and four-fold roto-inversions about $\left<001\right>$. The group has two generators\footnote{The generating basis of a group is a minimal set of elements which is capable of producing all elements in the group when multiplied together.}, $c_4$ and $\sigma_6$.
+The $O_h$(m$\bar{3}$m) point group consists of forty-eight symmetry operations. Twenty-four are proper rotations belonging to the chiral octahedral subgroup $O$(432) and may be further subdivided among five conjugacy classes\footnote{Classes $\class_i$ are mutually distinct sets containing symmetries $R_i$ and $R_j$ related by conjugation with $R_k$ an arbitrary group element: $R_kR_iR_k^{-1}=R_j$} --  $\id$, $3c_4^2$, $6c_2$, $8c_3$, and $6c_4$ -- which correspond to the identity, two-fold rotations about $\left<001\right>$, two-fold rotations around $\left<011\right>$, three-fold rotations about $\left<111\right>$, and four-fold rotations around $\left<001\right>$. The additional twenty-four symmetries are improper rotations formed by compounding $O$ symmetries with the inversion operator $i$ and also display a similar structure consisting of five conjugacy classes: $i$, $3\sigma_2$, $6\sigma_2$, $8\sigma_6$, and $6\sigma_4$, associated with inversion, reflection across $\{001\}$, reflection across $\{011\}$, three-fold roto-inversions around $\left<111\right>$, and four-fold roto-inversions about $\left<001\right>$. The group has two generators, \footnote{The generating basis of a group is a minimal set of elements which is capable of producing all elements in the group when multiplied together.} $c_4$ and $\sigma_6$ which, in combination with intrinsic symmetries, uniquely determine the irreducible matrix elements.
+
+% introduce subgroup and stabilizer group here.
+
 
 The vector $\bondvec = [00\frac{1}{2}]$ representing first neighbor bonds is stabilized by symmetries belonging to $C_{4v}$ (4mm). 
 
