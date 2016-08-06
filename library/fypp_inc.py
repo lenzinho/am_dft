@@ -42,3 +42,7 @@ def variants(name, prefixes=None, suffixes=None, separator=', '):
     variants = [prefix + name + suffix
                 for prefix in prefixes for suffix in suffixes]
     return separator.join(variants)
+
+
+
+

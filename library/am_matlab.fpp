@@ -3102,20 +3102,17 @@ module am_matlab
 
 #:for KIND in KINDS_read_xml_attribute
 #:for RANK in RANKS_read_xml_attribute
-    subroutine     ${KIND[0]}$${RANK}$_read_xml_attribute(unit,value,verbosity)
+    subroutine     ${KIND[0]}$${RANK}$_read_xml_attribute(unit,value,iostat,iomsg)
         !
         integer     , intent(in) :: unit
         ${KIND}$    , intent(inout) :: value${ranksuffix(RANK)}$
-        integer     , intent(in) :: verbosity
+        integer     , intent(out)   :: iostat
+        character(*), intent(inout) :: iomsg
         !
-        ! write(unit,'(a,/)') '<'//trim(attribute)//'>'
-        read(unit,'(/)')
-        ! write(unit,*) value
-        read(unit,*) value
-        if (verbosity.ge.1) write(*,*) 'read: ', value
-        read(unit,'(/)')
-        ! write(unit,'(a,/)') '</'//trim(attribute)//'>'
-        read(unit,'(/)')
+        read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)     ! write(unit,'(a,/)') '<'//trim(attribute)//'>'
+        read(unit,*) value                                      ! write(unit,*) pack(value,.true.)
+        read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)     ! write(unit,'(/)')
+        read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)     ! write(unit,'(a,/)') '</'//trim(attribute)//'>'
         !
     end subroutine  ${KIND[0]}$${RANK}$_read_xml_attribute
 

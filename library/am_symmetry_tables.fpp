@@ -16,7 +16,7 @@ module am_symmetry_tables
         integer    , allocatable :: nelements(:)            ! class_nelements(nclasses) get number of elements in each class
         integer    , allocatable :: member(:,:)             ! members(nclass,maxval(class_nelements)) record indicies of each class_member element for each class 
         real(dp)   , allocatable :: matrices(:,:,:)         ! 
-    contains
+        contains
         procedure, private :: write_conjugacy_class
         procedure, private :: read_conjugacy_class
         generic :: write(formatted) => write_conjugacy_class
@@ -37,6 +37,11 @@ module am_symmetry_tables
         ! if subgroup
         complex(dp), allocatable :: subduced_chi(:,:)       ! subduced characters
         character(:),allocatable :: subduced_label(:)       ! subduced irrep labels
+        contains
+        procedure, private :: write_character_table
+        procedure, private :: read_character_table
+        generic :: write(formatted) => write_character_table
+        generic :: read(formatted)  => read_character_table
     end type am_class_character_table
 
     type, public :: am_class_multiplication_table
@@ -46,6 +51,11 @@ module am_symmetry_tables
         integer    , allocatable :: gen_id(:,:)             ! gen_id(i,:) identifies generators which produce element i
         integer    , allocatable :: gen(:)                  ! complete list of group generators
         integer    , allocatable :: commutator_id(:,:)      ! get_commutator_id(i,:) list of group symmetries which commute with symmetry i 
+        contains
+        procedure, private :: write_multiplication_table
+        procedure, private :: read_multiplication_table
+        generic :: write(formatted) => write_multiplication_table
+        generic :: read(formatted)  => read_multiplication_table
     end type am_class_multiplication_table
 
     type, public :: am_class_chartab_printer
@@ -66,13 +76,13 @@ module am_symmetry_tables
 
 contains
 
-    ! conjgacy classes
+    ! multiplication table
 
-    subroutine     write_conjugacy_class(dtv, unit, iotype, v_list, iostat, iomsg)
+    subroutine     write_multiplication_table(dtv, unit, iotype, v_list, iostat, iomsg)
         !
         implicit none
         !
-        class(am_class_conjugacy_class), intent(in) :: dtv
+        class(am_class_multiplication_table), intent(in) :: dtv
         integer     , intent(in)    :: unit
         character(*), intent(in)    :: iotype
         integer     , intent(in)    :: v_list(:)
@@ -81,37 +91,34 @@ contains
         !
         iostat = 0
         !
+        ! irrep_label(:) and subduced_label(:) not included in write statement
+        ! 
         if (iotype.eq.'LISTDIRECTED') then
-            ! non-allocatable
-            #:for ATTRIBUTE in ['nclasses']
-                write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                    call disp(unit=unit, X=dtv%${ATTRIBUTE}$)
-                    write(unit,'(/)')
-                write(unit,'(a/)') '</${ATTRIBUTE}$>'
-            #:endfor
-            ! allocatable
-            #:for ATTRIBUTE in ['id','nelements','member','matrices']
-                write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                    if (allocated(dtv%${ATTRIBUTE}$)) then
-                        call write_xml_attribute(unit=unit,value=.true.                        ,attribute='allocated')
-                        call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
-                        call write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$)      ,attribute='shape')
-                        call write_xml_attribute(unit=unit,value=      dtv%${ATTRIBUTE}$       ,attribute='value')
-                    else
-                        call write_xml_attribute(unit=unit,value=.false.                       ,attribute='allocated')
-                    endif
-                write(unit,'(a/)') '</${ATTRIBUTE}$>'
-            #:endfor
+            write(unit,'(a/)') '<multiplication_table>'
+                ! allocatable        
+                #:for ATTRIBUTE in ['multab','inv_id','corder','gen_id','gen','commutator_id']
+                    write(unit,'(a/)') '<${ATTRIBUTE}$>'
+                        if (allocated(dtv%${ATTRIBUTE}$)) then
+                            call write_xml_attribute(unit=unit,value=.true.                        ,attribute='allocated')
+                            call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
+                            call write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$)      ,attribute='shape')
+                            call write_xml_attribute(unit=unit,value=      dtv%${ATTRIBUTE}$       ,attribute='value')
+                        else
+                            call write_xml_attribute(unit=unit,value=.false.                       ,attribute='allocated')
+                        endif
+                    write(unit,'(a/)') '</${ATTRIBUTE}$>'
+                #:endfor
+            write(unit,'(a/)') '</multiplication_table>'
         else
-            stop 'ERROR [read_conjugacy_class]: iotype /= LISTDIRECTED'
+            stop 'ERROR [write_multiplication_table]: iotype /= LISTDIRECTED'
         endif
-    end subroutine write_conjugacy_class
+    end subroutine write_multiplication_table
 
-    subroutine     read_conjugacy_class(dtv, unit, iotype, v_list, iostat, iomsg)
+    subroutine     read_multiplication_table(dtv, unit, iotype, v_list, iostat, iomsg)
         !
         implicit none
         !
-        class(am_class_conjugacy_class), intent(inout) :: dtv
+        class(am_class_multiplication_table), intent(inout) :: dtv
         integer     , intent(in)    :: unit
         character(*), intent(in)    :: iotype
         integer     , intent(in)    :: v_list(:)
@@ -120,43 +127,40 @@ contains
         logical :: isallocated
         integer :: rank
         integer :: dims(10) ! read tensor up to rank 5
-        integer :: verbosity
-        !
-        verbosity = 0
-        !
-        iostat = 0
         !
         if (iotype.eq.'LISTDIRECTED') then
-            ! non-allocatable
-            #:for ATTRIBUTE in ['nclasses']
-                call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,verbosity=verbosity)
-            #:endfor
-            ! allocatable
-            #:for ATTRIBUTE in ['id','nelements','member','matrices']
-                #! write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                read(unit,'(/)')
-                    ! call write_xml_attribute(unit=unit,value=.true.,attribute='allocated')
-                    call read_xml_attribute(unit=unit,value=isallocated,verbosity=verbosity)
-                    if (isallocated) then
-                        #! call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
-                        call read_xml_attribute(unit=unit,value=rank,verbosity=verbosity)
-                        #! write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$),attribute='shape')
-                        call read_xml_attribute(unit=unit,value=dims(1:rank),verbosity=verbosity)
-                        ! allocate attribute
-                        if (allocated(dtv%${ATTRIBUTE}$)) deallocate(dtv%${ATTRIBUTE}$)
-                        call vector_allocate(A=dtv%${ATTRIBUTE}$, vec=dims(1:rank))
-                        #! call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,attribute='value')
-                        call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,verbosity=verbosity)
-                    endif
-                #! write(unit,'(a)') '</${ATTRIBUTE}$>'
-                read(unit,'(/)')
-                write(*,'(5x,a)') '${ATTRIBUTE}$('//tostring(dims(1:rank))//')'
-            #:endfor
-            write(*,*) 'z'
+            read(unit,'(/)')
+                ! allocatable
+                #:for ATTRIBUTE in ['multab','inv_id','corder','gen_id','gen','commutator_id']
+                    #! write(unit,'(a/)') '<${ATTRIBUTE}$>'
+                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                        ! call write_xml_attribute(unit=unit,value=.true.,attribute='allocated')
+                        call read_xml_attribute(unit=unit,value=isallocated,iostat=iostat,iomsg=iomsg)
+                        if (isallocated) then
+                            #! call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
+                            call read_xml_attribute(unit=unit,value=rank,iostat=iostat,iomsg=iomsg)
+                            #! write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$),attribute='shape')
+                            call read_xml_attribute(unit=unit,value=dims(1:rank),iostat=iostat,iomsg=iomsg)
+                            ! allocate attribute
+                            if (allocated(dtv%${ATTRIBUTE}$)) deallocate(dtv%${ATTRIBUTE}$)
+                            call vector_allocate(A=dtv%${ATTRIBUTE}$, vec=dims(1:rank))
+                            #! call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,attribute='value')
+                            call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
+                            ! write
+                            write(*,'(5x,a)') '${ATTRIBUTE}$('//tostring(dims(1:rank))//')'
+                        endif
+                    #! write(unit,'(a)') '</${ATTRIBUTE}$>'
+                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                #:endfor
+            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+            ! without the iostat=-1 here the following error is produced at compile time:
+            ! tb(67203,0x7fff7e4dd300) malloc: *** error for object 0x10c898cec: pointer being freed was not allocated
+            ! *** set a breakpoint in malloc_error_break to debug
+            iostat=-1
         else
-            stop 'ERROR [read_conjugacy_class]: iotype /= LISTDIRECTED'
+            stop 'ERROR [read_multiplication_table]: iotype /= LISTDIRECTED'
         endif
-    end subroutine read_conjugacy_class
+    end subroutine read_multiplication_table
 
     function       get_multab(sym,flags) result(multab)
         !
@@ -417,6 +421,96 @@ contains
 
     ! conjugacy classes
 
+    subroutine     write_conjugacy_class(dtv, unit, iotype, v_list, iostat, iomsg)
+        !
+        implicit none
+        !
+        class(am_class_conjugacy_class), intent(in) :: dtv
+        integer     , intent(in)    :: unit
+        character(*), intent(in)    :: iotype
+        integer     , intent(in)    :: v_list(:)
+        integer     , intent(out)   :: iostat
+        character(*), intent(inout) :: iomsg
+        !
+        iostat = 0
+        !
+        if (iotype.eq.'LISTDIRECTED') then
+            write(unit,'(a/)') '<conjugacy_class>'
+                ! non-allocatable
+                #:for ATTRIBUTE in ['nclasses']
+                            call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$             ,attribute='${ATTRIBUTE}$')
+                #:endfor
+                ! allocatable
+                #:for ATTRIBUTE in ['id','nelements','member','matrices']
+                    write(unit,'(a/)') '<${ATTRIBUTE}$>'
+                        if (allocated(dtv%${ATTRIBUTE}$)) then
+                            call write_xml_attribute(unit=unit,value=.true.                        ,attribute='allocated')
+                            call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
+                            call write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$)      ,attribute='shape')
+                            call write_xml_attribute(unit=unit,value=      dtv%${ATTRIBUTE}$       ,attribute='value')
+                        else
+                            call write_xml_attribute(unit=unit,value=.false.                       ,attribute='allocated')
+                        endif
+                    write(unit,'(a/)') '</${ATTRIBUTE}$>'
+                #:endfor
+            write(unit,'(a/)') '</conjugacy_class>'
+        else
+            stop 'ERROR [write_conjugacy_class]: iotype /= LISTDIRECTED'
+        endif
+    end subroutine write_conjugacy_class
+
+    subroutine     read_conjugacy_class(dtv, unit, iotype, v_list, iostat, iomsg)
+        !
+        implicit none
+        !
+        class(am_class_conjugacy_class), intent(inout) :: dtv
+        integer     , intent(in)    :: unit
+        character(*), intent(in)    :: iotype
+        integer     , intent(in)    :: v_list(:)
+        integer     , intent(out)   :: iostat
+        character(*), intent(inout) :: iomsg
+        logical :: isallocated
+        integer :: rank
+        integer :: dims(10) ! read tensor up to rank 5
+        !
+        if (iotype.eq.'LISTDIRECTED') then
+            read(unit,'(/)')
+                ! non-allocatable
+                #:for ATTRIBUTE in ['nclasses']
+                    call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
+                #:endfor
+                ! allocatable
+                #:for ATTRIBUTE in ['id','nelements','member','matrices']
+                    #! write(unit,'(a/)') '<${ATTRIBUTE}$>'
+                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                        ! call write_xml_attribute(unit=unit,value=.true.,attribute='allocated')
+                        call read_xml_attribute(unit=unit,value=isallocated,iostat=iostat,iomsg=iomsg)
+                        if (isallocated) then
+                            #! call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
+                            call read_xml_attribute(unit=unit,value=rank,iostat=iostat,iomsg=iomsg)
+                            #! write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$),attribute='shape')
+                            call read_xml_attribute(unit=unit,value=dims(1:rank),iostat=iostat,iomsg=iomsg)
+                            ! allocate attribute
+                            if (allocated(dtv%${ATTRIBUTE}$)) deallocate(dtv%${ATTRIBUTE}$)
+                            call vector_allocate(A=dtv%${ATTRIBUTE}$, vec=dims(1:rank))
+                            #! call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,attribute='value')
+                            call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
+                            ! write
+                            write(*,'(5x,a)') '${ATTRIBUTE}$('//tostring(dims(1:rank))//')'
+                        endif
+                    #! write(unit,'(a)') '</${ATTRIBUTE}$>'
+                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                #:endfor
+            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+            ! without the iostat=-1 here the following error is produced at compile time:
+            ! tb(67203,0x7fff7e4dd300) malloc: *** error for object 0x10c898cec: pointer being freed was not allocated
+            ! *** set a breakpoint in malloc_error_break to debug
+            iostat=-1
+        else
+            stop 'ERROR [read_conjugacy_class]: iotype /= LISTDIRECTED'
+        endif
+    end subroutine read_conjugacy_class
+
     function       get_class_id(multab,inv_id,ps_id) result(class_id)
         !
         ! for AX = XB, if elements A and B are conjugate pairs for some other element X in the group, then they are in the same class
@@ -551,6 +645,98 @@ contains
     end function   get_class_id
 
     ! character table
+
+    subroutine     write_character_table(dtv, unit, iotype, v_list, iostat, iomsg)
+        !
+        implicit none
+        !
+        class(am_class_character_table), intent(in) :: dtv
+        integer     , intent(in)    :: unit
+        character(*), intent(in)    :: iotype
+        integer     , intent(in)    :: v_list(:)
+        integer     , intent(out)   :: iostat
+        character(*), intent(inout) :: iomsg
+        !
+        iostat = 0
+        !
+        ! irrep_label(:) and subduced_label(:) not included in write statement
+        ! 
+        if (iotype.eq.'LISTDIRECTED') then
+            write(unit,'(a/)') '<character_table>'
+                ! non-allocatable
+                #:for ATTRIBUTE in ['nirreps']
+                            call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$             ,attribute='${ATTRIBUTE}$')
+                #:endfor
+                ! allocatable        
+                #:for ATTRIBUTE in ['chartab','irrep_dim','irrep_id','irrep_decomp','irrep_proj','irrep_proj_V','block_proj','wigner_proj','subduced_chi']
+                    write(unit,'(a/)') '<${ATTRIBUTE}$>'
+                        if (allocated(dtv%${ATTRIBUTE}$)) then
+                            call write_xml_attribute(unit=unit,value=.true.                        ,attribute='allocated')
+                            call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
+                            call write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$)      ,attribute='shape')
+                            call write_xml_attribute(unit=unit,value=      dtv%${ATTRIBUTE}$       ,attribute='value')
+                        else
+                            call write_xml_attribute(unit=unit,value=.false.                       ,attribute='allocated')
+                        endif
+                    write(unit,'(a/)') '</${ATTRIBUTE}$>'
+                #:endfor
+            write(unit,'(a/)') '</character_table>'
+        else
+            stop 'ERROR [write_character_table]: iotype /= LISTDIRECTED'
+        endif
+    end subroutine write_character_table
+
+    subroutine     read_character_table(dtv, unit, iotype, v_list, iostat, iomsg)
+        !
+        implicit none
+        !
+        class(am_class_character_table), intent(inout) :: dtv
+        integer     , intent(in)    :: unit
+        character(*), intent(in)    :: iotype
+        integer     , intent(in)    :: v_list(:)
+        integer     , intent(out)   :: iostat
+        character(*), intent(inout) :: iomsg
+        logical :: isallocated
+        integer :: rank
+        integer :: dims(10) ! read tensor up to rank 5
+        !
+        if (iotype.eq.'LISTDIRECTED') then
+            read(unit,'(/)')
+                ! non-allocatable
+                #:for ATTRIBUTE in ['nirreps']
+                    call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
+                #:endfor
+                ! allocatable
+                #:for ATTRIBUTE in ['chartab','irrep_dim','irrep_id','irrep_decomp','irrep_proj','irrep_proj_V','block_proj','wigner_proj','subduced_chi']
+                    #! write(unit,'(a/)') '<${ATTRIBUTE}$>'
+                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                        ! call write_xml_attribute(unit=unit,value=.true.,attribute='allocated')
+                        call read_xml_attribute(unit=unit,value=isallocated,iostat=iostat,iomsg=iomsg)
+                        if (isallocated) then
+                            #! call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
+                            call read_xml_attribute(unit=unit,value=rank,iostat=iostat,iomsg=iomsg)
+                            #! write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$),attribute='shape')
+                            call read_xml_attribute(unit=unit,value=dims(1:rank),iostat=iostat,iomsg=iomsg)
+                            ! allocate attribute
+                            if (allocated(dtv%${ATTRIBUTE}$)) deallocate(dtv%${ATTRIBUTE}$)
+                            call vector_allocate(A=dtv%${ATTRIBUTE}$, vec=dims(1:rank))
+                            #! call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,attribute='value')
+                            call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
+                            ! write
+                            write(*,'(5x,a)') '${ATTRIBUTE}$('//tostring(dims(1:rank))//')'
+                        endif
+                    #! write(unit,'(a)') '</${ATTRIBUTE}$>'
+                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                #:endfor
+            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+            ! without the iostat=-1 here the following error is produced at compile time:
+            ! tb(67203,0x7fff7e4dd300) malloc: *** error for object 0x10c898cec: pointer being freed was not allocated
+            ! *** set a breakpoint in malloc_error_break to debug
+            iostat=-1
+        else
+            stop 'ERROR [read_conjugacy_class]: iotype /= LISTDIRECTED'
+        endif
+    end subroutine read_character_table
 
     function       get_chartab(multab,class_nelements,class_member,ps_id) result(chartab)
         !

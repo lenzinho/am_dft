@@ -29,7 +29,10 @@ module am_symmetry
         procedure :: get_conjugacy_classes
         procedure :: get_character_table
         procedure :: print_character_table
-!         procedure :: debug_dump => debug_dump_grp
+        procedure, private :: write_group
+        procedure, private ::  read_group
+        generic :: write(formatted) => write_group
+        generic :: read(formatted)  => read_group
     end type am_class_group
 
     type, public, extends(am_class_group)       :: am_class_representation_group
@@ -65,6 +68,179 @@ module am_symmetry
     end type am_class_space_group
 
 contains
+
+    ! group i/o
+
+    subroutine     write_group(dtv, unit, iotype, v_list, iostat, iomsg)
+        !
+        implicit none
+        !
+        class(am_class_group), intent(in) :: dtv
+        integer     , intent(in)    :: unit
+        character(*), intent(in)    :: iotype
+        integer     , intent(in)    :: v_list(:)
+        integer     , intent(out)   :: iostat
+        character(*), intent(inout) :: iomsg
+        !
+        iostat = 0
+        !
+        if (iotype.eq.'LISTDIRECTED') then
+            write(unit,'(a/)') '<group>'
+                ! non-allocatable
+                #:for ATTRIBUTE in ['nsyms','nbases']
+                            call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$             ,attribute='${ATTRIBUTE}$')
+                #:endfor
+                ! allocatable
+                #:for ATTRIBUTE in ['sym','ps_id','ax_id','supergroup_id']
+                    write(unit,'(a/)') '<${ATTRIBUTE}$>'
+                        if (allocated(dtv%${ATTRIBUTE}$)) then
+                            call write_xml_attribute(unit=unit,value=.true.                        ,attribute='allocated')
+                            call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
+                            call write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$)      ,attribute='shape')
+                            call write_xml_attribute(unit=unit,value=      dtv%${ATTRIBUTE}$       ,attribute='value')
+                        else
+                            call write_xml_attribute(unit=unit,value=.false.                       ,attribute='allocated')
+                        endif
+                    write(unit,'(a/)') '</${ATTRIBUTE}$>'
+                #:endfor
+                ! write objects
+                write(unit=1,fmt=*) dtv%cc
+                write(unit=1,fmt=*) dtv%ct
+                write(unit=1,fmt=*) dtv%mt
+                ! type-specific stuff
+                select type (dtv)
+                class is (am_class_seitz_group)
+                    ! non-allocatable
+                    #:for ATTRIBUTE in ['nlcrs','bas','recbas']
+                                call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$             ,attribute='${ATTRIBUTE}$')
+                    #:endfor
+                    ! allocatable
+                    #:for ATTRIBUTE in ['seitz_cart','seitz_frac','seitz_recfrac','lcr_id']
+                        write(unit,'(a/)') '<${ATTRIBUTE}$>'
+                            if (allocated(dtv%${ATTRIBUTE}$)) then
+                                call write_xml_attribute(unit=unit,value=.true.                        ,attribute='allocated')
+                                call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
+                                call write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$)      ,attribute='shape')
+                                call write_xml_attribute(unit=unit,value=      dtv%${ATTRIBUTE}$       ,attribute='value')
+                            else
+                                call write_xml_attribute(unit=unit,value=.false.                       ,attribute='allocated')
+                            endif
+                        write(unit,'(a/)') '</${ATTRIBUTE}$>'
+                    #:endfor
+                    ! type-spcific stuff
+                    select type (dtv)
+                    class is (am_class_point_group)
+                        #:for ATTRIBUTE in ['pg_code']
+                                call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$             ,attribute='${ATTRIBUTE}$')
+                        #:endfor
+                    class default
+                        ! do nothing
+                    end select
+                class default
+                    ! do nothing
+                end select
+            write(unit,'(a/)') '</group>'
+        else
+            stop 'ERROR [write_conjugacy_class]: iotype /= LISTDIRECTED'
+        endif
+    end subroutine write_group
+
+    subroutine     read_group(dtv, unit, iotype, v_list, iostat, iomsg)
+        !
+        implicit none
+        !
+        class(am_class_group), intent(inout) :: dtv
+        integer     , intent(in)    :: unit
+        character(*), intent(in)    :: iotype
+        integer     , intent(in)    :: v_list(:)
+        integer     , intent(out)   :: iostat
+        character(*), intent(inout) :: iomsg
+        logical :: isallocated
+        integer :: dims_rank
+        integer :: dims(10)
+        !
+        if (iotype.eq.'LISTDIRECTED') then
+            read(unit,'(/)')
+                ! non-allocatable
+                #:for ATTRIBUTE in ['nsyms','nbases']
+                    call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
+                #:endfor
+                ! allocatable
+                #:for ATTRIBUTE in ['sym','ps_id','ax_id','supergroup_id']
+                    #! write(unit,'(a/)') '<${ATTRIBUTE}$>'
+                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                        ! call write_xml_attribute(unit=unit,value=.true.,attribute='allocated')
+                        call read_xml_attribute(unit=unit,value=isallocated,iostat=iostat,iomsg=iomsg)
+                        if (isallocated) then
+                            #! call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='dims_rank')
+                            call read_xml_attribute(unit=unit,value=dims_rank,iostat=iostat,iomsg=iomsg)
+                            #! write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$),attribute='shape')
+                            call read_xml_attribute(unit=unit,value=dims(1:dims_rank),iostat=iostat,iomsg=iomsg)
+                            ! allocate attribute
+                            if (allocated(dtv%${ATTRIBUTE}$)) deallocate(dtv%${ATTRIBUTE}$)
+                            call vector_allocate(A=dtv%${ATTRIBUTE}$, vec=dims(1:dims_rank))
+                            #! call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,attribute='value')
+                            call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
+                            ! write
+                            write(*,'(5x,a)') '${ATTRIBUTE}$('//tostring(dims(1:dims_rank))//')'
+                        endif
+                    #! write(unit,'(a)') '</${ATTRIBUTE}$>'
+                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                #:endfor
+                ! read objects
+                read(unit=1,fmt=*) dtv%cc
+                read(unit=1,fmt=*) dtv%ct
+                read(unit=1,fmt=*) dtv%mt
+                ! type-specific stuff
+                select type (dtv)
+                class is (am_class_seitz_group)
+                    ! non-allocatable
+                    #:for ATTRIBUTE in ['nlcrs','bas','recbas']
+                        call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
+                    #:endfor
+                    ! allocatable
+                    #:for ATTRIBUTE in ['seitz_cart','seitz_frac','seitz_recfrac','lcr_id']
+                        #! write(unit,'(a/)') '<${ATTRIBUTE}$>'
+                        read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                            ! call write_xml_attribute(unit=unit,value=.true.,attribute='allocated')
+                            call read_xml_attribute(unit=unit,value=isallocated,iostat=iostat,iomsg=iomsg)
+                            if (isallocated) then
+                                #! call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='dims_rank')
+                                call read_xml_attribute(unit=unit,value=dims_rank,iostat=iostat,iomsg=iomsg)
+                                #! write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$),attribute='shape')
+                                call read_xml_attribute(unit=unit,value=dims(1:dims_rank),iostat=iostat,iomsg=iomsg)
+                                ! allocate attribute
+                                if (allocated(dtv%${ATTRIBUTE}$)) deallocate(dtv%${ATTRIBUTE}$)
+                                call vector_allocate(A=dtv%${ATTRIBUTE}$, vec=dims(1:dims_rank))
+                                #! call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,attribute='value')
+                                call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
+                                ! write
+                                write(*,'(5x,a)') '${ATTRIBUTE}$('//tostring(dims(1:dims_rank))//')'
+                            endif
+                        #! write(unit,'(a)') '</${ATTRIBUTE}$>'
+                        read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                    #:endfor
+                    ! type-spcific stuff
+                    select type (dtv)
+                    class is (am_class_point_group)
+                        #:for ATTRIBUTE in ['pg_code']
+                            call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
+                        #:endfor
+                    class default
+                        ! do nothing
+                    end select
+                class default
+                    ! do nothing
+                end select
+            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+            ! without the iostat=-1 here the following error is produced at compile time:
+            ! tb(67203,0x7fff7e4dd300) malloc: *** error for object 0x10c898cec: pointer being freed was not allocated
+            ! *** set a breakpoint in malloc_error_break to debug
+            iostat=-1
+        else
+            stop 'ERROR [read_conjugacy_class]: iotype /= LISTDIRECTED'
+        endif
+    end subroutine read_group
 
     ! operate on group representation
 
@@ -204,7 +380,6 @@ contains
         implicit none
         !
         class(am_class_group), intent(inout) :: grp
-        !
         ! check
         if (.not.allocated(grp%mt%multab)) stop 'ERROR [get_conjugacy_classes]: multiplication table required'
         if (.not.allocated(grp%ps_id    )) stop 'ERROR [get_conjugacy_classes]: point symmetry identities required'
@@ -220,20 +395,6 @@ contains
         ! get class matrices
         grp%cc%matrices         = get_class_matrices(sym=grp%sym, class_nelements=grp%cc%nelements, class_member=grp%cc%member)
         !
-        write(*,*) 'writing'
-        open(unit=1, file='test.write.out', status='replace', action='write')
-            write(unit=1,fmt=*) grp%cc
-        close(unit=1)
-
-        write(*,*) 'reading'
-        open(unit=1, file='test.write.out', status='old', action='read')
-            read(unit=1,fmt=*) grp%cc
-        close(unit=1)
-
-        write(*,*) 'end'
-
-        stop
-
     end subroutine get_conjugacy_classes
 
     subroutine     get_character_table(grp)
@@ -820,8 +981,12 @@ contains
         endif
         ! dump debugging
         if (debug) then
-!         call execute_command_line('mkdir -p '//trim(debug_dir)//'/space_group/')
-!         call sg%debug_dump(fname=              trim(debug_dir)//'/space_group/outfile.sg')
+            open(unit=1, file='save.sg', status='replace', action='write')
+                write(1,*) sg
+            close(1)
+            open(unit=1, file='save.sg', status='old', action='read')
+                read(1,*) sg
+            close(1)
         endif
         ! write action table
         call execute_command_line('mkdir -p '//trim(outfile_dir_sym))
@@ -1051,8 +1216,12 @@ contains
         endif
         ! dump debugging
         if (debug) then
-!         call execute_command_line ('mkdir -p '//trim(debug_dir)//'/point_group')
-!         call pg%debug_dump(fname=               trim(debug_dir)//'/point_group/outfile.pg')
+            open(unit=1, file='save.pg', status='replace', action='write')
+                write(1,*) pg
+            close(1)
+            open(unit=1, file='save.pg', status='old', action='read')
+                read(1,*) pg
+            close(1)
         endif
         ! write action table
         call pg%write_action_table(uc=pc,fname=trim(outfile_dir_sym)//'/'//'outfile.point_group_action',opts=opts)
