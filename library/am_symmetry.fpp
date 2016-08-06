@@ -16,21 +16,20 @@ module am_symmetry
     type, public :: am_class_group
         integer :: nsyms                              ! number of symmetries
         integer :: nbases                             ! number of bases functions (dimensions of rep)
-        real(dp), allocatable :: sym(:,:,:)           ! symmetry elements 
-                                                      ! (for seitz groups: regular rep; for reppresentation groups: rep engendered by the basis)
+        real(dp), allocatable :: sym(:,:,:)           ! symmetry elements (for seitz groups: regular rep; for reppresentation groups: rep engendered by the basis)
         integer , allocatable :: ps_id(:)             ! integer which identifies point symmetries (see decode_pointsymmetry)
+        integer , allocatable :: ax_id(:)
+        integer , allocatable :: supergroup_id(:)     ! if this is a subgroup, supergroup_id identifies the symmetry in the encompassing group (used for stabilizer group)
         type(am_class_conjugacy_class)      :: cc     ! conjugacy classes
         type(am_class_character_table)      :: ct     ! character table
         type(am_class_multiplication_table) :: mt     ! multiplication table
-        integer , allocatable :: supergroup_id(:)     ! if this is a subgroup, supergroup_id identifies the symmetry in the encompassing group (used for stabilizer group)
-        integer , allocatable :: ax_id(:)
         contains
         procedure :: sort_symmetries
         procedure :: get_multiplication_table
         procedure :: get_conjugacy_classes
         procedure :: get_character_table
         procedure :: print_character_table
-        procedure :: debug_dump => debug_dump_grp
+!         procedure :: debug_dump => debug_dump_grp
     end type am_class_group
 
     type, public, extends(am_class_group)       :: am_class_representation_group
@@ -167,49 +166,6 @@ contains
         end function sort_nz
     end subroutine sort_symmetries
 
-    subroutine     debug_dump_grp(grp,fname)
-        !
-        implicit none
-        !
-        class(am_class_group), intent(in) :: grp
-        character(*), intent(in) :: fname
-        !
-                                              call dump(A=grp%nsyms            ,fname=trim(fname)//'.nsyms'            )
-                                              call dump(A=grp%nbases           ,fname=trim(fname)//'.nbases'           )
-        if (allocated(grp%sym              )) call dump(A=grp%sym              ,fname=trim(fname)//'.sym'              )
-                                              call dump(A=grp%ps_id            ,fname=trim(fname)//'.ps_id'            )
-        if (allocated(grp%supergroup_id    )) call dump(A=grp%supergroup_id    ,fname=trim(fname)//'.supergroup_id'    )
-        if (allocated(grp%mt%multab        )) call dump(A=grp%mt%multab        ,fname=trim(fname)//'.mt.multab'        )
-        if (allocated(grp%mt%gen_id        )) call dump(A=grp%mt%gen_id        ,fname=trim(fname)//'.mt.gen_id'        )
-        if (allocated(grp%mt%gen           )) call dump(A=grp%mt%gen           ,fname=trim(fname)//'.mt.gen'           )
-        if (allocated(grp%mt%inv_id        )) call dump(A=grp%mt%inv_id        ,fname=trim(fname)//'.mt.inv_id'        )
-        if (allocated(grp%mt%corder        )) call dump(A=grp%mt%corder        ,fname=trim(fname)//'.mt.order'         )
-        if (allocated(grp%mt%commutator_id )) call dump(A=grp%mt%commutator_id ,fname=trim(fname)//'.mt.commutator_id' )
-                                              call dump(A=grp%cc%nclasses      ,fname=trim(fname)//'.cc.nclasses'      )
-        if (allocated(grp%cc%id            )) call dump(A=grp%cc%id            ,fname=trim(fname)//'.cc.id'            )
-        if (allocated(grp%cc%nelements     )) call dump(A=grp%cc%nelements     ,fname=trim(fname)//'.cc.nelements'     )
-        if (allocated(grp%cc%member        )) call dump(A=grp%cc%member        ,fname=trim(fname)//'.cc.member'        )
-        if (allocated(grp%cc%matrices      )) call dump(A=grp%cc%matrices      ,fname=trim(fname)//'.cc.matrices'      )
-                                              call dump(A=grp%ct%nirreps       ,fname=trim(fname)//'.ct.nirreps'       )
-        if (allocated(grp%ct%chartab       )) call dump(A=grp%ct%chartab       ,fname=trim(fname)//'.ct.chartab'       )
-        if (allocated(grp%ct%irrep_dim     )) call dump(A=grp%ct%irrep_dim     ,fname=trim(fname)//'.ct.irrep_dim'     )
-        if (allocated(grp%ct%irrep_decomp  )) call dump(A=grp%ct%irrep_decomp  ,fname=trim(fname)//'.ct.irrep_decomp'  )
-        if (allocated(grp%ct%irrep_id      )) call dump(A=grp%ct%irrep_id      ,fname=trim(fname)//'.ct.irrep_id'      )
-        if (allocated(grp%ct%irrep_proj    )) call dump(A=grp%ct%irrep_proj    ,fname=trim(fname)//'.ct.irrep_proj'    )
-        if (allocated(grp%ct%irrep_proj_V  )) call dump(A=grp%ct%irrep_proj_V  ,fname=trim(fname)//'.ct.irrep_proj_V'  )
-        if (allocated(grp%ct%block_proj    )) call dump(A=grp%ct%block_proj    ,fname=trim(fname)//'.ct.block_proj'    )
-        ! dump group specific data                                                                                        
-        select type (grp)                                                                                         
-        class is (am_class_representation_group)                                                                                          
-        if (allocated(grp%sym              )) call dump(A=grp%sym              ,fname=trim(fname)//'.seitz_cart'       )
-        class is (am_class_seitz_group)                                                                           
-        if (allocated(grp%seitz_cart       )) call dump(A=grp%seitz_cart       ,fname=trim(fname)//'.seitz_cart'       )
-        if (allocated(grp%seitz_frac       )) call dump(A=grp%seitz_frac       ,fname=trim(fname)//'.seitz_frac'       )
-        class default
-            stop 'ERROR [debug_dump]: invalid group class'
-        end select
-    end subroutine debug_dump_grp
-
     subroutine     get_multiplication_table(grp)
         !
         implicit none
@@ -262,6 +218,29 @@ contains
         grp%cc%member           = id_member(id=grp%cc%id)
         ! get class matrices
         grp%cc%matrices         = get_class_matrices(sym=grp%sym, class_nelements=grp%cc%nelements, class_member=grp%cc%member)
+        !
+        open(unit=1, file='test.write.out', status='replace', action='write')
+            write(1,*) grp%cc
+        close(1)
+
+        grp%cc%nclasses = 0
+
+        write(*,*) 'writing'
+        write(*,*) grp%cc%nclasses
+
+
+        write(*,*) 'reading'
+        open(unit=1, file='test.write.out', status='old', action='read')
+            read(1,*) grp%cc
+        close(unit=1)
+
+        write(*,*) grp%cc%nclasses
+
+
+
+
+        stop
+
     end subroutine get_conjugacy_classes
 
     subroutine     get_character_table(grp)
@@ -848,8 +827,8 @@ contains
         endif
         ! dump debugging
         if (debug) then
-        call execute_command_line('mkdir -p '//trim(debug_dir)//'/space_group/')
-        call sg%debug_dump(fname=              trim(debug_dir)//'/space_group/outfile.sg')
+!         call execute_command_line('mkdir -p '//trim(debug_dir)//'/space_group/')
+!         call sg%debug_dump(fname=              trim(debug_dir)//'/space_group/outfile.sg')
         endif
         ! write action table
         call execute_command_line('mkdir -p '//trim(outfile_dir_sym))
@@ -1079,8 +1058,8 @@ contains
         endif
         ! dump debugging
         if (debug) then
-        call execute_command_line ('mkdir -p '//trim(debug_dir)//'/point_group')
-        call pg%debug_dump(fname=               trim(debug_dir)//'/point_group/outfile.pg')
+!         call execute_command_line ('mkdir -p '//trim(debug_dir)//'/point_group')
+!         call pg%debug_dump(fname=               trim(debug_dir)//'/point_group/outfile.pg')
         endif
         ! write action table
         call pg%write_action_table(uc=pc,fname=trim(outfile_dir_sym)//'/'//'outfile.point_group_action',opts=opts)

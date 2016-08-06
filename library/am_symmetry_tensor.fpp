@@ -91,9 +91,9 @@ module am_symmetry_tensor
             endif
             ! debug?
             if (debug) then
-                allocate(str, source = 'shell' )
-                call execute_command_line('mkdir -p '//trim(debug_dir)//'/tb/pair_rep/'//str)
-                call flat_pg%debug_dump(fname=         trim(debug_dir)//'/tb/pair_rep/'//str//'/outfile.'//str)
+!                 allocate(str, source = 'shell' )
+!                 call execute_command_line('mkdir -p '//trim(debug_dir)//'/tb/pair_rep/'//str)
+!                 call flat_pg%debug_dump(fname=         trim(debug_dir)//'/tb/pair_rep/'//str//'/outfile.'//str)
             endif
         else
             ! initialize

@@ -1,5 +1,9 @@
 include makefile.inc
 
+# first suffix call is mandatory; clears suffix list
+.SUFFIXES: 
+.SUFFIXES: .fpp .i90 .f90
+
 LIBS  = libam.a
 
 # goal get rid of am_stdout
@@ -36,9 +40,6 @@ OBJS  = mkl_rci.o 						\
 		# am_tetrahedra.o                 \
 		# am_wannier.o                    \
 
-all: $(LIBS)
-	@echo > /dev/null
-
 $(LIBS): $(OBJS)
 	touch  libam.a
 	rm     libam.a
@@ -50,18 +51,11 @@ $(LIBS): $(OBJS)
 clean:
 	rm -f $(OBJS) *.mod *.o *.i90
 
-%.f90: %.fpp
-	fypp $(FYPPFLAGS) -i $(FYPPINC) $< $@
-
-%: %.o
-	$(FC) $(FFLAGS) $(LFLAGS) $(DEBUG) $(OPTS) -o $@ $^ $(LDFLAGS)
-
 %.o: %.f90
 	$(FC) $(FFLAGS) $(LFLAGS) $(DEBUG) $(OPTS) -c $<
 
-%.o: %.F90
-	$(FC) $(FFLAGS) $(LFLAGS) $(DEBUG) $(OPTS) -c $<
-
+%.f90: %.fpp
+	fypp $(FYPPFLAGS) -i $(FYPPINC) $< $@
 
 .PHONY: all
 

@@ -81,6 +81,14 @@ module am_matlab
         module procedure ${variants('reallocate', prefixes=PREFS_reallocate)}$
     end interface ! reallocate
 
+#:setvar KINDS_vector_allocate ['real(dp)', 'complex(dp)', 'integer', 'logical']
+#:setvar RANKS_vector_allocate range(1,4)
+#:setvar PREFS_vector_allocate ['{}{}_'.format(KIND[0], RANK) for KIND in KINDS_reallocate for RANK in RANKS_vector_allocate]
+
+    interface vector_allocate
+        module procedure ${variants('vector_allocate', prefixes=PREFS_vector_allocate)}$
+    end interface ! vector_allocate
+
 #:setvar KINDS_unique ['real(dp)', 'complex(dp)', 'integer', 'logical']
 #:setvar RANKS_unique range(1,4)
 #:setvar PREFS_unique ['{}{}_'.format(KIND[0], RANK) for KIND in KINDS_unique for RANK in RANKS_unique]
@@ -3019,6 +3027,7 @@ module am_matlab
 
 #:endfor
 #:endfor
+
     ! reallocate
 
 #:for KIND in KINDS_reallocate
@@ -3034,6 +3043,25 @@ module am_matlab
 
 #:endfor
 #:endfor
+
+    ! vector_allocate
+
+#:for KIND in KINDS_vector_allocate
+#:for RANK in RANKS_vector_allocate
+    pure subroutine ${KIND[0]}$${RANK}$_vector_allocate(A,vec)
+        !
+        ${KIND}$, allocatable, intent(inout) :: A${ranksuffix(RANK)}$
+        integer , intent(in) :: vec(${RANK}$)
+        !
+        if (.not.allocated(A)) then
+            allocate(A(${ 'vec(' + '),vec('.join([str(x+1) for x in range(0,RANK)]) + ')' }$))
+        endif
+        !
+    end subroutine  ${KIND[0]}$${RANK}$_vector_allocate
+
+#:endfor
+#:endfor
+
     ! unique_inds
 
 #:for KIND in KINDS_unique
@@ -3081,6 +3109,7 @@ module am_matlab
 
 #:endfor
 #:endfor
+
     ! unique
 
 #:for KIND in KINDS_unique

@@ -16,6 +16,11 @@ module am_symmetry_tables
         integer    , allocatable :: nelements(:)            ! class_nelements(nclasses) get number of elements in each class
         integer    , allocatable :: member(:,:)             ! members(nclass,maxval(class_nelements)) record indicies of each class_member element for each class 
         real(dp)   , allocatable :: matrices(:,:,:)         ! 
+    contains
+        procedure, private :: write_conjugacy_class
+        procedure, private :: read_conjugacy_class
+        generic :: write(formatted) => write_conjugacy_class
+        generic :: read(formatted)  => read_conjugacy_class
     end type am_class_conjugacy_class
 
     type, public :: am_class_character_table
@@ -61,7 +66,130 @@ module am_symmetry_tables
 
 contains
 
-    ! multiplication table
+    ! conjgacy classes
+
+    subroutine     write_conjugacy_class(dtv, unit, iotype, v_list, iostat, iomsg)
+        !
+        implicit none
+        !
+        class(am_class_conjugacy_class), intent(in) :: dtv
+        integer     , intent(in)    :: unit
+        character(*), intent(in)    :: iotype
+        integer     , intent(in)    :: v_list(:)
+        integer     , intent(out)   :: iostat
+        character(*), intent(inout) :: iomsg
+        !
+        iostat = 0
+        ! non-allocatable
+        #:for ATTRIBUTE in ['nclasses']
+            write(unit,'(a/)') '<${ATTRIBUTE}$>'
+                call disp(unit=unit, X=dtv%${ATTRIBUTE}$)
+                write(unit,'(/)')
+            write(unit,'(a/)') '</${ATTRIBUTE}$>'
+
+        #:endfor
+        ! allocatable
+        #:for ATTRIBUTE in ['id','nelements','member','matrices']
+            write(unit,'(a/)') '<${ATTRIBUTE}$>'
+                if (allocated(dtv%${ATTRIBUTE}$)) then
+                    write(unit,'(a/)') '<allocated>'
+                    write(unit,'(l/)') .true.
+                    write(unit,'(a/)') '</allocated>'
+                    write(unit,'(a/)') '<shape>'
+                    write(unit,'(a/)') tostring(shape(dtv%${ATTRIBUTE}$))
+                    write(unit,'(a/)') '</shape>'
+                    write(unit,'(a/)') '<value>'
+                    call disp(unit=unit, X=pack(dtv%${ATTRIBUTE}$,.true.), orient='row')
+                    write(unit,'(/)')
+                    write(unit,'(a/)') '</value>'
+                else
+                    write(unit,'(a/)') '<allocated>'
+                    write(unit,'(l/)') .false.
+                    write(unit,'(a/)') '</allocated>'
+                endif
+            write(unit,'(a/)') '</${ATTRIBUTE}$>'
+
+        #:endfor
+    end subroutine write_conjugacy_class
+
+    subroutine     read_conjugacy_class(dtv, unit, iotype, v_list, iostat, iomsg)
+        !
+        implicit none
+        !
+        class(am_class_conjugacy_class), intent(inout) :: dtv
+        integer     , intent(in)    :: unit
+        character(*), intent(in)    :: iotype
+        integer     , intent(in)    :: v_list(:)
+        integer     , intent(out)   :: iostat
+        character(*), intent(inout) :: iomsg
+        character(maximum_buffer_size) :: buffer ! read buffer
+        character(len=:), allocatable :: word(:) ! read buffer
+        logical :: isallocated
+        integer, allocatable :: vec(:)
+        integer :: nvecs
+        integer :: i
+        !
+        if (iotype.eq.'LISTDIRECTED') then
+            ! non-allocatable
+            #:for ATTRIBUTE in ['nclasses']
+                #! write(unit,'(a)',advance='yes') '<${ATTRIBUTE}$>'
+                read(unit,*) buffer
+                #! call disp(unit=unit,X=dtv%${ATTRIBUTE}$)
+                read(unit,*) dtv%${ATTRIBUTE}$
+                #! write(unit,'(a)',advance='yes') '</${ATTRIBUTE}$>'
+                read(unit,*) buffer
+            #:endfor
+            ! allocatable
+            #:for ATTRIBUTE in ['id','nelements','member','matrices']
+                ! write attribute
+                write(*,*) '${ATTRIBUTE}$'
+                #! read(unit,'(a)') '<${ATTRIBUTE}$>'
+                read(unit,*) buffer
+                #! write(unit,'(a)') '<allocated>'
+                read(unit,*) buffer
+                #! write(unit,'(l)') .true.
+                read(unit,*) isallocated
+
+                write(*,*) isallocated
+
+                if (isallocated) then
+                    #! write(unit,'(a)') '</allocated>'
+                    read(unit,*) buffer
+                    #! write(unit,'(a)') '<shape>'
+                    read(unit,*) buffer
+                    #! write(unit,'(a)') tostring(shape(dtv%${ATTRIBUTE}$))
+                    read(unit,*) buffer
+                    word = strsplit(buffer,delimiter=' ')
+                    ! get tensor object dimensions
+                    if (allocated(vec)) deallocate(vec)
+                    nvecs = size(word)
+                    allocate(vec(nvecs))
+                    !
+                    write(*,*) 'reading ${ATTRIBUTE}$ shape'
+                    write(*,*) nvecs
+                    ! 
+                    do i = 1, size(word)
+                        read(word,*) vec(i)
+                    enddo
+                    ! allocate vector
+                    call vector_allocate(A=dtv%${ATTRIBUTE}$, vec=vec)
+                    #! write(unit,'(a)') '</shape>'
+                    read(unit,*) buffer
+                    #! write(unit,'(a)') '<value>'
+                    read(unit,*) buffer
+                    #! call disp(unit=unit,X=pack(dtv%${ATTRIBUTE}$,.true.))
+                    read(unit,*) dtv%${ATTRIBUTE}$
+                else
+                    #! write(unit,'(a)') '</allocated>'
+                    read(unit,*) buffer
+                endif
+                #! write(unit,'(a)') '</${ATTRIBUTE}$>'
+                read(unit,*) buffer
+            #:endfor
+        else
+            stop 'ERROR [read_conjugacy_class]: iotype /= LISTDIRECTED'
+        endif
+    end subroutine read_conjugacy_class
 
     function       get_multab(sym,flags) result(multab)
         !

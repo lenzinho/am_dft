@@ -188,8 +188,8 @@ contains
             call dump(A=tb_pg%sym,fname=trim(outfile_dir_tb)//'/outfile.tb_pg.sym')
             ! dump debug files
             if (debug) then
-                call execute_command_line('mkdir -p '//trim(debug_dir)//'/tb_pg')
-                call tb_pg%debug_dump(fname=           trim(debug_dir)//'/tb_pg'//'/outfile.tb_pg')
+!                 call execute_command_line('mkdir -p '//trim(debug_dir)//'/tb_pg')
+!                 call tb_pg%debug_dump(fname=           trim(debug_dir)//'/tb_pg'//'/outfile.tb_pg')
             endif
             !
         end function get_tightbinding_pointgroup
