@@ -204,6 +204,7 @@ contains
         implicit none
         !
         class(am_class_group), intent(inout) :: grp
+        !
         ! check
         if (.not.allocated(grp%mt%multab)) stop 'ERROR [get_conjugacy_classes]: multiplication table required'
         if (.not.allocated(grp%ps_id    )) stop 'ERROR [get_conjugacy_classes]: point symmetry identities required'
@@ -219,25 +220,17 @@ contains
         ! get class matrices
         grp%cc%matrices         = get_class_matrices(sym=grp%sym, class_nelements=grp%cc%nelements, class_member=grp%cc%member)
         !
-        open(unit=1, file='test.write.out', status='replace', action='write')
-            write(1,*) grp%cc
-        close(1)
-
-        grp%cc%nclasses = 0
-
         write(*,*) 'writing'
-        write(*,*) grp%cc%nclasses
-
+        open(unit=1, file='test.write.out', status='replace', action='write')
+            write(unit=1,fmt=*) grp%cc
+        close(unit=1)
 
         write(*,*) 'reading'
         open(unit=1, file='test.write.out', status='old', action='read')
-            read(1,*) grp%cc
+            read(unit=1,fmt=*) grp%cc
         close(unit=1)
 
-        write(*,*) grp%cc%nclasses
-
-
-
+        write(*,*) 'end'
 
         stop
 

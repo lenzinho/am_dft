@@ -80,36 +80,31 @@ contains
         character(*), intent(inout) :: iomsg
         !
         iostat = 0
-        ! non-allocatable
-        #:for ATTRIBUTE in ['nclasses']
-            write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                call disp(unit=unit, X=dtv%${ATTRIBUTE}$)
-                write(unit,'(/)')
-            write(unit,'(a/)') '</${ATTRIBUTE}$>'
-
-        #:endfor
-        ! allocatable
-        #:for ATTRIBUTE in ['id','nelements','member','matrices']
-            write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                if (allocated(dtv%${ATTRIBUTE}$)) then
-                    write(unit,'(a/)') '<allocated>'
-                    write(unit,'(l/)') .true.
-                    write(unit,'(a/)') '</allocated>'
-                    write(unit,'(a/)') '<shape>'
-                    write(unit,'(a/)') tostring(shape(dtv%${ATTRIBUTE}$))
-                    write(unit,'(a/)') '</shape>'
-                    write(unit,'(a/)') '<value>'
-                    call disp(unit=unit, X=pack(dtv%${ATTRIBUTE}$,.true.), orient='row')
+        !
+        if (iotype.eq.'LISTDIRECTED') then
+            ! non-allocatable
+            #:for ATTRIBUTE in ['nclasses']
+                write(unit,'(a/)') '<${ATTRIBUTE}$>'
+                    call disp(unit=unit, X=dtv%${ATTRIBUTE}$)
                     write(unit,'(/)')
-                    write(unit,'(a/)') '</value>'
-                else
-                    write(unit,'(a/)') '<allocated>'
-                    write(unit,'(l/)') .false.
-                    write(unit,'(a/)') '</allocated>'
-                endif
-            write(unit,'(a/)') '</${ATTRIBUTE}$>'
-
-        #:endfor
+                write(unit,'(a/)') '</${ATTRIBUTE}$>'
+            #:endfor
+            ! allocatable
+            #:for ATTRIBUTE in ['id','nelements','member','matrices']
+                write(unit,'(a/)') '<${ATTRIBUTE}$>'
+                    if (allocated(dtv%${ATTRIBUTE}$)) then
+                        call write_xml_attribute(unit=unit,value=.true.                        ,attribute='allocated')
+                        call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
+                        call write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$)      ,attribute='shape')
+                        call write_xml_attribute(unit=unit,value=      dtv%${ATTRIBUTE}$       ,attribute='value')
+                    else
+                        call write_xml_attribute(unit=unit,value=.false.                       ,attribute='allocated')
+                    endif
+                write(unit,'(a/)') '</${ATTRIBUTE}$>'
+            #:endfor
+        else
+            stop 'ERROR [read_conjugacy_class]: iotype /= LISTDIRECTED'
+        endif
     end subroutine write_conjugacy_class
 
     subroutine     read_conjugacy_class(dtv, unit, iotype, v_list, iostat, iomsg)
@@ -122,70 +117,42 @@ contains
         integer     , intent(in)    :: v_list(:)
         integer     , intent(out)   :: iostat
         character(*), intent(inout) :: iomsg
-        character(maximum_buffer_size) :: buffer ! read buffer
-        character(len=:), allocatable :: word(:) ! read buffer
         logical :: isallocated
-        integer, allocatable :: vec(:)
-        integer :: nvecs
-        integer :: i
+        integer :: rank
+        integer :: dims(10) ! read tensor up to rank 5
+        integer :: verbosity
+        !
+        verbosity = 0
+        !
+        iostat = 0
         !
         if (iotype.eq.'LISTDIRECTED') then
             ! non-allocatable
             #:for ATTRIBUTE in ['nclasses']
-                #! write(unit,'(a)',advance='yes') '<${ATTRIBUTE}$>'
-                read(unit,*) buffer
-                #! call disp(unit=unit,X=dtv%${ATTRIBUTE}$)
-                read(unit,*) dtv%${ATTRIBUTE}$
-                #! write(unit,'(a)',advance='yes') '</${ATTRIBUTE}$>'
-                read(unit,*) buffer
+                call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,verbosity=verbosity)
             #:endfor
             ! allocatable
             #:for ATTRIBUTE in ['id','nelements','member','matrices']
-                ! write attribute
-                write(*,*) '${ATTRIBUTE}$'
-                #! read(unit,'(a)') '<${ATTRIBUTE}$>'
-                read(unit,*) buffer
-                #! write(unit,'(a)') '<allocated>'
-                read(unit,*) buffer
-                #! write(unit,'(l)') .true.
-                read(unit,*) isallocated
-
-                write(*,*) isallocated
-
-                if (isallocated) then
-                    #! write(unit,'(a)') '</allocated>'
-                    read(unit,*) buffer
-                    #! write(unit,'(a)') '<shape>'
-                    read(unit,*) buffer
-                    #! write(unit,'(a)') tostring(shape(dtv%${ATTRIBUTE}$))
-                    read(unit,*) buffer
-                    word = strsplit(buffer,delimiter=' ')
-                    ! get tensor object dimensions
-                    if (allocated(vec)) deallocate(vec)
-                    nvecs = size(word)
-                    allocate(vec(nvecs))
-                    !
-                    write(*,*) 'reading ${ATTRIBUTE}$ shape'
-                    write(*,*) nvecs
-                    ! 
-                    do i = 1, size(word)
-                        read(word,*) vec(i)
-                    enddo
-                    ! allocate vector
-                    call vector_allocate(A=dtv%${ATTRIBUTE}$, vec=vec)
-                    #! write(unit,'(a)') '</shape>'
-                    read(unit,*) buffer
-                    #! write(unit,'(a)') '<value>'
-                    read(unit,*) buffer
-                    #! call disp(unit=unit,X=pack(dtv%${ATTRIBUTE}$,.true.))
-                    read(unit,*) dtv%${ATTRIBUTE}$
-                else
-                    #! write(unit,'(a)') '</allocated>'
-                    read(unit,*) buffer
-                endif
+                #! write(unit,'(a/)') '<${ATTRIBUTE}$>'
+                read(unit,'(/)')
+                    ! call write_xml_attribute(unit=unit,value=.true.,attribute='allocated')
+                    call read_xml_attribute(unit=unit,value=isallocated,verbosity=verbosity)
+                    if (isallocated) then
+                        #! call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
+                        call read_xml_attribute(unit=unit,value=rank,verbosity=verbosity)
+                        #! write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$),attribute='shape')
+                        call read_xml_attribute(unit=unit,value=dims(1:rank),verbosity=verbosity)
+                        ! allocate attribute
+                        if (allocated(dtv%${ATTRIBUTE}$)) deallocate(dtv%${ATTRIBUTE}$)
+                        call vector_allocate(A=dtv%${ATTRIBUTE}$, vec=dims(1:rank))
+                        #! call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,attribute='value')
+                        call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,verbosity=verbosity)
+                    endif
                 #! write(unit,'(a)') '</${ATTRIBUTE}$>'
-                read(unit,*) buffer
+                read(unit,'(/)')
+                write(*,'(5x,a)') '${ATTRIBUTE}$('//tostring(dims(1:rank))//')'
             #:endfor
+            write(*,*) 'z'
         else
             stop 'ERROR [read_conjugacy_class]: iotype /= LISTDIRECTED'
         endif
