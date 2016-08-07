@@ -1,3 +1,4 @@
+#:include "fypp_macros.fpp"
 module am_symmetry_tensor
 
     use am_constants
@@ -6,7 +7,6 @@ module am_symmetry_tensor
     use am_symmetry
     use am_matlab
     use am_atom
-    use am_prim_cell
     use am_irre_cell
     use am_shells
     use am_symmetry_relations

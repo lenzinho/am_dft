@@ -1,3 +1,4 @@
+#:include "fypp_macros.fpp"
 module am_symmetry_relations
 
     use am_mkl

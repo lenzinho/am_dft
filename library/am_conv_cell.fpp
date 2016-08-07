@@ -1,10 +1,10 @@
+#:include "fypp_macros.fpp"
 module am_conv_cell
 
     use am_constants
     use am_stdout
     use am_options
     use am_unit_cell
-    use am_prim_cell
 
     implicit none
 

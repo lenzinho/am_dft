@@ -1,3 +1,4 @@
+#:include "fypp_macros.fpp"
 !*******************************************************************************
 !   Copyright(C) 2005-2015 Intel Corporation. All Rights Reserved.
 !

@@ -1,6 +1,6 @@
+#:include "fypp_macros.fpp"
 module am_wannier
 	!
-	use am_prim_cell
 	use am_constants
 	use am_stdout
 	use am_matlab

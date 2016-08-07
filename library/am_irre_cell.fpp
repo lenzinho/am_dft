@@ -1,3 +1,4 @@
+#:include "fypp_macros.fpp"
 module am_irre_cell
 
     use am_constants
@@ -6,7 +7,6 @@ module am_irre_cell
     use am_options
     use am_symmetry
     use am_unit_cell
-    use am_prim_cell
     use am_mkl
     use am_atom
     use dispmodule
@@ -19,7 +19,7 @@ module am_irre_cell
         ! atom is used by tight binding
         class(am_class_atom), allocatable :: atom(:)
         !
-    contains
+        contains
         procedure :: get_irreducible
         procedure :: initialize_orbitals
     end type am_class_irre_cell

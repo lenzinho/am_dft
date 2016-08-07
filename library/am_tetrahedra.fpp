@@ -1,7 +1,7 @@
+#:include "fypp_macros.fpp"
 module am_tetrahedra
 
 	use am_brillouin_zone
-    use am_prim_cell
     use am_symmetry
     use am_constants
     use am_stdout

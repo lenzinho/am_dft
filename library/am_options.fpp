@@ -1,3 +1,4 @@
+#:include "fypp_macros.fpp"
 module am_options
     !
     use am_constants 

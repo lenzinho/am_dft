@@ -1,3 +1,4 @@
+#:include "fypp_macros.fpp"
 module am_symmetry
 
     use am_constants
@@ -24,13 +25,13 @@ module am_symmetry
         type(am_class_character_table)      :: ct     ! character table
         type(am_class_multiplication_table) :: mt     ! multiplication table
         contains
-        procedure :: save_group
-        procedure :: load_group
         procedure :: sort_symmetries
         procedure :: get_multiplication_table
         procedure :: get_conjugacy_classes
         procedure :: get_character_table
         procedure :: print_character_table
+        procedure :: save_group
+        procedure :: load_group
         procedure, private :: write_group
         procedure, private :: read_group
         generic :: write(formatted) => write_group
@@ -89,20 +90,11 @@ contains
             write(unit,'(a/)') '<group>'
                 ! non-allocatable
                 #:for ATTRIBUTE in ['nsyms','nbases']
-                            call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$             ,attribute='${ATTRIBUTE}$')
+                    $:write_xml_attribute_nonallocatable(ATTRIBUTE)
                 #:endfor
                 ! allocatable
                 #:for ATTRIBUTE in ['sym','ps_id','ax_id','supergroup_id']
-                    write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                        if (allocated(dtv%${ATTRIBUTE}$)) then
-                            call write_xml_attribute(unit=unit,value=.true.                        ,attribute='allocated')
-                            call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
-                            call write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$)      ,attribute='shape')
-                            call write_xml_attribute(unit=unit,value=      dtv%${ATTRIBUTE}$       ,attribute='value')
-                        else
-                            call write_xml_attribute(unit=unit,value=.false.                       ,attribute='allocated')
-                        endif
-                    write(unit,'(a/)') '</${ATTRIBUTE}$>'
+                    $:write_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
                 ! write objects
                 write(unit=1,fmt=*) dtv%cc
@@ -113,26 +105,17 @@ contains
                 class is (am_class_seitz_group)
                     ! non-allocatable
                     #:for ATTRIBUTE in ['nlcrs','bas','recbas']
-                                call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$             ,attribute='${ATTRIBUTE}$')
+                        $:write_xml_attribute_nonallocatable(ATTRIBUTE)
                     #:endfor
                     ! allocatable
                     #:for ATTRIBUTE in ['seitz_cart','seitz_frac','seitz_recfrac','lcr_id']
-                        write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                            if (allocated(dtv%${ATTRIBUTE}$)) then
-                                call write_xml_attribute(unit=unit,value=.true.                        ,attribute='allocated')
-                                call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
-                                call write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$)      ,attribute='shape')
-                                call write_xml_attribute(unit=unit,value=      dtv%${ATTRIBUTE}$       ,attribute='value')
-                            else
-                                call write_xml_attribute(unit=unit,value=.false.                       ,attribute='allocated')
-                            endif
-                        write(unit,'(a/)') '</${ATTRIBUTE}$>'
+                        $:write_xml_attribute_allocatable(ATTRIBUTE)
                     #:endfor
                     ! type-spcific stuff
                     select type (dtv)
                     class is (am_class_point_group)
                         #:for ATTRIBUTE in ['pg_code']
-                                call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$             ,attribute='${ATTRIBUTE}$')
+                            $:write_xml_attribute_nonallocatable(ATTRIBUTE)
                         #:endfor
                     class default
                         ! do nothing
@@ -164,31 +147,13 @@ contains
             read(unit,'(/)')
                 ! non-allocatable
                 #:for ATTRIBUTE in ['nsyms','nbases']
-                    call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
+                    $:read_xml_attribute_nonallocatable(ATTRIBUTE)
                 #:endfor
                 ! allocatable
                 #:for ATTRIBUTE in ['sym','ps_id','ax_id','supergroup_id']
-                    #! write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-                        ! call write_xml_attribute(unit=unit,value=.true.,attribute='allocated')
-                        call read_xml_attribute(unit=unit,value=isallocated,iostat=iostat,iomsg=iomsg)
-                        if (isallocated) then
-                            #! call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='dims_rank')
-                            call read_xml_attribute(unit=unit,value=dims_rank,iostat=iostat,iomsg=iomsg)
-                            #! write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$),attribute='shape')
-                            call read_xml_attribute(unit=unit,value=dims(1:dims_rank),iostat=iostat,iomsg=iomsg)
-                            ! allocate attribute
-                            if (allocated(dtv%${ATTRIBUTE}$)) deallocate(dtv%${ATTRIBUTE}$)
-                            call vector_allocate(A=dtv%${ATTRIBUTE}$, vec=dims(1:dims_rank))
-                            #! call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,attribute='value')
-                            call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
-                            ! write
-                            write(*,'(5x,a)') '${ATTRIBUTE}$('//tostring(dims(1:dims_rank))//')'
-                        endif
-                    #! write(unit,'(a)') '</${ATTRIBUTE}$>'
-                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                    $:read_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
-                ! read objects
+                ! read nested objects
                 read(unit=1,fmt=*) dtv%cc
                 read(unit=1,fmt=*) dtv%ct
                 read(unit=1,fmt=*) dtv%mt
@@ -197,35 +162,17 @@ contains
                 class is (am_class_seitz_group)
                     ! non-allocatable
                     #:for ATTRIBUTE in ['nlcrs','bas','recbas']
-                        call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
+                        $:read_xml_attribute_nonallocatable(ATTRIBUTE)
                     #:endfor
                     ! allocatable
                     #:for ATTRIBUTE in ['seitz_cart','seitz_frac','seitz_recfrac','lcr_id']
-                        #! write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                        read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-                            ! call write_xml_attribute(unit=unit,value=.true.,attribute='allocated')
-                            call read_xml_attribute(unit=unit,value=isallocated,iostat=iostat,iomsg=iomsg)
-                            if (isallocated) then
-                                #! call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='dims_rank')
-                                call read_xml_attribute(unit=unit,value=dims_rank,iostat=iostat,iomsg=iomsg)
-                                #! write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$),attribute='shape')
-                                call read_xml_attribute(unit=unit,value=dims(1:dims_rank),iostat=iostat,iomsg=iomsg)
-                                ! allocate attribute
-                                if (allocated(dtv%${ATTRIBUTE}$)) deallocate(dtv%${ATTRIBUTE}$)
-                                call vector_allocate(A=dtv%${ATTRIBUTE}$, vec=dims(1:dims_rank))
-                                #! call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,attribute='value')
-                                call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
-                                ! write
-                                write(*,'(5x,a)') '${ATTRIBUTE}$('//tostring(dims(1:dims_rank))//')'
-                            endif
-                        #! write(unit,'(a)') '</${ATTRIBUTE}$>'
-                        read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                        $:read_xml_attribute_allocatable(ATTRIBUTE)
                     #:endfor
                     ! type-spcific stuff
                     select type (dtv)
                     class is (am_class_point_group)
                         #:for ATTRIBUTE in ['pg_code']
-                            call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
+                            $:read_xml_attribute_nonallocatable(ATTRIBUTE)
                         #:endfor
                     class default
                         ! do nothing

@@ -1,3 +1,4 @@
+#:include "fypp_macros.fpp"
 module am_tight_binding
 
     use dispmodule
@@ -7,7 +8,6 @@ module am_tight_binding
     use am_options
     use am_shells
     use am_irre_cell
-    use am_prim_cell
     use am_symmetry
     use am_symmetry_tensor
     use am_symmetry_relations

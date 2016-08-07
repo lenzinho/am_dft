@@ -1,3 +1,4 @@
+#:include "fypp_macros.fpp"
 module am_symmetry_tables
 
     use am_constants
@@ -93,18 +94,9 @@ contains
         !
         if (iotype.eq.'LISTDIRECTED') then
             write(unit,'(a/)') '<multiplication_table>'
-                ! allocatable        
+                ! allocatable
                 #:for ATTRIBUTE in ['multab','inv_id','corder','gen_id','gen','commutator_id']
-                    write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                        if (allocated(dtv%${ATTRIBUTE}$)) then
-                            call write_xml_attribute(unit=unit,value=.true.                        ,attribute='allocated')
-                            call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
-                            call write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$)      ,attribute='shape')
-                            call write_xml_attribute(unit=unit,value=      dtv%${ATTRIBUTE}$       ,attribute='value')
-                        else
-                            call write_xml_attribute(unit=unit,value=.false.                       ,attribute='allocated')
-                        endif
-                    write(unit,'(a/)') '</${ATTRIBUTE}$>'
+                    $:write_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
             write(unit,'(a/)') '</multiplication_table>'
         else
@@ -123,32 +115,14 @@ contains
         integer     , intent(out)   :: iostat
         character(*), intent(inout) :: iomsg
         logical :: isallocated
-        integer :: rank
+        integer :: dims_rank
         integer :: dims(10) ! read tensor up to rank 5
         !
         if (iotype.eq.'LISTDIRECTED') then
             read(unit,'(/)')
                 ! allocatable
                 #:for ATTRIBUTE in ['multab','inv_id','corder','gen_id','gen','commutator_id']
-                    #! write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-                        ! call write_xml_attribute(unit=unit,value=.true.,attribute='allocated')
-                        call read_xml_attribute(unit=unit,value=isallocated,iostat=iostat,iomsg=iomsg)
-                        if (isallocated) then
-                            #! call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
-                            call read_xml_attribute(unit=unit,value=rank,iostat=iostat,iomsg=iomsg)
-                            #! write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$),attribute='shape')
-                            call read_xml_attribute(unit=unit,value=dims(1:rank),iostat=iostat,iomsg=iomsg)
-                            ! allocate attribute
-                            if (allocated(dtv%${ATTRIBUTE}$)) deallocate(dtv%${ATTRIBUTE}$)
-                            call vector_allocate(A=dtv%${ATTRIBUTE}$, vec=dims(1:rank))
-                            #! call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,attribute='value')
-                            call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
-                            ! write
-                            write(*,'(5x,a)') '${ATTRIBUTE}$('//tostring(dims(1:rank))//')'
-                        endif
-                    #! write(unit,'(a)') '</${ATTRIBUTE}$>'
-                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                    $:read_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
             read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
             ! without the iostat=-1 here the following error is produced at compile time:
@@ -436,20 +410,11 @@ contains
             write(unit,'(a/)') '<conjugacy_class>'
                 ! non-allocatable
                 #:for ATTRIBUTE in ['nclasses']
-                            call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$             ,attribute='${ATTRIBUTE}$')
+                    $:write_xml_attribute_nonallocatable(ATTRIBUTE)
                 #:endfor
                 ! allocatable
                 #:for ATTRIBUTE in ['id','nelements','member','matrices']
-                    write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                        if (allocated(dtv%${ATTRIBUTE}$)) then
-                            call write_xml_attribute(unit=unit,value=.true.                        ,attribute='allocated')
-                            call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
-                            call write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$)      ,attribute='shape')
-                            call write_xml_attribute(unit=unit,value=      dtv%${ATTRIBUTE}$       ,attribute='value')
-                        else
-                            call write_xml_attribute(unit=unit,value=.false.                       ,attribute='allocated')
-                        endif
-                    write(unit,'(a/)') '</${ATTRIBUTE}$>'
+                    $:write_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
             write(unit,'(a/)') '</conjugacy_class>'
         else
@@ -468,36 +433,18 @@ contains
         integer     , intent(out)   :: iostat
         character(*), intent(inout) :: iomsg
         logical :: isallocated
-        integer :: rank
+        integer :: dims_rank
         integer :: dims(10) ! read tensor up to rank 5
         !
         if (iotype.eq.'LISTDIRECTED') then
             read(unit,'(/)')
                 ! non-allocatable
                 #:for ATTRIBUTE in ['nclasses']
-                    call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
+                    $:read_xml_attribute_nonallocatable(ATTRIBUTE)
                 #:endfor
                 ! allocatable
                 #:for ATTRIBUTE in ['id','nelements','member','matrices']
-                    #! write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-                        ! call write_xml_attribute(unit=unit,value=.true.,attribute='allocated')
-                        call read_xml_attribute(unit=unit,value=isallocated,iostat=iostat,iomsg=iomsg)
-                        if (isallocated) then
-                            #! call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
-                            call read_xml_attribute(unit=unit,value=rank,iostat=iostat,iomsg=iomsg)
-                            #! write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$),attribute='shape')
-                            call read_xml_attribute(unit=unit,value=dims(1:rank),iostat=iostat,iomsg=iomsg)
-                            ! allocate attribute
-                            if (allocated(dtv%${ATTRIBUTE}$)) deallocate(dtv%${ATTRIBUTE}$)
-                            call vector_allocate(A=dtv%${ATTRIBUTE}$, vec=dims(1:rank))
-                            #! call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,attribute='value')
-                            call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
-                            ! write
-                            write(*,'(5x,a)') '${ATTRIBUTE}$('//tostring(dims(1:rank))//')'
-                        endif
-                    #! write(unit,'(a)') '</${ATTRIBUTE}$>'
-                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                    $:read_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
             read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
             ! without the iostat=-1 here the following error is produced at compile time:
@@ -663,33 +610,15 @@ contains
             write(unit,'(a/)') '<character_table>'
                 ! non-allocatable
                 #:for ATTRIBUTE in ['nirreps']
-                            call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$             ,attribute='${ATTRIBUTE}$')
+                    $:write_xml_attribute_nonallocatable(ATTRIBUTE)
                 #:endfor
                 ! allocatable        
                 #:for ATTRIBUTE in ['chartab','irrep_dim','irrep_id','irrep_decomp','irrep_proj','irrep_proj_V','block_proj','wigner_proj','subduced_chi']
-                    write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                        if (allocated(dtv%${ATTRIBUTE}$)) then
-                            call write_xml_attribute(unit=unit,value=.true.                        ,attribute='allocated')
-                            call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
-                            call write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$)      ,attribute='shape')
-                            call write_xml_attribute(unit=unit,value=      dtv%${ATTRIBUTE}$       ,attribute='value')
-                        else
-                            call write_xml_attribute(unit=unit,value=.false.                       ,attribute='allocated')
-                        endif
-                    write(unit,'(a/)') '</${ATTRIBUTE}$>'
+                    $:write_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
                 ! allocatable string
                 #:for ATTRIBUTE in ['subduced_label','irrep_label']
-                    write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                        if (allocated(dtv%${ATTRIBUTE}$)) then
-                            call write_xml_attribute(unit=unit,value=.true.                        ,attribute='allocated')
-                            call write_xml_attribute(unit=unit,value= len(dtv%${ATTRIBUTE}$)       ,attribute='length')
-                            call write_xml_attribute(unit=unit,value=size(dtv%${ATTRIBUTE}$)       ,attribute='size')
-                            call write_xml_attribute(unit=unit,value=     dtv%${ATTRIBUTE}$        ,attribute='value')
-                        else
-                            call write_xml_attribute(unit=unit,value=.false.                       ,attribute='allocated')
-                        endif
-                    write(unit,'(a/)') '</${ATTRIBUTE}$>'
+                    $:write_xml_attribute_allocatable_string(ATTRIBUTE)
                 #:endfor
             write(unit,'(a/)') '</character_table>'
         else
@@ -708,58 +637,22 @@ contains
         integer     , intent(out)   :: iostat
         character(*), intent(inout) :: iomsg
         logical :: isallocated
-        integer :: rank
+        integer :: dims_rank
         integer :: dims(10) ! read tensor up to rank 5
         !
         if (iotype.eq.'LISTDIRECTED') then
             read(unit,'(/)')
                 ! non-allocatable
                 #:for ATTRIBUTE in ['nirreps']
-                    call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
+                    $:read_xml_attribute_nonallocatable(ATTRIBUTE)
                 #:endfor
                 ! allocatable
                 #:for ATTRIBUTE in ['chartab','irrep_dim','irrep_id','irrep_decomp','irrep_proj','irrep_proj_V','block_proj','wigner_proj','subduced_chi']
-                    #! write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-                        ! call write_xml_attribute(unit=unit,value=.true.,attribute='allocated')
-                        call read_xml_attribute(unit=unit,value=isallocated,iostat=iostat,iomsg=iomsg)
-                        if (isallocated) then
-                            #! call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
-                            call read_xml_attribute(unit=unit,value=rank,iostat=iostat,iomsg=iomsg)
-                            #! write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$),attribute='shape')
-                            call read_xml_attribute(unit=unit,value=dims(1:rank),iostat=iostat,iomsg=iomsg)
-                            ! allocate attribute
-                            if (allocated(dtv%${ATTRIBUTE}$)) deallocate(dtv%${ATTRIBUTE}$)
-                            call vector_allocate(A=dtv%${ATTRIBUTE}$, vec=dims(1:rank))
-                            #! call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,attribute='value')
-                            call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
-                            ! write
-                            write(*,'(5x,a)') '${ATTRIBUTE}$('//tostring(dims(1:rank))//')'
-                        endif
-                    #! write(unit,'(a)') '</${ATTRIBUTE}$>'
-                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                    $:read_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
                 ! allocatable string
                 #:for ATTRIBUTE in ['subduced_label','irrep_label']
-                    #! write(unit,'(a/)') '<${ATTRIBUTE}$>'
-                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-                        ! call write_xml_attribute(unit=unit,value=.true.,attribute='allocated')
-                        call read_xml_attribute(unit=unit,value=isallocated,iostat=iostat,iomsg=iomsg)
-                        if (isallocated) then
-                            #! call write_xml_attribute(unit=unit,value=size(shape(dtv%${ATTRIBUTE}$)),attribute='rank')
-                            call read_xml_attribute(unit=unit,value=rank,iostat=iostat,iomsg=iomsg)
-                            #! write_xml_attribute(unit=unit,value=shape(dtv%${ATTRIBUTE}$),attribute='shape')
-                            call read_xml_attribute(unit=unit,value=dims(1:1),iostat=iostat,iomsg=iomsg)
-                            ! allocate attribute
-                            if (allocated(dtv%${ATTRIBUTE}$)) deallocate(dtv%${ATTRIBUTE}$)
-                            allocate(character(rank) :: dtv%${ATTRIBUTE}$(dims(1)))
-                            #! call write_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,attribute='value')
-                            call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
-                            ! write
-                            write(*,'(5x,a)') '${ATTRIBUTE}$('//tostring(dims(1:rank))//')'
-                        endif
-                    #! write(unit,'(a)') '</${ATTRIBUTE}$>'
-                    read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                    $:read_xml_attribute_allocatable_string(ATTRIBUTE)
                 #:endfor
             read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
             ! without the iostat=-1 here the following error is produced at compile time:

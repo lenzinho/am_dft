@@ -1,3 +1,4 @@
+#:include "fypp_macros.fpp"
 module am_matlab
 
     use am_constants

@@ -1,3 +1,4 @@
+#:include "fypp_macros.fpp"
 module am_rank_and_sort
     !
     ! SORT/RANK routines(BASED ON ORDERPACK 2.0 ROUTINES)

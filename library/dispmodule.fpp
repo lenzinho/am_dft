@@ -1,3 +1,4 @@
+#:include "fypp_macros.fpp"
 ! DISPMODULE, A FORTRAN 95 MODULE FOR PRETTY-PRINTING MATRICES.
 ! Version number 1.02 6-Sept-2008
 !
