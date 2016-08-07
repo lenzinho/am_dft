@@ -3,7 +3,6 @@ module am_shells
 
     use am_constants
     use am_unit_cell
-    use am_irre_cell
     use am_options
     use am_mkl
     use am_atom
@@ -14,18 +13,6 @@ module am_shells
 
     private
 
-    type, public, extends(am_class_unit_cell) :: am_shell_cell
-        real(dp):: center(3) ! center of shell [cart]
-        integer :: i ! identifies irreducible atoms (center)
-        integer :: j ! identifies irreducible atoms (shell)
-        integer :: m ! identifies primitive atoms (center)
-        integer :: n ! identifies primitive atoms (shell)
-        integer, allocatable :: pg_id(:)   ! identifies the symmetry in the point group which takes atom tau_frac(:,1) to atom(:,i)
-        type(am_class_point_group) :: rotg ! local point group as seen by rotating the shell
-        type(am_class_point_group) :: revg ! reversal group of a typical bond in the shell v
-        type(am_class_point_group) :: stab ! stabilizer of a typical bond in the shell v
-    end type am_shell_cell
-
     type, public :: am_class_pair_shell
         integer :: nshells ! how many shells irreducible atoms
         type(am_shell_cell), allocatable :: shell(:) ! shell(k)
@@ -35,7 +22,7 @@ module am_shells
 
     type, public, extends(am_class_pair_shell) :: am_class_prim_pair
         contains
-        procedure :: get_primitive
+        procedure :: get_primitive => get_primitive_shell
     end type am_class_prim_pair
 
     type, public, extends(am_class_pair_shell) :: am_class_irre_pair
@@ -45,7 +32,9 @@ module am_shells
 
 contains
 
-    subroutine     get_primitive(pp,pc,pg,pair_cutoff,opts)
+    ! primitive shell
+
+    subroutine     get_primitive_shell(pp,pc,pg,pair_cutoff,opts)
         !
         use am_symmetry_tables
         !
@@ -322,7 +311,9 @@ contains
 			!  atom 5 [-1.35750, 1.35750,-1.35750]:  5   3   4   2   0   0   0   0   0   0   3   4   2   4   2   3   5   5   0   0   0   0   0   0   0   0   0   0   2   3   4   5   5   5   0   0   0   0   0   0   0   0   3   4   2   4   3   2
 			!
         end function   identify_shells
-    end subroutine get_primitive
+    end subroutine get_primitive_shell
+
+    ! irreducible shell
 
     subroutine     get_irreducible(ip,pp,pg,ic,opts)
         !

@@ -21,11 +21,10 @@ OBJS  = mkl_rci.o 						\
 		am_options.o                	\
 		am_vasp_io.o                	\
 		am_atom.o                   	\
-		am_unit_cell.o              	\
-		am_conv_cell.o              	\
 		am_symmetry_tables.o  			\
 		am_symmetry.o               	\
-		am_irre_cell.o              	\
+		am_unit_cell.o              	\
+		am_conv_cell.o              	\
 		am_shells.o                 	\
 		am_symmetry_relations.o 		\
 		am_symmetry_tensor.o 			\

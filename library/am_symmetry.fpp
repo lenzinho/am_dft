@@ -3,11 +3,11 @@ module am_symmetry
 
     use am_constants
     use am_stdout
-    use am_unit_cell
     use am_options
     use am_mkl
     use am_symmetry_tables
     use am_matlab
+    use am_atom
     use dispmodule
 
     implicit none
@@ -30,8 +30,8 @@ module am_symmetry
         procedure :: get_conjugacy_classes
         procedure :: get_character_table
         procedure :: print_character_table
-        procedure :: save_group
-        procedure :: load_group
+        procedure :: save => save_group
+        procedure :: load => load_group
         procedure, private :: write_group
         procedure, private :: read_group
         generic :: write(formatted) => write_group
@@ -69,7 +69,61 @@ module am_symmetry
         procedure :: get_space_group
     end type am_class_space_group
 
+    type, public :: am_class_cell
+        integer  :: natoms      ! number of atoms
+        real(dp) :: bas(3,3)    ! basis vectors a(1:3,i), a(1:3,j), a(1:3,k)
+        real(dp) :: recbas(3,3) ! reciprocal basis vectors a(1:3,i), a(1:3,j), a(1:3,k)
+        real(dp), allocatable :: tau_frac(:,:) ! tau_frac(3,natoms) fractional atomic coordinates
+        real(dp), allocatable :: tau_cart(:,:) ! tau_frac(3,natoms) cartesean  atomic coordinates
+        integer , allocatable :: Z(:)     ! identifies type of element
+        integer , allocatable :: uc_id(:) ! identifies corresponding atom in unit cell
+        contains
+        procedure :: load_poscar
+    end type am_class_cell
+
 contains
+
+    ! cell
+
+    subroutine     load_poscar(uc,opts)
+        ! 
+        ! Reads the poscar file, look below: code is short and self explanatory.
+        !
+        use am_vasp_io
+        !
+        implicit none
+        !
+        class(am_class_cell), intent(inout) :: uc
+        type(am_class_options), intent(in) :: opts
+        ! ommiting these parameters in favor of Z
+        integer :: nspecies
+        character(:), allocatable :: symb(:)
+        integer, allocatable :: atype(:)
+        integer :: i
+        !
+        call read_poscar(&
+            bas=uc%bas,&
+            natoms=uc%natoms,&
+            nspecies=nspecies,&
+            symb=symb,&
+            tau_frac=uc%tau_frac,&
+            atype=atype,&
+            iopt_filename=opts%poscar,&
+            iopt_verbosity=opts%verbosity)
+        !
+        allocate(uc%Z(uc%natoms))
+        do i = 1, uc%natoms
+            uc%Z(i) = atm_Z(trim(symb(atype(i))))
+        enddo
+        !
+        allocate(uc%tau_cart(3,uc%natoms))
+        uc%tau_cart = matmul(uc%bas,uc%tau_frac)
+        !
+        uc%recbas=inv(uc%bas)
+        !
+        allocate(uc%uc_id, source=[1:uc%natoms])
+        !
+    end subroutine load_poscar
 
     ! group i/o
 
@@ -96,10 +150,10 @@ contains
                 #:for ATTRIBUTE in ['sym','ps_id','ax_id','supergroup_id']
                     $:write_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
-                ! write objects
-                write(unit=1,fmt=*) dtv%cc
-                write(unit=1,fmt=*) dtv%ct
-                write(unit=1,fmt=*) dtv%mt
+                ! nested objects
+                #:for ATTRIBUTE in ['cc','ct','mt']
+                    write(unit,*) dtv%${ATTRIBUTE}$
+                #:endfor
                 ! type-specific stuff
                 select type (dtv)
                 class is (am_class_seitz_group)
@@ -153,10 +207,10 @@ contains
                 #:for ATTRIBUTE in ['sym','ps_id','ax_id','supergroup_id']
                     $:read_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
-                ! read nested objects
-                read(unit=1,fmt=*) dtv%cc
-                read(unit=1,fmt=*) dtv%ct
-                read(unit=1,fmt=*) dtv%mt
+                ! nested objects
+                #:for ATTRIBUTE in ['cc','ct','mt']
+                    read(unit,*) dtv%${ATTRIBUTE}$
+                #:endfor
                 ! type-specific stuff
                 select type (dtv)
                 class is (am_class_seitz_group)
@@ -920,7 +974,7 @@ contains
         implicit none
         !
         class(am_class_space_group), intent(inout) :: sg
-        class(am_class_unit_cell)  , intent(in) :: pc ! space groups are tabulated in the litearture for conventional cells, but primitive or arbitrary cell works just as well.
+        class(am_class_cell)       , intent(in) :: pc ! space groups are tabulated in the litearture for conventional cells, but primitive or arbitrary cell works just as well.
         type(am_class_options)     , intent(in) :: opts
         real(dp)    , allocatable :: seitz_frac(:,:,:)
         character(20) :: str
@@ -1146,7 +1200,7 @@ contains
         !
         class(am_class_point_group), intent(inout) :: pg
         type(am_class_space_group) , intent(in) :: sg
-        class(am_class_unit_cell)  , intent(in) :: pc  ! accepts unit cell, primitive cell, conventional cell.
+        class(am_class_cell)       , intent(in) :: pc  ! accepts unit cell, primitive cell, conventional cell.
         type(am_class_options)     , intent(in) :: opts
         real(dp), allocatable  :: wrk_frac(:,:,:)
         character(20) :: str
@@ -1207,7 +1261,7 @@ contains
         implicit none
         ! subroutine i/o
         class(am_class_point_group),intent(out):: rotg
-        class(am_class_unit_cell),  intent(in) :: uc
+        class(am_class_cell),       intent(in) :: uc
         type(am_class_point_group), intent(in) :: pg
         type(am_class_options),     intent(in) :: opts
         character(*)              , intent(in) :: flags
@@ -1417,7 +1471,7 @@ contains
         implicit none
         !
         class(am_class_seitz_group), intent(in) :: sg
-        class(am_class_unit_cell),   intent(in) :: uc
+        class(am_class_cell),        intent(in) :: uc
         character(*),                intent(in) :: fname
         type(am_class_options),      intent(in) :: opts
         real(dp), allocatable :: R(:,:)   ! used for basis functions output
@@ -1698,6 +1752,7 @@ contains
             select type (sg)
             type is (am_class_space_group)
                 !
+                ! needs to be frac below.
                 P  = permutation_rep(seitz=sg%seitz_frac,tau=uc%tau_frac,flags='',prec=opts%prec)
                 PM = permutation_map(P)
                 !
@@ -2015,6 +2070,327 @@ contains
         endif
         enddo
     end function   get_ax_id
+
+    ! low-level symmetry functions used for constructing space/point groups
+
+    pure function   translations_from_basis(tau,Z,prec,flags) result(T)
+        !
+        !> flags string can contain 'prim', 'zero', 'relax' and any combination of each
+        !> if it has 'zero'  : add [0,0,0] to the T vectors returned
+        !> if it has 'prim'  : add primitive basis to the T vectors returned
+        !> if it has 'relax' : relax symmetry check and return all translations connecting reference atom to every other atom
+        !> the addition of 'relax' is useful for determining the space group
+        !> the omition of 'relax', which is the default procedure, is useful for reducing an arbitrary cell to the primitive cell
+        !
+        implicit none
+        ! subroutine i/o
+        integer , intent(in) :: Z(:)     !> Z(natoms) list identifing type of atom
+        real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates
+        real(dp), intent(in) :: prec
+        character(len=*), intent(in), optional :: flags 
+        real(dp), allocatable :: T(:,:)   !> T(3,nTs) translation which leaves basis invariant
+        real(dp), allocatable :: wrk(:,:) ! wrk(1:3,nTs) list of possible lattice vectors that are symmetry-compatible volume
+        real(dp) :: seitz(4,4)
+        real(dp) :: wrkr(3)
+        integer  :: natoms ! natoms number of atoms
+        integer  :: nTs ! nTs number of primitive lattice vector candidates
+        logical  :: relax_symmetry
+        integer  :: i, j
+        !
+        !
+        relax_symmetry = .false.
+        if (present(flags)) then
+            if (index(flags,'relax').ne.0) relax_symmetry = .true.
+        endif 
+        !
+        natoms = size(tau,2)
+        allocate(wrk(3,natoms-1+3)) 
+        wrk = 0.0_dp
+        ! choose reference atom (ideally choose an atom corresponding to the species with the fewest number of atoms in unit cell)
+        i = 1
+        ! search for lattice vectors using, as translational components, vectors connecting the choosen atom to other atoms of the same species
+        nTs = 0
+        do j = 1,natoms
+            if ( i .ne. j) then
+            if ( Z(i) .eq. Z(j) ) then
+                ! shift to put reference atom at zero.
+                wrkr(1:3) = tau(1:3,j) - tau(1:3,i)
+                ! wrkr = modulo(wrkr+prec,1.0_dp)-prec ! added this in for testing.
+                !
+                if (relax_symmetry) then
+                    nTs = nTs + 1
+                    wrk(1:3,nTs) = wrkr
+                else
+                    !
+                    seitz = eye(4)
+                    seitz(1:3,4) = wrkr
+                    !
+                    if ( is_symmetry_valid(seitz=seitz, Z=Z, tau=tau, prec=prec) ) then
+                        nTs = nTs + 1
+                        wrk(1:3,nTs) = wrkr
+                    endif
+                endif
+            endif
+            endif
+        enddo
+        if (present(flags)) then
+            if (index(flags,"prim").ne.0) then
+                ! add native basis to vectors
+                nTs = nTs+1; wrk(1:3,nTs) = real([1,0,0],dp)
+                nTs = nTs+1; wrk(1:3,nTs) = real([0,1,0],dp)
+                nTs = nTs+1; wrk(1:3,nTs) = real([0,0,1],dp)
+            endif
+            if (index(flags,"zero").ne.0) then
+                ! add origin as a possible translation
+                nTs = nTs+1; wrk(1:3,nTs) = real([0,0,0],dp)
+            endif
+        endif
+        ! allocate output
+        allocate(T(3,nTs))
+        T = wrk(1:3,1:nTs)
+        !
+    end function    translations_from_basis
+
+    pure function   is_symmetry_valid(seitz,tau,Z,prec,flags)
+        !
+        ! check whether symmetry operation is valid
+        !
+        implicit none
+        ! function i/o
+        real(dp), intent(in) :: seitz(4,4)
+        real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic basis
+        integer , intent(in) :: Z(:)     !> Z(natoms) list identify type of atom
+        real(dp), intent(in) :: prec
+        character(*), intent(in), optional :: flags
+        !
+        real(dp), allocatable :: tau_internal(:,:)
+        real(dp), allocatable :: tau_ref(:,:) ! what to compare to
+        logical  :: isexact    ! if present, do not apply mod. ; useful for determining stabilizers
+        logical  :: iszero     ! if present, returns that the symmetry is valid if it reduces the tau to [0,0,0]. useful for determing which symmetries flip bonds
+        logical  :: isreverse  ! if present results symmetry that takes tau => - tau 
+        real(dp) :: tau_rot(3) ! rotated 
+        logical  :: is_symmetry_valid
+        integer  :: natoms
+        integer  :: i, j, m
+        logical  :: overlap_found
+        !
+        natoms = size(tau,2)
+        !
+        !
+        ! load flag options
+        isexact   = .false.
+        iszero    = .false.
+        isreverse = .false.
+        if (present(flags)) then
+        if (index(flags,'exact').ne.0)    isexact   = .true.
+        if (index(flags,'zero').ne.0)     iszero    = .true.
+        if (index(flags,'reverse').ne.0)  isreverse = .true.
+        endif
+        !
+        ! start main part of function here
+        allocate(tau_internal, source=tau)
+        if (.not.isexact) then
+            do i = 1, natoms
+                tau_internal(:,i) = modulo(tau_internal(:,i)+prec,1.0_dp)-prec
+            enddo
+        endif
+        !
+        ! tau ref is what the rotated vector is compared to
+        allocate(tau_ref(3,natoms))
+        if        (iszero) then
+            do i = 1, natoms
+                tau_ref(:,i) = real([0,0,0],dp)
+            enddo
+        elseif (isreverse) then
+            do i = 1, natoms
+                tau_ref(:,i) = -tau_internal(:,i)
+            enddo
+        else
+            ! default behavior: just compare it to what it was originally before it was rotated
+            tau_ref = tau_internal
+        endif
+        !
+        m = 0
+        do i = 1, natoms
+            ! apply symmetry operation
+            tau_rot(1:3) = matmul(seitz(1:3,1:3),tau_internal(1:3,i)) + seitz(1:3,4)
+            ! reduce rotated+translated point to unit cell
+            if (.not.isexact) tau_rot(1:3) = modulo(tau_rot(1:3)+prec,1.0_dp)-prec
+            ! check that newly created point matches something already present
+            overlap_found = .false.
+            check_overlap : do j = 1,natoms
+                if (Z(i) .eq. Z(j)) then
+                    if (isequal(tau_rot(1:3),tau_ref(1:3,j))) then
+                        m = m + 1
+                        overlap_found = .true.
+                        exit check_overlap
+                    endif
+                endif
+            enddo check_overlap
+            !
+            if (.not.overlap_found) then
+                is_symmetry_valid = .false.
+                return
+            endif
+            !
+        enddo
+        !
+        if (m.eq.natoms) then
+            is_symmetry_valid = .true.
+            return
+        endif
+        !
+    end function    is_symmetry_valid
+
+    function        permutation_rep(seitz,tau,prec,flags) result(rep)
+        !
+        ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
+        ! also works to find which kpoint or atoms (in shell) are connected by point group operations
+        !
+        ! flags = relax_pbc
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: seitz(:,:,:)
+        real(dp), intent(in) :: tau(:,:)
+        real(dp), intent(in) :: prec
+        character(*), intent(in) :: flags
+        integer, allocatable :: rep(:,:,:)
+        real(dp) :: tau_rot(3)
+        integer :: i,j,k
+        logical :: found
+        integer :: ntaus ! number of tau points tau(1:3,ntaus)
+        integer :: nsyms
+        !
+        nsyms = size(seitz,3)
+        !
+        ntaus = size(tau,2)
+        !
+        allocate(rep(ntaus,ntaus,nsyms))
+        rep = 0
+        !
+        do i = 1, nsyms
+            ! determine the permutations of atomic indicies which results from each space symmetry operation
+            do j = 1,ntaus
+                found = .false.
+                ! apply rotational component
+                tau_rot = matmul(seitz(1:3,1:3,i),tau(:,j))
+                ! apply translational component
+                tau_rot = tau_rot + seitz(1:3,4,i)
+                ! reduce rotated+translated point to unit cell
+                if (index(flags,'relax_pbc').eq.0) then
+                    tau_rot = modulo(tau_rot+prec,1.0_dp)-prec
+                endif
+                ! find matching atom
+                search : do k = 1, ntaus
+                    if (all(abs(tau_rot-tau(:,k)).lt.prec)) then
+                    rep(j,k,i) = 1
+                    found = .true.
+                    exit search ! break loop
+                    endif
+                enddo search
+                ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
+                ! to ensure atoms must permute onto each other
+                if (index(flags,'relax_pbc').eq.0) then
+                if (found.eq..false.) then
+                    call am_print('ERROR','Unable to find matching atom.',flags='E')
+                    call am_print('tau (all atoms)',transpose(tau))
+                    call am_print('tau',tau(:,j))
+                    call am_print('R',seitz(1:3,1:3,i))
+                    call am_print('T',seitz(1:3,4,i))
+                    call am_print('tau_rot',tau_rot)
+                    stop
+                endif
+                endif
+            enddo
+        enddo
+        !
+        ! check that each column and row of the rep sums to 1; i.e. rep(:,:,i) is orthonormal for all i.
+        !
+        ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
+        ! to ensure atoms must permute onto each other
+        if (index(flags,'relax_pbc').eq.0) then
+        do i = 1, nsyms
+        do j = 1, ntaus
+            !
+            if (sum(rep(:,j,i)).ne.1) then
+               call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
+               call am_print('i',i)
+               call am_print_sparse('spy(P_i)',rep(:,:,i))
+               call am_print('rep',rep(:,:,i))
+               stop
+            endif
+            !
+            if (sum(rep(j,:,i)).ne.1) then
+               call am_print('ERROR','Permutation matrix has a row which does not sum to 1.')
+               call am_print('i',i)
+               call am_print_sparse('spy(P_i)',rep(:,:,i))
+               call am_print('rep',rep(:,:,i))
+               stop
+            endif
+            !
+        enddo
+        enddo
+        endif
+       !
+    end function    permutation_rep
+
+    function        permutation_map(P) result(PM)
+        !
+        ! PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
+        !
+        implicit none
+        !
+        integer, allocatable, intent(in) :: P(:,:,:)
+        integer, allocatable :: PM(:,:)
+        integer, allocatable :: ind(:)
+        integer :: natoms,nsyms
+        integer :: i
+        !
+        natoms = size(P,1)
+        nsyms  = size(P,3)
+        !
+        ind = [1:natoms]
+        !
+        allocate(PM(natoms,nsyms))
+        PM=0
+        !
+        do i = 1, nsyms
+            PM(:,i) = matmul(P(:,:,i),ind)
+        enddo
+        !
+    end function    permutation_map
+
+    function        reduce_to_wigner_seitz(tau,grid_points) result(tau_ws)
+        !> reduces kpoint (in fractional) to the first Brillouin zone (Wigner-Seitz cell, defined in cartesian coordinates)
+        !> cartesian kpoint is returned! 
+        implicit none
+        !
+        real(dp), intent(in) :: tau(3) !> fractional
+        real(dp), intent(in) :: grid_points(3,27) !> voronoi points (cartesian)
+        real(dp) :: tau_ws(3) !> kpoint cartesian
+        real(dp) :: G(3) !> reciprocal lattice vector
+        real(dp) :: P !> bragg plane condition
+        integer  :: i ! loop variable
+        logical  :: is_not_done
+        !
+        ! copy kpoint
+        tau_ws = tau
+        ! translating the k-point until the closest reciprocal lattice point is [0 0 0]
+        is_not_done = .true.
+        do while ( is_not_done )
+            is_not_done = .false.
+            do i = 1, 27
+                G = grid_points(:,i)
+                P = 2*dot_product(tau_ws,G) - dot_product(G,G)
+                if ( P.gt. tiny ) then
+                    tau_ws = tau_ws - G
+                    is_not_done = .true.
+                endif
+            enddo
+        end do
+        !
+    end function    reduce_to_wigner_seitz
 
 end module am_symmetry
 

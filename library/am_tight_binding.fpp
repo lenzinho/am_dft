@@ -7,8 +7,8 @@ module am_tight_binding
     use am_matlab
     use am_options
     use am_shells
-    use am_irre_cell
     use am_symmetry
+    use am_unit_cell
     use am_symmetry_tensor
     use am_symmetry_relations
     use am_dispersion

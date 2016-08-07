@@ -5,9 +5,9 @@ module am_symmetry_tensor
     use am_stdout
     use am_options
     use am_symmetry
+    use am_unit_cell
     use am_matlab
     use am_atom
-    use am_irre_cell
     use am_shells
     use am_symmetry_relations
     use dispmodule

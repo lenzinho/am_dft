@@ -5,25 +5,19 @@ module am_unit_cell
     use am_stdout
     use am_options
     use am_mkl
-    use am_atom
     use dispmodule
+    use am_symmetry
 
     implicit none
 
     public
 
-    type, public :: am_class_unit_cell
-        real(dp) :: bas(3,3)    ! basis vectors a(1:3,i), a(1:3,j), a(1:3,k)
-        real(dp) :: recbas(3,3) ! reciprocal basis vectors a(1:3,i), a(1:3,j), a(1:3,k)
-        integer  :: natoms      ! number of atoms
-        real(dp), allocatable :: tau_frac(:,:) ! tau_frac(3,natoms) fractional atomic coordinates
-        real(dp), allocatable :: tau_cart(:,:) ! tau_frac(3,natoms) cartesean  atomic coordinates
-        integer , allocatable :: Z(:)     ! identifies type of element
-        integer , allocatable :: uc_id(:) ! identifies corresponding atom in unit cell
+    ! unit cell (generic)
+
+    type, public, extends(am_class_cell) :: am_class_unit_cell
         integer , allocatable :: pc_id(:) ! identifies corresponding atom in primitive cell
         integer , allocatable :: ic_id(:) ! identifies corresponding atom in irreducible cell
         contains
-        procedure :: load_poscar
         procedure :: write_poscar
         procedure :: get_supercell
         procedure :: copy
@@ -38,14 +32,41 @@ module am_unit_cell
         generic :: read(formatted) => read_uc
     end type am_class_unit_cell
 
+    ! primitive
+
     type, public, extends(am_class_unit_cell) :: am_class_prim_cell
         contains
         procedure :: get_primitive => get_primitive_cell
     end type am_class_prim_cell
 
+    ! irreducible
+
+    type, public, extends(am_class_prim_cell) :: am_class_irre_cell
+        ! atom is used by tight binding
+        class(am_class_atom), allocatable :: atom(:)
+        !
+        contains
+        procedure :: get_irreducible => get_irreducible_cell
+        procedure :: initialize_orbitals
+    end type am_class_irre_cell
+
+    ! shell
+
+    type, public, extends(am_class_unit_cell) :: am_shell_cell
+        real(dp):: center(3) ! center of shell [cart]
+        integer :: i ! identifies irreducible atoms (center)
+        integer :: j ! identifies irreducible atoms (shell)
+        integer :: m ! identifies primitive atoms (center)
+        integer :: n ! identifies primitive atoms (shell)
+        integer, allocatable :: pg_id(:)   ! identifies the symmetry in the point group which takes atom tau_frac(:,1) to atom(:,i)
+        type(am_class_point_group) :: rotg ! local point group as seen by rotating the shell
+        type(am_class_point_group) :: revg ! reversal group of a typical bond in the shell v
+        type(am_class_point_group) :: stab ! stabilizer of a typical bond in the shell v
+    end type am_shell_cell
+
 contains
 
-    ! unit cell
+    ! i/o
 
     subroutine      write_uc(dtv, unit, iotype, v_list, iostat, iomsg)
         !
@@ -72,6 +93,24 @@ contains
                 #:for ATTRIBUTE in ['tau_frac','tau_cart','Z','uc_id','pc_id','ic_id']
                     $:write_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
+                ! type-specific stuff
+                select type (dtv)
+                class is (am_shell_cell)
+                    ! non-allocatable
+                    #:for ATTRIBUTE in ['center','i','j','m','n']
+                        $:write_xml_attribute_nonallocatable(ATTRIBUTE)
+                    #:endfor
+                    ! allocatable
+                    #:for ATTRIBUTE in ['pg_id']
+                        $:write_xml_attribute_allocatable(ATTRIBUTE)
+                    #:endfor
+                    ! nested objects
+                    #:for ATTRIBUTE in ['rotg','revg','stab']
+                        write(unit,*) dtv%${ATTRIBUTE}$
+                    #:endfor
+                class default
+                    ! do nothing
+                end select
             write(unit,'(a/)') '</character_table>'
         else
             stop 'ERROR [write_character_table]: iotype /= LISTDIRECTED'
@@ -92,8 +131,8 @@ contains
         integer :: dims_rank
         integer :: dims(10) ! read tensor up to rank 5
         !
-        if (iotype.eq.'LISTDIRECTED') then
-            read(unit,'(/)')
+                if (iotype.eq.'LISTDIRECTED') then
+            write(unit,'(a/)') '<character_table>'
                 ! non-allocatable
                 #:for ATTRIBUTE in ['bas','recbas','natoms']
                     $:read_xml_attribute_nonallocatable(ATTRIBUTE)
@@ -102,13 +141,31 @@ contains
                 #:for ATTRIBUTE in ['tau_frac','tau_cart','Z','uc_id','pc_id','ic_id']
                     $:read_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
-            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                ! type-specific stuff
+                select type (dtv)
+                class is (am_shell_cell)
+                    ! non-allocatable
+                    #:for ATTRIBUTE in ['center','i','j','m','n']
+                        $:read_xml_attribute_nonallocatable(ATTRIBUTE)
+                    #:endfor
+                    ! allocatable
+                    #:for ATTRIBUTE in ['pg_id']
+                        $:read_xml_attribute_allocatable(ATTRIBUTE)
+                    #:endfor
+                    ! nested objects
+                    #:for ATTRIBUTE in ['rotg','revg','stab']
+                        read(unit,*) dtv%${ATTRIBUTE}$
+                    #:endfor
+                class default
+                    ! do nothing
+                end select
+            write(unit,'(a/)') '</character_table>'
             ! without the iostat=-1 here the following error is produced at compile time:
             ! tb(67203,0x7fff7e4dd300) malloc: *** error for object 0x10c898cec: pointer being freed was not allocated
             ! *** set a breakpoint in malloc_error_break to debug
             iostat=-1
         else
-            stop 'ERROR [read_conjugacy_class]: iotype /= LISTDIRECTED'
+            stop 'ERROR [write_character_table]: iotype /= LISTDIRECTED'
         endif
     end subroutine  read_uc
 
@@ -148,45 +205,7 @@ contains
         !
     end subroutine  load_uc
 
-    subroutine      load_poscar(uc,opts)
-        ! 
-        ! Reads the poscar file, look below: code is short and self explanatory.
-        !
-        use am_vasp_io
-        !
-        implicit none
-        !
-        class(am_class_unit_cell), intent(inout) :: uc
-        type(am_class_options), intent(in) :: opts
-        ! ommiting these parameters in favor of Z
-        integer :: nspecies
-        character(:), allocatable :: symb(:)
-        integer, allocatable :: atype(:)
-        integer :: i
-        !
-        call read_poscar(&
-            bas=uc%bas,&
-            natoms=uc%natoms,&
-            nspecies=nspecies,&
-            symb=symb,&
-            tau_frac=uc%tau_frac,&
-            atype=atype,&
-            iopt_filename=opts%poscar,&
-            iopt_verbosity=opts%verbosity)
-        !
-        allocate(uc%Z(uc%natoms))
-        do i = 1, uc%natoms
-            uc%Z(i) = atm_Z(trim(symb(atype(i))))
-        enddo
-        !
-        allocate(uc%tau_cart(3,uc%natoms))
-        uc%tau_cart = matmul(uc%bas,uc%tau_frac)
-        !
-        uc%recbas=inv(uc%bas)
-        !
-        allocate(uc%uc_id, source=[1:uc%natoms])
-        !
-    end subroutine  load_poscar
+    ! unit cell
 
     subroutine      write_poscar(uc,file_output_poscar)
         ! 
@@ -535,327 +554,6 @@ contains
         write(*,*)
     end subroutine  id_print_map
 
-    ! symmetry related functions for creating space and point groups
-
-    pure function   translations_from_basis(tau,Z,prec,flags) result(T)
-        !
-        !> flags string can contain 'prim', 'zero', 'relax' and any combination of each
-        !> if it has 'zero'  : add [0,0,0] to the T vectors returned
-        !> if it has 'prim'  : add primitive basis to the T vectors returned
-        !> if it has 'relax' : relax symmetry check and return all translations connecting reference atom to every other atom
-        !> the addition of 'relax' is useful for determining the space group
-        !> the omition of 'relax', which is the default procedure, is useful for reducing an arbitrary cell to the primitive cell
-        !
-        implicit none
-        ! subroutine i/o
-        integer , intent(in) :: Z(:)     !> Z(natoms) list identifing type of atom
-        real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic coordinates
-        real(dp), intent(in) :: prec
-        character(len=*), intent(in), optional :: flags 
-        real(dp), allocatable :: T(:,:)   !> T(3,nTs) translation which leaves basis invariant
-        real(dp), allocatable :: wrk(:,:) ! wrk(1:3,nTs) list of possible lattice vectors that are symmetry-compatible volume
-        real(dp) :: seitz(4,4)
-        real(dp) :: wrkr(3)
-        integer  :: natoms ! natoms number of atoms
-        integer  :: nTs ! nTs number of primitive lattice vector candidates
-        logical  :: relax_symmetry
-        integer  :: i, j
-        !
-        !
-        relax_symmetry = .false.
-        if (present(flags)) then
-            if (index(flags,'relax').ne.0) relax_symmetry = .true.
-        endif 
-        !
-        natoms = size(tau,2)
-        allocate(wrk(3,natoms-1+3)) 
-        wrk = 0.0_dp
-        ! choose reference atom (ideally choose an atom corresponding to the species with the fewest number of atoms in unit cell)
-        i = 1
-        ! search for lattice vectors using, as translational components, vectors connecting the choosen atom to other atoms of the same species
-        nTs = 0
-        do j = 1,natoms
-            if ( i .ne. j) then
-            if ( Z(i) .eq. Z(j) ) then
-                ! shift to put reference atom at zero.
-                wrkr(1:3) = tau(1:3,j) - tau(1:3,i)
-                ! wrkr = modulo(wrkr+prec,1.0_dp)-prec ! added this in for testing.
-                !
-                if (relax_symmetry) then
-                    nTs = nTs + 1
-                    wrk(1:3,nTs) = wrkr
-                else
-                    !
-                    seitz = eye(4)
-                    seitz(1:3,4) = wrkr
-                    !
-                    if ( is_symmetry_valid(seitz=seitz, Z=Z, tau=tau, prec=prec) ) then
-                        nTs = nTs + 1
-                        wrk(1:3,nTs) = wrkr
-                    endif
-                endif
-            endif
-            endif
-        enddo
-        if (present(flags)) then
-            if (index(flags,"prim").ne.0) then
-                ! add native basis to vectors
-                nTs = nTs+1; wrk(1:3,nTs) = real([1,0,0],dp)
-                nTs = nTs+1; wrk(1:3,nTs) = real([0,1,0],dp)
-                nTs = nTs+1; wrk(1:3,nTs) = real([0,0,1],dp)
-            endif
-            if (index(flags,"zero").ne.0) then
-                ! add origin as a possible translation
-                nTs = nTs+1; wrk(1:3,nTs) = real([0,0,0],dp)
-            endif
-        endif
-        ! allocate output
-        allocate(T(3,nTs))
-        T = wrk(1:3,1:nTs)
-        !
-    end function    translations_from_basis
-
-    pure function   is_symmetry_valid(seitz,tau,Z,prec,flags)
-        !
-        ! check whether symmetry operation is valid
-        !
-        implicit none
-        ! function i/o
-        real(dp), intent(in) :: seitz(4,4)
-        real(dp), intent(in) :: tau(:,:) !> tau(3,natoms) fractional atomic basis
-        integer , intent(in) :: Z(:)     !> Z(natoms) list identify type of atom
-        real(dp), intent(in) :: prec
-        character(*), intent(in), optional :: flags
-        !
-        real(dp), allocatable :: tau_internal(:,:)
-        real(dp), allocatable :: tau_ref(:,:) ! what to compare to
-        logical  :: isexact    ! if present, do not apply mod. ; useful for determining stabilizers
-        logical  :: iszero     ! if present, returns that the symmetry is valid if it reduces the tau to [0,0,0]. useful for determing which symmetries flip bonds
-        logical  :: isreverse  ! if present results symmetry that takes tau => - tau 
-        real(dp) :: tau_rot(3) ! rotated 
-        logical  :: is_symmetry_valid
-        integer  :: natoms
-        integer  :: i, j, m
-        logical  :: overlap_found
-        !
-        natoms = size(tau,2)
-        !
-        !
-        ! load flag options
-        isexact   = .false.
-        iszero    = .false.
-        isreverse = .false.
-        if (present(flags)) then
-        if (index(flags,'exact').ne.0)    isexact   = .true.
-        if (index(flags,'zero').ne.0)     iszero    = .true.
-        if (index(flags,'reverse').ne.0)  isreverse = .true.
-        endif
-        !
-        ! start main part of function here
-        allocate(tau_internal, source=tau)
-        if (.not.isexact) then
-            do i = 1, natoms
-                tau_internal(:,i) = modulo(tau_internal(:,i)+prec,1.0_dp)-prec
-            enddo
-        endif
-        !
-        ! tau ref is what the rotated vector is compared to
-        allocate(tau_ref(3,natoms))
-        if        (iszero) then
-            do i = 1, natoms
-                tau_ref(:,i) = real([0,0,0],dp)
-            enddo
-        elseif (isreverse) then
-            do i = 1, natoms
-                tau_ref(:,i) = -tau_internal(:,i)
-            enddo
-        else
-            ! default behavior: just compare it to what it was originally before it was rotated
-            tau_ref = tau_internal
-        endif
-        !
-        m = 0
-        do i = 1, natoms
-            ! apply symmetry operation
-            tau_rot(1:3) = matmul(seitz(1:3,1:3),tau_internal(1:3,i)) + seitz(1:3,4)
-            ! reduce rotated+translated point to unit cell
-            if (.not.isexact) tau_rot(1:3) = modulo(tau_rot(1:3)+prec,1.0_dp)-prec
-            ! check that newly created point matches something already present
-            overlap_found = .false.
-            check_overlap : do j = 1,natoms
-                if (Z(i) .eq. Z(j)) then
-                    if (isequal(tau_rot(1:3),tau_ref(1:3,j))) then
-                        m = m + 1
-                        overlap_found = .true.
-                        exit check_overlap
-                    endif
-                endif
-            enddo check_overlap
-            !
-            if (.not.overlap_found) then
-                is_symmetry_valid = .false.
-                return
-            endif
-            !
-        enddo
-        !
-        if (m.eq.natoms) then
-            is_symmetry_valid = .true.
-            return
-        endif
-        !
-    end function    is_symmetry_valid
-
-    function        permutation_rep(seitz,tau,prec,flags) result(rep)
-        !
-        ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
-        ! also works to find which kpoint or atoms (in shell) are connected by point group operations
-        !
-        ! flags = relax_pbc
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: seitz(:,:,:)
-        real(dp), intent(in) :: tau(:,:)
-        real(dp), intent(in) :: prec
-        character(*), intent(in) :: flags
-        integer, allocatable :: rep(:,:,:)
-        real(dp) :: tau_rot(3)
-        integer :: i,j,k
-        logical :: found
-        integer :: ntaus ! number of tau points tau(1:3,ntaus)
-        integer :: nsyms
-        !
-        nsyms = size(seitz,3)
-        !
-        ntaus = size(tau,2)
-        !
-        allocate(rep(ntaus,ntaus,nsyms))
-        rep = 0
-        !
-        do i = 1, nsyms
-            ! determine the permutations of atomic indicies which results from each space symmetry operation
-            do j = 1,ntaus
-                found = .false.
-                ! apply rotational component
-                tau_rot = matmul(seitz(1:3,1:3,i),tau(:,j))
-                ! apply translational component
-                tau_rot = tau_rot + seitz(1:3,4,i)
-                ! reduce rotated+translated point to unit cell
-                if (index(flags,'relax_pbc').eq.0) then
-                    tau_rot = modulo(tau_rot+prec,1.0_dp)-prec
-                endif
-                ! find matching atom
-                search : do k = 1, ntaus
-                    if (all(abs(tau_rot-tau(:,k)).lt.prec)) then
-                    rep(j,k,i) = 1
-                    found = .true.
-                    exit search ! break loop
-                    endif
-                enddo search
-                ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
-                ! to ensure atoms must permute onto each other
-                if (index(flags,'relax_pbc').eq.0) then
-                if (found.eq..false.) then
-                    call am_print('ERROR','Unable to find matching atom.',flags='E')
-                    call am_print('tau (all atoms)',transpose(tau))
-                    call am_print('tau',tau(:,j))
-                    call am_print('R',seitz(1:3,1:3,i))
-                    call am_print('T',seitz(1:3,4,i))
-                    call am_print('tau_rot',tau_rot)
-                    stop
-                endif
-                endif
-            enddo
-        enddo
-        !
-        ! check that each column and row of the rep sums to 1; i.e. rep(:,:,i) is orthonormal for all i.
-        !
-        ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
-        ! to ensure atoms must permute onto each other
-        if (index(flags,'relax_pbc').eq.0) then
-        do i = 1, nsyms
-        do j = 1, ntaus
-            !
-            if (sum(rep(:,j,i)).ne.1) then
-               call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
-               call am_print('i',i)
-               call am_print_sparse('spy(P_i)',rep(:,:,i))
-               call am_print('rep',rep(:,:,i))
-               stop
-            endif
-            !
-            if (sum(rep(j,:,i)).ne.1) then
-               call am_print('ERROR','Permutation matrix has a row which does not sum to 1.')
-               call am_print('i',i)
-               call am_print_sparse('spy(P_i)',rep(:,:,i))
-               call am_print('rep',rep(:,:,i))
-               stop
-            endif
-            !
-        enddo
-        enddo
-        endif
-       !
-    end function    permutation_rep
-
-    function        permutation_map(P) result(PM)
-        !
-        ! PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
-        !
-        implicit none
-        !
-        integer, allocatable, intent(in) :: P(:,:,:)
-        integer, allocatable :: PM(:,:)
-        integer, allocatable :: ind(:)
-        integer :: natoms,nsyms
-        integer :: i
-        !
-        natoms = size(P,1)
-        nsyms  = size(P,3)
-        !
-        ind = [1:natoms]
-        !
-        allocate(PM(natoms,nsyms))
-        PM=0
-        !
-        do i = 1, nsyms
-            PM(:,i) = matmul(P(:,:,i),ind)
-        enddo
-        !
-    end function    permutation_map
-
-    function        reduce_to_wigner_seitz(tau,grid_points) result(tau_ws)
-        !> reduces kpoint (in fractional) to the first Brillouin zone (Wigner-Seitz cell, defined in cartesian coordinates)
-        !> cartesian kpoint is returned! 
-        implicit none
-        !
-        real(dp), intent(in) :: tau(3) !> fractional
-        real(dp), intent(in) :: grid_points(3,27) !> voronoi points (cartesian)
-        real(dp) :: tau_ws(3) !> kpoint cartesian
-        real(dp) :: G(3) !> reciprocal lattice vector
-        real(dp) :: P !> bragg plane condition
-        integer  :: i ! loop variable
-        logical  :: is_not_done
-        !
-        ! copy kpoint
-        tau_ws = tau
-        ! translating the k-point until the closest reciprocal lattice point is [0 0 0]
-        is_not_done = .true.
-        do while ( is_not_done )
-            is_not_done = .false.
-            do i = 1, 27
-                G = grid_points(:,i)
-                P = 2*dot_product(tau_ws,G) - dot_product(G,G)
-                if ( P.gt. tiny ) then
-                    tau_ws = tau_ws - G
-                    is_not_done = .true.
-                endif
-            enddo
-        end do
-        !
-    end function    reduce_to_wigner_seitz
-
     ! primitive cell
 
     subroutine     get_primitive_cell(pc,uc,opts)
@@ -1029,6 +727,279 @@ contains
             !
         end function   get_uc2pc_map
     end subroutine get_primitive_cell
+
+    ! irreducible cell
+
+    subroutine     get_irreducible_cell(ic,pc,uc,sg,opts)
+        !
+        implicit none
+        !
+        class(am_class_irre_cell), intent(out)   :: ic ! irreducible cell
+        class(am_class_prim_cell), intent(inout) :: pc
+        class(am_class_unit_cell), intent(inout), optional :: uc ! if present, mapping from ic <-> uc is obtained
+        type(am_class_space_group),intent(in) :: sg
+        type(am_class_options)   , intent(in) :: opts
+        character(:), allocatable :: str(:)
+        integer, allocatable :: PM(:,:)
+        logical, allocatable :: mask(:)
+        integer, allocatable :: ind(:)
+        integer :: i,j,k
+        !
+        if (opts%verbosity.ge.1) call print_title('Irreducible cell')
+        !
+        ! get primitive basis
+        ic%bas = pc%bas
+        ! get reciprocal basis
+        ic%recbas = pc%recbas
+        ! get permutation map which shows how atoms are permuted by each space symmetry operation, PM(pc%natoms,sg%nsyms) 
+        PM = permutation_map( permutation_rep(seitz=sg%seitz_frac, tau=pc%tau_frac, flags='', prec=opts%prec) )
+        ! determine irreducible atoms, i.e. get all atoms, in increments, which have not been already mapped onto by a space symmetry operation
+        ! thus, primitive cell atom i corresponds to irreducible atom k ...
+        allocate(mask(pc%natoms))
+        mask = .true.
+        ! ind(1:k) are indices on primitive atoms corresponding to irreducible atoms
+        allocate(ind(pc%natoms)) 
+        ind  = 0
+        !
+        k=0
+        do i = 1, pc%natoms
+        if (mask(i)) then
+            k=k+1
+            ind(k)=i
+            do j = 1, sg%nsyms
+                ! mask keeps track of pc atoms which were already mapped onto irreducible atoms
+                mask(PM(i,j))=.false.
+            enddo
+        endif
+        enddo
+        ! get number of atoms
+        ic%natoms = k
+        ! transfer irreducible atoms (frac)
+        allocate(ic%tau_frac,source=pc%tau_frac(:,ind(1:k)))
+        ! transfer irreducible atoms (cart)
+        allocate(ic%tau_cart,source=pc%tau_cart(:,ind(1:k)))
+        ! transfer Z
+        allocate(ic%Z,source=pc%Z(ind(1:k)))
+        ! map irreducible atom -> irreducible atom
+        allocate(ic%ic_id,source=[1:ic%natoms])
+        ! map irreducible atom onto -> primitive atom
+        allocate(ic%pc_id,source=ind(1:k))
+        ! map irreducible atom onto -> unit atom
+        allocate(ic%uc_id,source=pc%uc_id(ind(1:k)))
+        ! map primitive atom onto -> irreducible atom
+        allocate(pc%ic_id(pc%natoms))
+        pc%ic_id = 0
+        do i = 1, ic%natoms
+            ! PM(1,:) shows all atoms onto which atom 1 is mapped by all space symmetry operations
+            do j = 1, pc%natoms
+                search : do k = 1, sg%nsyms
+                    if (PM(j,k).eq.ic%pc_id(i)) then
+                        pc%ic_id(j) = i
+                        exit search
+                    endif
+                enddo search
+            enddo
+        enddo
+        if (any(pc%ic_id.eq.0)) stop 'ERROR: pc->ic mapping failed.'
+        ! maps (input) unit cell atom onto -> irreducible atom
+        if (present(uc)) then
+            allocate(uc%ic_id(uc%natoms))
+            uc%ic_id = 0
+            do i = 1, uc%natoms
+                uc%ic_id(i) = pc%ic_id(uc%pc_id(i))
+            enddo
+        endif
+        ! print stdout
+        if (opts%verbosity.ge.1) then
+            allocate(character(4) :: str(ic%natoms))
+            !
+            write(*,'(a,a,a)') flare, 'input atoms = ', tostring(uc%natoms)
+            write(*,'(a,a,a)') flare, 'primitive atoms = ', tostring(pc%natoms)
+            write(*,'(a,a,a)') flare, 'irreducible atoms = ', tostring(ic%natoms)
+            do i = 1, ic%natoms
+                str(i) = atm_symb(ic%Z(i))
+            enddo
+            call disp(title=' '                     , X=zeros([1,1])            , style='underline', fmt='i2'   ,advance='no' , zeroas=' ' )
+            call disp(title=' id '                  , X=[1:ic%natoms]           , style='underline', fmt='i7'   ,advance='no' , trim = 'yes')
+            call disp(title='atom'                  , X=str                     , style='underline', fmt='a3'   ,advance='no' , trim = 'no')
+            call disp(title='fractional (primitive)', X=transpose(ic%tau_frac)  , style='underline', fmt='f11.8',advance='no' , trim = 'no')
+            call disp(title='cartesian'             , X=transpose(ic%tau_cart)  , style='underline', fmt='f11.8',advance='yes', trim = 'no')
+            !
+            write(*,'(a,a)',advance='no') flare, 'atomic mapping (to input: ic->uc)'
+            call id_print_map(ic%uc_id)
+            !
+            write(*,'(a,a)',advance='no') flare, 'atomic mapping (to primitive: ic->pc)'
+            call id_print_map(ic%pc_id)
+            !
+            write(*,'(a,a)',advance='no') flare, 'atomic mapping (from primitive: pc->ic)'
+            call id_print_map(pc%ic_id)
+            !
+            if (present(uc)) then
+            write(*,'(a,a)',advance='no') flare, 'atomic mapping (from input: uc->ic)'
+            call id_print_map(uc%ic_id)
+            endif
+            !
+        endif
+        !
+    end subroutine get_irreducible_cell
+
+    subroutine     initialize_orbitals(ic,opts)
+        !
+        ! Useful if no states on atoms are defined. Gives each atom all the possible states
+        !
+        ! Correspoding to the L shell (n=2) [ s p   states (1+3=4   states) ]
+        ! Correspoding to the M shell (n=3) [ s p d states (1+3+5=9 states) ]
+        !
+        ! There will be 1 matrix element for every irreducible pair of orbitals
+        !
+        implicit none
+        !
+        class(am_class_irre_cell), intent(inout) :: ic
+        type(am_class_options)   , intent(in) :: opts
+        integer :: i
+        character(100) :: fname
+        !
+        if (opts%verbosity.ge.1) call print_title('Atomic orbitals')
+        !
+        fname = 'infile.tb_orbitals'
+        if (fexists(fname)) then
+            ! read it
+            call read_orbital_basis(ic,fname,opts%verbosity)
+        else
+            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, trim(fname)//' not found.'
+            ! create basis on each irreducible atoms
+            allocate(ic%atom(ic%natoms))
+            do i = 1, ic%natoms
+                call ic%atom(i)%gen_orbitals(orbital_flags='1s,2p,3d,4f')
+            enddo
+            call write_orbital_basis(ic)
+            !
+            if (opts%verbosity.ge.1)  then
+                write(*,'(a,a)') flare, 'Template produced: '//trim(outfile_dir_tb)//'/'//'outfile.tb_orbitals'
+                call print_title('Done!')
+            endif
+            !
+            stop 
+            !************************************************************************************
+            ! END PROGRAM HERE IF INFILE.TB_ORBITALS DOES NOT EXIST!
+            !************************************************************************************
+        endif
+        ! check for error
+        do i = 1, ic%natoms
+            if (ic%atom(i)%norbitals.le.0) then
+                stop 'ERROR [initialize_orbitals]: no orbitals set on an atom. check input.'
+            endif
+        enddo
+        !
+        if (opts%verbosity.ge.1) call print_orbital_basis(ic)
+        !
+        contains
+        subroutine     write_orbital_basis(ic)
+            !
+            implicit none
+            !
+            class(am_class_irre_cell), intent(inout) :: ic
+            integer :: i, j
+            integer :: fid
+            ! create tb dir
+            call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
+            ! export file
+            fid = 1
+            open(unit=fid,file=trim(outfile_dir_tb)//'/'//'infile.tb_orbitals',status='replace',action='write')
+                ! spin polarized?
+                write(fid,'(a)') 'spin: off'
+                ! irreducible atoms
+                write(fid,'(a,a)') 'irreducible atoms: ', tostring(ic%natoms)
+                ! loop over irreducible atoms
+                do i = 1, ic%natoms
+                    write(fid,'(i10)',advance='no') i
+                    ! loop over azimuthal quantum numbers
+                    do j = 1, ic%atom(i)%nazimuthals
+                        write(fid,'(a)',advance='no') ' '//trim(ic%atom(i)%orbname(j))
+                    enddo
+                    write(fid,*)
+                enddo
+            close(fid)
+            !
+        end subroutine write_orbital_basis
+        subroutine     read_orbital_basis(ic,fname,verbosity)
+            !
+            implicit none
+            !
+            class(am_class_irre_cell), intent(inout) :: ic
+            character(*), intent(in) :: fname
+            integer, intent(in) :: verbosity
+            integer :: i,j,k
+            integer :: fid
+            integer :: iostat
+            character(maximum_buffer_size) :: buffer ! read buffer
+            character(len=:), allocatable :: word(:) ! read buffer
+            integer :: ic_natoms, nazimuthals
+            character(len=100) :: orbital_flags
+            character(len=100) :: spin_polarized_flag
+            !
+            fid = 1
+            open(unit=fid,file=trim(fname),status="old",action='read')
+                !
+                if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'atomic orbitals read = ', trim(fname)
+                ! spin polarized?
+                read(unit=fid,fmt='(a)') buffer
+                word = strsplit(buffer,delimiter=' ')
+                read(word(2),*) spin_polarized_flag
+                ! irreducible atoms
+                read(unit=fid,fmt='(a)') buffer
+                word = strsplit(buffer,delimiter=' ')
+                read(word(3),*) ic_natoms
+                if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'irreducible atoms = ', tostring(ic_natoms)
+                ! set irreducible atoms
+                if (ic%natoms.ne.ic_natoms) stop 'number of irreducible atoms input does not match internally calculated.'
+                allocate(ic%atom(ic_natoms))
+                ! loop over irreducible atoms
+                do j = 1, ic_natoms
+                    read(unit=fid,fmt='(a)') buffer
+                    word = strsplit(buffer,delimiter=' ')
+                    read(word(1),*) i
+                    !
+                    nazimuthals = size(word) - 1
+                    if (verbosity.ge.1) write(*,'(a,a,a,a)', advance='no') flare, 'atom ', tostring(j), ' azimuthals ('//tostring(nazimuthals)//'):'
+                    if (nazimuthals.le.0) stop 'number of azimuthals < 0'
+                    !
+                    orbital_flags=trim(spin_polarized_flag)
+                    do k = 1, nazimuthals
+                        orbital_flags=trim(orbital_flags)//','//trim(word(k+1))
+                        if (verbosity.ge.1) write(*,'(a)',advance='no') ' '//trim(word(k+1))
+                    enddo
+                    if (verbosity.ge.1) write(*,*)
+                    !
+                    call ic%atom(i)%gen_orbitals(orbital_flags=orbital_flags)
+                    !
+                enddo
+            close(fid)
+            !
+        end subroutine read_orbital_basis
+        subroutine     print_orbital_basis(ic)
+            !
+            implicit none
+            !
+            class(am_class_irre_cell) , intent(inout) :: ic
+            integer :: n,l,m,s
+            integer :: i,j,a
+            !
+            do i = 1, ic%natoms
+                write(*,'(a,a)') flare, 'irreducible atom '//tostring(i)//' contributes '//tostring((ic%atom(i)%norbitals))//' orbitals |n,l,m,s> :'
+                do a = 1, ic%atom(i)%nazimuthals
+                    write(*,'(5x,a,a)') trim(ic%atom(i)%orbname(a)), ':'
+                do j = 1, ic%atom(i)%norbitals
+                    n = ic%atom(i)%orbital(1,j)
+                    l = ic%atom(i)%orbital(2,j)
+                    m = ic%atom(i)%orbital(3,j)
+                    s = ic%atom(i)%orbital(4,j)
+                    if (ic%atom(i)%azimuthal(a).eq.l) write(*,'(5x,a2,i2,a1,i2,a1,i2,a1,i2,a2)') ' |', n, ',', l, ',', m, ',', s, '> '
+                enddo
+                enddo
+            enddo
+        end subroutine print_orbital_basis
+    end subroutine initialize_orbitals
 
     ! deform (strain related stuff)
 
