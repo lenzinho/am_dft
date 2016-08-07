@@ -42,6 +42,11 @@ module am_symmetry
         ! generic symmetry group
     end type am_class_representation_group
 
+    type, public, extends(am_class_representation_group) :: am_class_tightbinding_pointgroup
+        integer, allocatable :: S(:) ! Hstart(m) start of hamiltonian section corresponding to atom m
+        integer, allocatable :: E(:) ! Hend(m)   end of hamiltonian section corresponding to atom m
+    end type am_class_tightbinding_pointgroup
+
     type, public, extends(am_class_group)       :: am_class_seitz_group
         real(dp) :: bas(3,3)                          ! basis in which [frac.] are defined
         real(dp) :: recbas(3,3)                       ! basis in which [recfrac] are defined
@@ -156,6 +161,19 @@ contains
                 #:endfor
                 ! type-specific stuff
                 select type (dtv)
+                ! representation group
+                class is (am_class_representation_group)
+                    select type (dtv)
+                    ! tight binding point group
+                    class is (am_class_tightbinding_pointgroup)
+                        ! allocatable
+                        #:for ATTRIBUTE in ['S','E']
+                            $:write_xml_attribute_allocatable(ATTRIBUTE)
+                        #:endfor
+                    class default
+                        ! do nothing
+                    end select
+                ! seitz group
                 class is (am_class_seitz_group)
                     ! non-allocatable
                     #:for ATTRIBUTE in ['nlcrs','bas','recbas']
@@ -179,7 +197,7 @@ contains
                 end select
             write(unit,'(a/)') '</group>'
         else
-            stop 'ERROR [write_conjugacy_class]: iotype /= LISTDIRECTED'
+            stop 'ERROR [write_group]: iotype /= LISTDIRECTED'
         endif
     end subroutine write_group
 
@@ -213,6 +231,18 @@ contains
                 #:endfor
                 ! type-specific stuff
                 select type (dtv)
+                ! representation group
+                class is (am_class_representation_group)
+                    select type (dtv)
+                    ! tight binding point group
+                    class is (am_class_tightbinding_pointgroup)
+                        ! allocatable
+                        #:for ATTRIBUTE in ['S','E']
+                            $:read_xml_attribute_allocatable(ATTRIBUTE)
+                        #:endfor
+                    class default
+                        ! do nothing
+                    end select
                 class is (am_class_seitz_group)
                     ! non-allocatable
                     #:for ATTRIBUTE in ['nlcrs','bas','recbas']
@@ -240,7 +270,7 @@ contains
             ! *** set a breakpoint in malloc_error_break to debug
             iostat=-1
         else
-            stop 'ERROR [read_conjugacy_class]: iotype /= LISTDIRECTED'
+            stop 'ERROR [read_group]: iotype /= LISTDIRECTED'
         endif
     end subroutine read_group
 

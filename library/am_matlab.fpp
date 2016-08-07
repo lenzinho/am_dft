@@ -3097,10 +3097,16 @@ module am_matlab
         character(*), intent(in) :: attribute
         !
         write(unit,'(a,/)') '<'//trim(attribute)//'>'
-        #:if RANK == 0
-            write(unit,*) value
-        #:else
-            write(unit,*) pack(value,.true.)
+        #:if   KIND == 'character(*)' 
+            write(unit,'(*(x,a))') value
+        #:elif KIND == 'real(dp)' 
+            write(unit,'(*(x,d))') value
+        #:elif KIND == 'complex(dp)' 
+            write(unit,'(*(x,SP,d,d,"i"))') value
+        #:elif KIND == 'integer'
+            write(unit,'(*(x,i))') value
+        #:elif KIND == 'logical'
+            write(unit,'(*(x,l))') value
         #:endif
         write(unit,'(/)')
         write(unit,'(a,/)') '</'//trim(attribute)//'>'
@@ -3119,38 +3125,21 @@ module am_matlab
         ${KIND}$    , intent(inout) :: value${ranksuffix(RANK)}$
         integer     , intent(out)   :: iostat
         character(*), intent(inout) :: iomsg
-        #:if KIND == 'character(*)' 
-            #:if RANK == 1
-                character(maximum_buffer_size) :: buffer ! read buffer
-                character(len=:), allocatable :: word(:) ! read buffer
-                integer :: j
-                integer :: i
-            #:endif
-        #:endif
         !
-        read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)     ! write(unit,'(a,/)') '<'//trim(attribute)//'>'
-        #:if KIND == 'character(*)'
-            #:if RANK == 1
-            j=0
-            repeat_loop : do
-                read(unit=unit,fmt='(a)') buffer
-                ! write(*,*) buffer
-                word = strsplit(buffer,delimiter=' ')
-                do i = 1, size(word)
-                    j=j+1
-                    value(j) = word(i)
-                    if (j.eq.product(shape(value))) exit repeat_loop
-                enddo
-                read(unit=unit,fmt='(/)')
-            enddo repeat_loop
-            #:else
-                stop 'ERROR [${KIND[3]}$${RANK}$_read_xml_attribute]: not yet implemented'
-            #:endif
-        #:else
-            read(unit,*) value                                  
+        read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+        #:if   KIND == 'character(*)'
+            read(unit,'(*(x,a))') value
+        #:elif KIND == 'real(dp)' 
+            read(unit,'(*(x,d))') value
+        #:elif KIND == 'complex(dp)' 
+            read(unit,'(*(x,SP,d,d,"i"))') value
+        #:elif KIND == 'integer'
+            read(unit,'(*(x,i))') value
+        #:elif KIND == 'logical'
+            read(unit,'(*(x,l))') value
         #:endif
-        read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)     ! write(unit,'(/)')
-        read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)     ! write(unit,'(a,/)') '</'//trim(attribute)//'>'
+        read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+        read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
         !
     end subroutine  ${KIND[3]}$${RANK}$_read_xml_attribute
 #:endfor

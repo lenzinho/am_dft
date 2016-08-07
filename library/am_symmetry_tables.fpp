@@ -94,7 +94,6 @@ contains
         !
         if (iotype.eq.'LISTDIRECTED') then
             write(unit,'(a/)') '<multiplication_table>'
-                ! allocatable
                 #:for ATTRIBUTE in ['multab','inv_id','corder','gen_id','gen','commutator_id']
                     $:write_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
@@ -119,8 +118,7 @@ contains
         integer :: dims(10) ! read tensor up to rank 5
         !
         if (iotype.eq.'LISTDIRECTED') then
-            read(unit,'(/)')
-                ! allocatable
+            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
                 #:for ATTRIBUTE in ['multab','inv_id','corder','gen_id','gen','commutator_id']
                     $:read_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor

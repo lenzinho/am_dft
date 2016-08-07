@@ -64,14 +64,15 @@
             call read_xml_attribute(unit=unit,value=dims(1:dims_rank),iostat=iostat,iomsg=iomsg)! shape
             if (allocated(dtv%${ATTRIBUTE}$)) deallocate(dtv%${ATTRIBUTE}$)
             call vector_allocate(A=dtv%${ATTRIBUTE}$, vec=dims(1:dims_rank))
-            call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)! value
             #! write(*,'(5x,a)') '${ATTRIBUTE}$('//tostring(dims(1:dims_rank))//')'
+            call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)! value
         endif
     read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
 #:enddef
 
 #:def read_xml_attribute_nonallocatable(ATTRIBUTE)
 	call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg)
+	#! write(*,'(5x,a)') '${ATTRIBUTE}$'
 #:enddef
 
 #:def read_xml_attribute_allocatable_string(ATTRIBUTE)
@@ -83,8 +84,8 @@
         	call read_xml_attribute(unit=unit,value=str_length,iostat=iostat,iomsg=iomsg) 	! length
             if (allocated(dtv%${ATTRIBUTE}$)) deallocate(dtv%${ATTRIBUTE}$)
             call vector_allocate(A=dtv%${ATTRIBUTE}$, vec=dims(1:dims_rank), str_length=str_length)
-            call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg) ! values
             #! write(*,'(5x,a)') '${ATTRIBUTE}$('//tostring(dims(1:dims_rank))//')'
+            call read_xml_attribute(unit=unit,value=dtv%${ATTRIBUTE}$,iostat=iostat,iomsg=iomsg) ! values
         endif
     read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
 #:enddef

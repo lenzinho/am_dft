@@ -35,18 +35,13 @@ module am_tight_binding
         real(dp)              :: rms
     end type am_class_tightbinding_fitter
 
-    type, extends(am_class_representation_group) :: am_class_tightbinding_pointgroup
-        integer, allocatable :: S(:) ! Hstart(m) start of hamiltonian section corresponding to atom m
-        integer, allocatable :: E(:) ! Hend(m)   end of hamiltonian section corresponding to atom m
-    end type am_class_tightbinding_pointgroup
-
     type, extends(am_class_dispersion) :: am_class_tightbinding_dispersion
         complex(dp), allocatable :: C(:,:,:) ! tight binding coefficients
     end type am_class_tightbinding_dispersion
 
     type, public :: am_class_tightbinding
         integer :: nshells                             ! how many shells irreducible atoms
-        integer , allocatable :: nVs                   ! number of irreducible matrix element values
+        integer :: nVs                                 ! number of irreducible matrix element values
         real(dp), allocatable :: V(:)                  ! their values
         integer , allocatable :: V_ind(:,:)            ! their indices: [ip_id, alpha, beta]
         type(am_class_tensor), allocatable :: tens(:)  ! tens(nshells) describes symmetry-adapted matrix elementes (corresponds to irreducible pair shells)
@@ -64,9 +59,134 @@ module am_tight_binding
         procedure :: write_all_matrix_element
         procedure :: set_matrix_element
         procedure :: export_to_matlab
+        procedure :: save => save_tb
+        procedure :: load => load_tb
+        procedure, private :: write_tb
+        procedure, private :: read_tb
+        generic :: write(formatted) => write_tb
+        generic :: read(formatted)  => read_tb
     end type am_class_tightbinding
 
 contains
+
+    ! i/o
+
+    subroutine      write_tb(dtv, unit, iotype, v_list, iostat, iomsg)
+        !
+        implicit none
+        !
+        class(am_class_tightbinding), intent(in) :: dtv
+        integer     , intent(in)    :: unit
+        character(*), intent(in)    :: iotype
+        integer     , intent(in)    :: v_list(:)
+        integer     , intent(out)   :: iostat
+        character(*), intent(inout) :: iomsg
+        !
+        iostat = 0
+        !
+        if (iotype.eq.'LISTDIRECTED') then
+            write(unit,'(a/)') '<tb>'
+                ! non-allocatable
+                #:for ATTRIBUTE in ['nshells','nVs']
+                    $:write_xml_attribute_nonallocatable(ATTRIBUTE)
+                #:endfor
+                ! allocatable        
+                #:for ATTRIBUTE in ['V','V_ind']
+                    $:write_xml_attribute_allocatable(ATTRIBUTE)
+                #:endfor
+                ! nested objects
+                write(unit,*) dtv%pg
+                ! write(unit,*) dtv%dr
+                ! write(unit,*) dtv%ft
+                ! nested-allocatable object
+                #:for ATTRIBUTE in ['tens']
+                    $:write_xml_attribute_allocatable_derivedtype(ATTRIBUTE)
+                #:endfor
+            write(unit,'(a/)') '</tb>'
+        else
+            stop 'ERROR [write_tb]: iotype /= LISTDIRECTED'
+        endif
+    end subroutine  write_tb
+
+    subroutine      read_tb(dtv, unit, iotype, v_list, iostat, iomsg)
+        !
+        implicit none
+        !
+        class(am_class_tightbinding), intent(inout) :: dtv
+        integer     , intent(in)    :: unit
+        character(*), intent(in)    :: iotype
+        integer     , intent(in)    :: v_list(:)
+        integer     , intent(out)   :: iostat
+        character(*), intent(inout) :: iomsg
+        logical :: isallocated
+        integer :: dims_rank
+        integer :: dims(10) ! read tensor up to rank 5
+        !
+        if (iotype.eq.'LISTDIRECTED') then
+            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                ! non-allocatable
+                #:for ATTRIBUTE in ['nshells','nVs']
+                    $:read_xml_attribute_nonallocatable(ATTRIBUTE)
+                #:endfor
+                ! allocatable        
+                #:for ATTRIBUTE in ['V','V_ind']
+                    $:read_xml_attribute_allocatable(ATTRIBUTE)
+                #:endfor
+                ! nested objects
+                read(unit,*) dtv%pg
+                ! read(unit,*) dtv%dr
+                ! read(unit,*) dtv%ft
+                ! nested-allocatable object
+                #:for ATTRIBUTE in ['tens']
+                   $:read_xml_attribute_allocatable_derivedtype(ATTRIBUTE)
+                #:endfor
+            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+            ! without the iostat=-1 here the following error is produced at compile time:
+            ! tb(67203,0x7fff7e4dd300) malloc: *** error for object 0x10c898cec: pointer being freed was not allocated
+            ! *** set a breakpoint in malloc_error_break to debug
+            iostat=-1
+        else
+            stop 'ERROR [read_tb]: iotype /= LISTDIRECTED'
+        endif
+    end subroutine  read_tb
+
+    subroutine      save_tb(tb,fname)
+        !
+        implicit none
+        !
+        class(am_class_tightbinding), intent(in) :: tb
+        character(*), intent(in) :: fname
+        integer :: fid
+        integer :: iostat
+        ! fid
+        fid = 1
+        ! save space group
+        open(unit=fid, file=trim(fname), status='replace', action='write', iostat=iostat)
+            if (iostat/=0) stop 'ERROR [tb:load]: opening file'
+            write(fid,*) tb
+        close(fid)
+        !
+    end subroutine  save_tb
+
+    subroutine      load_tb(tb,fname)
+        !
+        implicit none
+        !
+        class(am_class_tightbinding), intent(inout) :: tb
+        character(*), intent(in) :: fname
+        integer :: fid
+        integer :: iostat
+        ! fid
+        fid = 1
+        ! save space group
+        open(unit=fid, file=trim(fname), status='old', action='read', iostat=iostat)
+            if (iostat/=0) stop 'ERROR [tb:load]: opening file'
+            read(fid,*) tb
+        close(fid)
+        !
+    end subroutine  load_tb
+
+    ! tight binding
 
     subroutine     initialize_tb(tb,pg,ip,ic,pc,opts)
         !
@@ -182,15 +302,6 @@ contains
             call tb_pg%get_conjugacy_classes()
             ! get character table
             call tb_pg%get_character_table()
-            ! create tb dir
-            call execute_command_line('mkdir -p '//trim(outfile_dir_tb))
-            ! write point group
-            call dump(A=tb_pg%sym,fname=trim(outfile_dir_tb)//'/outfile.tb_pg.sym')
-            ! dump debug files
-            if (debug) then
-!                 call execute_command_line('mkdir -p '//trim(debug_dir)//'/tb_pg')
-!                 call tb_pg%debug_dump(fname=           trim(debug_dir)//'/tb_pg'//'/outfile.tb_pg')
-            endif
             !
         end function get_tightbinding_pointgroup
         function     ps2D(S,E,R_cart,pc,ic) result(Dsum)
