@@ -198,7 +198,7 @@ contains
         integer :: dims(10)
         !
         if (iotype.eq.'LISTDIRECTED') then
-            read(unit,'(/)')
+            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
                 ! non-allocatable
                 #:for ATTRIBUTE in ['nsyms','nbases']
                     $:read_xml_attribute_nonallocatable(ATTRIBUTE)
@@ -796,10 +796,10 @@ contains
                     if (len_trim(str(j)).gt.maxlen) maxlen = len_trim(str(j))
                 enddo
                 ! print column of table
-                call disp(X=trim_null(str(1:nreps)),title=trim(rep_label(i)),style='underline',advance='no',fmt='a'//tostring(maxlen))
+                call disp(X=trim_null(str(1:nreps)),title=trim(rep_label(i)),style='underline',advance='no',fmt='a'//tostring(maxlen+1))
             enddo
             ! write table
-            call disp(X=0,zeroas=' ',advance='yes')
+            call disp(X=[0],zeroas=' ',advance='yes')
             !
         end subroutine print_product_decomp
         subroutine     print_rep_decomp(chartab,class_nelements,irrep_label,rep_label,chi)

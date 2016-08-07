@@ -82,7 +82,7 @@ module am_matlab
         module procedure ${variants('reallocate', prefixes=PREFS_reallocate)}$
     end interface ! reallocate
 
-#:setvar KINDS_vector_allocate ['real(dp)', 'complex(dp)', 'integer', 'logical']
+#:setvar KINDS_vector_allocate ['real(dp)', 'complex(dp)', 'integer', 'logical', 'character(:)']
 #:setvar RANKS_vector_allocate range(1,4)
 #:setvar PREFS_vector_allocate ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_vector_allocate for RANK in RANKS_vector_allocate]
 
@@ -2001,11 +2001,12 @@ module am_matlab
             if (lt.gt.maxlen) maxlen = len_trim(A(j))
         enddo
         ! allocate new array
-        allocate(character(maxlen)::B(n))
+        allocate(character(maxlen+1)::B(n))
         ! create new array
         do i = 1, n
             j = selector_array(i)
             B(i) = trim(A(j))
+            B(i) = adjustl(B(i))
         enddo
         !
     end function  vs_trim_null
@@ -3063,12 +3064,23 @@ module am_matlab
 
 #:for KIND in KINDS_vector_allocate
 #:for RANK in RANKS_vector_allocate
+    #:if KIND == 'character(:)' 
+    pure subroutine ${KIND[3]}$${RANK}$_vector_allocate(A,vec,str_length)
+    #:else
     pure subroutine ${KIND[3]}$${RANK}$_vector_allocate(A,vec)
+    #:endif
         !
         ${KIND}$, allocatable, intent(inout) :: A${ranksuffix(RANK)}$
         integer , intent(in) :: vec(${RANK}$)
+        #:if KIND == 'character(:)' 
+        integer , intent(in) :: str_length
+        #:endif
         !
+        #:if KIND == 'character(:)' 
+        allocate(character(str_length)::A(${ 'vec(' + '),vec('.join([str(x+1) for x in range(0,RANK)]) + ')' }$))
+        #:else
         allocate(A(${ 'vec(' + '),vec('.join([str(x+1) for x in range(0,RANK)]) + ')' }$))
+        #:endif
         !
     end subroutine  ${KIND[3]}$${RANK}$_vector_allocate
 #:endfor
@@ -3108,24 +3120,32 @@ module am_matlab
         integer     , intent(out)   :: iostat
         character(*), intent(inout) :: iomsg
         #:if KIND == 'character(*)' 
-        #:if RANK == 1
-        character(maximum_buffer_size) :: buffer ! read buffer
-        character(len=:), allocatable :: word(:) ! read buffer
-        integer :: i
-        #:endif
+            #:if RANK == 1
+                character(maximum_buffer_size) :: buffer ! read buffer
+                character(len=:), allocatable :: word(:) ! read buffer
+                integer :: j
+                integer :: i
+            #:endif
         #:endif
         !
         read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)     ! write(unit,'(a,/)') '<'//trim(attribute)//'>'
         #:if KIND == 'character(*)'
-        #:if RANK == 1
-            read(unit=unit,fmt='(a)') buffer
-            word = strsplit(buffer,delimiter=' ')
-            do i = 1, size(word)
-                value(i) = word(i)
-            enddo
-        #:else
-            stop 'ERROR [${KIND[3]}$${RANK}$_read_xml_attribute]: not yet implemented'
-        #:endif
+            #:if RANK == 1
+            j=0
+            repeat_loop : do
+                read(unit=unit,fmt='(a)') buffer
+                ! write(*,*) buffer
+                word = strsplit(buffer,delimiter=' ')
+                do i = 1, size(word)
+                    j=j+1
+                    value(j) = word(i)
+                    if (j.eq.product(shape(value))) exit repeat_loop
+                enddo
+                read(unit=unit,fmt='(/)')
+            enddo repeat_loop
+            #:else
+                stop 'ERROR [${KIND[3]}$${RANK}$_read_xml_attribute]: not yet implemented'
+            #:endif
         #:else
             read(unit,*) value                                  
         #:endif

@@ -603,8 +603,6 @@ contains
         character(*), intent(inout) :: iomsg
         !
         iostat = 0
-        !
-        ! irrep_label(:) and subduced_label(:) not included in write statement
         ! 
         if (iotype.eq.'LISTDIRECTED') then
             write(unit,'(a/)') '<character_table>'
@@ -639,6 +637,7 @@ contains
         logical :: isallocated
         integer :: dims_rank
         integer :: dims(10) ! read tensor up to rank 5
+        integer :: str_length
         !
         if (iotype.eq.'LISTDIRECTED') then
             read(unit,'(/)')
@@ -926,15 +925,12 @@ contains
         if     (index(flags,'number').ne.0) then
             allocate(character(20) :: irrep_label(nirreps))
             do j = 1, nirreps
-                irrep_label(j) = '|'//tostring(j)//'|'
+                irrep_label(j) = ' |'//tostring(j)//'|'
             enddo
             ! reallocate to remove trailing white spaces
-            irrep_label = vs_trim_null(irrep_label)
+            irrep_label = trim_null(irrep_label)
         elseif (index(flags,'mulliken').ne.0) then
-
-
             stop 'Mullkien labeling not working properly.'
-
             call disp([1:size(ps_id)],advance='no')
             call disp(class_id,advance='no')
             call disp(ps_id,advance='no')

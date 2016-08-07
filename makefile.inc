@@ -1,8 +1,8 @@
 MAKE      = make
 FC        = ifort
-OPTS      = -DCOLOR
+OPTS      = -DCOLOR 
 MKL       = -mkl
-FFLAGS    = -fpp -O5 -openmp -implicitnone -assume realloc_lhs $(MKL) 
+FFLAGS    = $(MKL) -fpp -O5 -openmp -implicitnone -assume realloc_lhs
 FYPPOPTS  = -DCOLOR=1
 AMLIB     = libam.a
 DIRLIB    = library

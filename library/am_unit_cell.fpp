@@ -81,10 +81,8 @@ contains
         !
         iostat = 0
         !
-        ! irrep_label(:) and subduced_label(:) not included in write statement
-        ! 
         if (iotype.eq.'LISTDIRECTED') then
-            write(unit,'(a/)') '<character_table>'
+            write(unit,'(a/)') '<unit_cell>'
                 ! non-allocatable
                 #:for ATTRIBUTE in ['bas','recbas','natoms']
                     $:write_xml_attribute_nonallocatable(ATTRIBUTE)
@@ -95,6 +93,11 @@ contains
                 #:endfor
                 ! type-specific stuff
                 select type (dtv)
+                class is (am_class_irre_cell)
+                    ! nested-allocatable object
+                    #:for ATTRIBUTE in ['atom']
+                        $:write_xml_attribute_allocatable_derivedtype(ATTRIBUTE)
+                    #:endfor
                 class is (am_shell_cell)
                     ! non-allocatable
                     #:for ATTRIBUTE in ['center','i','j','m','n']
@@ -111,9 +114,9 @@ contains
                 class default
                     ! do nothing
                 end select
-            write(unit,'(a/)') '</character_table>'
+            write(unit,'(a/)') '</unit_cell>'
         else
-            stop 'ERROR [write_character_table]: iotype /= LISTDIRECTED'
+            stop 'ERROR [write_uc]: iotype /= LISTDIRECTED'
         endif
     end subroutine  write_uc
 
@@ -131,8 +134,8 @@ contains
         integer :: dims_rank
         integer :: dims(10) ! read tensor up to rank 5
         !
-                if (iotype.eq.'LISTDIRECTED') then
-            write(unit,'(a/)') '<character_table>'
+        if (iotype.eq.'LISTDIRECTED') then
+            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
                 ! non-allocatable
                 #:for ATTRIBUTE in ['bas','recbas','natoms']
                     $:read_xml_attribute_nonallocatable(ATTRIBUTE)
@@ -143,6 +146,11 @@ contains
                 #:endfor
                 ! type-specific stuff
                 select type (dtv)
+                class is (am_class_irre_cell)
+                    ! nested-allocatable object
+                    #:for ATTRIBUTE in ['atom']
+                       $:read_xml_attribute_allocatable_derivedtype(ATTRIBUTE)
+                    #:endfor
                 class is (am_shell_cell)
                     ! non-allocatable
                     #:for ATTRIBUTE in ['center','i','j','m','n']
@@ -159,13 +167,13 @@ contains
                 class default
                     ! do nothing
                 end select
-            write(unit,'(a/)') '</character_table>'
+            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
             ! without the iostat=-1 here the following error is produced at compile time:
             ! tb(67203,0x7fff7e4dd300) malloc: *** error for object 0x10c898cec: pointer being freed was not allocated
             ! *** set a breakpoint in malloc_error_break to debug
             iostat=-1
         else
-            stop 'ERROR [write_character_table]: iotype /= LISTDIRECTED'
+            stop 'ERROR [read_uc]: iotype /= LISTDIRECTED'
         endif
     end subroutine  read_uc
 
