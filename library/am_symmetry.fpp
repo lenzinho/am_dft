@@ -24,15 +24,17 @@ module am_symmetry
         type(am_class_character_table)      :: ct     ! character table
         type(am_class_multiplication_table) :: mt     ! multiplication table
         contains
+        procedure :: save_group
+        procedure :: load_group
         procedure :: sort_symmetries
         procedure :: get_multiplication_table
         procedure :: get_conjugacy_classes
         procedure :: get_character_table
         procedure :: print_character_table
         procedure, private :: write_group
-        procedure, private ::  read_group
+        procedure, private :: read_group
         generic :: write(formatted) => write_group
-        generic :: read(formatted)  => read_group
+        generic :: read(formatted) => read_group
     end type am_class_group
 
     type, public, extends(am_class_group)       :: am_class_representation_group
@@ -54,7 +56,6 @@ module am_symmetry
 
     type, public, extends(am_class_seitz_group) :: am_class_point_group
         integer :: pg_code
-        character(:), allocatable :: pg_name
         contains
         procedure :: get_point_group
         procedure :: get_rotational_group
@@ -241,6 +242,42 @@ contains
             stop 'ERROR [read_conjugacy_class]: iotype /= LISTDIRECTED'
         endif
     end subroutine read_group
+
+    subroutine     save_group(sg,fname)
+        !
+        implicit none
+        !
+        class(am_class_group), intent(in) :: sg
+        character(*), intent(in) :: fname
+        integer :: fid
+        integer :: iostat
+        ! fid
+        fid = 1
+        ! save space group
+        open(unit=fid, file=trim(fname), status='replace', action='write', iostat=iostat)
+            if (iostat/=0) stop 'ERROR [sg:load]: opening file'
+            write(fid,*) sg
+        close(fid)
+        !
+    end subroutine save_group
+
+    subroutine     load_group(sg,fname)
+        !
+        implicit none
+        !
+        class(am_class_group), intent(inout) :: sg
+        character(*), intent(in) :: fname
+        integer :: fid
+        integer :: iostat
+        ! fid
+        fid = 1
+        ! save space group
+        open(unit=fid, file=trim(fname), status='old', action='read', iostat=iostat)
+            if (iostat/=0) stop 'ERROR [sg:load]: opening file'
+            read(fid,*) sg
+        close(fid)
+        !
+    end subroutine load_group
 
     ! operate on group representation
 
@@ -880,8 +917,6 @@ contains
         class is (am_class_point_group)
             ! identify point group
             sg%pg_code = get_pg_code(sg%ps_id)
-            ! get name of point group
-            sg%pg_name = trim_null(get_pg_name(sg%pg_code))
         class is (am_class_space_group)
             ! do nothing
         class default
@@ -978,15 +1013,6 @@ contains
             call print_title('Space group multiplication table')
             call disp_indent()
             call disp(X=sg%mt%multab,advance='yes',trim='yes')
-        endif
-        ! dump debugging
-        if (debug) then
-            open(unit=1, file='save.sg', status='replace', action='write')
-                write(1,*) sg
-            close(1)
-            open(unit=1, file='save.sg', status='old', action='read')
-                read(1,*) sg
-            close(1)
         endif
         ! write action table
         call execute_command_line('mkdir -p '//trim(outfile_dir_sym))
@@ -1214,15 +1240,6 @@ contains
             call print_title('Point group character properties')
             call pg%print_character_table()
         endif
-        ! dump debugging
-        if (debug) then
-            open(unit=1, file='save.pg', status='replace', action='write')
-                write(1,*) pg
-            close(1)
-            open(unit=1, file='save.pg', status='old', action='read')
-                read(1,*) pg
-            close(1)
-        endif
         ! write action table
         call pg%write_action_table(uc=pc,fname=trim(outfile_dir_sym)//'/'//'outfile.point_group_action',opts=opts)
         !
@@ -1285,7 +1302,7 @@ contains
         ! get subduced irrep labels
         allocate(character(200)::rotg%ct%subduced_label(pg%ct%nirreps))
         do i = 1, pg%ct%nirreps
-            rotg%ct%subduced_label(i) = trim(pg%ct%irrep_label(i))//'('//trim(pg%pg_name)//')'
+            rotg%ct%subduced_label(i) = trim(pg%ct%irrep_label(i))//'('//trim(get_pg_name(pg%pg_code))//')'
         enddo
         rotg%ct%subduced_label = trim_null(rotg%ct%subduced_label)
         !
@@ -1367,7 +1384,7 @@ contains
         ! get subduced irrep labels
         allocate(character(200)::stab%ct%subduced_label(pg%ct%nirreps))
         do i = 1, pg%ct%nirreps
-            stab%ct%subduced_label(i) = trim(pg%ct%irrep_label(i))//'('//trim(pg%pg_name)//')'
+            stab%ct%subduced_label(i) = trim(pg%ct%irrep_label(i))//'('//trim(get_pg_name(pg%pg_code))//')'
         enddo
         stab%ct%subduced_label = trim_null(stab%ct%subduced_label)
         !
@@ -1442,7 +1459,7 @@ contains
         ! get subduced irrep labels
         allocate(character(200)::revg%ct%subduced_label(pg%ct%nirreps))
         do i = 1, pg%ct%nirreps
-            revg%ct%subduced_label(i) = trim(pg%ct%irrep_label(i))//'('//trim(pg%pg_name)//')'
+            revg%ct%subduced_label(i) = trim(pg%ct%irrep_label(i))//'('//trim(get_pg_name(pg%pg_code))//')'
         enddo
         revg%ct%subduced_label = trim_null(revg%ct%subduced_label)
         !

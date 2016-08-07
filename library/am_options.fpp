@@ -344,6 +344,8 @@ contains
         ! global
         call file%get_keyword(keyword='verbosity'       ,isfound=isfound, i_value=opts%verbosity)
         call file%get_keyword(keyword='prec'            ,isfound=isfound, r_value=opts%prec)
+        call file%get_keyword(keyword='restart'         ,isfound=isfound, c_value=buffer)
+        if (isfound) opts%flags = trim(opts%flags)//'restart'
         ! vasp
         call file%get_keyword(keyword='ibzkpt'          ,isfound=isfound, c_value=opts%ibzkpt)
         call file%get_keyword(keyword='doscar'          ,isfound=isfound, c_value=opts%doscar)

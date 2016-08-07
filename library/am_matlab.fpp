@@ -67,7 +67,7 @@ module am_matlab
 
 #:setvar KINDS_issubset ['real(dp)', 'complex(dp)', 'integer']
 #:setvar RANKS_issubset range(1,3)
-#:setvar PREFS_issubset ['{}{}_'.format(KIND[0], RANK) for KIND in KINDS_issubset for RANK in RANKS_issubset]
+#:setvar PREFS_issubset ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_issubset for RANK in RANKS_issubset]
 
     interface issubset
         module procedure ${variants('issubset', prefixes=PREFS_issubset)}$
@@ -75,7 +75,7 @@ module am_matlab
 
 #:setvar KINDS_reallocate ['real(dp)', 'complex(dp)', 'integer', 'logical']
 #:setvar RANKS_reallocate range(1,4)
-#:setvar PREFS_reallocate ['{}{}_'.format(KIND[0], RANK) for KIND in KINDS_reallocate for RANK in RANKS_reallocate]
+#:setvar PREFS_reallocate ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_reallocate for RANK in RANKS_reallocate]
 
     interface reallocate
         module procedure ${variants('reallocate', prefixes=PREFS_reallocate)}$
@@ -83,23 +83,23 @@ module am_matlab
 
 #:setvar KINDS_vector_allocate ['real(dp)', 'complex(dp)', 'integer', 'logical']
 #:setvar RANKS_vector_allocate range(1,4)
-#:setvar PREFS_vector_allocate ['{}{}_'.format(KIND[0], RANK) for KIND in KINDS_vector_allocate for RANK in RANKS_vector_allocate]
+#:setvar PREFS_vector_allocate ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_vector_allocate for RANK in RANKS_vector_allocate]
 
     interface vector_allocate
         module procedure ${variants('vector_allocate', prefixes=PREFS_vector_allocate)}$
     end interface ! vector_allocate
 
-#:setvar KINDS_write_xml_attribute ['real(dp)', 'complex(dp)', 'integer', 'logical']
+#:setvar KINDS_write_xml_attribute ['real(dp)', 'complex(dp)', 'integer', 'logical', 'character(*)']
 #:setvar RANKS_write_xml_attribute range(0,4)
-#:setvar PREFS_write_xml_attribute ['{}{}_'.format(KIND[0], RANK) for KIND in KINDS_write_xml_attribute for RANK in RANKS_write_xml_attribute]
+#:setvar PREFS_write_xml_attribute ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_write_xml_attribute for RANK in RANKS_write_xml_attribute]
 
     interface write_xml_attribute
         module procedure ${variants('write_xml_attribute', prefixes=PREFS_write_xml_attribute)}$
     end interface ! write_xml_attribute
 
-#:setvar KINDS_read_xml_attribute ['real(dp)', 'complex(dp)', 'integer', 'logical']
+#:setvar KINDS_read_xml_attribute ['real(dp)', 'complex(dp)', 'integer', 'logical', 'character(*)']
 #:setvar RANKS_read_xml_attribute range(0,4)
-#:setvar PREFS_read_xml_attribute ['{}{}_'.format(KIND[0], RANK) for KIND in KINDS_read_xml_attribute for RANK in RANKS_read_xml_attribute]
+#:setvar PREFS_read_xml_attribute ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_read_xml_attribute for RANK in RANKS_read_xml_attribute]
 
     interface read_xml_attribute
         module procedure ${variants('read_xml_attribute', prefixes=PREFS_read_xml_attribute)}$
@@ -107,7 +107,7 @@ module am_matlab
 
 #:setvar KINDS_unique ['real(dp)', 'complex(dp)', 'integer', 'logical']
 #:setvar RANKS_unique range(1,4)
-#:setvar PREFS_unique ['{}{}_'.format(KIND[0], RANK) for KIND in KINDS_unique for RANK in RANKS_unique]
+#:setvar PREFS_unique ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_unique for RANK in RANKS_unique]
 
     interface unique_inds
         module procedure ${variants('unique_inds', prefixes=PREFS_unique)}$
@@ -3006,9 +3006,9 @@ module am_matlab
 #:for KIND in KINDS_issubset
 #:for RANK in RANKS_issubset
     #:if KIND == 'real(dp)' or KIND == 'complex(dp)'
-    pure function ${KIND[0]}$${RANK}$_issubset(A,B,iopt_prec) result(bool)
+    pure function ${KIND[3]}$${RANK}$_issubset(A,B,iopt_prec) result(bool)
     #:else
-    pure function ${KIND[0]}$${RANK}$_issubset(A,B) result(bool)
+    pure function ${KIND[3]}$${RANK}$_issubset(A,B) result(bool)
     #:endif
         !
         ${KIND}$, intent(in) :: A${ranksuffix(RANK)}$
@@ -3039,8 +3039,7 @@ module am_matlab
             endif
         enddo
         !
-    end function  ${KIND[0]}$${RANK}$_issubset
-
+    end function  ${KIND[3]}$${RANK}$_issubset
 #:endfor
 #:endfor
 
@@ -3048,15 +3047,14 @@ module am_matlab
 
 #:for KIND in KINDS_reallocate
 #:for RANK in RANKS_reallocate
-    pure function ${KIND[0]}$${RANK}$_reallocate(A) result(B)
+    pure function ${KIND[3]}$${RANK}$_reallocate(A) result(B)
         !
         ${KIND}$, intent(in) :: A${ranksuffix(RANK)}$
         ${KIND}$,allocatable :: B${ranksuffix(RANK)}$
         !
         allocate(B,source=A)
         !
-    end function  ${KIND[0]}$${RANK}$_reallocate
-
+    end function  ${KIND[3]}$${RANK}$_reallocate
 #:endfor
 #:endfor
 
@@ -3064,15 +3062,14 @@ module am_matlab
 
 #:for KIND in KINDS_vector_allocate
 #:for RANK in RANKS_vector_allocate
-    pure subroutine ${KIND[0]}$${RANK}$_vector_allocate(A,vec)
+    pure subroutine ${KIND[3]}$${RANK}$_vector_allocate(A,vec)
         !
         ${KIND}$, allocatable, intent(inout) :: A${ranksuffix(RANK)}$
         integer , intent(in) :: vec(${RANK}$)
         !
         allocate(A(${ 'vec(' + '),vec('.join([str(x+1) for x in range(0,RANK)]) + ')' }$))
         !
-    end subroutine  ${KIND[0]}$${RANK}$_vector_allocate
-
+    end subroutine  ${KIND[3]}$${RANK}$_vector_allocate
 #:endfor
 #:endfor
 
@@ -3080,7 +3077,7 @@ module am_matlab
 
 #:for KIND in KINDS_write_xml_attribute
 #:for RANK in RANKS_write_xml_attribute
-    subroutine     ${KIND[0]}$${RANK}$_write_xml_attribute(unit,value,attribute)
+    subroutine     ${KIND[3]}$${RANK}$_write_xml_attribute(unit,value,attribute)
         !
         integer     , intent(in) :: unit
         ${KIND}$    , intent(in) :: value${ranksuffix(RANK)}$
@@ -3095,27 +3092,46 @@ module am_matlab
         write(unit,'(/)')
         write(unit,'(a,/)') '</'//trim(attribute)//'>'
         !
-    end subroutine  ${KIND[0]}$${RANK}$_write_xml_attribute
+    end subroutine  ${KIND[3]}$${RANK}$_write_xml_attribute
+#:endfor
+#:endfor
 
-#:endfor
-#:endfor
+    ! read_xml_attribute
 
 #:for KIND in KINDS_read_xml_attribute
 #:for RANK in RANKS_read_xml_attribute
-    subroutine     ${KIND[0]}$${RANK}$_read_xml_attribute(unit,value,iostat,iomsg)
+    subroutine     ${KIND[3]}$${RANK}$_read_xml_attribute(unit,value,iostat,iomsg)
         !
         integer     , intent(in) :: unit
         ${KIND}$    , intent(inout) :: value${ranksuffix(RANK)}$
         integer     , intent(out)   :: iostat
         character(*), intent(inout) :: iomsg
+        #:if KIND == 'character(*)' 
+        #:if RANK == 1
+        character(maximum_buffer_size) :: buffer ! read buffer
+        character(len=:), allocatable :: word(:) ! read buffer
+        integer :: i
+        #:endif
+        #:endif
         !
         read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)     ! write(unit,'(a,/)') '<'//trim(attribute)//'>'
-        read(unit,*) value                                      ! write(unit,*) pack(value,.true.)
+        #:if KIND == 'character(*)'
+        #:if RANK == 1
+            read(unit=unit,fmt='(a)') buffer
+            word = strsplit(buffer,delimiter=' ')
+            do i = 1, size(word)
+                value(i) = word(i)
+            enddo
+        #:else
+            stop 'ERROR [${KIND[3]}$${RANK}$_read_xml_attribute]: not yet implemented'
+        #:endif
+        #:else
+            read(unit,*) value                                  
+        #:endif
         read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)     ! write(unit,'(/)')
         read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)     ! write(unit,'(a,/)') '</'//trim(attribute)//'>'
         !
-    end subroutine  ${KIND[0]}$${RANK}$_read_xml_attribute
-
+    end subroutine  ${KIND[3]}$${RANK}$_read_xml_attribute
 #:endfor
 #:endfor
 
@@ -3124,9 +3140,9 @@ module am_matlab
 #:for KIND in KINDS_unique
 #:for RANK in RANKS_unique
     #:if KIND == 'real(dp)' or KIND == 'complex(dp)'
-    pure function ${KIND[0]}$${RANK}$_unique_inds(A,iopt_prec) result(inds)
+    pure function ${KIND[3]}$${RANK}$_unique_inds(A,iopt_prec) result(inds)
     #:else
-    pure function ${KIND[0]}$${RANK}$_unique_inds(A) result(inds)
+    pure function ${KIND[3]}$${RANK}$_unique_inds(A) result(inds)
     #:endif
         !
         ${KIND}$, intent(in) :: A${ranksuffix(RANK)}$
@@ -3162,8 +3178,7 @@ module am_matlab
         !
         inds = trim_null(inds)
         !
-    end function  ${KIND[0]}$${RANK}$_unique_inds
-
+    end function  ${KIND[3]}$${RANK}$_unique_inds
 #:endfor
 #:endfor
 
@@ -3172,9 +3187,9 @@ module am_matlab
 #:for KIND in KINDS_unique
 #:for RANK in RANKS_unique
     #:if KIND == 'real(dp)' or KIND == 'complex(dp)'
-    pure function ${KIND[0]}$${RANK}$_unique(A,prec) result(B)
+    pure function ${KIND[3]}$${RANK}$_unique(A,prec) result(B)
     #:else
-    pure function ${KIND[0]}$${RANK}$_unique(A) result(B)
+    pure function ${KIND[3]}$${RANK}$_unique(A) result(B)
     #:endif
         !
         implicit none
@@ -3192,8 +3207,7 @@ module am_matlab
         allocate(B, source=A${ranksuffix_last(RANK,last='unique_inds(A)')}$)
     #:endif
         !
-    end function  ${KIND[0]}$${RANK}$_unique
-
+    end function  ${KIND[3]}$${RANK}$_unique
 #:endfor
 #:endfor
 
