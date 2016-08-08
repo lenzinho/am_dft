@@ -869,7 +869,7 @@ contains
         !
         if (opts%verbosity.ge.1) call print_title('Atomic orbitals')
         !
-        fname = 'infile.tb_orbitals'
+        fname = 'infile.orbitals'
         if (fexists(fname)) then
             ! read it
             call read_orbital_basis(ic,fname,opts%verbosity)
@@ -880,10 +880,10 @@ contains
             do i = 1, ic%natoms
                 call ic%atom(i)%gen_orbitals(orbital_flags='1s,2p,3d,4f')
             enddo
-            call write_orbital_basis(ic)
+            call template_orbital_basis(ic)
             !
             if (opts%verbosity.ge.1)  then
-                write(*,'(a,a)') flare, 'Template produced: '//trim(outfile_dir_tb)//'/'//'outfile.tb_orbitals'
+                write(*,'(a,a)') flare, 'Template produced: template.tb_orbitals'
                 call print_title('Done!')
             endif
             !
@@ -902,18 +902,16 @@ contains
         if (opts%verbosity.ge.1) call print_orbital_basis(ic)
         !
         contains
-        subroutine     write_orbital_basis(ic)
+        subroutine     template_orbital_basis(ic)
             !
             implicit none
             !
             class(am_class_irre_cell), intent(inout) :: ic
             integer :: i, j
             integer :: fid
-            ! create tb dir
-            call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
             ! export file
             fid = 1
-            open(unit=fid,file=trim(outfile_dir_tb)//'/'//'infile.tb_orbitals',status='replace',action='write')
+            open(unit=fid,file='template.tb_orbitals',status='replace',action='write')
                 ! spin polarized?
                 write(fid,'(a)') 'spin: off'
                 ! irreducible atoms
@@ -929,7 +927,7 @@ contains
                 enddo
             close(fid)
             !
-        end subroutine write_orbital_basis
+        end subroutine template_orbital_basis
         subroutine     read_orbital_basis(ic,fname,verbosity)
             !
             implicit none
@@ -961,6 +959,7 @@ contains
                 if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'irreducible atoms = ', tostring(ic_natoms)
                 ! set irreducible atoms
                 if (ic%natoms.ne.ic_natoms) stop 'number of irreducible atoms input does not match internally calculated.'
+                if (allocated(ic%atom)) deallocate(ic%atom)
                 allocate(ic%atom(ic_natoms))
                 ! loop over irreducible atoms
                 do j = 1, ic_natoms

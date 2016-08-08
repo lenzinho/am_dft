@@ -48,6 +48,8 @@ contains
 	            call read_eigenval(E=dft%dr%E, nspins=dft%dr%nspins, nbands=dft%dr%nbands, iopt_filename=opts%eigenval, iopt_verbosity=0) ! , lmproj=dft%dr%lmproj)
 	            ! load kpoints from eigenval
 	            call read_eigenval(kpt=kpt, w=w, iopt_filename=opts%eigenval, iopt_verbosity=0)
+	            ! read poscar
+	            call dft%uc%load_poscar(opts)
 	            ! create instance
 	            call dft%bz%create_bz(kpt_frac=kpt, bas=dft%uc%bas, w=w, prec=opts%prec)
 	            !

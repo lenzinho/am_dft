@@ -56,7 +56,6 @@ module am_tight_binding
         procedure :: optimize_matrix_element
         procedure :: read_irreducible_matrix_element
         procedure :: write_irreducible_matrix_element
-        procedure :: write_all_matrix_element
         procedure :: set_matrix_element
         procedure :: export_to_matlab
         procedure :: save => save_tb
@@ -236,24 +235,6 @@ contains
             endif
             enddo
         enddo
-        ! write template for irreducible matrix elements
-        if (fexists('infile.tb_matrix_elements_irreducible').ne.0) then 
-            ! print title
-            call print_title('Input tight-binding matrix elements')
-            ! read matrix elements
-            call tb%read_irreducible_matrix_element()
-            ! display input file on stdout
-            call disp(x=[0],zeroas=' ',advance='no')
-            call disp(x=tb%V,title='V',style='underline',advance='no')
-            call disp(x=tb%V_ind(1,:),title='shell',style='underline',advance='no')
-            call disp(x=tb%V_ind(2,:),title='alpha',style='underline',advance='no')
-            call disp(x=tb%V_ind(3,:),title='beta',style='underline',advance='yes')
-        else
-            ! set matrix elements at zero
-            call tb%set_matrix_element(flags='zero')
-            ! write template for irreducible matrix elements
-            call tb%write_irreducible_matrix_element()
-        endif
         !
         contains
         function     get_tightbinding_pointgroup(pg,pc,ic) result(tb_pg)
@@ -495,10 +476,9 @@ contains
         ! export hamiltonian
         fid = 1
         ! create directory
-        call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
-        call execute_command_line( 'mkdir -p '//trim(outfile_dir_tb)//'/matlab')
+        call execute_command_line( 'mkdir -p ./matlab')
         ! export file
-        open(unit=fid,file=trim(outfile_dir_tb)//'/matlab/'//trim(H_fnc_name)//'.m',status='replace',action='write')
+        open(unit=fid,file='./matlab/'//trim(H_fnc_name)//'.m',status='replace',action='write')
             write(fid,'(a,a,a)') 'function [H] = ', trim(H_fnc_name), '(pg,v,kpt,shell)'
             write(fid,'(a)') 'i2pi = 2*sqrt(-1)*pi;'
             write(fid,'(a)') 'H(1:'//tostring(E(end))//',1:'//tostring(E(end))//') = 0;'
@@ -643,13 +623,11 @@ contains
         integer :: beta
         integer :: i
         integer :: fid
-        ! create tb dir
-        call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
         ! write point group
         fid = 1
-        open(unit=fid,file=trim(outfile_dir_tb)//'/'//'outfile.tb_matrix_elements_irreducible',status='replace',action='write')
+        open(unit=fid,file='outfile.tb_vsk',status='replace',action='write')
             !
-            write(fid,'(a,a16,3a6)') '#', 'V', 'shell', 'alpha', 'beta'
+            write(fid,'(a5,a16,3a6)') '#', 'V', 'shell', 'alpha', 'beta'
             do i = 1, tb%nVs
                 ! get shell index
                 k     = tb%V_ind(1,i)
@@ -681,7 +659,7 @@ contains
         allocate(V(tb%nVs))
         !
         fid = 1
-        open(unit=fid,file='infile.tb_matrix_elements_irreducible',status="old",action='read')
+        open(unit=fid,file='infile.tb_vsk',status="old",action='read')
             ! skip header
             read(fid,*)
             ! read matrix elements
@@ -702,68 +680,6 @@ contains
             call tb%set_matrix_element(V)
         close(fid)
     end subroutine read_irreducible_matrix_element
-
-    ! DEPRECATED: 
-    ! TODO, convert write_all_matrix_element into an extenral subroutine for getting the hamiltonian which takes as input a vector of irreducible matrix elements ... 
-    ! make it such that the subroutine can be compiled afterwards...
-    ! if this is done, the model is set. do not need to go through everything again.
-
-    subroutine     write_all_matrix_element(tb,pp)
-        !
-        implicit none
-        !
-        class(am_class_tightbinding), intent(in) :: tb    ! irreducible tight binding matrix elements
-        type(am_class_prim_pair)    , intent(in) :: pp    ! primitive pairs
-        real(dp), allocatable, target :: Hsub_target(:,:)
-        real(dp), allocatable, target :: pg_target(:,:,:)
-        integer , allocatable :: S(:) ,E(:)
-        real(dp), pointer :: Dm(:,:), Dn(:,:)
-        real(dp), pointer :: Hsub(:,:)
-        integer :: fid
-        integer :: k,p, m,n
-        !
-        ! allocate space for vectors demarking start and end of Hamiltonian subsection
-        allocate(Hsub_target(tb%pg%nbases,tb%pg%nbases))
-        allocate(pg_target, source=tb%pg%sym)
-        allocate(S, source=tb%pg%S)
-        allocate(E, source=tb%pg%E)
-        !
-        call tostring_set(sep=' ')
-            ! create directory
-            call execute_command_line ('mkdir -p '//trim(outfile_dir_tb))
-            ! export symmetry
-            fid = 1
-            open(unit=fid,file=trim(outfile_dir_tb)//'/'//'outfile.tb_matrix_elements',status='replace',action='write')
-                ! print stuff
-                write(fid,'(a,a)')                 tostring(pp%nshells), ' primitive shells'
-                write(fid,'(a,a)')                          tostring(S), ' subregion start'
-                write(fid,'(a,a)')                          tostring(E), ' subregion end'
-                do k = 1, pp%nshells
-                ! abbreviations
-                m = pp%shell(k)%m
-                n = pp%shell(k)%n
-                ! print stuff
-                write(fid,'(a,a)')                       repeat('=',79), repeat('=',79)
-                write(fid,'(a,a)')              centertitle(tostring(k)//' shell',158)
-                write(fid,'(a,a)')                          tostring(m), ' primitive m'
-                write(fid,'(a,a)')                          tostring(n), ' primitive n'
-                write(fid,'(a,a)')         tostring(pp%shell(k)%natoms), ' atoms in shell'
-                do p = 1, pp%shell(k)%natoms
-                ! abbreviations
-                Dm   => pg_target(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p) )
-                Dn   => pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p) )
-                Hsub => Hsub_target(S(m):E(m), S(n):E(n))
-                ! print stuff
-                Hsub = get_matrix_element(tb=tb, ip_id=pp%ip_id(k)) 
-                ! print
-                call disp(unit=fid, fmt='f18.10',x=matmul(matmul(transpose(Dm), Hsub), Dn),title=tostring(pp%shell(k)%tau_cart(1:3,p),fmt='f10.5')//' [cart.]',style='above')
-                enddo
-                enddo
-            close(fid)
-        ! return delimiter to ","
-        call tostring_set(sep=',')
-        !
-    end subroutine write_all_matrix_element
 
     ! optimizer
 

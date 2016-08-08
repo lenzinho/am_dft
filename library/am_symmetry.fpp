@@ -1045,9 +1045,6 @@ contains
             call disp_indent()
             call disp(X=sg%mt%multab,advance='yes',trim='yes')
         endif
-        ! write action table
-        call execute_command_line('mkdir -p '//trim(outfile_dir_sym))
-        call sg%write_action_table(uc=pc,fname=trim(outfile_dir_sym)//'/'//'outfile.space_group_action',opts=opts)
         !
         contains
         function        space_symmetries_from_basis(bas,tau,Z,prec,verbosity) result(seitz)
@@ -1271,8 +1268,6 @@ contains
             call print_title('Point group character properties')
             call pg%print_character_table()
         endif
-        ! write action table
-        call pg%write_action_table(uc=pc,fname=trim(outfile_dir_sym)//'/'//'outfile.point_group_action',opts=opts)
         !
     end subroutine get_point_group
 

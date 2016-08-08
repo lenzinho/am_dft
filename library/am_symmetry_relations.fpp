@@ -352,11 +352,11 @@ module am_symmetry_relations
         elseif (index(flags,'standalone').ne.0) then
             fid = 1
             ! create folder
-            call execute_command_line( 'mkdir -p '//trim(outfile_dir_tb)//'/matlab' )
+            call execute_command_line( 'mkdir -p ./matlab' )
             ! create file
-            open(unit=fid,file=trim(outfile_dir_tb)//'/matlab/'//trim(fnc_name)//'.m',status='replace',action='write')
+            open(unit=fid,file='./matlab/'//trim(fnc_name)//'.m',status='replace',action='write')
         else
-            stop 'ERROR [export_relations2matlab]: flags != standalone/append.'
+            stop 'ERROR [export_relations2matlab]: flags /= standalone/append.'
         endif
             !
             write(fid,'(a,a,a)') 'function [a] = ', trim(fnc_name), '(v)'

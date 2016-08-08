@@ -123,11 +123,6 @@ contains
         enddo
         ! make sure kpt_frac is betwen [0,1)
         bz%kpt_frac = modulo(bz%kpt_frac+prec,1.0_dp)-prec
-        ! debug dump
-        if (debug) then
-            call execute_command_line ('mkdir -p '//trim(debug_dir)//'/bz')
-            call bz%debug_dump(fname=               trim(debug_dir)//'/bz/outfile.bz')
-        endif
         !
         contains
         function       reduce_kpoint_to_fbz(kpoint_cart,grid_points) result(kpoint_fbz_cart)

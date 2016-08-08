@@ -77,7 +77,7 @@ module am_atom
         integer :: str_length
         !   
         if (iotype.eq.'LISTDIRECTED') then
-            write(unit,'(a/)') '<atom>'
+            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
                 ! non-allocatable
                 #:for ATTRIBUTE in ['norbitals','nazimuthals']
                     $:read_xml_attribute_nonallocatable(ATTRIBUTE)
@@ -90,7 +90,7 @@ module am_atom
                 #:for ATTRIBUTE in ['orbname']
                     $:read_xml_attribute_allocatable_string(ATTRIBUTE)
                 #:endfor
-            write(unit,'(a/)') '</atom>'
+            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
             ! without the iostat=-1 here the following error is produced at compile time:
             ! tb(67203,0x7fff7e4dd300) malloc: *** error for object 0x10c898cec: pointer being freed was not allocated
             ! *** set a breakpoint in malloc_error_break to debug
