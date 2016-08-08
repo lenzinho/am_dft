@@ -35,6 +35,7 @@ contains
         character(*)          , intent(in) :: flags
         real(dp), allocatable :: kpt(:,:) ! kpoint coordinates
         real(dp), allocatable :: w(:)     ! normalized weights
+        real(dp) :: Ef
         real(dp) :: offset
         !
         if (opts%verbosity.ge.1) call print_title('DFT')
@@ -42,6 +43,8 @@ contains
         offset = 0.0_dp
         !
 		if     (index(flags,'dispersion').ne.0) then
+	        ! load poscar used in DFT
+	        call dft%uc%load_poscar(opts)
 			! load dispersion relations
 	        if     (index(flags,'eigenval').ne.0) then
 	        	! load dispersion form eigenval
@@ -70,11 +73,12 @@ contains
 	        ! check for flags asking for shift in energy
 	        if     (index(flags,'minimum').ne.0) then
 	        	! shift lowest band energy to zero; E(nbands,nkpts)
-	        	offset = minval(dft%dr%E((opts%skip_band+1):,:))
+	        	offset = minval(dft%dr%E((opts%skip+1):,:))
 				dft%dr%E  = dft%dr%E  - offset
         	elseif (index(flags,'fermi').ne.0) then
         		! shift fermi level to zero
-	        	call read_doscar(efermi=offset, nedos=dft%dos%nEs, dos=dft%dos%D, E=dft%dos%E, iopt_filename=opts%doscar, iopt_verbosity=0)
+	        	call read_doscar(efermi=Ef, nedos=dft%dos%nEs, dos=dft%dos%D, E=dft%dos%E, iopt_filename=opts%doscar, iopt_verbosity=0)
+	        	offset = Ef
 	        	! shift energies
 	        	dft%dos%E = dft%dos%E - offset
 	        	dft%dr%E  = dft%dr%E  - offset
@@ -87,8 +91,8 @@ contains
 	            write(*,'(5x,a,a)')      'lowest = ', tostring(minval(pack(dft%dr%E,.true.)))
 	            write(*,'(5x,a,a)')     'highest = ', tostring(maxval(pack(dft%dr%E,.true.)))
 	            write(*,'(5x,a,a)')        'mean = ', tostring(sum(pack(dft%dr%E,.true.))/size(pack(dft%dr%E,.true.)))
-	            if (index(flags,'fermi'))   write(*,'(a,a)') flare, 'Energies have been shifted by '//tostring(offset)//', putting Ef at 0.'
-	            if (index(flags,'minimum')) write(*,'(a,a)') flare, 'Energies have been shifted by '//tostring(offset)
+	            write(*,'(a,a)') flare, 'Energies shift = '//tostring(offset)
+	            if (index(flags,'fermi'))   write(*,'(a,a)') flare, 'Fermi energy = '//tostring(Ef)
 	            ! make nice dos histogram
 	            write(*,'(a,a)') flare, 'density of states'
 	            call plot_histogram(binned_data=histogram(x=pack(dft%dr%E,.true.),m=98))

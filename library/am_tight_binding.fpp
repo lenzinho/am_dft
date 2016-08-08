@@ -26,7 +26,7 @@ module am_tight_binding
         integer  :: nxs      ! number of parameters to fit
         integer  :: nrs      ! size of residual vector
         real(dp) :: eps      ! stopping criterion
-        integer               :: skip_band
+        integer               :: skip
         integer , allocatable :: selector_shell(:)
         integer , allocatable :: selector_kpoint(:)
         integer , allocatable :: selector_x(:)
@@ -784,7 +784,7 @@ contains
             write(*,'(5x,a,a)') 'irreducible matrix elements = '//tostring(tb%ft%nxs)
             write(*,'(5x,a,a)') 'selected k-points = '          //tostring(tb%ft%nkpts)
             write(*,'(5x,a,a)') 'bands = '                      //tostring(tb%ft%nbands)
-            write(*,'(5x,a,a)') 'bands skipped = '              //tostring(tb%ft%skip_band)
+            write(*,'(5x,a,a)') 'bands skipped = '              //tostring(tb%ft%skip)
             write(*,'(5x,a,a)') 'residual vector length = '     //tostring(tb%ft%nrs)
             write(*,'(5x,a,a)') 'max iterations = '             //tostring(tb%ft%maxiter)
         endif
@@ -837,7 +837,7 @@ contains
         ! initialize rms error
         tb%ft%rms   = 0              ! rms error
         ! set number of bands to skip
-        tb%ft%skip_band = opts%skip_band
+        tb%ft%skip = opts%skip
     end subroutine initialize_ft
 
     subroutine     perform_optimization(tb,dft,pp,opts)
@@ -950,7 +950,7 @@ contains
         ! get tb dispersion 
         call tb%get_dispersion(pp=pp, bz=dft%bz)
         ! calculate residual vector indices
-        R = pack(dft%dr%E([1:tb%ft%nbands]+tb%ft%skip_band, tb%ft%selector_kpoint) - tb%dr%E(:,tb%ft%selector_kpoint) , .true.)
+        R = pack(dft%dr%E([1:tb%ft%nbands]+tb%ft%skip, tb%ft%selector_kpoint) - tb%dr%E(:,tb%ft%selector_kpoint) , .true.)
         !
     end function   compute_residual
 
