@@ -1,4 +1,4 @@
-PROGS   = uc sym tbvsk tbfit 
+PROGS   = uc sym tensor tbvsk tbfit
 
 include makefile.inc
 
@@ -12,6 +12,9 @@ uc: $(AMLIB)
 sym: $(AMLIB) 
 	(cd prog_sym; $(MAKE) )
 
+tensor: $(AMLIB) 
+	(cd prog_tensor; $(MAKE) )
+
 tbvsk: $(AMLIB) 
 	(cd prog_tbvsk; $(MAKE) )
 
@@ -22,11 +25,27 @@ $(AMLIB):
 	(cd $(DIRLIB); $(MAKE) )
 
 clean:
-	(cd prog_uc;   	$(MAKE) clean)
-	(cd prog_sym;  	$(MAKE) clean)
-	(cd prog_tbfit; $(MAKE) clean)
-	(cd prog_tbvsk; $(MAKE) clean)
-	(cd $(DIRLIB); 	$(MAKE) clean)
+	(cd prog_uc;   	 $(MAKE) clean)
+	(cd prog_sym;  	 $(MAKE) clean)
+	(cd prog_tensor; $(MAKE) clean)
+	(cd prog_tbfit;  $(MAKE) clean)
+	(cd prog_tbvsk;  $(MAKE) clean)
+	(cd $(DIRLIB); 	 $(MAKE) clean)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -8,11 +8,11 @@ module am_matlab
     
     public
 
-#:if COLOR > 0
-    logical, private :: use_escape_codes = .true.
-#:else
-    logical, private :: use_escape_codes = .false.
-#:endif
+    #:if COLOR > 0
+        logical, private :: use_escape_codes = .true.
+    #:else
+        logical, private :: use_escape_codes = .false.
+    #:endif
 
     interface adjoint
         module procedure zadjoint, dadjoint
@@ -65,49 +65,49 @@ module am_matlab
         module procedure i_trim_null, vi_trim_null, vz_trim_null, vd_trim_null, vs_trim_null, s_trim_null
     end interface ! trim_null
 
-#:setvar KINDS_issubset ['real(dp)', 'complex(dp)', 'integer']
-#:setvar RANKS_issubset range(1,3)
-#:setvar PREFS_issubset ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_issubset for RANK in RANKS_issubset]
+    #:setvar KINDS_issubset ['real(dp)', 'complex(dp)', 'integer']
+    #:setvar RANKS_issubset range(1,3)
+    #:setvar PREFS_issubset ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_issubset for RANK in RANKS_issubset]
 
     interface issubset
         module procedure ${variants('issubset', prefixes=PREFS_issubset)}$
     end interface ! issubset
 
-#:setvar KINDS_reallocate ['real(dp)', 'complex(dp)', 'integer', 'logical']
-#:setvar RANKS_reallocate range(1,4)
-#:setvar PREFS_reallocate ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_reallocate for RANK in RANKS_reallocate]
+    #:setvar KINDS_reallocate ['real(dp)', 'complex(dp)', 'integer', 'logical']
+    #:setvar RANKS_reallocate range(1,4)
+    #:setvar PREFS_reallocate ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_reallocate for RANK in RANKS_reallocate]
 
     interface reallocate
         module procedure ${variants('reallocate', prefixes=PREFS_reallocate)}$
     end interface ! reallocate
 
-#:setvar KINDS_vector_allocate ['real(dp)', 'complex(dp)', 'integer', 'logical', 'character(:)']
-#:setvar RANKS_vector_allocate range(1,4)
-#:setvar PREFS_vector_allocate ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_vector_allocate for RANK in RANKS_vector_allocate]
+    #:setvar KINDS_vector_allocate ['real(dp)', 'complex(dp)', 'integer', 'logical', 'character(:)']
+    #:setvar RANKS_vector_allocate range(1,4)
+    #:setvar PREFS_vector_allocate ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_vector_allocate for RANK in RANKS_vector_allocate]
 
     interface vector_allocate
         module procedure ${variants('vector_allocate', prefixes=PREFS_vector_allocate)}$
     end interface ! vector_allocate
 
-#:setvar KINDS_write_xml_attribute ['real(dp)', 'complex(dp)', 'integer', 'logical', 'character(*)']
-#:setvar RANKS_write_xml_attribute range(0,4)
-#:setvar PREFS_write_xml_attribute ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_write_xml_attribute for RANK in RANKS_write_xml_attribute]
+    #:setvar KINDS_write_xml_attribute ['real(dp)', 'complex(dp)', 'integer', 'logical', 'character(*)']
+    #:setvar RANKS_write_xml_attribute range(0,4)
+    #:setvar PREFS_write_xml_attribute ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_write_xml_attribute for RANK in RANKS_write_xml_attribute]
 
     interface write_xml_attribute
         module procedure ${variants('write_xml_attribute', prefixes=PREFS_write_xml_attribute)}$
     end interface ! write_xml_attribute
 
-#:setvar KINDS_read_xml_attribute ['real(dp)', 'complex(dp)', 'integer', 'logical', 'character(*)']
-#:setvar RANKS_read_xml_attribute range(0,4)
-#:setvar PREFS_read_xml_attribute ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_read_xml_attribute for RANK in RANKS_read_xml_attribute]
+    #:setvar KINDS_read_xml_attribute ['real(dp)', 'complex(dp)', 'integer', 'logical', 'character(*)']
+    #:setvar RANKS_read_xml_attribute range(0,4)
+    #:setvar PREFS_read_xml_attribute ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_read_xml_attribute for RANK in RANKS_read_xml_attribute]
 
     interface read_xml_attribute
         module procedure ${variants('read_xml_attribute', prefixes=PREFS_read_xml_attribute)}$
     end interface ! read_xml_attribute
 
-#:setvar KINDS_unique ['real(dp)', 'complex(dp)', 'integer', 'logical']
-#:setvar RANKS_unique range(1,4)
-#:setvar PREFS_unique ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_unique for RANK in RANKS_unique]
+    #:setvar KINDS_unique ['real(dp)', 'complex(dp)', 'integer', 'logical']
+    #:setvar RANKS_unique range(1,4)
+    #:setvar PREFS_unique ['{}{}_'.format(KIND[3], RANK) for KIND in KINDS_unique for RANK in RANKS_unique]
 
     interface unique_inds
         module procedure ${variants('unique_inds', prefixes=PREFS_unique)}$
