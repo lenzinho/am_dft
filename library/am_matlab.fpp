@@ -3,7 +3,6 @@ module am_matlab
 
     use am_constants
     use am_mkl, only : am_zheev, inv, rand, am_zgeev, am_dgeev, null_svd, orth_svd
-    use dispmodule ! for dump 
 
     implicit none
     
@@ -125,12 +124,6 @@ module am_matlab
     interface cumprod
         module procedure dcumprod, icumprod
     end interface ! cumprod
-
-    interface dump
-        module procedure         dv_dump, dm_dump, dt_dump, &
-                                 zv_dump, zm_dump, zt_dump, zt4_dump, &
-                         i_dump, iv_dump, im_dump, it_dump
-    end interface ! dump
 
     interface rref
         module procedure :: z_rref, d_rref
@@ -256,198 +249,6 @@ module am_matlab
         str_lwr = trim(adjustl(str_lwr))
         !
     end function   lowercase
-
-    ! basic file io
-
-    subroutine     dt_dump(A,fname)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: A(:,:,:)
-        character(*) :: fname
-        integer :: fid
-        integer :: i
-        !
-        fid = 1
-        open(unit=fid,file=trim(fname),status='replace',action='write')
-            write(fid,*) shape(A)
-            do i = 1, size(A,3)
-                call disp(unit=fid,X=A(:,:,i),fmt='f24.16')
-            enddo
-        close(fid)
-        !
-    end subroutine dt_dump
-
-    subroutine     dm_dump(A,fname)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: A(:,:)
-        character(*) :: fname
-        integer :: fid
-        !
-        fid = 1
-        open(unit=fid,file=trim(fname),status='replace',action='write')
-            write(fid,*) shape(A)
-            call disp(unit=fid,X=A,fmt='f24.16')
-        close(fid)
-        !
-    end subroutine dm_dump
-
-    subroutine     dv_dump(A,fname)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: A(:)
-        character(*) :: fname
-        integer :: fid
-        !
-        fid = 1
-        open(unit=fid,file=trim(fname),status='replace',action='write')
-            write(fid,*) shape(A)
-            call disp(unit=fid,X=A,fmt='f24.16')
-        close(fid)
-        !
-    end subroutine dv_dump
-
-    subroutine     zt4_dump(A,fname)
-        !
-        implicit none
-        !
-        complex(dp), intent(in) :: A(:,:,:,:)
-        character(*) :: fname
-        integer :: fid
-        integer :: i, j
-        !
-        fid = 1
-        open(unit=fid,file=trim(fname),status='replace',action='write')
-            write(fid,*) shape(A)
-            do i = 1, size(A,4)
-            do j = 1, size(A,3)
-                call disp(unit=fid,X=A(:,:,j,i),fmt='f24.16')
-            enddo
-            enddo
-        close(fid)
-        !
-    end subroutine zt4_dump
-
-    subroutine     zt_dump(A,fname)
-        !
-        implicit none
-        !
-        complex(dp), intent(in) :: A(:,:,:)
-        character(*) :: fname
-        integer :: fid
-        integer :: i
-        !
-        fid = 1
-        open(unit=fid,file=trim(fname),status='replace',action='write')
-            write(fid,*) shape(A)
-            do i = 1, size(A,3)
-                call disp(unit=fid,X=A(:,:,i),fmt='f24.16')
-            enddo
-        close(fid)
-        !
-    end subroutine zt_dump
-
-    subroutine     zm_dump(A,fname)
-        !
-        implicit none
-        !
-        complex(dp), intent(in) :: A(:,:)
-        character(*) :: fname
-        integer :: fid
-        !
-        fid = 1
-        open(unit=fid,file=trim(fname),status='replace',action='write')
-            write(fid,*) shape(A)
-            call disp(unit=fid,X=A,fmt='f24.16')
-        close(fid)
-        !
-    end subroutine zm_dump
-
-    subroutine     zv_dump(A,fname)
-        !
-        implicit none
-        !
-        complex(dp), intent(in) :: A(:)
-        character(*) :: fname
-        integer :: fid
-        !
-        fid = 1
-        open(unit=fid,file=trim(fname),status='replace',action='write')
-            write(fid,*) shape(A)
-            call disp(unit=fid,X=A,fmt='f24.16')
-        close(fid)
-        !
-    end subroutine zv_dump
-
-    subroutine     it_dump(A,fname)
-        !
-        implicit none
-        !
-        integer, intent(in) :: A(:,:,:)
-        character(*) :: fname
-        integer :: fid
-        integer :: i
-        !
-        fid = 1
-        open(unit=fid,file=trim(fname),status='replace',action='write')
-            write(fid,*) shape(A)
-            do i = 1, size(A,3)
-                call disp(unit=fid,X=A(:,:,i))
-            enddo
-        close(fid)
-        !
-    end subroutine it_dump
-
-    subroutine     im_dump(A,fname)
-        !
-        implicit none
-        !
-        integer, intent(in) :: A(:,:)
-        character(*) :: fname
-        integer :: fid
-        !
-        fid = 1
-        open(unit=fid,file=trim(fname),status='replace',action='write')
-            write(fid,*) shape(A)
-            call disp(unit=fid,X=A)
-        close(fid)
-        !
-    end subroutine im_dump
-
-    subroutine     iv_dump(A,fname)
-        !
-        implicit none
-        !
-        integer, intent(in) :: A(:)
-        character(*) :: fname
-        integer :: fid
-        !
-        fid = 1
-        open(unit=fid,file=trim(fname),status='replace',action='write')
-            write(fid,*) shape(A)
-            call disp(unit=fid,X=A)
-        close(fid)
-        !
-    end subroutine iv_dump
-
-    subroutine     i_dump(A,fname)
-        !
-        implicit none
-        !
-        integer, intent(in) :: A
-        character(*) :: fname
-        integer :: fid
-        !
-        fid = 1
-        open(unit=fid,file=trim(fname),status='replace',action='write')
-            write(fid,*) shape(A)
-            call disp(unit=fid,X=A)
-        close(fid)
-        !
-    end subroutine i_dump
 
     ! progress bar
 
@@ -1443,32 +1244,6 @@ module am_matlab
           new = string(1:idx-1)//ins//string(idx+len(place):len(string))
         end if
     end function       strrep 
-
-    ! string
-
-    function      tosymb(a) result(str)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: a
-        character(:), allocatable :: str
-        !
-        !
-        if    (abs(a - nint(a)             ).lt.tiny) then; write(str,'(i)') nint(a)
-        elseif(abs(a + 0.500000000000000_dp).lt.tiny) then; allocate(str,source='-1/2')
-        elseif(abs(a - 0.500000000000000_dp).lt.tiny) then; allocate(str,source='+1/2')
-        elseif(abs(a + 1.154700538379252_dp).lt.tiny) then; allocate(str,source='-sqrt(3)*(2/3)')
-        elseif(abs(a - 1.154700538379252_dp).lt.tiny) then; allocate(str,source='+sqrt(3)*(2/3)')
-        elseif(abs(a + 0.866025403784439_dp).lt.tiny) then; allocate(str,source='-sqrt(3)*(1/2)')
-        elseif(abs(a - 0.866025403784439_dp).lt.tiny) then; allocate(str,source='+sqrt(3)*(1/2)')
-        elseif(abs(a + 1.732050807568877_dp).lt.tiny) then; allocate(str,source='-sqrt(3)')
-        elseif(abs(a - 1.732050807568877_dp).lt.tiny) then; allocate(str,source='+sqrt(3)')
-        else
-            ! fall back
-            allocate(str,source=tostring(a))
-        endif
-        !
-    end function  tosymb
     
     ! vector
 

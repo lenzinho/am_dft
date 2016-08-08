@@ -196,12 +196,6 @@ module am_symmetry_tensor
                 call disp(X=transpose(shell%tau_cart),title='atomic basis [cart]',style='underline',advance='no')
                 call disp(X=transpose(shell%tau_frac),title='atomic basis [frac]',style='underline',advance='yes')
             endif
-            ! debug?
-            if (debug) then
-!                 allocate(str, source = 'shell' )
-!                 call execute_command_line('mkdir -p '//trim(debug_dir)//'/tb/pair_rep/'//str)
-!                 call flat_pg%debug_dump(fname=         trim(debug_dir)//'/tb/pair_rep/'//str//'/outfile.'//str)
-            endif
         else
             ! initialize
             call initialize_tensor(tens=tens, property=property)
@@ -213,12 +207,6 @@ module am_symmetry_tensor
             tens%relations = combine_relations(flat_ig%relations, flat_pg%relations)
             ! correct rounding error
             call correct_rounding_error(tens%relations)
-            ! ! debug?
-            ! if (debug) then
-            !     allocate(str, source = strrep(property,' ','_') )
-            !     call execute_command_line('mkdir -p '//trim(debug_dir)//'/tensors/'//str)
-            !     call flat_pg%debug_dump(fname=         trim(debug_dir)//'/tensors/'//str//'/outfile.'//str)
-            ! endif
         endif
         ! print relations
         if (opts%verbosity.ge.1) then

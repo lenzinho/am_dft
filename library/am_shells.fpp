@@ -585,11 +585,6 @@ contains
                     enddo
                     ! print character table
                     call ip%shell(i)%stab%print_character_table()
-                    ! dump debugging
-                    if (debug) then
-!                     call execute_command_line('mkdir -p  '//trim(debug_dir)//'/subgroups/')
-!                     call ip%shell(i)%stab%debug_dump(fname= trim(debug_dir)//'/subgroups/outfile.'//trim(get_pg_name(pg_id_unique(k))))
-                    endif
                     ! break loop
                     exit
                     !

@@ -28,7 +28,6 @@ module am_brillouin_zone
         contains
         procedure :: create_bz
         procedure :: write_kpoints
-        procedure :: debug_dump => debug_dump_bz
         ! add sort procedure
     end type am_class_bz
 
@@ -52,24 +51,6 @@ module am_brillouin_zone
 contains
 
     ! create
-
-    subroutine     debug_dump_bz(bz,fname)
-        !
-        implicit none
-        !
-        class(am_class_bz), intent(in) :: bz
-        character(*), intent(in) :: fname
-        !
-                                                call dump(A=bz%nkpts             ,fname=trim(fname)//'.nkpts'            ) 
-                                                call dump(A=bz%bas               ,fname=trim(fname)//'.bas'              )
-                                                call dump(A=bz%recbas            ,fname=trim(fname)//'.recbas'           )
-        if (allocated(bz%kpt_cart            )) call dump(A=bz%kpt_cart          ,fname=trim(fname)//'.kpt_cart'         )
-        if (allocated(bz%kpt_frac            )) call dump(A=bz%kpt_frac          ,fname=trim(fname)//'.kpt_frac'         )
-        if (allocated(bz%w                   )) call dump(A=bz%w                 ,fname=trim(fname)//'.w'                )
-        if (allocated(bz%fbz_id              )) call dump(A=bz%fbz_id            ,fname=trim(fname)//'.fbz_id'           )
-        if (allocated(bz%ibz_id              )) call dump(A=bz%ibz_id            ,fname=trim(fname)//'.ibz_id'           )
-        !
-    end subroutine debug_dump_bz
 
     subroutine     create_bz(bz,kpt_frac,kpt_cart,bas,prec,w)
         !

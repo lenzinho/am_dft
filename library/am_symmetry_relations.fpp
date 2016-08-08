@@ -290,38 +290,6 @@ module am_symmetry_relations
         !
     end subroutine print_relations
 
-    subroutine     dump_relations(relations,iopt_filename)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: relations(:,:)
-        character(*), intent(in), optional :: iopt_filename
-        character(100) :: fname
-        integer :: fid
-        integer :: m,n
-        integer :: j,k
-        !
-        ! set default
-        fname = 'dump.relations'
-        if (present(iopt_filename)) fname = iopt_filename
-        !
-        m = size(relations,1)
-        n = size(relations,2)
-        !
-        fid = 1
-        open(unit=fid,file=trim(fname),status="replace",action='write')
-            !
-            do j = 1, m
-            do k = 1, n
-                write(fid,"(f)",advance='no') relations(j,k)
-            enddo
-            write(fid,*)
-            enddo
-            !
-        close(fid)
-        !
-    end subroutine dump_relations
-
     subroutine     export_relations2matlab(relations,dims,fnc_name,fid_append,flags)
         ! creates .m file based on relations
         ! flags = append/standalone
