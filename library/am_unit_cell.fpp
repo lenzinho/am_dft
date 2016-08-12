@@ -553,11 +553,11 @@ contains
         integer :: i
         !
         do i = 1, size(id)
-            if (modulo(i,11).eq.1) then
+            if (modulo(i,10).eq.1) then
                 write(*,*)
                 write(*,'(5x)',advance='no')
             endif
-            write(*,'(a8)',advance='no') trim(int2char(i))//'->'//trim(int2char(id(i)))
+            write(*,'(a9)',advance='no') trim(int2char(i))//'->'//trim(int2char(id(i)))
         enddo
         write(*,*)
     end subroutine  id_print_map
@@ -1134,7 +1134,7 @@ contains
         !
         if (verbosity.ge.1) call am_print('Number of deformations',nstrains,flare)
         !
-        do i = 1,nstrains
+        do i = 1, nstrains
             ! set deformation magnitude
             eta = (i-1)*eta_step - strain_max
             if (abs(eta) < 1.0E-6_dp) eta=1.0E-6_dp ! why is this here?
@@ -1144,7 +1144,7 @@ contains
                 select case (dc(j:j))
                     case('E'); e(j)= eta
                     case('e'); e(j)=-eta
-                    case('0'); e(j)=0.0_dp
+                    case('0'); e(j)= 0.0_dp
                     case('1'); e(j)= 1.0_dp*eta
                     case('2'); e(j)= 2.0_dp*eta
                     case('3'); e(j)= 3.0_dp*eta
@@ -1193,12 +1193,7 @@ contains
             eps_matrix = eta_matrix
             solve_for_eps : do j = 1,200
                 eps_matrix = eta_matrix - 0.5_dp*matmul(eps_matrix,eps_matrix)
-                if ( all(abs(eps_matrix).gt.10.0_dp) ) then
-                    ! if this is the case then a differen method for solving for eps is required than iteration.
-                    call am_print('ERROR','eps too large; possibly because it is diverging with each iteration: deformation may be too large.',flags='E')
-                    call am_print('eps (true strain matrix)',eps_matrix)
-                    stop
-                endif
+                if ( all(abs(eps_matrix).gt.10.0_dp) ) stop 'ERROR [apply_elastic_deformation]: eps is diverging, try a smaller value.'
                 if ( all(abs(eta-eps_matrix).lt.1E-15_dp) ) exit solve_for_eps
             enddo solve_for_eps
             !

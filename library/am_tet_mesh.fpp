@@ -1,5 +1,5 @@
 #:include "fypp_macros.fpp"
-    module am_tet_mesh
+module am_tet_mesh
     !
     use am_constants
     !
@@ -12,318 +12,317 @@
     contains
     !
     subroutine tessellate_mesh(kpt,corner,volume)
-    ! wrapper for tesselation. 
-    ! 
-    implicit none
-    !
-    real(dp), intent(in) :: kpt(:,:) ! kpt(1:3,nkpts)
-    integer , intent(out), allocatable :: corner(:,:) ! corner(1:4,ntets)
-    real(dp), intent(out), allocatable :: volume(:) ! tetrahedron volume
-    ! dimensions
-    integer :: nkpts
-    integer :: ndim
-    ! work space dimensions
-    integer, parameter :: bf_max = 8000
-    integer, parameter :: fc_max = 40000
-    integer,allocatable,dimension(:) :: ht
-    ! other stuff
-    integer :: bf_num
-    integer,dimension(1:3,1:bf_max) :: bf
-    integer :: face_num
-    integer,dimension(1:7,1:fc_max) :: fc
-    integer :: fc_num
-    integer :: ht_num
-    integer :: ierror
-    integer :: ntets
-    integer :: tetra_num2
-    integer, allocatable :: vm(:)
-    ! loop variable
-    integer :: i
-    !
-    integer :: verbosity
-    !
-    verbosity = 1
-    !
-    if (verbosity .ge. 1) write(*,*)
-    if (verbosity .ge. 1) write(*,'(a)' ) 'Tessellating tetrahedra'
-    !
-    ierror = 0
-    !
-    ndim   = size(kpt,1)
-    if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'spatial dimensions', ndim
-    nkpts  = size(kpt,2)
-    if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'kpoints', nkpts
-    ht_num = (3 * nkpts) / 2  ! size of workspace
-    if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'hash table size', ht_num
-    !
-    allocate(ht(ht_num))
-    allocate(vm(1:nkpts))
-    !
-    do i = 1,nkpts
-        vm(i) = i
-    enddo
-    !
-    call dtris3(nkpts,ht_num,bf_max,fc_max,kpt,vm,bf_num,fc_num,face_num,ntets,bf,fc,ht,ierror)
-    !
-    if(ierror /= 0) write(*,'(a,a)' ) flare, 'Fatal error encounted!'
-    !
-    ! if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'max number of bf', bf_max
-    if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'boundary faces', bf_num
-    ! if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'max number of fc', fc_max
-    if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'face records', fc_num
-    !
-    if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'tetrahedra', ntets
-    !
-    allocate(corner(1:4,1:ntets))
-    !
-    call tetlst(fc_max,fc_num,vm,fc,ntets,tetra_num2,corner)
-    !
-    ! compute volume (IN PROGRESS)
-    !
-    allocate(volume(ntets))
+        ! wrapper for tesselation. 
+        ! 
+        implicit none
+        !
+        real(dp), intent(in) :: kpt(:,:) ! kpt(1:3,nkpts)
+        integer , intent(out), allocatable :: corner(:,:) ! corner(1:4,ntets)
+        real(dp), intent(out), allocatable :: volume(:) ! tetrahedron volume
+        ! dimensions
+        integer :: nkpts
+        integer :: ndim
+        ! work space dimensions
+        integer, parameter :: bf_max = 8000
+        integer, parameter :: fc_max = 40000
+        integer,allocatable,dimension(:) :: ht
+        ! other stuff
+        integer :: bf_num
+        integer,dimension(1:3,1:bf_max) :: bf
+        integer :: face_num
+        integer,dimension(1:7,1:fc_max) :: fc
+        integer :: fc_num
+        integer :: ht_num
+        integer :: ierror
+        integer :: ntets
+        integer :: tetra_num2
+        integer, allocatable :: vm(:)
+        ! loop variable
+        integer :: i
+        !
+        integer :: verbosity
+        !
+        verbosity = 1
+        !
+        if (verbosity .ge. 1) write(*,*)
+        if (verbosity .ge. 1) write(*,'(a)' ) 'Tessellating tetrahedra'
+        !
+        ierror = 0
+        !
+        ndim   = size(kpt,1)
+        if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'spatial dimensions', ndim
+        nkpts  = size(kpt,2)
+        if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'kpoints', nkpts
+        ht_num = (3 * nkpts) / 2  ! size of workspace
+        if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'hash table size', ht_num
+        !
+        allocate(ht(ht_num))
+        allocate(vm(1:nkpts))
+        !
+        do i = 1,nkpts
+            vm(i) = i
+        enddo
+        !
+        call dtris3(nkpts,ht_num,bf_max,fc_max,kpt,vm,bf_num,fc_num,face_num,ntets,bf,fc,ht,ierror)
+        !
+        if(ierror /= 0) write(*,'(a,a)' ) flare, 'Fatal error encounted!'
+        !
+        ! if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'max number of bf', bf_max
+        if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'boundary faces', bf_num
+        ! if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'max number of fc', fc_max
+        if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'face records', fc_num
+        !
+        if (verbosity .ge. 1) write(*,'(a,a20,i6)' ) flare, 'tetrahedra', ntets
+        !
+        allocate(corner(1:4,1:ntets))
+        !
+        call tetlst(fc_max,fc_num,vm,fc,ntets,tetra_num2,corner)
+        !
+        ! compute volume (IN PROGRESS)
+        !
+        allocate(volume(ntets))
 
-    do i = 1, ntets
-         volume(i) = tetrahedron_volume( kpt(1:3,corner(1:4,i)) )
-    end do
-    !
-    if (verbosity .ge. 1) write(*,'(a,a20,f6.2)' ) flare, 'maximum volume', maxval(volume)
-    if (verbosity .ge. 1) write(*,'(a,a20,f6.2)' ) flare, 'minimum volume', minval(volume)
-    if (verbosity .ge. 1) write(*,'(a,a20,f6.2)' ) flare, 'average volume', sum(volume)/(1.0_dp*ntets)
-    if (verbosity .ge. 1) write(*,'(a,a20,f6.2)' ) flare, 'total volume', sum(volume)
-    !
-    !
-
+        do i = 1, ntets
+             volume(i) = tetrahedron_volume( kpt(1:3,corner(1:4,i)) )
+        end do
+        !
+        if (verbosity .ge. 1) write(*,'(a,a20,f6.2)' ) flare, 'maximum volume', maxval(volume)
+        if (verbosity .ge. 1) write(*,'(a,a20,f6.2)' ) flare, 'minimum volume', minval(volume)
+        if (verbosity .ge. 1) write(*,'(a,a20,f6.2)' ) flare, 'average volume', sum(volume)/(1.0_dp*ntets)
+        if (verbosity .ge. 1) write(*,'(a,a20,f6.2)' ) flare, 'total volume', sum(volume)
+        !
+        !
     end subroutine tessellate_mesh
     !
     ! Stuff below is borrowed from John Burkardt's TABLE_TET_MESH.
     !
+
     subroutine availf(hdavfc,fc_num,fc_max,fc,ind,ierr)
+        !*****************************************************************************80
+        !
+        !! AVAILF returns the index of the next available record in the FC array.
+        !
+        !  Discussion: 
+        !
+        !    This routine returns the index of the next available record in the
+        !    FC array,either HDAVFC or FC_NUM+1.
+        !
+        !  Licensing:
+        !
+        !    This code is distributed under the GNU LGPL license. 
+        !
+        !  Modified:
+        !
+        !    07 September 2005
+        !
+        !  Author:
+        !
+        !    Original FORTRAN77 version by Barry Joe.
+        !    FORTRAN90 version by John Burkardt.
+        !
+        !  Reference:
+        !
+        !    Barry Joe,
+        !    GEOMPACK - a software package for the generation of meshes
+        !      using geometric algorithms,
+        !    Advances in Engineering Software,
+        !    Volume 13,pages 325-331,1991.
+        !
+        !  Parameters:
+        !
+        !    Input/output,integer :: HDAVFC,head pointer of available
+        !    records in FC.
+        !
+        !    Input/output,integer :: FC_NUM,current number of records 
+        !    used in FC.
+        !
+        !    Input,integer :: FC_MAX,the maximum number of records 
+        !    available in FC.
+        !
+        !    Input,integer :: FC(1:7,1:*),array of face records; see 
+        !    routine DTRIS3.
+        !
+        !    Output,integer :: IND,the index of available record(if FC 
+        !    not full).
+        !
+        !    Output,integer :: IERR,error flag,which is zero unless an 
+        !    error occurred.
+        !
+        implicit none
 
-    !*****************************************************************************80
-    !
-    !! AVAILF returns the index of the next available record in the FC array.
-    !
-    !  Discussion: 
-    !
-    !    This routine returns the index of the next available record in the
-    !    FC array,either HDAVFC or FC_NUM+1.
-    !
-    !  Licensing:
-    !
-    !    This code is distributed under the GNU LGPL license. 
-    !
-    !  Modified:
-    !
-    !    07 September 2005
-    !
-    !  Author:
-    !
-    !    Original FORTRAN77 version by Barry Joe.
-    !    FORTRAN90 version by John Burkardt.
-    !
-    !  Reference:
-    !
-    !    Barry Joe,
-    !    GEOMPACK - a software package for the generation of meshes
-    !      using geometric algorithms,
-    !    Advances in Engineering Software,
-    !    Volume 13,pages 325-331,1991.
-    !
-    !  Parameters:
-    !
-    !    Input/output,integer :: HDAVFC,head pointer of available
-    !    records in FC.
-    !
-    !    Input/output,integer :: FC_NUM,current number of records 
-    !    used in FC.
-    !
-    !    Input,integer :: FC_MAX,the maximum number of records 
-    !    available in FC.
-    !
-    !    Input,integer :: FC(1:7,1:*),array of face records; see 
-    !    routine DTRIS3.
-    !
-    !    Output,integer :: IND,the index of available record(if FC 
-    !    not full).
-    !
-    !    Output,integer :: IERR,error flag,which is zero unless an 
-    !    error occurred.
-    !
-      implicit none
+        integer :: fc(7,*)
+        integer :: fc_num
+        integer :: hdavfc
+        integer :: ierr
+        integer :: ind
+        integer :: fc_max
 
-      integer :: fc(7,*)
-      integer :: fc_num
-      integer :: hdavfc
-      integer :: ierr
-      integer :: ind
-      integer :: fc_max
+        ierr = 0
 
-      ierr = 0
-
-      if(hdavfc /= 0) then
+        if(hdavfc /= 0) then
         ind = hdavfc
         hdavfc = -fc(1,hdavfc)
-      else if(fc_max <= fc_num) then
+        else if(fc_max <= fc_num) then
         ierr = 11
         write(*,'(a)') ' '
         write(*,'(a)') 'AVAILF - Fatal error!'
         write(*,'(a)') '  Memory requirements for array FC exceed the'
         write(*,'(a,i12)') '  current limit of FC_MAX = ',fc_max
-      else
+        else
         fc_num = fc_num + 1
         ind = fc_num
-      end if
+        end if
 
-      return
+        return
     end subroutine
+
     subroutine baryth(a,b,c,d,e,alpha,degen)
+        !*****************************************************************************80
+        !
+        !! BARYTH computes barycentric coordinates of a point in 3D.
+        !
+        !  Discussion: 
+        !
+        !    This routine computes the barycentric coordinates of a 3D point with
+        !    respect to the four vertices of a tetrahedron.
+        !
+        !  Licensing:
+        !
+        !    This code is distributed under the GNU LGPL license. 
+        !
+        !  Modified:
+        !
+        !    24 January 2009
+        !
+        !  Author:
+        !
+        !    Original FORTRAN77 version by Barry Joe.
+        !    FORTRAN90 version by John Burkardt.
+        !
+        !  Reference:
+        !
+        !    Barry Joe,
+        !    GEOMPACK - a software package for the generation of meshes
+        !    using geometric algorithms,
+        !    Advances in Engineering Software,
+        !    Volume 13,pages 325-331,1991.
+        !
+        !  Parameters:
+        !
+        !    Input,real(dp) :: A(1:3),B(1:3),C(1:3),D(1:3),4 vertices
+        !    of tetrahedron.
+        !
+        !    Input,real(dp) :: E(1:3),fifth point for which 
+        !    barycentric coordinates found
+        !
+        !    Output,real(dp) :: ALPHA(1:4),the scaled barycentric coordinates
+        !   (if DEGEN = .FALSE.) such that 
+        !      E =(ALPHA(1)*A + ALPHA(2)*B + ALPHA(3)*C +ALPHA(4)*D)/DET 
+        !    where DET = 6 *(volume of tetra ABCD);  an ALPHA(I) may be set to 0 
+        !    after tolerance test to indicate that E is coplanar with a face,so 
+        !    sum of ALPHA(I)/DET may not be 1; if the actual barycentric
+        !    coordinates rather than just their signs are needed,
+        !    modify this routine to divide ALPHA(I) by DET.
+        !
+        !    Output,logical :: DEGEN,TRUE iff A,B,C,D are coplanar.
+        !
+        implicit none
 
-    !*****************************************************************************80
-    !
-    !! BARYTH computes barycentric coordinates of a point in 3D.
-    !
-    !  Discussion: 
-    !
-    !    This routine computes the barycentric coordinates of a 3D point with
-    !    respect to the four vertices of a tetrahedron.
-    !
-    !  Licensing:
-    !
-    !    This code is distributed under the GNU LGPL license. 
-    !
-    !  Modified:
-    !
-    !    24 January 2009
-    !
-    !  Author:
-    !
-    !    Original FORTRAN77 version by Barry Joe.
-    !    FORTRAN90 version by John Burkardt.
-    !
-    !  Reference:
-    !
-    !    Barry Joe,
-    !    GEOMPACK - a software package for the generation of meshes
-    !    using geometric algorithms,
-    !    Advances in Engineering Software,
-    !    Volume 13,pages 325-331,1991.
-    !
-    !  Parameters:
-    !
-    !    Input,real(dp) :: A(1:3),B(1:3),C(1:3),D(1:3),4 vertices
-    !    of tetrahedron.
-    !
-    !    Input,real(dp) :: E(1:3),fifth point for which 
-    !    barycentric coordinates found
-    !
-    !    Output,real(dp) :: ALPHA(1:4),the scaled barycentric coordinates
-    !   (if DEGEN = .FALSE.) such that 
-    !      E =(ALPHA(1)*A + ALPHA(2)*B + ALPHA(3)*C +ALPHA(4)*D)/DET 
-    !    where DET = 6 *(volume of tetra ABCD);  an ALPHA(I) may be set to 0 
-    !    after tolerance test to indicate that E is coplanar with a face,so 
-    !    sum of ALPHA(I)/DET may not be 1; if the actual barycentric
-    !    coordinates rather than just their signs are needed,
-    !    modify this routine to divide ALPHA(I) by DET.
-    !
-    !    Output,logical :: DEGEN,TRUE iff A,B,C,D are coplanar.
-    !
-      implicit none
+        real(dp) :: a(3)
+        real(dp) :: alpha(4)
+        real(dp) :: amax
+        real(dp) :: b(3)
+        real(dp) :: bmax
+        real(dp) :: c(3)
+        real(dp) :: cmax
+        real(dp) :: cp1
+        real(dp) :: cp2
+        real(dp) :: cp3
+        real(dp) :: d(3)
+        real(dp) :: da(3)
+        real(dp) :: db(3)
+        real(dp) :: dc(3)
+        real(dp) :: de(3)
+        logical :: degen
+        real(dp) :: det
+        real(dp) :: dmax
+        real(dp) :: e(3)
+        real(dp) :: ea(3)
+        real(dp) :: eb(3)
+        real(dp) :: ec(3)
+        real(dp) :: emax
+        real(dp) :: tol
 
-      real(dp) :: a(3)
-      real(dp) :: alpha(4)
-      real(dp) :: amax
-      real(dp) :: b(3)
-      real(dp) :: bmax
-      real(dp) :: c(3)
-      real(dp) :: cmax
-      real(dp) :: cp1
-      real(dp) :: cp2
-      real(dp) :: cp3
-      real(dp) :: d(3)
-      real(dp) :: da(3)
-      real(dp) :: db(3)
-      real(dp) :: dc(3)
-      real(dp) :: de(3)
-      logical :: degen
-      real(dp) :: det
-      real(dp) :: dmax
-      real(dp) :: e(3)
-      real(dp) :: ea(3)
-      real(dp) :: eb(3)
-      real(dp) :: ec(3)
-      real(dp) :: emax
-      real(dp) :: tol
+        tol = 100.0D+00 * epsilon(tol)
+        degen = .false.
 
-      tol = 100.0D+00 * epsilon(tol)
-      degen = .false.
+        da(1:3) = a(1:3) - d(1:3)
+        db(1:3) = b(1:3) - d(1:3)
+        dc(1:3) = c(1:3) - d(1:3)
 
-      da(1:3) = a(1:3) - d(1:3)
-      db(1:3) = b(1:3) - d(1:3)
-      dc(1:3) = c(1:3) - d(1:3)
+        amax = max(abs(a(1)),abs(a(2)),abs(a(3)))
+        bmax = max(abs(b(1)),abs(b(2)),abs(b(3)))
+        cmax = max(abs(c(1)),abs(c(2)),abs(c(3)))
+        dmax = max(abs(d(1)),abs(d(2)),abs(d(3)))
 
-      amax = max(abs(a(1)),abs(a(2)),abs(a(3)))
-      bmax = max(abs(b(1)),abs(b(2)),abs(b(3)))
-      cmax = max(abs(c(1)),abs(c(2)),abs(c(3)))
-      dmax = max(abs(d(1)),abs(d(2)),abs(d(3)))
+        cp1 = db(2) * dc(3) - db(3) * dc(2)
+        cp2 = db(3) * dc(1) - db(1) * dc(3)
+        cp3 = db(1) * dc(2) - db(2) * dc(1)
+        det = da(1) * cp1 + da(2) * cp2 + da(3) * cp3
 
-      cp1 = db(2) * dc(3) - db(3) * dc(2)
-      cp2 = db(3) * dc(1) - db(1) * dc(3)
-      cp3 = db(1) * dc(2) - db(2) * dc(1)
-      det = da(1) * cp1 + da(2) * cp2 + da(3) * cp3
-
-      if(abs(det) <= 0.01D+00 * tol * max(amax,bmax,cmax,dmax)) then
+        if(abs(det) <= 0.01D+00 * tol * max(amax,bmax,cmax,dmax)) then
         degen = .true. 
         return
-      end if
+        end if
 
-      de(1:3) = e(1:3) - d(1:3)
-      ea(1:3) = a(1:3) - e(1:3)
-      eb(1:3) = b(1:3) - e(1:3)
-      ec(1:3) = c(1:3) - e(1:3)
+        de(1:3) = e(1:3) - d(1:3)
+        ea(1:3) = a(1:3) - e(1:3)
+        eb(1:3) = b(1:3) - e(1:3)
+        ec(1:3) = c(1:3) - e(1:3)
 
-      alpha(1) = de(1) * cp1 + de(2) * cp2 + de(3) * cp3
+        alpha(1) = de(1) * cp1 + de(2) * cp2 + de(3) * cp3
 
-      cp1 = da(2) * de(3) - da(3) * de(2)
-      cp2 = da(3) * de(1) - da(1) * de(3)
-      cp3 = da(1) * de(2) - da(2) * de(1)
+        cp1 = da(2) * de(3) - da(3) * de(2)
+        cp2 = da(3) * de(1) - da(1) * de(3)
+        cp3 = da(1) * de(2) - da(2) * de(1)
 
-      alpha(2) = dc(1) * cp1 + dc(2) * cp2 + dc(3) * cp3
-      alpha(3) = db(1) * cp1 + db(2) * cp2 + db(3) * cp3
+        alpha(2) = dc(1) * cp1 + dc(2) * cp2 + dc(3) * cp3
+        alpha(3) = db(1) * cp1 + db(2) * cp2 + db(3) * cp3
 
-      alpha(4) = ea(1) *(eb(2) * ec(3) - eb(3) * ec(2)) &
+        alpha(4) = ea(1) *(eb(2) * ec(3) - eb(3) * ec(2)) &
                + ea(2) *(eb(3) * ec(1) - eb(1) * ec(3)) &
                + ea(3) *(eb(1) * ec(2) - eb(2) * ec(1))
 
-      if(det < 0.0D+00) then
+        if(det < 0.0D+00) then
         alpha(1) = -alpha(1)
         alpha(2) = -alpha(2)
         alpha(4) = -alpha(4)
-      else
+        else
         alpha(3) = -alpha(3)
-      end if
+        end if
 
-      emax = max(abs(e(1)),abs(e(2)),abs(e(3)))
+        emax = max(abs(e(1)),abs(e(2)),abs(e(3)))
 
-      if(abs(alpha(1)) <= tol * max(bmax,cmax,dmax,emax)) then
+        if(abs(alpha(1)) <= tol * max(bmax,cmax,dmax,emax)) then
         alpha(1) = 0.0D+00
-      end if
+        end if
 
-      if(abs(alpha(2)) <= tol * max(amax,cmax,dmax,emax)) then
+        if(abs(alpha(2)) <= tol * max(amax,cmax,dmax,emax)) then
         alpha(2) = 0.0D+00
-      end if
+        end if
 
-      if(abs(alpha(3)) <= tol * max(amax,bmax,dmax,emax)) then
+        if(abs(alpha(3)) <= tol * max(amax,bmax,dmax,emax)) then
         alpha(3) = 0.0D+00
-      end if
+        end if
 
-      if(abs(alpha(4)) <= tol * max(amax,bmax,cmax,emax)) then
+        if(abs(alpha(4)) <= tol * max(amax,bmax,cmax,emax)) then
         alpha(4) = 0.0D+00
-      end if
+        end if
 
-      return
+        return
     end subroutine
-    subroutine ccsph(intest,a,b,c,d,e,center,radsq,inv)
 
+    subroutine ccsph(intest,a,b,c,d,e,center,radsq,inv)
     !*****************************************************************************80
     !
     !! CCSPH finds the circumsphere through the vertices of a tetrahedron.
@@ -1995,7 +1994,7 @@
         do
 
           nbr = htsrc(a,c,i,npt,sizht,fc,ht)
- 
+
           if(nbr <= 0) then
             write(*,'(a)') ' '
             write(*,'(a)') 'NWTHOU - Error!'

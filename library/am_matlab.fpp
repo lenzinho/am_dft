@@ -2952,9 +2952,9 @@ module am_matlab
         try_loop : do i = 1, n
             do j = 1, k
                 #:if KIND == 'real(dp)' or KIND == 'complex(dp)'
-                if ( isequal(A${ranksuffix_last(RANK,last='i')}$,A${ranksuffix_last(RANK,last='inds(j)')}$,prec) ) cycle try_loop
+                    if ( isequal(A${ranksuffix_last(RANK,last='i')}$,A${ranksuffix_last(RANK,last='inds(j)')}$,prec) ) cycle try_loop
                 #:else
-                if ( isequal(A${ranksuffix_last(RANK,last='i')}$,A${ranksuffix_last(RANK,last='inds(j)')}$) ) cycle try_loop
+                    if ( isequal(A${ranksuffix_last(RANK,last='i')}$,A${ranksuffix_last(RANK,last='inds(j)')}$) ) cycle try_loop
                 #:endif
             enddo
             k = k + 1

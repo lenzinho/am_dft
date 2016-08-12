@@ -20,9 +20,10 @@ module am_options
         real(dp):: pair_cutoff
         ! tbfit
         integer :: skip
-        !
+        ! ibz
         integer  :: n(3) ! monkhorst pack mesh grid dimensions
         real(dp) :: s(3) ! monkhorst pack mesh grid shift
+        ! 
         character(max_argument_length) :: ibzkpt
         character(max_argument_length) :: procar
         character(max_argument_length) :: prjcar
@@ -39,6 +40,7 @@ module am_options
         procedure :: parse_command_line_tbfit
         procedure :: parse_command_line_tbvsk
         procedure :: parse_command_line_uc
+        procedure :: parse_command_line_ibz
     end type am_class_options
 
 contains
@@ -319,7 +321,7 @@ contains
             end select
         enddo
         !
-        if (index(opts%flags,'skip').ne.0) then
+        if (index(opts%flags,'skip').eq.0) then
             stop 'ERROR [parse_command_line_tbfit]: skip must be specified! See tbfit -h.'
         endif
         !
@@ -362,22 +364,88 @@ contains
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*,iostat=iostat) opts%verbosity
-                    if (iostat.ne.0) stop 'ERROR [parse_command_line_uc]: iostat /= 0'
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbvsk]: iostat /= 0'
                 case('-prec')
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*,iostat=iostat) opts%prec
-                    if (iostat.ne.0) stop 'ERROR [parse_command_line_uc]: iostat /= 0'
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbvsk]: iostat /= 0'
                 case('-pair_cutoff')
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*,iostat=iostat) opts%pair_cutoff
-                    if (iostat.ne.0) stop 'ERROR [parse_command_line_uc]: iostat /= 0'
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbvsk]: iostat /= 0'
                 case default
                     stop 'ERROR [parse_command_line_tbvsk]: unrecognized option'
             end select
         enddo
     end subroutine parse_command_line_tbvsk
+
+    subroutine     parse_command_line_ibz(opts)
+        !
+        implicit none
+        !
+        class(am_class_options), intent(inout) :: opts
+        character(max_argument_length) :: argument
+        integer :: narg
+        integer :: i,j
+        integer :: iostat
+        !
+        call opts%set_default
+        !
+        narg=command_argument_count()
+        !
+        i=0
+        do while ( i < narg )
+            i=i+1
+            call get_command_argument(i,argument)
+            select case(argument)
+                case('-h')
+                    write(*,'(5x,a)') '-h'
+                    write(*,'(5x,a)') '     Prints this message and exits.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-verbosity <int>'
+                    write(*,'(5x,a)') '     Controls stdout: (0) supress all output, (1) default, (2) verbose.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-prec <dbl>'
+                    write(*,'(5x,a)') '     Numerical precision.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-n <n_x:int> <n_y:int> <n_z:int>'
+                    write(*,'(5x,a)') '     Monkhorst-Pack divisions along primitive reciprocal directions.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-s <s_x:int> <s_y:int> <s_z:int>'
+                    write(*,'(5x,a)') '     Monkhorst-Pack shifts along primitive reciprocal directions.'
+                    write(*,'(5x,a)') ''
+                    stop
+                case('-verbosity')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%verbosity
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                case('-prec')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%prec
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                case('-n')
+                    do j = 1, 3
+                        i=i+1
+                        call get_command_argument(i,argument)
+                        read(argument,*,iostat=iostat) opts%n(j)
+                        if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                    enddo
+                case('-s')
+                    do j = 1, 3
+                        i=i+1
+                        call get_command_argument(i,argument)
+                        read(argument,*,iostat=iostat) opts%s(j)
+                        if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                    enddo
+                case default
+                    stop 'ERROR [parse_command_line_ibz]: unrecognized option'
+            end select
+        enddo
+    end subroutine parse_command_line_ibz
 
 end module
 

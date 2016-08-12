@@ -1,4 +1,4 @@
-#:include "fypp_macros.fpp"
+#!:include "fypp_macros.fpp"
 module am_brillouin_zone
 
     use am_unit_cell
@@ -27,7 +27,6 @@ module am_brillouin_zone
         integer , allocatable :: ibz_id(:)
         contains
         procedure :: create_bz
-        procedure :: write_kpoints
         ! add sort procedure
     end type am_class_bz
 
@@ -35,18 +34,18 @@ module am_brillouin_zone
 
     type, public, extends(am_class_bz) :: am_class_fbz
         contains
-!         procedure :: get_fbz
+        procedure :: generate_fbz
     end type am_class_fbz
 
     ! IBZ (irreducible wedge)
 
     type, public, extends(am_class_bz) :: am_class_ibz
         contains
-!         procedure :: get_ibz
+        procedure :: get_irreducible
+        procedure :: get_ibz_v1
     end type am_class_ibz
 
     ! PATH 
-
 
 contains
 
@@ -55,7 +54,7 @@ contains
     subroutine     create_bz(bz,kpt_frac,kpt_cart,bas,prec,w)
         !
         ! kpt_frac points are shifted to be between [0,1)
-        ! kpt_cart        are shifted to be in the wigner-seitz bz
+        ! kpt_cart        are shifted to be in the wigner-seitz voronoi cell
         !
         implicit none
         !
@@ -92,15 +91,13 @@ contains
             stop 'ERROR [create_bz]: either kpt_cart or kpt_frac must be present'
         endif
         ! weights
-        if (present(w)) then
-            allocate(bz%w, source = w)
-        endif
+        if (present(w)) allocate(bz%w, source = w)
         ! generate voronoi points [cart]
         grid_points = meshgrid([-1:1],[-1:1],[-1:1])
         grid_points = matmul(bz%recbas,grid_points)
         ! make sure kpt_cart is in wigner-seitz cell 
         do i = 1, bz%nkpts
-        bz%kpt_cart(:,i) = reduce_kpoint_to_fbz(kpoint_cart=bz%kpt_cart(:,i), grid_points=grid_points)
+            bz%kpt_cart(:,i) = reduce_kpoint_to_fbz(kpoint_cart=bz%kpt_cart(:,i), grid_points=grid_points)
         enddo
         ! make sure kpt_frac is betwen [0,1)
         bz%kpt_frac = modulo(bz%kpt_frac+prec,1.0_dp)-prec
@@ -138,360 +135,280 @@ contains
         end function   reduce_kpoint_to_fbz
     end subroutine create_bz
 
-    subroutine     write_kpoints(bz,fname)
+    subroutine     generate_fbz(fbz,pc,n,s,opts)
         !
         implicit none
         !
-        class(am_class_bz), intent(in) :: bz
-        character(*)      , intent(in) :: fname
-        integer :: fid
+        class(am_class_fbz)     , intent(out):: fbz
+        type(am_class_prim_cell), intent(in) :: pc
+        integer                 , intent(in) :: n(3)
+        real(dp)                , intent(in) :: s(3)
+        type(am_class_options)  , intent(in) :: opts
         !
-        fid = 1
-        open(unit=fid,file=trim(fname),status='replace',action='write')
-            call disp(unit=fid,title='#'      ,style='underline',X=[1:bz%nkpts]          ,fmt='i5'   ,advance='no')
-            call disp(unit=fid,title='[cart.]',style='underline',X=transpose(bz%kpt_cart),fmt='f10.5',advance='no')
-            call disp(unit=fid,title='[frac.]',style='underline',X=transpose(bz%kpt_frac),fmt='f10.5',advance='yes')
-            ! call disp(unit=fid,title='w'      ,style='underline',X=bz%w                  ,fmt='f10.5',advance='yes')
-        close(fid)
+        if (opts%verbosity.ge.1) call print_title('Full Monkhorst-Pack mesh')
+        ! get k-points
+        call fbz%create_bz(kpt_frac=generate_monkhorst_pack_mesh(n=n,s=s), bas=pc%bas, prec=opts%prec)
+        ! allocate weights
+        allocate(fbz%w(fbz%nkpts))
+        ! get weights
+        fbz%w = 1.0_dp/real(fbz%nkpts)
+        ! print stdout
+        if (opts%verbosity.ge.1) then
+            write(*,*) flare, 'kpoints = '//tostring(fbz%nkpts)
+            call disp_indent()
+            call disp(title='#'      ,style='underline',X=[1:fbz%nkpts]          ,fmt='i5'   ,advance='no')
+            call disp(title='[cart.]',style='underline',X=transpose(fbz%kpt_cart),fmt='f10.5',advance='no')
+            call disp(title='[frac.]',style='underline',X=transpose(fbz%kpt_frac),fmt='f10.5',advance='no')
+            call disp(title='w'      ,style='underline',X=          fbz%w        ,fmt='f10.5',advance='yes')
+            !
+            write(*,'(a,a)') flare, 'Definitions:'
+            write(*,'(5x,a)') 'cart points are reduced to voronoi wigner-seitz cell'
+            write(*,'(5x,a)') 'frac points are reduced to between [0,1)'
+        endif
         !
-    end subroutine write_kpoints
+        contains
+        pure function  generate_monkhorst_pack_mesh(n,s) result(kpt)
+            !> returns kpoints in fractional coordinates for monkhorst pack mesh dimensions
+            !> n(1:3)=[n1,n2,n3] and shift s(1:3)=[s1,s2,s3]
+            !> according to http://cms.mpi.univie.ac.at/vasp/vasp/Automatic_k_mesh_generation.html
+            implicit none
+            !
+            integer, intent(in) :: n(3) !> monkhorst pack mesh dimensions
+            real(dp), intent(in) :: s(3) !> monkhorst pack mesh shift
+            real(dp), allocatable :: kpt(:,:) !> kpt in fractional
+            integer :: i1,i2,i3,j
+            !
+            allocate(kpt(3,product(n)))
+            !
+            j=0
+            do i1=1,n(1)
+                do i2=1,n(2)
+                    do i3=1,n(3)
+                        j=j+1
+                        kpt(1:3,j) = real([i1+s(1)-1,i2+s(2)-1,i3+s(3)-1],dp)
+                        kpt(1:3,j) = kpt(1:3,j)/real(n,dp)
+                    enddo
+                enddo
+            enddo
+            !
+        end function   generate_monkhorst_pack_mesh
+    end subroutine generate_fbz
 
+    subroutine     get_irreducible(ibz,fbz,pg,opts)
+        !
+        implicit none
+        !
+        class(am_class_ibz)        , intent(out)   :: ibz
+        class(am_class_bz)         , intent(inout) :: fbz
+        class(am_class_point_group), intent(in)    :: pg
+        type(am_class_options)     , intent(in)    :: opts
+        integer, allocatable :: PM(:,:)
+        logical, allocatable :: mask(:)
+        integer, allocatable :: ind(:)
+        integer :: i,j,k
+        !
+        if (opts%verbosity.ge.1) call print_title('Irreducible Wedge (IBZ)')
+        !
+        ! get permutation map which shows how k-points are permuted by each space symmetry operation, PM(fbz%nkpts,pg%nsyms) 
+        PM = permutation_map( permutation_rep(seitz=pg%seitz_frac, tau=fbz%kpt_frac, flags='', prec=opts%prec) )
+        ! determine irreducible kpoints
+        allocate(mask(fbz%nkpts))
+        mask = .true.
+        allocate(ind(fbz%nkpts))
+        ind  = 0
+        k=0
+        do i = 1, fbz%nkpts
+            if (mask(i)) then
+                k=k+1
+                ind(k)=i
+                do j = 1, pg%nsyms
+                    mask(PM(i,j))=.false.
+                enddo
+            endif
+        enddo
+        ! get number of k-points
+        ibz%nkpts = k
+        ! transfer irreducible k-points (frac)
+        allocate(ibz%kpt_frac, source=fbz%kpt_frac(:,ind(1:k)))
+        ! transfer irreducible k-points (cart)
+        allocate(ibz%kpt_cart, source=fbz%kpt_cart(:,ind(1:k)))
+        ! map irreducible k-point -> irreducible k-point
+        allocate(ibz%ibz_id, source=[1:ibz%nkpts])
+        ! map irreducible k-point onto -> primitive k-point
+        allocate(ibz%fbz_id, source=ind(1:k))
+        ! map primitive k-point onto -> irreducible k-point
+        allocate(fbz%ibz_id(fbz%nkpts))
+        fbz%ibz_id = 0
+        do i = 1, ibz%nkpts
+            ! PM(1,:) shows all k-points onto which k-point 1 is mapped by all point symmetry operations
+            do j = 1, fbz%nkpts
+                search : do k = 1, pg%nsyms
+                    if (PM(j,k).eq.ibz%fbz_id(i)) then
+                        fbz%ibz_id(j) = i
+                        exit search
+                    endif
+                enddo search
+            enddo
+        enddo
+        ! check for error
+        if (any(fbz%ibz_id.eq.0)) stop 'ERROR [get_ibz]: not all fbz points were mapped onto an ibz point'
+        ! allocate space for weights
+        allocate(ibz%w(ibz%nkpts))
+        ! get kpoint weights (number of unique points onto which symmetries can map ibz points)
+        do i = 1, ibz%nkpts
+            ibz%w(i) = count(unique_inds(PM(ibz%fbz_id(i),:)).ne.0)/real(fbz%nkpts,dp)
+        enddo
+        ! print stdout
+        if (opts%verbosity.ge.1) then
+            !
+            write(*,'(a,a)') flare, 'FBZ k-points (full monkhorst-pack mesh) = '//tostring(fbz%nkpts)
+            write(*,'(a,a)') flare, 'IBZ k-points = '//tostring(ibz%nkpts)
+            call disp_indent()
+            call disp(title='#'      ,style='underline',X=[1:ibz%nkpts]          ,fmt='i5'   ,advance='no')
+            call disp(title='[cart.]',style='underline',X=transpose(ibz%kpt_cart),fmt='f10.5',advance='no')
+            call disp(title='[frac.]',style='underline',X=transpose(ibz%kpt_frac),fmt='f10.5',advance='no')
+            call disp(title='w'      ,style='underline',X=          ibz%w        ,fmt='f10.5',advance='yes')
+            !
+            write(*,'(a,a)',advance='no') flare, 'k-point map (to IBZ: full->irr)'
+            call id_print_map(fbz%ibz_id)
+            !
+            write(*,'(a,a)',advance='no') flare, 'k-point map (from IBZ: irr->full)'
+            call id_print_map(ibz%fbz_id)
+            !
+        endif
+        !
+    end subroutine get_irreducible
 
-!     subroutine     get_weights(bz,pg,opts)
-!         !
-!         implicit none
-!         !
-!         class(am_class_bz)        , intent(inout) :: bz
-!         type(am_class_point_group), intent(in)    :: pg
-!         type(am_options)          , intent(in)    :: opts
-!         integer :: i, j
-!         integer :: matches
-!         !
-!         allocate(bz%w(bz%nkpts))
-!         !
-!         do i = bz%nkpts
-!             !
-!             orbit = unique(kpoint_orbit(R=pg%seitz(1:3,1:3,:), kpoint=bz%kpt(:,i)))
-!             !
-!             matches = 0 
-!             do j = 1, size(orbit,2)
-!             do k = 1, bz%nkpts
+    subroutine     get_ibz_v1(ibz,fbz,pc,pg,opts)
+        !
+        implicit none
+        !
+        class(am_class_ibz)    , intent(inout) :: ibz
+        class(am_class_bz)     , intent(inout) :: fbz
+        type(am_class_point_group), intent(in) :: pg
+        type(am_class_prim_cell)  , intent(in) :: pc
+        type(am_class_options)    , intent(in) :: opts
+        real(dp), allocatable :: grid_points(:,:)
+        integer :: i, j
+        !
+        !
+        if (opts%verbosity.ge.1) call print_title('Reducing to IBZ')
+        ! 
+        if (opts%verbosity.ge.1) call am_print('number of original kpoints',bz%nkpts,flare)
+        ! generate voronoi points (cartesian)
+        grid_points = matmul( inv(pc%bas), meshgrid([-1:1],[-1:1],[-1:1]) )
+        ! reduce kpoints to ibz
+        allocate(ibz%kpt(3,bz%nkpts))
+        !$OMP PARALLEL PRIVATE(i) SHARED(grid_points,bz,ibz,pc,pg)
+        !$OMP DO
+        do i = 1, bz%nkpts
+            ibz%kpt(:,i) = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i),grid_points=grid_points,bas=pc%bas,R=pg%sym(1:3,1:3,:),prec=opts%prec)
+        enddo
+        !$OMP END DO
+        !$OMP END PARALLEL
+        ! get unique points
+        ibz%kpt = unique(ibz%kpt,opts%prec)
+        ! get number of unique points
+        ibz%nkpts = size(ibz%kpt,2)
+        if (opts%verbosity.ge.1) call am_print('number of irreducible kpoints',ibz%nkpts,flare)
+        ! get weights
+        allocate(ibz%w(ibz%nkpts))
+        !$OMP PARALLEL PRIVATE(i) SHARED(grid_points,bz,ibz,pc,pg)
+        !$OMP DO
+        do i = 1, ibz%nkpts
+            ibz%w(i) = kpoint_weight(R=pg%sym(1:3,1:3,:),kpoint=ibz%kpt(:,i),prec=opts%prec)
+        enddo
+        !$OMP END DO
+        !$OMP END PARALLEL
+        if (opts%verbosity.ge.1) then
+            if (.not.nint(sum(ibz%w)).eq.bz%nkpts) then
+                stop 'ERROR [get_ibz_v1]: irreducible weights does not sum to the number of k-points in the full zone.'
+                ! This could mean that:
+                ! 1) there was an internal error. this has been occuring when an even MP mesh is requested
+                ! 2) the full bz mesh is not a MP mesh
+                ! 3) the MP mesh contains different dimensions along x,y,z, i.e. 3 3 5  
+            endif
+        endif
+        if (opts%verbosity.ge.1) call print_weights(ibz)
+        ! normalize weights
+        ibz%w = ibz%w/real(sum(ibz%w),dp)
+        ! set irreducible indices
+        if (.not.allocated(bz%ibz_id)) allocate(bz%ibz_id(bz%nkpts))
+        irrk : do i = 1,ibz%nkpts
+               do j = 1, bz%nkpts
+                   if ( all(abs(bz%kpt(:,j) - ibz%kpt(:,i)).lt.tiny) ) then
+                       bz%ibz_id(j) = i
+                       cycle irrk
+                   endif
+               enddo
+        enddo irrk
+        ! stdout
+        if (opts%verbosity.ge.1) then
+            call am_print_two_matrices_side_by_side(name='irreducible kpoints',&
+                Atitle='fractional',A=transpose(ibz%kpt),&
+                Btitle='cartesian' ,B=transpose(matmul(inv(pc%bas),ibz%kpt)),&
+                iopt_emph=flare,iopt_teaser=.true.)
+        endif
+        !
+        contains
+        function       reduce_kpoint_to_ibz(kpoint,R,prec) result(kpoint_in_ibz)
+            !
+            use am_rank_and_sort
+            !
+            implicit none
+            !
+            real(dp), intent(in) :: kpoint(3) !> fractional
+            real(dp), intent(in) :: R(:,:,:)  !> point symmetries in cartesian
+            real(dp), intent(in) :: prec
+            real(dp) :: kpoint_in_fbz(3)
+            real(dp) :: kpoint_in_ibz(3)
+            real(dp), allocatable :: korbit(:,:) !> orbit
+            integer , allocatable :: indices(:)
+            integer :: i, nsyms
+            !
+            nsyms = size(R,3)
+            !
+            ! reduce kpoint to primitive reciprocal lattice
+            kpoint_in_fbz = modulo(kpoint+prec,1.0_dp) - prec
+            ! get kpoint orbit
+            korbit = kpoint_orbit(R,kpoint_in_fbz)
+            ! reduce korbit to primitive reciprocal lattice
+            korbit = modulo(korbit+prec,1.0_dp) - prec
+            ! get unique points in orbit
+            korbit = unique(korbit,prec)
+            ! sort
+            allocate(indices(size(korbit,2)))
+            do i = 1,3
+                ! rank to remove numerical noise
+                call rank(nint(korbit(i,:)*1.0D6),indices)
+                korbit=korbit(:,indices)
+            enddo
+            ! get representative point
+            kpoint_in_ibz = korbit(:,1)
+            !
+        end function   reduce_kpoint_to_ibz
+    end subroutine get_ibz_v1
 
-!             enddo
-!             enddo
-!             !
-!             bz%w(i) = kpoint_weight(R=pg%seitz(1:3,1:3,:), kpoint=, prec=opts%prec)
-!         enddo
-!         !
-!         contains
-!         function       kpoint_weight(R,kpoint,prec) result(w)
-!             !
-!             implicit none
-!             !
-!             real(dp), intent(in) :: R(:,:,:) !> point symmetries
-!             real(dp), intent(in) :: kpoint(3) !> cartesian
-!             real(dp), intent(in) :: prec
-!             integer  :: w, nsyms
-!             !
-!             nsyms = size(R,3)
-!             !
-!             w = size(unique(kpoint_orbit(R,kpoint),prec),2)
-!             !
-!             if ( modulo(nsyms,w).ne.0) then
-!                 call am_print('ERROR','Weight is not a factor of the number of symmetry operation',flags='E')
-!                 call am_print('kpoint (fractional)',kpoint)
-!                 call am_print('weight (integer)',w)
-!                 call am_print('number of symmetry operations',nsyms)
-!                 call am_print('kpoint orbit',transpose(unique(kpoint_orbit(R,kpoint),prec)))
-!                 stop
-!             endif
-!             !
-!         end function   kpoint_weight
-!         pure function  kpoint_orbit(R,kpoint) result(korbit)
-!             !> Given a kpoint in fractional coordinates, return its orbit (star)
-!             !> Note: this routine does not check to see whether the orbits are unique. If two point
-!             !> symmetries produce the same orbital point, this routine returns the same point twice.
-!             implicit none
-!             !
-!             real(dp), intent(in) :: R(:,:,:) !> point symmetries
-!             real(dp), intent(in) :: kpoint(3) !> cartesian
-!             real(dp) :: korbit(3,size(R,3)) !> orbit
-!             integer  :: npntsym ! number of point symmetries
-!             integer  :: i ! loop variable
-!             !
-!             ! get number of point symmetries
-!             npntsym = size(R,3)
-!             !
-!             do i = 1,npntsym
-!                 korbit(:,i)=matmul(R(:,:,i),kpoint)
-!             enddo
-!             !
-!         end function   kpoint_orbit
-!     end subroutine get_weights
-
-    ! goal: start with fbz (monkhorst-pack mesh) => generate ibz, done.
-    !       alternatively, load vasp directly into fbz and reduce to ibz, or directly into ibz.
-
-!     subroutine     get_fbz(fbz,uc,n,s,opts)
-!         !
-!         implicit none
-!         !
-!         class(am_class_fbz)     , intent(out):: fbz
-!         type(am_class_unit_cell), intent(in) :: uc
-!         integer                 , intent(in) :: n(3)
-!         real(dp)                , intent(in) :: s(3)
-!         type(am_class_options)  , intent(in) :: opts
-!         !
-!         if (opts%verbosity.ge.1) call print_title('Generating Monkhorst-Pack mesh on FBZ')
-!         ! get k-points
-!         call fbz%create_bz(kpt_frac=generate_monkhorst_pack_mesh(n=n,s=s), recbas=uc%recbas, bas=uc%bas, prec=opts%prec)
-!         ! get weights
-!         call fbz%get_weights()
-!         ! print stdout
-!         if (opts%verbosity.ge.1) then
-!             ! am_print_two_matrices_side_by_side(name, Atitle, Btitle, A, B , in_emph, iopt_fid )
-!             call am_print_two_matrices_side_by_side(name='kpoints',&
-!                 Atitle='fractional',A=transpose(fbz%kpt_frac),&
-!                 Btitle='cartesian' ,B=transpose(fbz%kpt_cart),&
-!                 iopt_emph=flare,iopt_teaser=.true.)
-!         endif
-!         !
-!         contains
-!         pure function  generate_monkhorst_pack_mesh(n,s) result(kpt)
-!             !> returns kpoints in fractional coordinates for monkhorst pack mesh dimensions
-!             !> n(1:3)=[n1,n2,n3] and shift s(1:3)=[s1,s2,s3]
-!             !> according to http://cms.mpi.univie.ac.at/vasp/vasp/Automatic_k_mesh_generation.html
-!             implicit none
-!             !
-!             integer, intent(in) :: n(3) !> monkhorst pack mesh dimensions
-!             real(dp), intent(in) :: s(3) !> monkhorst pack mesh shift
-!             real(dp), allocatable :: kpt(:,:) !> kpt in fractional
-!             integer :: i1,i2,i3,j
-!             !
-!             allocate(kpt(3,product(n)))
-!             !
-!             j=0
-!             do i1=1,n(1)
-!                 do i2=1,n(2)
-!                     do i3=1,n(3)
-!                         j=j+1
-!                         kpt(1:3,j) = real([i1+s(1)-1,i2+s(2)-1,i3+s(3)-1],dp)
-!                         kpt(1:3,j) = kpt(1:3,j)/real(n,dp)
-!                     enddo
-!                 enddo
-!             enddo
-!             !
-!         end function   generate_monkhorst_pack_mesh
-!     end subroutine get_fbz
-
-!     subroutine     get_ibz(ibz,fbz,pg,opts)
-!         !
-!         implicit none
-!         !
-!         class(am_class_ibz)        , intent(out)   :: ibz
-!         class(am_class_bz)         , intent(inout) :: fbz
-!         class(am_class_point_group), intent(in)    :: pg
-!         type(am_class_options)     , intent(in)    :: opts
-!         integer, allocatable :: PM(:,:)
-!         logical, allocatable :: mask(:)
-!         integer, allocatable :: ind(:)
-!         integer :: i,j,k
-!         !
-!         if (opts%verbosity.ge.1) call print_title('Reducing to irreducible brillouin zone')
-!         !
-!         ! get permutation map which shows how k-points are permuted by each space symmetry operation, PM(fbz%nkpts,pg%nsyms) 
-!         PM = permutation_map( permutation_rep(seitz=pg%seitz_cart, tau=fbz%kpt_cart, flags='', prec=opts%prec) )
-!         ! determine irreducible kpoints
-!         allocate(mask(fbz%nkpts)); mask = .true.
-!         allocate(ind(fbz%nkpts)) ; ind  = 0
-!         k=0
-!         do i = 1, fbz%nkpts
-!         if (mask(i)) then
-!             k=k+1
-!             ind(k)=i
-!             do j = 1, pg%nsyms
-!                 mask(PM(i,j))=.false.
-!             enddo
-!         endif
-!         enddo
-!         ! get number of k-points
-!         ibz%nkpts = k
-!         ! transfer irreducible k-points (frac)
-!         allocate(ibz%kpt_frac, source=fbz%kpt_frac(:,ind(1:k)))
-!         ! transfer irreducible k-points (cart)
-!         allocate(ibz%kpt_cart, source=fbz%kpt_cart(:,ind(1:k)))
-!         ! map irreducible k-point -> irreducible k-point
-!         allocate(ibz%ibz_id, source=[1:ibz%nkpts])
-!         ! map irreducible k-point onto -> primitive k-point
-!         allocate(ibz%fbz_id, source=ind(1:k))
-!         ! map primitive k-point onto -> irreducible k-point
-!         allocate(fbz%ibz_id(fbz%nkpts))
-!         fbz%ibz_id = 0
-!         do i = 1, ibz%nkpts
-!             ! PM(1,:) shows all k-points onto which k-point 1 is mapped by all space symmetry operations
-!             do j = 1, fbz%nkpts
-!                 search : do k = 1, pg%nsyms
-!                     if (PM(j,k).eq.ibz%fbz_id(i)) then
-!                         fbz%ibz_id(j) = i
-!                         exit search
-!                     endif
-!                 enddo search
-!             enddo
-!         enddo
-!         if (any(fbz%ibz_id.eq.0)) stop 'ERROR: full->ibz mapping failed.'
-!         !
-!         ! print stdout
-!         if (opts%verbosity.ge.1) then
-!             !
-!             call am_print('FBZ k-points',fbz%nkpts,flare)
-!             !
-!             call am_print('IBZ k-points',ibz%nkpts,flare)
-!             !
-!             call am_print_two_matrices_side_by_side(name='IBZ k-points',&
-!                 Atitle='fractional',A=transpose(ibz%kpt_frac),&
-!                 Btitle='cartesian' ,B=transpose(ibz%kpt_cart),&
-!             iopt_emph=flare,iopt_teaser=.true.)
-!             !
-!             write(*,'(a,a)',advance='no') flare, 'atomic mapping (to IBZ: full->irr)'
-!             call id_print_map(fbz%ibz_id)
-!             !
-!             write(*,'(a,a)',advance='no') flare, 'atomic mapping (from IBZ: irr->full)'
-!             call id_print_map(ibz%fbz_id)
-!             !
-!         endif
-!         !
-!     end subroutine get_ibz
-
-!     subroutine     get_ibz_v1(ibz,fbz,pc,pg,opts)
-!         !
-!         implicit none
-!         !
-!         class(am_class_ibz)    , intent(inout) :: ibz
-!         class(am_class_bz)     , intent(inout) :: fbz
-!         type(am_class_point_group), intent(in) :: pg
-!         type(am_class_prim_cell)  , intent(in) :: pc
-!         type(am_class_options)    , intent(in) :: opts
-!         real(dp), allocatable :: grid_points(:,:)
-!         integer :: i, j
-!         !
-!         !
-!         if (opts%verbosity.ge.1) call print_title('Reducing to IBZ')
-!         ! 
-!         if (opts%verbosity.ge.1) call am_print('number of original kpoints',bz%nkpts,flare)
-!         ! generate voronoi points (cartesian)
-!         grid_points = matmul( inv(pc%bas), meshgrid([-1:1],[-1:1],[-1:1]) )
-!         ! reduce kpoints to ibz
-!         allocate(ibz%kpt(3,bz%nkpts))
-!         !$OMP PARALLEL PRIVATE(i) SHARED(grid_points,bz,ibz,pc,pg)
-!         !$OMP DO
-!         do i = 1, bz%nkpts
-!             ibz%kpt(:,i) = reduce_kpoint_to_ibz(kpoint=bz%kpt(:,i),grid_points=grid_points,bas=pc%bas,R=pg%sym(1:3,1:3,:),prec=opts%prec)
-!         enddo
-!         !$OMP END DO
-!         !$OMP END PARALLEL
-!         ! get unique points
-!         ibz%kpt = unique(ibz%kpt,opts%prec)
-!         ! get number of unique points
-!         ibz%nkpts = size(ibz%kpt,2)
-!         if (opts%verbosity.ge.1) call am_print('number of irreducible kpoints',ibz%nkpts,flare)
-!         ! get weights
-!         allocate(ibz%w(ibz%nkpts))
-!         !$OMP PARALLEL PRIVATE(i) SHARED(grid_points,bz,ibz,pc,pg)
-!         !$OMP DO
-!         do i = 1, ibz%nkpts
-!             ibz%w(i) = kpoint_weight(R=pg%sym(1:3,1:3,:),kpoint=ibz%kpt(:,i),prec=opts%prec)
-!         enddo
-!         !$OMP END DO
-!         !$OMP END PARALLEL
-!         if (opts%verbosity.ge.1) then
-!             if (.not.nint(sum(ibz%w)).eq.bz%nkpts) then
-!                 call am_print('WARNING','The sum of irreducible weights does not equal the number of k-points in the full zone.',flags='E')
-!                 ! This could mean that:
-!                 ! 1) there was an internal error. this has been occuring when an even MP mesh is requested
-!                 ! 2) the full bz mesh is not a MP mesh
-!                 ! 3) the MP mesh contains different dimensions along x,y,z, i.e. 3 3 5  
-!             endif
-!         endif
-!         if (opts%verbosity.ge.1) call print_weights(ibz)
-!         ! normalize weights
-!         ibz%w = ibz%w/real(sum(ibz%w),dp)
-!         ! set irreducible indices
-!         if (.not.allocated(bz%ibz_id)) allocate(bz%ibz_id(bz%nkpts))
-!         irrk : do i = 1,ibz%nkpts
-!                do j = 1, bz%nkpts
-!                    if ( all(abs(bz%kpt(:,j) - ibz%kpt(:,i)).lt.tiny) ) then
-!                        bz%ibz_id(j) = i
-!                        cycle irrk
-!                    endif
-!                enddo
-!         enddo irrk
-!         ! stdout
-!         if (opts%verbosity.ge.1) then
-!             call am_print_two_matrices_side_by_side(name='irreducible kpoints',&
-!                 Atitle='fractional',A=transpose(ibz%kpt),&
-!                 Btitle='cartesian' ,B=transpose(matmul(inv(pc%bas),ibz%kpt)),&
-!                 iopt_emph=flare,iopt_teaser=.true.)
-!         endif
-!         !
-!         contains
-!         function       reduce_kpoint_to_ibz(kpoint,R,prec) result(kpoint_in_ibz)
-!             !
-!             use am_rank_and_sort
-!             !
-!             implicit none
-!             !
-!             real(dp), intent(in) :: kpoint(3) !> fractional
-!             real(dp), intent(in) :: R(:,:,:)  !> point symmetries in cartesian
-!             real(dp), intent(in) :: prec
-!             real(dp) :: kpoint_in_fbz(3)
-!             real(dp) :: kpoint_in_ibz(3)
-!             real(dp), allocatable :: korbit(:,:) !> orbit
-!             integer , allocatable :: indices(:)
-!             integer :: i, nsyms
-!             !
-!             nsyms = size(R,3)
-!             !
-!             ! reduce kpoint to primitive reciprocal lattice
-!             kpoint_in_fbz = modulo(kpoint+prec,1.0_dp) - prec
-!             ! get kpoint orbit
-!             korbit = kpoint_orbit(R,kpoint_in_fbz)
-!             ! reduce korbit to primitive reciprocal lattice
-!             korbit = modulo(korbit+prec,1.0_dp) - prec
-!             ! get unique points in orbit
-!             korbit = unique(korbit,prec)
-!             ! sort
-!             allocate(indices(size(korbit,2)))
-!             do i = 1,3
-!                 ! rank to remove numerical noise
-!                 call rank(nint(korbit(i,:)*1.0D6),indices)
-!                 korbit=korbit(:,indices)
-!             enddo
-!             ! get representative point
-!             kpoint_in_ibz = korbit(:,1)
-!             !
-!         end function   reduce_kpoint_to_ibz
-!     end subroutine get_ibz_v1
-
-!     subroutine     print_weights(bz)
-!         !
-!         implicit none
-!         !
-!         class(am_class_bz) :: bz
-!         integer :: i,j
-!         !
-!         call am_print('sum weight',nint(sum(bz%w)),flare)
-!         call am_print('min weight',nint(minval(bz%w)),flare)
-!         call am_print('max weight',nint(maxval(bz%w)),flare)
-!         call am_print('avg weight',sum(bz%w)/real(bz%nkpts,dp),flare)
-!         write(*,'(a,a)') flare, 'histogram of weights'
-!         write(*,'(5x,a10,a10)' ) 'weights', '# kpts'
-!         write(*,'(5x,a10,a10)' ) repeat('-',8), repeat('-',8)
-!         do i = minval(bz%w), maxval(bz%w)
-!             j = count(bz%w.eq.i)
-!             if (j.ne.0) write(*,'(5x,i10,i10)' ) i, j
-!         enddo
-!         !
-!     end subroutine print_weights
+    subroutine     print_weights(bz)
+        !
+        implicit none
+        !
+        class(am_class_bz) :: bz
+        integer :: i,j
+        !
+        call am_print('sum weight',nint(sum(bz%w)),flare)
+        call am_print('min weight',nint(minval(bz%w)),flare)
+        call am_print('max weight',nint(maxval(bz%w)),flare)
+        call am_print('avg weight',sum(bz%w)/real(bz%nkpts,dp),flare)
+        write(*,'(a,a)') flare, 'histogram of weights'
+        write(*,'(5x,a10,a10)' ) 'weights', '# kpts'
+        write(*,'(5x,a10,a10)' ) repeat('-',8), repeat('-',8)
+        do i = minval(bz%w), maxval(bz%w)
+            j = count(bz%w.eq.i)
+            if (j.ne.0) write(*,'(5x,i10,i10)' ) i, j
+        enddo
+        !
+    end subroutine print_weights
 
 !     ! functions which operate on kpoint
 
@@ -640,6 +557,7 @@ contains
 ! !         end select
 ! !         !
 ! !     end function standardpath
+
 ! !     subroutine lo_get_coordinates_from_symbolic_point(symbol,qv,ucposcar)
 ! !         !
 ! !         ! I have not bothered to add all Bravais lattices yet. I will fix that in due time.

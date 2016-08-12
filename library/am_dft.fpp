@@ -53,6 +53,8 @@ contains
 	            call read_eigenval(E=dft%dr%E, nspins=dft%dr%nspins, nbands=dft%dr%nbands, iopt_filename=opts%eigenval, iopt_verbosity=0) ! , lmproj=dft%dr%lmproj)
 	            ! load kpoints from eigenval
 	            call read_eigenval(kpt=kpt, w=w, iopt_filename=opts%eigenval, iopt_verbosity=0)
+	            ! check weights
+	            if ((sum(w)-1.0_dp).gt.tiny) stop 'ERROR [load_dft]: eigenval kpoint weights does not sum to one'
 	            ! create instance
 	            call dft%bz%create_bz(kpt_frac=kpt, bas=dft%uc%bas, w=w, prec=opts%prec)
 	            !
@@ -62,6 +64,8 @@ contains
 	            stop ' ERROR [load]: PROCAR NOT YET SUPPORTED.'
 	            !     call read_procar(E=dft%dr%E, iopt_filename=opts%procar, iopt_verbosity=0, &
 	            !         nbands=dft%dr%nbands, nions=dft%dr%nions, nspins=dft%dr%nspins, norbitals=dft%dr%norbitals, orbitals=dft%dr%orbitals, lmproj=dft%dr%lmproj)
+	            ! check weights
+	            if ((sum(w)-1.0_dp).gt.tiny) stop 'ERROR [load_dft]: procar kpoint weights does not sum to one'
 	            ! load kpoints
 	            call read_procar(kpt=kpt, w=w, iopt_filename=opts%procar, iopt_verbosity=0)
 	            ! create instance

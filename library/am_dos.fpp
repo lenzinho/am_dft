@@ -17,7 +17,7 @@ module am_dos
         integer :: nEs
         real(dp), allocatable :: E(:) ! energies
         real(dp), allocatable :: D(:) ! dos(nEs)
-        real(dp), allocatable :: lmproj(:,:,:,:) ! lmproj(nEs,nspins,norbitals,nions) pdos weights
+        ! real(dp), allocatable :: lmproj(:,:,:,:) ! lmproj(nEs,nspins,norbitals,nions) pdos weights
         contains
         ! procedure :: tetrahedra_pdos
         ! procedure :: outfile_dosprojected
@@ -32,7 +32,7 @@ contains
 !         implicit none
 !         !
 !         class(am_class_dos)      , intent(out) :: dos
-!         type(am_class_dispersion)        , intent(in)  :: dr
+!         type(am_class_dispersion), intent(in)  :: dr
 !         type(am_class_bz)        , intent(in)  :: bz
 !         type(am_class_tetrahedra), intent(in)  :: tet
 !         type(am_class_options)   , intent(in)  :: opts
@@ -104,7 +104,7 @@ contains
 !         enddo
 !         !
 !     end subroutine tetrahedra_pdos
-    
+!     
 !     subroutine     outfile_dosprojected(dos,dr,opts)
 !         ! 
 !         ! Creates outfile.dosprojected
@@ -114,7 +114,7 @@ contains
 !         implicit none
 !         !
 !         class(am_class_dos)   , intent(in) :: dos
-!         type(am_class_dispersion)     , intent(in)  :: dr
+!         type(am_class_dispersion), intent(in)  :: dr
 !         type(am_class_options), intent(in) :: opts
 !         integer :: fid
 !         integer :: i, l, m, n ! loop variables

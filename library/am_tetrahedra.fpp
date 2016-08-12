@@ -72,19 +72,18 @@ contains
         if (xi(2).gt.xi(3)) then; xi([2,3]) = xi([3,2]); endif
         x1=xi(1); x2=xi(2); x3=xi(3); x4=xi(4)
         !
-        ! if (x1.gt.x2) then; call am_print('ERROR','Sorting failed.',flags='E'); stop; endif
-        ! if (x2.gt.x3) then; call am_print('ERROR','Sorting failed.',flags='E'); stop; endif
-        ! if (x3.gt.x4) then; call am_print('ERROR','Sorting failed.',flags='E'); stop; endif
+        if (x1.gt.x2) stop 'ERROR [tetrahedron_weights]: sorting failed'
+        if (x2.gt.x3) stop 'ERROR [tetrahedron_weights]: sorting failed'
+        if (x3.gt.x4) stop 'ERROR [tetrahedron_weights]: sorting failed'
         !
         bracket = 0
-        if     (x.lt.x1) then; bracket = 1 !; call am_print('bracket',xi-x)
-        elseif (x.lt.x2) then; bracket = 2 !; call am_print('bracket',xi-x)
-        elseif (x.lt.x3) then; bracket = 3 !; call am_print('bracket',xi-x)
-        elseif (x.lt.x4) then; bracket = 4 !; call am_print('bracket',xi-x)
-        elseif (x.gt.x4) then; bracket = 5 !; call am_print('bracket',xi-x)
+        if     (x.lt.x1) then; bracket = 1
+        elseif (x.lt.x2) then; bracket = 2
+        elseif (x.lt.x3) then; bracket = 3
+        elseif (x.lt.x4) then; bracket = 4
+        elseif (x.gt.x4) then; bracket = 5
         else
-            call am_print('ERROR','Unable to bracket.',flags='E')
-            stop
+            stop 'ERROR [tetrahedron_weights]: bracketing failed'
         endif
         !
         select case(integration_type)
@@ -121,12 +120,7 @@ contains
                     w(4) = 1.0_dp
                     f    = 0.0_dp
                 case default
-                    call am_print('ERROR','Error computing tetrahedron weight.',flags='E')
-                    call am_print('x',x)
-                    call am_print('xc',[x1,x2,x3,x4])
-                    call am_print('w',w)
-                    call am_print('f',f)
-                    stop                        
+                    stop 'ERROR [tetrahedron_weights]: heaviside, invalid bracket'
                 end select
         case('delta')
             select case(bracket)
@@ -161,26 +155,14 @@ contains
                     w(4) = 0.0_dp
                     f    = 0.0_dp
                 case default
-                    call am_print('ERROR','Error computing tetrahedron weight.',flags='E')
-                    call am_print('x',x)
-                    call am_print('xc',[x1,x2,x3,x4])
-                    call am_print('w',w)
-                    call am_print('f',f)
-                    stop                        
+                    stop 'ERROR [tetrahedron_weights]: delta, invalid bracket'
                 end select
             case default
-                call am_print('ERROR','Integration type not valid',flags='E')
-                stop
+                stop 'ERROR [tetrahedron_weights]: integration type /= heavi or delta'
         end select
-        if (any(isnan(w))) then
-            call am_print('ERROR','NaN weight returned.',flags='E')
-            call am_print('integration_type',integration_type)
-            call am_print('bracket',bracket)
-            call am_print('xc',[x1,x2,x3,x4])
-            call am_print('x',x)
-            call am_print('w',w)
-            stop
-        endif
+        ! check for NaNs
+        if (any(isnan(w))) stop 'ERROR [tetrahedron_weights]: NaN obtained'
+        ! apply Bloch correction
         if ( apply_blochl_corrections ) then
             f = f*0.25_dp
             do i = 1,4

@@ -2302,7 +2302,7 @@ contains
                 tau_rot = matmul(seitz(1:3,1:3,i),tau(:,j))
                 ! apply translational component
                 tau_rot = tau_rot + seitz(1:3,4,i)
-                ! reduce rotated+translated point to unit cell
+                ! reduce rotated+translated point to unit cell if relax_pbc is not present
                 if (index(flags,'relax_pbc').eq.0) then
                     tau_rot = modulo(tau_rot+prec,1.0_dp)-prec
                 endif
@@ -2314,18 +2314,9 @@ contains
                     exit search ! break loop
                     endif
                 enddo search
-                ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
-                ! to ensure atoms must permute onto each other
+                ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check to ensure atoms must permute onto each other
                 if (index(flags,'relax_pbc').eq.0) then
-                if (found.eq..false.) then
-                    call am_print('ERROR','Unable to find matching atom.',flags='E')
-                    call am_print('tau (all atoms)',transpose(tau))
-                    call am_print('tau',tau(:,j))
-                    call am_print('R',seitz(1:3,1:3,i))
-                    call am_print('T',seitz(1:3,4,i))
-                    call am_print('tau_rot',tau_rot)
-                    stop
-                endif
+                    if (found.eq..false.) stop 'ERROR [permutation_rep]: failed to find matching atom.'
                 endif
             enddo
         enddo
@@ -2335,27 +2326,27 @@ contains
         ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
         ! to ensure atoms must permute onto each other
         if (index(flags,'relax_pbc').eq.0) then
-        do i = 1, nsyms
-        do j = 1, ntaus
-            !
-            if (sum(rep(:,j,i)).ne.1) then
-               call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
-               call am_print('i',i)
-               call am_print_sparse('spy(P_i)',rep(:,:,i))
-               call am_print('rep',rep(:,:,i))
-               stop
-            endif
-            !
-            if (sum(rep(j,:,i)).ne.1) then
-               call am_print('ERROR','Permutation matrix has a row which does not sum to 1.')
-               call am_print('i',i)
-               call am_print_sparse('spy(P_i)',rep(:,:,i))
-               call am_print('rep',rep(:,:,i))
-               stop
-            endif
-            !
-        enddo
-        enddo
+            do i = 1, nsyms
+                do j = 1, ntaus
+                    !
+                    if (sum(rep(:,j,i)).ne.1) then
+                       call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
+                       call am_print('i',i)
+                       call am_print_sparse('spy(P_i)',rep(:,:,i))
+                       call am_print('rep',rep(:,:,i))
+                       stop
+                    endif
+                    !
+                    if (sum(rep(j,:,i)).ne.1) then
+                       call am_print('ERROR','Permutation matrix has a row which does not sum to 1.')
+                       call am_print('i',i)
+                       call am_print_sparse('spy(P_i)',rep(:,:,i))
+                       call am_print('rep',rep(:,:,i))
+                       stop
+                    endif
+                    !
+                enddo
+            enddo
         endif
        !
     end function    permutation_rep
