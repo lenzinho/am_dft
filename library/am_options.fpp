@@ -12,14 +12,18 @@ module am_options
         real(dp) :: prec
         character(max_argument_length) :: flags
         ! uc
-        integer :: supercell(3)
-        integer :: deformation_code
-        real(dp):: maxstrain
-        integer :: nstrains
+        integer  :: supercell(3)
+        integer  :: deformation_code
+        real(dp) :: maxstrain
+        integer  :: nstrains
         ! tbvsk
-        real(dp):: pair_cutoff
+        real(dp) :: pair_cutoff
         ! tbfit
-        integer :: skip
+        integer  :: skip
+        ! tbdos
+        real(dp) :: Emin
+        real(dp) :: Emax
+        integer  :: nEs
         ! ibz
         integer  :: n(3) ! monkhorst pack mesh grid dimensions
         real(dp) :: s(3) ! monkhorst pack mesh grid shift
@@ -39,6 +43,7 @@ module am_options
         procedure :: parse_command_line_sym
         procedure :: parse_command_line_tbfit
         procedure :: parse_command_line_tbvsk
+        procedure :: parse_command_line_tbdos
         procedure :: parse_command_line_uc
         procedure :: parse_command_line_ibz
     end type am_class_options
@@ -63,9 +68,14 @@ contains
         opts%pair_cutoff      = 0.0_dp
         ! tbfit
         opts%skip             = 0
-        !
+        ! tbdos
+        opts%Emin             = 0.0_dp
+        opts%Emax             = 0.0_dp
+        opts%nEs              = 0
+        ! ibz
         opts%n                = [9,9,9]          ! monkhorst pack mesh grid dimensions
         opts%s                = real([0,0,0],dp) ! monkhorst pack mesh grid shift
+        !
         opts%ibzkpt           = 'IBZKPT'
         opts%procar           = 'PROCAR'
         opts%prjcar           = 'PRJCAR'
@@ -380,6 +390,68 @@ contains
             end select
         enddo
     end subroutine parse_command_line_tbvsk
+
+    subroutine     parse_command_line_tbdos(opts)
+        !
+        implicit none
+        !
+        class(am_class_options), intent(inout) :: opts
+        character(max_argument_length) :: argument
+        integer :: narg
+        integer :: i,j
+        integer :: iostat
+        !
+        call opts%set_default
+        !
+        narg=command_argument_count()
+        !
+        i=0
+        do while ( i < narg )
+            i=i+1
+            call get_command_argument(i,argument)
+            select case(argument)
+                case('-h')
+                    write(*,'(5x,a)') '-h'
+                    write(*,'(5x,a)') '     Prints this message and exits.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-verbosity <int>'
+                    write(*,'(5x,a)') '     Controls stdout: (0) supress all output, (1) default, (2) verbose.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-prec <dbl>'
+                    write(*,'(5x,a)') '     Numerical precision.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-E <E_min:dbl> <E_max:dbl> <nEs:int>'
+                    write(*,'(5x,a)') '     E_min and E_max define energy over which dos is calculated, nEs is the number of steps in the range.'
+                    write(*,'(5x,a)') ''
+                    stop
+                case('-verbosity')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%verbosity
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                case('-prec')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%prec
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                case('-E')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%Emin
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%Emax
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%nEs
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                case default
+                    stop 'ERROR [parse_command_line_ibz]: unrecognized option'
+            end select
+        enddo
+    end subroutine parse_command_line_tbdos
 
     subroutine     parse_command_line_ibz(opts)
         !

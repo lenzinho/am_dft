@@ -18,7 +18,6 @@ module am_dispersion
 
     type, public :: am_class_dispersion
         integer :: nbands
-        integer :: nspins
         real(dp), allocatable :: E(:,:) ! E(nbands,nkpts) energies
     end type am_class_dispersion
 

@@ -34,8 +34,7 @@ OBJS  = mkl_rci.o 						\
 		am_dos.o                        \
 		am_dft.o 						\
         am_tight_binding.o              
-        
-		# am_tetrahedra.o                 \
+
 		# am_wannier.o                    \
 
 $(LIBS): $(OBJS)

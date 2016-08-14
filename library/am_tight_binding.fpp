@@ -11,8 +11,9 @@ module am_tight_binding
     use am_unit_cell
     use am_symmetry_tensor
     use am_symmetry_relations
-    use am_dispersion
     use am_brillouin_zone
+    use am_dispersion
+    use am_dos
     use am_dft
 
     implicit none
@@ -39,6 +40,9 @@ module am_tight_binding
         complex(dp), allocatable :: C(:,:,:) ! tight binding coefficients
     end type am_class_tightbinding_dispersion
 
+    type, extends(am_class_dos) :: am_class_tightbinding_dos
+    end type am_class_tightbinding_dos
+
     type, public :: am_class_tightbinding
         integer :: nshells                             ! how many shells irreducible atoms
         integer :: nVs                                 ! number of irreducible matrix element values
@@ -47,6 +51,7 @@ module am_tight_binding
         type(am_class_tensor), allocatable :: tens(:)  ! tens(nshells) describes symmetry-adapted matrix elementes (corresponds to irreducible pair shells)
         type(am_class_tightbinding_pointgroup) :: pg   ! point group in tight binding representation
         type(am_class_tightbinding_dispersion) :: dr   ! band dispersion computed using the tight binding model
+        type(am_class_tightbinding_dos)        :: dos  ! density of states
         type(am_class_tightbinding_fitter)     :: ft   ! fitter for optimizing tight binding matrix elements
         contains
         procedure :: initialize_tb
@@ -389,7 +394,7 @@ contains
         !
         class(am_class_tightbinding), intent(inout) :: tb
         type(am_class_prim_pair)    , intent(in) :: pp
-        type(am_class_bz)           , intent(in) :: bz
+        class(am_class_bz)          , intent(in) :: bz
         integer    , allocatable :: selector_kpoint(:)
         complex(dp), allocatable :: H(:,:), V(:,:)
         real(dp)   , allocatable :: D(:)
@@ -415,6 +420,8 @@ contains
             tb%dr%E(:,i) = D
         endif
         enddo
+        ! save number of bands
+        tb%dr%nbands = size(tb%dr%E,1) ! E(nbands,nkpts)
     end subroutine get_dispersion
 
     ! export to matlab

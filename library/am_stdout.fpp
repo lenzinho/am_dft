@@ -237,26 +237,6 @@ contains
         !
     end subroutine am_print_two_matrices_side_by_side
 
-    !
-    ! generic math functions 
-    !
-
-    pure function regspace(d1,d2,d) result(y)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: d1
-        real(dp), intent(in) :: d2
-        real(dp), intent(in) :: d
-        real(dp), allocatable :: y(:)
-        integer :: n
-        !
-        n=nint((d2-d1)/d)
-        !
-        allocate(y(n))
-        y = d1+d*[0:n:1]
-        !
-    end function  regspace
 
     !
     ! print related stuff

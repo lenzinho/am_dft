@@ -33,7 +33,7 @@ contains
         class(am_class_dft)   ,intent(out) :: dft
         type(am_class_options), intent(in) :: opts
         character(*)          , intent(in) :: flags
-        real(dp), allocatable :: kpt(:,:) ! kpoint coordinates
+        real(dp), allocatable :: kpt_recp(:,:) ! kpoint coordinates
         real(dp), allocatable :: w(:)     ! normalized weights
         real(dp) :: Ef
         real(dp) :: offset
@@ -50,13 +50,13 @@ contains
 	        	! load dispersion form eigenval
 	            if (opts%verbosity.ge.1) write(*,'(a,a,a)') flare, 'file = ', trim(opts%eigenval)
 	            ! load band energies
-	            call read_eigenval(E=dft%dr%E, nspins=dft%dr%nspins, nbands=dft%dr%nbands, iopt_filename=opts%eigenval, iopt_verbosity=0) ! , lmproj=dft%dr%lmproj)
+	            call read_eigenval(E=dft%dr%E, nbands=dft%dr%nbands, iopt_filename=opts%eigenval, iopt_verbosity=0) ! , lmproj=dft%dr%lmproj)
 	            ! load kpoints from eigenval
-	            call read_eigenval(kpt=kpt, w=w, iopt_filename=opts%eigenval, iopt_verbosity=0)
+	            call read_eigenval(kpt=kpt_recp, w=w, iopt_filename=opts%eigenval, iopt_verbosity=0)
 	            ! check weights
 	            if ((sum(w)-1.0_dp).gt.tiny) stop 'ERROR [load_dft]: eigenval kpoint weights does not sum to one'
 	            ! create instance
-	            call dft%bz%create_bz(kpt_frac=kpt, bas=dft%uc%bas, w=w, prec=opts%prec)
+	            call dft%bz%create_bz(kpt_recp=kpt_recp, bas=dft%uc%bas, w=w, prec=opts%prec)
 	            !
 	        elseif (index(flags,'procar').ne.0) then
 	        	! load dispersion from procar
@@ -67,9 +67,9 @@ contains
 	            ! check weights
 	            if ((sum(w)-1.0_dp).gt.tiny) stop 'ERROR [load_dft]: procar kpoint weights does not sum to one'
 	            ! load kpoints
-	            call read_procar(kpt=kpt, w=w, iopt_filename=opts%procar, iopt_verbosity=0)
+	            call read_procar(kpt=kpt_recp, w=w, iopt_filename=opts%procar, iopt_verbosity=0)
 	            ! create instance
-	            call dft%bz%create_bz(kpt_frac=kpt, bas=dft%uc%bas, w=w, prec=opts%prec)
+	            call dft%bz%create_bz(kpt_recp=kpt_recp, bas=dft%uc%bas, w=w, prec=opts%prec)
 	            !
 	        else
 	            stop 'ERROR [load]: eigenval or procar flag required'
@@ -90,7 +90,6 @@ contains
 	        ! stdout
 	        if (opts%verbosity.ge.1) then
 	        	write(*,'(a,a,a)') flare, 'bands = ', tostring(dft%dr%nbands)
-	            write(*,'(a,a,a)') flare, 'spins = ', tostring(dft%dr%nspins)
 	            write(*,'(a,a)  ') flare, 'band energies = '
 	            write(*,'(5x,a,a)')      'lowest = ', tostring(minval(pack(dft%dr%E,.true.)))
 	            write(*,'(5x,a,a)')     'highest = ', tostring(maxval(pack(dft%dr%E,.true.)))
@@ -106,8 +105,6 @@ contains
 	    else
 	    	stop 'ERROR [dft:load]: unknown flag'
 	    endif
-	    ! could incorporate above:
-	    ! call read_ibzkpt(  kpt=kpt, w=w, iopt_filename=opts%ibzkpt  , iopt_verbosity=0)
         !
     end subroutine load_dft
 
