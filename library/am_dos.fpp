@@ -14,102 +14,256 @@ module am_dos
 
     type, public :: am_class_dos
         integer :: nEs
-        real(dp), allocatable :: E(:) ! energies
-        real(dp), allocatable :: D(:) ! dos(nEs)
-        ! real(dp), allocatable :: lmproj(:,:,:,:) ! lmproj(nEs,nspins,norbitals,nions) pdos weights
+        integer :: nprojections 
+        real(dp), allocatable :: E(:)    ! energies
+        real(dp), allocatable :: D(:)    ! dos(nEs)
+        real(dp), allocatable :: pD(:,:) ! projected dos pD(nEs)
         contains
-        procedure :: get_dos
+        procedure :: save => save_dos
+        procedure :: load => load_dos
+        procedure, private :: write_dos
+        procedure, private :: read_dos
+        generic :: write(formatted) => write_dos
+        generic :: read(formatted)  => read_dos
     end type am_class_dos
 
 contains
 
-    subroutine     get_dos(dos,dr,ibz,E,opts)
-        !
-        use am_histogram
+
+    ! i/o
+
+    subroutine     write_dos(dtv, unit, iotype, v_list, iostat, iomsg)
         !
         implicit none
         !
-        class(am_class_dos)       , intent(out) :: dos
-        class(am_class_dispersion), intent(in)  :: dr
-        type(am_class_ibz)        , intent(in)  :: ibz
-        real(dp), optional        , intent(in)  :: E(:)
-        type(am_class_options)    , intent(in)  :: opts
-        real(dp) :: Emax ! maximum band energy
-        real(dp) :: Emin ! minimum band energy
-        real(dp) :: dE   ! energy increment
-        real(dp) :: w(4) ! weights on tetrahedron tet
-        real(dp) :: Ec(4) ! tet energies
-        integer  :: nbands
-        integer  :: i,j,k
+        class(am_class_dos), intent(in) :: dtv
+        integer     , intent(in)    :: unit
+        character(*), intent(in)    :: iotype
+        integer     , intent(in)    :: v_list(:)
+        integer     , intent(out)   :: iostat
+        character(*), intent(inout) :: iomsg
         !
-        if (opts%verbosity.ge.1) call print_title('Density of states')
-        ! region over which there are bands
-        Emin = minval(dr%E(:,:))
-        Emax = maxval(dr%E(:,:))
-        ! check if an energy range has been input
-        if (present(E)) then
-            allocate(dos%E,source=E)
-            dE = E(2)-E(1)
-            dos%nEs = size(E)
+        iostat = 0
+        !
+        if (iotype.eq.'LISTDIRECTED') then
+            write(unit,'(a/)') '<dos>'
+                ! non-allocatable
+                #:for ATTRIBUTE in ['nEs','nprojections']
+                    $:write_xml_attribute_nonallocatable(ATTRIBUTE)
+                #:endfor
+                ! allocatable        
+                #:for ATTRIBUTE in ['E','D','pD']
+                    $:write_xml_attribute_allocatable(ATTRIBUTE)
+                #:endfor
+            write(unit,'(a/)') '</dos>'
         else
-            ! if not, create one an energy sampling with 1 meV spacing
-            dE = 0.01_dp
-            dos%E = regspace(Emin,Emax,dE)
-            dos%nEs = size(dos%E,1)
+            stop 'ERROR [write_tb]: iotype /= LISTDIRECTED'
         endif
-        ! get number of bands
-        nbands = size(dr%E,1)
-        ! preliminar stuff to stdout
-        if (opts%verbosity.ge.1) then 
-            write(*,'(a,a)') flare, 'bands = '//tostring(nbands)
-            write(*,'(a,a)') flare, 'tetrahedra = '//tostring(ibz%ntets)
-            write(*,'(a,a)') flare, 'lowest band energy = '//tostring(Emin)
-            write(*,'(a,a)') flare, 'highest band energy = '//tostring(Emax)
-            write(*,'(a,a)') flare, 'probing energies = '//tostring(dos%nEs)
-            write(*,'(a,a)') flare, 'lower energy range = '//tostring(dos%E(1))
-            write(*,'(a,a)') flare, 'upper energy range = '//tostring(dos%E(dos%nEs))
-            write(*,'(a,a)') flare, 'energy increment dE = '//tostring(dE)
-        endif
-        ! allocate space for dos
-        allocate(dos%D(dos%nEs))
-        !
-        ! two things
-        ! 1) difference between total dos and sum of JDOS. ONE band is being left out in the JDOS summation. figure out which one.
-        !  0.996425152311378        1.00000000031254
-        ! 2) delta summation produces wild values. the divisions by 1/tiny are numerically unstable. Figure out how to get rid of them.!
-        !
-        do i = 1, dos%nEs
-            dos%D(i) = 0.0_dp
-            do j = 1, nbands
-            do k = 1, ibz%ntets
-                ! get energies at the corner of the tetrahedra
-                Ec(:) = dr%E(j,ibz%tet(:,k))
-                ! get tetrahedron corner weights
-                w = get_tetrahedron_weight(E=dos%E(i),Ec=Ec,flags='delta,blochl')
-                ! increment DOS with contributions from band j in tetrahedron k
-                dos%D(i) = dos%D(i) + ibz%tetw(k) * sum(w)
-                ! !
-                ! ! <projections>
-                ! !
-                ! do m = 1,dr%nspins
-                ! do n = 1,dr%norbitals
-                ! do o = 1,dr%nions
-                !     !> dos%lmproj(nEs,nspins,norbitals,nions)
-                !     !> dr%lmproj(nspins,norbitals,nions,nbands,nkpts)
-                !     dos%lmproj(i,m,n,o) = dos%lmproj(i,m,n,o) + tet%w(k)*tet%volume(k)*sum(w * dr%lmproj(m,n,o,j,tet%tet(:,k)) )/real(dr%nspins,dp) ! per spin
-                ! enddo
-                ! enddo
-                ! enddo
-                ! !
-                ! ! </projections>
-                ! !
-            enddo
-            enddo
-            write(*,*) dos%E(i), dos%D(i)
-        enddo
-        !
-    end subroutine get_dos
+    end subroutine write_dos
 
+    subroutine     read_dos(dtv, unit, iotype, v_list, iostat, iomsg)
+        !
+        implicit none
+        !
+        class(am_class_dos), intent(inout) :: dtv
+        integer     , intent(in)    :: unit
+        character(*), intent(in)    :: iotype
+        integer     , intent(in)    :: v_list(:)
+        integer     , intent(out)   :: iostat
+        character(*), intent(inout) :: iomsg
+        logical :: isallocated
+        integer :: dims_rank
+        integer :: dims(10) ! read tensor up to rank 5
+        !
+        if (iotype.eq.'LISTDIRECTED') then
+            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+                ! non-allocatable
+                #:for ATTRIBUTE in ['nEs','nprojections']
+                    $:read_xml_attribute_nonallocatable(ATTRIBUTE)
+                #:endfor
+                ! allocatable        
+                #:for ATTRIBUTE in ['E','D','pD']
+                    $:read_xml_attribute_allocatable(ATTRIBUTE)
+                #:endfor
+            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
+            ! set iostat
+            iostat=-1
+        else
+            stop 'ERROR [read_dos]: iotype /= LISTDIRECTED'
+        endif
+    end subroutine read_dos
+
+    subroutine     save_dos(dos,fname)
+        !
+        implicit none
+        !
+        class(am_class_dos), intent(in) :: dos
+        character(*), intent(in) :: fname
+        integer :: fid
+        integer :: iostat
+        ! fid
+        fid = 1
+        ! save space group
+        open(unit=fid, file=trim(fname), status='replace', action='write', iostat=iostat)
+            if (iostat/=0) stop 'ERROR [dos:load]: opening file'
+            write(fid,*) dos
+        close(fid)
+        !
+    end subroutine save_dos
+
+    subroutine     load_dos(dos,fname)
+        !
+        implicit none
+        !
+        class(am_class_dos), intent(inout) :: dos
+        character(*), intent(in) :: fname
+        integer :: fid
+        integer :: iostat
+        ! fid
+        fid = 1
+        ! save space group
+        open(unit=fid, file=trim(fname), status='old', action='read', iostat=iostat)
+            if (iostat/=0) stop 'ERROR [dos:load]: opening file'
+            read(fid,*) dos
+        close(fid)
+        !
+    end subroutine load_dos
+
+    ! gaussian method
+
+    function       get_dos_gauss(Ep,E,kptw,sigma) result(D)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: Ep(:)    ! probing energies
+        real(dp), intent(in) :: E(:,:)   ! E(nbands,nkpts) band energies
+        real(dp), intent(in) :: kptw(:)  ! kptw(nkpts) normalized kpoint weights
+        real(dp), intent(in) :: sigma    ! smearing
+        real(dp), allocatable :: D(:)
+        integer  :: nEs
+        integer  :: nbands
+        integer  :: nkpts
+        integer  :: i,j,k
+        ! get number of probing energies
+        nEs = size(Ep)
+        ! get n of band
+        nbands = size(E,1)
+        ! get n of kpoints
+        nkpts = size(kptw)
+        ! allocate space for dos
+        allocate(D(nEs))
+        ! loop over energies/bands/kpoints
+        !$OMP PARALLEL PRIVATE(i,j,k) SHARED(D,E,Ep,nEs,sigma,kptw)
+        !$OMP DO
+        do i = 1, nEs
+            ! initialize D(i)
+            D(i) = 0.0_dp
+            ! print progress
+            call show_progress(iteration=i,maximum=nEs)
+            do j = 1, nbands
+            do k = 1, nkpts
+                ! get contribution
+                D(i) = D(i) + kptw(k) * exp( -0.5_dp * ( (Ep(i)-E(j,k))/sigma )**2 )
+            enddo
+            enddo
+        enddo
+        !$OMP END DO
+        !$OMP END PARALLEL
+    end function   get_dos_gauss
+
+    ! tetrahedra methods
+
+    function       get_dos_tetra(Ep,E,tet,tetw) result(D)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: Ep(:) ! probing energies
+        real(dp), intent(in) :: E(:,:) ! E(nbands,nkpts) band energies
+        integer , intent(in) :: tet(:,:) ! tet(:,ntets) tetrahedra conenctivity
+        real(dp), intent(in) :: tetw(:) ! tetw(ntets) weight of each tetrahedron
+        real(dp), allocatable :: D(:)
+        integer  :: nEs
+        integer  :: nbands
+        integer  :: ntets
+        real(dp) :: w(4) ! weights on tetrahedron tet
+        integer  :: i,j,k
+        ! get number of probing energies
+        nEs = size(Ep)
+        ! get n of band
+        nbands = size(E,1)
+        ! number of tetrahedra
+        ntets = size(tet,2)
+        ! allocate space for dos
+        allocate(D(nEs))
+        !$OMP PARALLEL PRIVATE(i,j,k,w) SHARED(D,E,Ep,nEs,tetw)
+        !$OMP DO
+        do i = 1, nEs
+            ! initialize D(i)
+            D(i) = 0.0_dp
+            ! print progress
+            call show_progress(iteration=i,maximum=nEs)
+            do j = 1, nbands
+            do k = 1, ntets
+                ! get tetrahedron corner weights
+                w = get_tetrahedron_weight(E=Ep(i),Ec=E(j,tet(:,k)),flags='delta,blochl')
+                ! increment DOS with contributions from band j in tetrahedron k
+                D(i) = D(i) + tetw(k) * sum(w)
+            enddo
+            enddo
+        enddo
+        !$OMP END DO
+        !$OMP END PARALLEL
+    end function   get_dos_tetra
+
+    function       get_pdos_tetra(Ep,E,tet,tetw,weights) result(pD)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: Ep(:) ! probing energies
+        real(dp), intent(in) :: E(:,:) ! E(nbands,nkpts) band energies
+        integer , intent(in) :: tet(:,:) ! tet(:,ntets) tetrahedra conenctivity
+        real(dp), intent(in) :: tetw(:) ! tetw(ntets) weight of each tetrahedron
+        real(dp), intent(in) :: weights(:,:,:) ! weights(nprojections,nbands,nkpts), weights (per band per kpoint) for projected dos: can be absolute square of TB or BvK eigenvectors
+        real(dp), allocatable :: pD(:,:)
+        integer  :: nEs
+        integer  :: nbands
+        integer  :: ntets
+        integer  :: nprojections
+        real(dp) :: w(4) ! weights on tetrahedron tet
+        integer  :: i,j,k,m
+        ! get number of probing energies
+        nEs = size(Ep)
+        ! get n of band
+        nbands = size(E,1)
+        ! get number of tetrahedra
+        ntets = size(tet,2)
+        ! get number of projections
+        nprojections = size(weights,1)
+        ! allocate space 
+        allocate(pD(nprojections,nEs))
+        ! loop over energies, bands, tetrahedra
+        !$OMP PARALLEL PRIVATE(i,j,k,m,w) SHARED(pD,E,Ep,nEs,tetw,weights)
+        !$OMP DO
+        do i = 1, nEs
+            ! initialize D(i)
+            pD(:,i) = 0.0_dp
+            ! print progress
+            call show_progress(iteration=i,maximum=nEs)
+            do j = 1, nbands
+            do k = 1, ntets
+                ! get tetrahedron corner weights
+                w = get_tetrahedron_weight(E=Ep(i),Ec=E(j,tet(:,k)),flags='delta,blochl')
+                ! loop over projections, increment pDOS with contributions from band j in tetrahedron k
+                do m = 1, nprojections
+                    pD(m,i) = pD(m,i) + tetw(k) * sum(w * weights(m,j,tet(:,k)) )
+                enddo
+            enddo
+            enddo
+        enddo
+        !$OMP END DO
+        !$OMP END PARALLEL
+        !
+    end function   get_pdos_tetra
 
 end module am_dos
 

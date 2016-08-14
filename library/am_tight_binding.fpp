@@ -37,7 +37,7 @@ module am_tight_binding
     end type am_class_tightbinding_fitter
 
     type, extends(am_class_dispersion) :: am_class_tightbinding_dispersion
-        complex(dp), allocatable :: C(:,:,:) ! tight binding coefficients
+        complex(dp), allocatable :: C(:,:,:) ! C(:,nbands,nkpts) tight binding coefficients (eigenvectors)
     end type am_class_tightbinding_dispersion
 
     type, extends(am_class_dos) :: am_class_tightbinding_dos
@@ -57,6 +57,7 @@ module am_tight_binding
         procedure :: initialize_tb
         procedure :: get_hamiltonian
         procedure :: get_dispersion
+        procedure :: get_dos
         procedure :: initialize_ft
         procedure :: optimize_matrix_element
         procedure :: read_irreducible_matrix_element
@@ -100,6 +101,7 @@ contains
                 #:endfor
                 ! nested objects
                 write(unit,*) dtv%pg
+                ! write(unit,*) dtv%dos
                 ! write(unit,*) dtv%dr
                 ! write(unit,*) dtv%ft
                 ! nested-allocatable object
@@ -138,6 +140,7 @@ contains
                 #:endfor
                 ! nested objects
                 read(unit,*) dtv%pg
+                ! read(unit,*) dtv%dos
                 ! read(unit,*) dtv%dr
                 ! read(unit,*) dtv%ft
                 ! nested-allocatable object
@@ -423,6 +426,51 @@ contains
         ! save number of bands
         tb%dr%nbands = size(tb%dr%E,1) ! E(nbands,nkpts)
     end subroutine get_dispersion
+
+    subroutine     get_dos(tb,ibz,E,opts)
+        !
+        implicit none
+        !
+        class(am_class_tightbinding), intent(inout) :: tb
+        type(am_class_ibz)          , intent(in)  :: ibz
+        real(dp), optional          , intent(in)  :: E(:)
+        type(am_class_options)      , intent(in)  :: opts
+        real(dp) :: Emax ! maximum band energy
+        real(dp) :: Emin ! minimum band energy
+        real(dp) :: dE   ! energy increment
+        !
+        if (opts%verbosity.ge.1) call print_title('Density of states')
+        ! region over which there are bands
+        Emin = minval(tb%dr%E(:,:))
+        Emax = maxval(tb%dr%E(:,:))
+        ! check if an energy range has been input
+        if (present(E)) then
+            allocate(tb%dos%E,source=E)
+            dE = E(2)-E(1)
+            tb%dos%nEs = size(E)
+        else
+            ! if not, create one an energy sampling with 1 meV spacing
+            dE = 0.01_dp
+            tb%dos%E = regspace(Emin,Emax,dE)
+            tb%dos%nEs = size(tb%dos%E,1)
+        endif
+        ! preliminary stuff to stdout
+        if (opts%verbosity.ge.1) then 
+            write(*,'(a,a)') flare, 'bands = '//tostring(tb%dr%nbands)
+            write(*,'(a,a)') flare, 'tetrahedra = '//tostring(ibz%ntets)
+            write(*,'(a,a)') flare, 'lowest band energy = '//tostring(Emin)
+            write(*,'(a,a)') flare, 'highest band energy = '//tostring(Emax)
+            write(*,'(a,a)') flare, 'probing energies = '//tostring(tb%dos%nEs)
+            write(*,'(a,a)') flare, 'lower energy range = '//tostring(tb%dos%E(1))
+            write(*,'(a,a)') flare, 'upper energy range = '//tostring(tb%dos%E(tb%dos%nEs))
+            write(*,'(a,a)') flare, 'energy increment dE = '//tostring(dE)
+        endif
+        ! get DOS
+        ! tb%dos%D = get_dos_gauss(Ep=tb%dos%E, E=tb%dr%E, kptw=ibz%w, sigma=0.01_dp)
+        tb%dos%D = get_dos_tetra(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw)
+        ! get partial DOS
+        tb%dos%pD = get_pdos_tetra(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw, weights=abs(tb%dr%C)**2)
+    end subroutine get_dos
 
     ! export to matlab
 

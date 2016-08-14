@@ -357,9 +357,9 @@ contains
             write(*,*) flare, 'tetrahedra = '//tostring(fbz%ntets)
             write(*,*) flare, 'tetrahedra volume = '//tostring(fbz%tetv(1))
             write(*,*) flare, 'tetrahedra weight = '//tostring(fbz%tetw(1))
-            call disp_indent()
-            call disp(title='#'                ,style='underline',X=[1:fbz%ntets]     ,fmt='i5' ,advance='no')
-            call disp(title='connectivity list',style='underline',X=transpose(fbz%tet),fmt='i10',advance='yes')
+            ! call disp_indent()
+            ! call disp(title='#'                ,style='underline',X=[1:fbz%ntets]     ,fmt='i5' ,advance='no')
+            ! call disp(title='connectivity list',style='underline',X=transpose(fbz%tet),fmt='i10',advance='yes')
         endif
         !
         contains
@@ -1032,100 +1032,6 @@ contains
 ! !         enddo
 ! !     end subroutine
 !     end subroutine get_path
-
-
-!     subroutine     get_fbz(fbz,bz,pc,pg,opts)
-!         !
-!         implicit none
-!         !
-!         class(am_class_fbz), intent(out) :: fbz
-!         class(am_class_bz) , intent(in)  :: bz
-!         type(am_class_prim_cell), intent(in) :: pc
-!         type(am_class_seitz_group) , intent(in) :: pg
-!         type(am_class_options)  , intent(in) :: opts
-!         real(dp), allocatable :: korbit(:,:)
-!         real(dp), allocatable :: kpoints_fbz(:,:)
-!         real(dp), allocatable :: grid_points(:,:)
-!         integer :: i, j, m
-!         integer :: w
-!         !
-!         if (opts%verbosity.ge.1) call print_title('Expand kpoints to FBZ')
-!         if (opts%verbosity.ge.1) call am_print('number of point symmetries',pg%nsyms,flare)
-!         if (opts%verbosity.ge.1) call am_print('number of kpoints in the original bz',bz%nkpts,flare)
-!         if (opts%verbosity.ge.1) then
-!             call am_print_two_matrices_side_by_side(name='original kpoints',&
-!                 Atitle='fractional',A=transpose(bz%kpt),&
-!                 Btitle='cartesian' ,B=transpose(matmul(inv(pc%bas),bz%kpt)),&
-!                 iopt_emph=flare,iopt_teaser=.true.)
-!         endif
-!         !
-!         allocate(kpoints_fbz(3,bz%nkpts*pg%nsyms)) ! wkrspace
-!         m = 0
-!         ! expand each kpoint onto the fbz
-!         !$OMP PARALLEL PRIVATE(i,w,korbit) SHARED(kpoints_fbz,pg)
-!         !$OMP DO
-!         do i = 1, bz%nkpts
-!             ! get its orbit
-!             korbit = kpoint_orbit(pg%sym(1:3,1:3,:),bz%kpt(:,i))
-!             ! reduce korbit to primitive reciprocal lattice
-!             korbit = modulo(korbit+opts%prec,1.0_dp)-opts%prec
-!             ! get unique values
-!             korbit = unique(korbit,opts%prec)
-!             ! get its weight
-!             w = size(korbit,2)
-!             ! check that weight is a factor of the number of symmetry operations
-!             if ( modulo(pg%nsyms,w) .ne. 0 ) then
-!                 call am_print('ERROR','Weight is not a factor of the number of symmetry operation',flags='E')
-!                 call am_print('kpoint',bz%kpt(:,i))
-!                 call am_print('weight',w)
-!                 call am_print('number of symmetry operations',pg%nsyms)
-!                 call am_print('kpoint orbit',transpose(korbit))
-!                 stop
-!             endif
-!             ! save all unique points in orbit as part of the fbz
-!             do j = 1,w
-!                 m = m + 1
-!                 kpoints_fbz(:,m) = korbit(:,j)
-!             enddo
-!         enddo
-!         !$OMP END DO
-!         !$OMP END PARALLEL
-!         ! make sure there are no repetitions in the fbz
-!         fbz%kpt = unique(kpoints_fbz(:,1:m),opts%prec)
-!         ! get number of kpoints in the fbz
-!         fbz%nkpts = size(fbz%kpt,2)
-!         ! reduce kpoints to FBZ using voronoi points
-!         grid_points = meshgrid([-1:1],[-1:1],[-1:1])
-!         grid_points = matmul(inv(pc%bas),grid_points)
-!         !$OMP PARALLEL PRIVATE(i) SHARED(fbz,grid_points,pc)
-!         !$OMP DO
-!         do i = 1,fbz%nkpts
-!             fbz%kpt(:,i) = reduce_kpoint_to_fbz(kpoint=fbz%kpt(:,i),grid_points=grid_points,bas=pc%bas)
-!         enddo
-!         !$OMP END DO
-!         !$OMP END PARALLEL
-!         if (opts%verbosity.ge.1) call am_print('number of kpoints in the fbz',fbz%nkpts,flare)
-!         if (opts%verbosity.ge.1) then
-!             call am_print_two_matrices_side_by_side(name='full kpoints',&
-!                 Atitle='fractional',A=transpose(fbz%kpt),&
-!                 Btitle='cartesian' ,B=transpose(matmul(inv(pc%bas),fbz%kpt)),&
-!                 iopt_emph=flare,iopt_teaser=.true.)
-!         endif
-!         ! set weights
-!         allocate(fbz%w(fbz%nkpts))
-!         fbz%w = 1/real(fbz%nkpts,dp)
-!         ! set irreducible indices
-!         if (allocated(fbz%ibz_id)) deallocate(fbz%ibz_id)
-!         allocate(fbz%ibz_id(fbz%nkpts))
-!         do i = 1, fbz%nkpts
-!             get_indices_of_each_kpoint_in_bz : do j = 1, bz%nkpts
-!                 if (all(abs(bz%kpt(:,j)-fbz%kpt(:,i)).lt.tiny)) then
-!                     fbz%ibz_id(i) = j
-!                     exit get_indices_of_each_kpoint_in_bz
-!                 endif
-!             enddo get_indices_of_each_kpoint_in_bz
-!         enddo
-!     end subroutine get_fbz
 
 
 end module am_brillouin_zone
