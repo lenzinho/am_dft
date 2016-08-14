@@ -24,6 +24,10 @@ module am_options
         real(dp) :: Emin
         real(dp) :: Emax
         integer  :: nEs
+        ! tbforce
+        character(max_argument_length) :: vsk_def
+        character(max_argument_length) :: vsk_ref
+        real(dp) :: delta
         ! ibz
         integer  :: n(3) ! monkhorst pack mesh grid dimensions
         real(dp) :: s(3) ! monkhorst pack mesh grid shift
@@ -44,6 +48,7 @@ module am_options
         procedure :: parse_command_line_tbfit
         procedure :: parse_command_line_tbvsk
         procedure :: parse_command_line_tbdos
+        procedure :: parse_command_line_tbforce
         procedure :: parse_command_line_uc
         procedure :: parse_command_line_ibz
     end type am_class_options
@@ -72,6 +77,10 @@ contains
         opts%Emin             = 0.0_dp
         opts%Emax             = 0.0_dp
         opts%nEs              = 0
+        ! tbforce
+        opts%vsk_def          = ''
+        opts%vsk_ref          = ''
+        opts%delta            = 0.0_dp
         ! ibz
         opts%n                = [9,9,9]          ! monkhorst pack mesh grid dimensions
         opts%s                = real([0,0,0],dp) ! monkhorst pack mesh grid shift
@@ -452,6 +461,71 @@ contains
             end select
         enddo
     end subroutine parse_command_line_tbdos
+
+    subroutine     parse_command_line_tbforce(opts)
+        !
+        implicit none
+        !
+        class(am_class_options), intent(inout) :: opts
+        character(max_argument_length) :: argument
+        integer :: narg
+        integer :: i
+        integer :: iostat
+        !
+        call opts%set_default
+        !
+        narg=command_argument_count()
+        !
+        i=0
+        do while ( i < narg )
+            i=i+1
+            call get_command_argument(i,argument)
+            select case(argument)
+                case('-h')
+                    write(*,'(5x,a)') '-h'
+                    write(*,'(5x,a)') '     Prints this message and exits.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-verbosity <int>'
+                    write(*,'(5x,a)') '     Controls stdout: (0) supress all output, (1) default, (2) verbose.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-ref <str>'
+                    write(*,'(5x,a)') '     Path to file containing reference irreducible matrix elements.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-def <str>'
+                    write(*,'(5x,a)') '     Path to file containing deformed irreducible matrix elements.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-delta <dbl>'
+                    write(*,'(5x,a)') '     Denominator for finite-difference: (def-ref)/delta.'
+                    write(*,'(5x,a)') ''
+                    stop
+                case('-verbosity')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%verbosity
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                case('-ref')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,'(a)',iostat=iostat) opts%vsk_ref
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                case('-def')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,'(a)',iostat=iostat) opts%vsk_def
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                case('-delta')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%delta
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                case default
+                    stop 'ERROR [parse_command_line_ibz]: unrecognized option'
+            end select
+        enddo
+        if (len_trim(opts%vsk_def).eq.0) stop 'ERROR [parse_command_line_tbforce]: vsk_def is required'
+        if (len_trim(opts%vsk_ref).eq.0) stop 'ERROR [parse_command_line_tbforce]: vsk_ref is required'
+        if (abs(opts%delta).lt.tiny)     stop 'ERROR [parse_command_line_tbforce]: delta is required'
+    end subroutine parse_command_line_tbforce
 
     subroutine     parse_command_line_ibz(opts)
         !

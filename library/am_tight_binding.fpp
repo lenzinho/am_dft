@@ -36,10 +36,6 @@ module am_tight_binding
         real(dp)              :: rms
     end type am_class_tightbinding_fitter
 
-    type, extends(am_class_dispersion) :: am_class_tightbinding_dispersion
-        complex(dp), allocatable :: C(:,:,:) ! C(:,nbands,nkpts) tight binding coefficients (eigenvectors)
-    end type am_class_tightbinding_dispersion
-
     type, extends(am_class_dos) :: am_class_tightbinding_dos
     end type am_class_tightbinding_dos
 
@@ -427,17 +423,20 @@ contains
         tb%dr%nbands = size(tb%dr%E,1) ! E(nbands,nkpts)
     end subroutine get_dispersion
 
-    subroutine     get_dos(tb,ibz,E,opts)
+    subroutine     get_dos(tb,ibz,E,weights,opts)
         !
         implicit none
         !
         class(am_class_tightbinding), intent(inout) :: tb
         type(am_class_ibz)          , intent(in)  :: ibz
         real(dp), optional          , intent(in)  :: E(:)
+        real(dp), optional          , intent(in)  :: weights(:,:) ! weights(nbands,nkpts) additional projection weights
         type(am_class_options)      , intent(in)  :: opts
+        real(dp), allocatable :: C(:,:,:)
         real(dp) :: Emax ! maximum band energy
         real(dp) :: Emin ! minimum band energy
         real(dp) :: dE   ! energy increment
+        integer  :: i,j,k
         !
         if (opts%verbosity.ge.1) call print_title('Density of states')
         ! region over which there are bands
@@ -468,8 +467,18 @@ contains
         ! get DOS
         ! tb%dos%D = get_dos_gauss(Ep=tb%dos%E, E=tb%dr%E, kptw=ibz%w, sigma=0.01_dp)
         tb%dos%D = get_dos_tetra(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw)
+        ! get projection weights for PDOS
+        allocate(C,source=abs(tb%dr%C)**2)
+        ! adjust projection weights if weights/bands/kpoints suppied
+        if (present(weights)) then
+            do i = 1, ibz%nkpts
+            do j = 1, tb%dr%nbands
+                C(:,j,i) = C(:,j,i)*weights(j,i)
+            enddo
+            enddo
+        endif
         ! get partial DOS
-        tb%dos%pD = get_pdos_tetra(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw, weights=abs(tb%dr%C)**2)
+        tb%dos%pD = get_pdos_tetra(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw, weights=C)
     end subroutine get_dos
 
     ! export to matlab
@@ -696,11 +705,12 @@ contains
         close(fid)
     end subroutine write_irreducible_matrix_element
 
-    subroutine     read_irreducible_matrix_element(tb)
+    subroutine     read_irreducible_matrix_element(tb,fname)
         !
         implicit none
         !
         class(am_class_tightbinding), intent(inout) :: tb
+        character(*), intent(in) :: fname
         character(maximum_buffer_size) :: buffer ! read buffer
         character(len=:), allocatable :: word(:) ! read buffer
         integer :: fid
@@ -714,7 +724,7 @@ contains
         allocate(V(tb%nVs))
         !
         fid = 1
-        open(unit=fid,file='infile.tb_vsk',status="old",action='read')
+        open(unit=fid,file=trim(fname),status="old",action='read')
             ! skip header
             read(fid,*)
             ! read matrix elements
