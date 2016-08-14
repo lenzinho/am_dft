@@ -760,7 +760,7 @@ contains
         ! get reciprocal basis
         ic%recbas = pc%recbas
         ! get permutation map which shows how atoms are permuted by each space symmetry operation, PM(pc%natoms,sg%nsyms) 
-        PM = permutation_map( permutation_rep(seitz=sg%seitz_frac, tau=pc%tau_frac, flags='', prec=opts%prec) )
+        PM = permutation_map(seitz=sg%seitz_frac, tau=pc%tau_frac, flags='', prec=opts%prec)
         ! determine irreducible atoms, i.e. get all atoms, in increments, which have not been already mapped onto by a space symmetry operation
         ! thus, primitive cell atom i corresponds to irreducible atom k ...
         allocate(mask(pc%natoms))

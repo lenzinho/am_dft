@@ -1925,6 +1925,104 @@ module am_matlab
         enddo
     end function  sub2ind
 
+    ! basic sorting
+
+    pure function sort_four_doubles(n) result(ind)
+        ! borrowed from olle, who took it from stack overflow
+        implicit none
+        !
+        real(dp),intent(in) :: n(4)
+        integer :: ind(4)
+        integer :: low1,high1,low2,high2,highest,lowest,middle1,middle2
+        !    
+        if ( n(1) <= n(2) ) then
+            low1 = 1
+            high1 = 2
+        else 
+            low1 = 2
+            high1 = 1
+        endif
+
+        if ( n(3) <= n(4) ) then
+            low2 = 3
+            high2 = 4
+        else
+            low2 = 4
+            high2 = 3
+        endif
+
+        if ( n(low1) <= n(low2) ) then
+            lowest = low1
+            middle1 = low2
+        else
+            lowest = low2
+            middle1 = low1
+        endif
+
+        if ( n(high1) >= n(high2) ) then
+            highest = high1
+            middle2 = high2
+        else
+            highest = high2
+            middle2 = high1
+        endif
+
+        if ( n(middle1) < n(middle2) ) then
+            ind=(/lowest,middle1,middle2,highest/)
+        else
+            ind=(/lowest,middle2,middle1,highest/)
+        endif
+        !
+    end function  sort_four_doubles
+
+    pure function sort_four_integers(n) result(ind)
+        ! borrowed from olle, who took it from stack overflow
+        implicit none
+        !
+        integer, intent(in) :: n(4)
+        integer :: ind(4)
+        integer :: low1,high1,low2,high2,highest,lowest,middle1,middle2
+        !    
+        if ( n(1) <= n(2) ) then
+            low1 = 1
+            high1 = 2
+        else 
+            low1 = 2
+            high1 = 1
+        endif
+
+        if ( n(3) <= n(4) ) then
+            low2 = 3
+            high2 = 4
+        else
+            low2 = 4
+            high2 = 3
+        endif
+
+        if ( n(low1) <= n(low2) ) then
+            lowest = low1
+            middle1 = low2
+        else
+            lowest = low2
+            middle1 = low1
+        endif
+
+        if ( n(high1) >= n(high2) ) then
+            highest = high1
+            middle2 = high2
+        else
+            highest = high2
+            middle2 = high1
+        endif
+
+        if ( n(middle1) < n(middle2) ) then
+            ind=(/lowest,middle1,middle2,highest/)
+        else
+            ind=(/lowest,middle2,middle1,highest/)
+        endif
+        !
+    end function  sort_four_integers
+
     ! cumulative sum / product (from numerical recipies)
 
     recursive function dcumprod(arr,seed) result(ans)

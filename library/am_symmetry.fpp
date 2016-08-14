@@ -52,7 +52,7 @@ module am_symmetry
         real(dp) :: recbas(3,3)                       ! basis in which [recfrac] are defined
         real(dp), allocatable :: seitz_cart(:,:,:)    ! symmetry elements [cart.]
         real(dp), allocatable :: seitz_frac(:,:,:)    ! symmetry elements [frac, direct]; acts on atoms
-        real(dp), allocatable :: seitz_recfrac(:,:,:) ! symmetry elements [frac, reciprocal]; acts on kpoints
+        real(dp), allocatable :: seitz_recp(:,:,:) ! symmetry elements [frac, reciprocal]; acts on kpoints
         integer  :: nlcrs                             ! number of left coset representatives
         integer , allocatable :: lcr_id(:)            ! identifies supergroup symmetries corresponding to left coset rep
         contains
@@ -180,7 +180,7 @@ contains
                         $:write_xml_attribute_nonallocatable(ATTRIBUTE)
                     #:endfor
                     ! allocatable
-                    #:for ATTRIBUTE in ['seitz_cart','seitz_frac','seitz_recfrac','lcr_id']
+                    #:for ATTRIBUTE in ['seitz_cart','seitz_frac','seitz_recp','lcr_id']
                         $:write_xml_attribute_allocatable(ATTRIBUTE)
                     #:endfor
                     ! type-spcific stuff
@@ -249,7 +249,7 @@ contains
                         $:read_xml_attribute_nonallocatable(ATTRIBUTE)
                     #:endfor
                     ! allocatable
-                    #:for ATTRIBUTE in ['seitz_cart','seitz_frac','seitz_recfrac','lcr_id']
+                    #:for ATTRIBUTE in ['seitz_cart','seitz_frac','seitz_recp','lcr_id']
                         $:read_xml_attribute_allocatable(ATTRIBUTE)
                     #:endfor
                     ! type-spcific stuff
@@ -347,7 +347,7 @@ contains
             ! symmerties [cart.]
             grp%seitz_cart = grp%seitz_cart(:,:,inds)
             ! symmetries [recfrac]
-            grp%seitz_recfrac = grp%seitz_recfrac(:,:,inds)
+            grp%seitz_recp = grp%seitz_recp(:,:,inds)
             ! regular representation
             if (allocated(grp%sym)) grp%sym = grp%sym(inds,inds,inds)
         class default
@@ -919,9 +919,9 @@ contains
             sg%seitz_cart(:,:,i) = seitz_frac2cart(seitz_frac=sg%seitz_frac(:,:,i), bas=sg%bas, recbas=sg%recbas)
         enddo
         ! get symmetries [rec. frac.]
-        allocate(sg%seitz_recfrac(4,4,sg%nsyms))
+        allocate(sg%seitz_recp(4,4,sg%nsyms))
         do i = 1, sg%nsyms
-            sg%seitz_recfrac(:,:,i) = seitz_cart2recfrac(seitz_cart=sg%seitz_cart(:,:,i), bas=sg%bas, recbas=sg%recbas)
+            sg%seitz_recp(:,:,i) = seitz_cart2recfrac(seitz_cart=sg%seitz_cart(:,:,i), bas=sg%bas, recbas=sg%recbas)
         enddo
         ! correct rounding error in frac
         where(abs(sg%seitz_frac).lt.tiny) sg%seitz_frac = 0
@@ -970,19 +970,19 @@ contains
             seitz_cart(4,1:3)   = 0.0_dp
             !
         end function   seitz_frac2cart
-        function       seitz_cart2recfrac(seitz_cart,bas,recbas) result(seitz_recfrac)
+        function       seitz_cart2recfrac(seitz_cart,bas,recbas) result(seitz_recp)
             !
             implicit none
             !
             real(dp), intent(in) :: seitz_cart(4,4)
             real(dp), intent(in) :: bas(3,3)
             real(dp), intent(in) :: recbas(3,3)
-            real(dp) :: seitz_recfrac(4,4)
+            real(dp) :: seitz_recp(4,4)
             !
-            seitz_recfrac(1:3,1:3) = matmul(bas,matmul(seitz_cart(1:3,1:3),recbas))
-            seitz_recfrac(1:3,4)   = matmul(bas,seitz_cart(1:3,4))
-            seitz_recfrac(4,4)     = 1.0_dp
-            seitz_recfrac(4,1:3)   = 0.0_dp
+            seitz_recp(1:3,1:3) = matmul(bas,matmul(seitz_cart(1:3,1:3),recbas))
+            seitz_recp(1:3,4)   = matmul(bas,seitz_cart(1:3,4))
+            seitz_recp(4,4)     = 1.0_dp
+            seitz_recp(4,1:3)   = 0.0_dp
             !
         end function   seitz_cart2recfrac
         function       cc(seitz_frac,ps_id) result(cc_id)
@@ -1022,9 +1022,9 @@ contains
         ! print stdout
         if (opts%verbosity.ge.1) then
             ! print global information
-            write(*,'(a,a,a)') flare, 'space symmetries = ' , tostring(sg%nsyms)
-            write(*,'(a,a,a)') flare, 'conjugacy classes = ', tostring(sg%cc%nclasses)
-            write(*,'(a,a,a)') flare, 'group generators = ' , tostring(sg%mt%gen)
+            write(*,'(a,a)') flare, 'space symmetries = '//tostring(sg%nsyms)
+            write(*,'(a,a)') flare, 'conjugacy classes = '//tostring(sg%cc%nclasses)
+            write(*,'(a,a)') flare, 'group generators = '//tostring(sg%mt%gen)
             write(*,'(a,a)')   flare, 'seitz symmetries [frac/cart] = '
             ! print seitz operators
             mpl=2
@@ -1777,7 +1777,7 @@ contains
             type is (am_class_space_group)
                 !
                 ! needs to be frac below.
-                PM = permutation_map( permutation_rep(seitz=sg%seitz_frac,tau=uc%tau_frac,flags='',prec=opts%prec) )
+                PM = permutation_map(seitz=sg%seitz_frac,tau=uc%tau_frac,flags='',prec=opts%prec)
                 !
                 write(fid,'(5x)',advance='no')
                 write(fid,fmt1,advance='no') 'atoms'
@@ -2265,7 +2265,7 @@ contains
         !
     end function    is_symmetry_valid
 
-    function        permutation_rep(seitz,tau,prec,flags) result(rep)
+    function        permutation_map(seitz,tau,prec,flags) result(PM)
         !
         ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
         ! also works to find which kpoint or atoms (in shell) are connected by point group operations
@@ -2278,8 +2278,11 @@ contains
         real(dp), intent(in) :: tau(:,:)
         real(dp), intent(in) :: prec
         character(*), intent(in) :: flags
-        integer, allocatable :: rep(:,:,:)
-        real(dp) :: tau_rot(3)
+        integer, allocatable :: PM(:,:)
+        real(dp),allocatable :: d(:,:) ! reduces search space, speeding things up
+        real(dp) :: tau_rot(3)         ! reduces search space, speeding things up
+        real(dp) :: drot(2)            ! reduces search space, speeding things up
+        real(dp) :: ref(3,2)           ! reduces search space, speeding things up
         integer :: i,j,k
         logical :: found
         integer :: ntaus ! number of tau points tau(1:3,ntaus)
@@ -2288,11 +2291,19 @@ contains
         nsyms = size(seitz,3)
         !
         ntaus = size(tau,2)
-        !
-        allocate(rep(ntaus,ntaus,nsyms))
-        rep = 0
+        ! set arbitrary refrence points
+        ref(1:3,1) = real([0,0,0],dp)
+        ref(1:3,2) = real([0,0,1],dp)
+        ! get distances from reference points
+        allocate(d(ntaus,2))
+        do k = 1, ntaus
+            d(k,1) = norm2(tau(:,k)-ref(:,1))
+            d(k,2) = norm2(tau(:,k)-ref(:,2))
+        enddo
+        ! permutation map
+        allocate(PM(ntaus,nsyms))
         ! determine the permutations of atomic indicies which results from each space symmetry operation
-        !$OMP PARALLEL PRIVATE(i,j,k,found,tau_rot) SHARED(ntaus,nsyms,seitz,tau,prec,rep)
+        !$OMP PARALLEL PRIVATE(i,j,k,found,tau_rot) SHARED(ntaus,nsyms,seitz,tau,prec,PM)
         !$OMP DO
         do j = 1, ntaus
             do i = 1, nsyms
@@ -2305,10 +2316,17 @@ contains
                 if (index(flags,'relax_pbc').eq.0) then
                     tau_rot = modulo(tau_rot+prec,1.0_dp)-prec
                 endif
+                ! get absolute distance
+                drot(1) = norm2(tau_rot-ref(:,1))
+                drot(2) = norm2(tau_rot-ref(:,2))
                 ! find matching atom
                 search : do k = 1, ntaus
+                    ! first check if absolute distance matches
+                    if (abs(d(k,1)-drot(1)).gt.tiny) cycle search
+                    if (abs(d(k,2)-drot(2)).gt.tiny) cycle search
+                    ! then check x,y,z components, one at a time
                     if (isequal(tau_rot,tau(:,k),prec)) then
-                        rep(j,k,i) = 1
+                        PM(j,i) = k
                         found = .true.
                         exit search ! break loop
                     endif
@@ -2320,45 +2338,7 @@ contains
             enddo
         enddo
         !$OMP END DO
-        !$OMP END PARALLEL 
-        !
-        ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check to ensure atoms must permute onto each other
-        if (index(flags,'relax_pbc').eq.0) then
-            ! check that each column and row of the rep sums to 1; i.e. rep(:,:,i) is orthonormal for all i.
-            do i = 1, nsyms
-            do j = 1, ntaus
-                if (sum(rep(:,j,i)).ne.1) stop 'ERROR [permutation_rep]: Permutation matrix has a column which does not sum to 1.'
-                if (sum(rep(j,:,i)).ne.1) stop 'ERROR [permutation_rep]: Permutation matrix has a row which does not sum to 1.'
-            enddo
-            enddo
-        endif
-       !
-    end function    permutation_rep
-
-    function        permutation_map(P) result(PM)
-        !
-        ! PM(uc%natoms,sg%nsyms) permutation map; shows how atoms are permuted by each space symmetry operation
-        !
-        implicit none
-        !
-        integer, allocatable, intent(in) :: P(:,:,:)
-        integer, allocatable :: PM(:,:)
-        integer, allocatable :: ind(:)
-        integer :: natoms,nsyms
-        integer :: i
-        !
-        natoms = size(P,1)
-        nsyms  = size(P,3)
-        !
-        ind = [1:natoms]
-        !
-        allocate(PM(natoms,nsyms))
-        PM=0
-        !
-        do i = 1, nsyms
-            PM(:,i) = matmul(P(:,:,i),ind)
-        enddo
-        !
+        !$OMP END PARALLEL
     end function    permutation_map
 
     function        reduce_to_wigner_seitz(tau,grid_points) result(tau_ws)

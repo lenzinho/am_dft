@@ -403,7 +403,7 @@ contains
             ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
             ! (IMPORTANT: Must use [cart]! The rotation operation needs to be strictly unitary.)
             ! (NOTE 	: If rotational group, rather than point group were used, can probably perform check by ommiting skip_check.)
-            PM = permutation_map( permutation_rep(seitz=pg%seitz_cart, tau=sphere%tau_cart, flags='relax_pbc,skip_check', prec=opts%prec) )
+            PM = permutation_map(seitz=pg%seitz_cart, tau=sphere%tau_cart, flags='relax_pbc,skip_check', prec=opts%prec)
             ! get pairs starting with closest atoms first
             allocate(shell_id(sphere%natoms))
             shell_id=0
