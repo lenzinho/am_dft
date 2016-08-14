@@ -28,13 +28,13 @@ OBJS  = mkl_rci.o 						\
 		am_shells.o                 	\
 		am_symmetry_relations.o 		\
 		am_symmetry_tensor.o 			\
+		am_tet_mesh.o                   \
 		am_brillouin_zone.o             \
 		am_dispersion.o                 \
 		am_dos.o                        \
 		am_dft.o 						\
         am_tight_binding.o              
-
-		# am_tet_mesh.o                   \
+        
 		# am_tetrahedra.o                 \
 		# am_wannier.o                    \
 

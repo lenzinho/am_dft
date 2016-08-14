@@ -177,32 +177,4 @@ contains
         !
     end function   tetrahedron_weights
 
-!     subroutine get_tetrahedra(tet,bz,pc,pg,tet,iopts)
-!         !
-!         use am_unit_cell
-!         use am_tet_mesh
-!         use am_options
-!         !
-!         implicit none
-!         !
-!         class(am_class_tetrahedra), intent(inout) :: tet
-!         type(am_class_bz), intent(in) :: bz
-!         type(am_class_prim_cell) , intent(in) :: pc
-!         type(am_class_seitz_group), intent(in) :: pg
-!         type(am_class_bz) :: fbz
-!         type(am_class_options), intent(in), optional :: iopts
-!         type(am_class_options) :: opts
-!         if (present(iopts)) then 
-!            opts = iopts
-!         else
-!            call opts%defaults
-!         endif
-!         !
-!         call bz%expand_to_fbz(pc=pc,fbz=fbz,pg=pg,iopts=opts)
-!         !
-!         ! call tessellate_mesh(kpt=fbz%kpt,tet=tet%tet,volume=tet%volume)
-!         !
-        
-!     end subroutine get_tetrahedra
-
 end module am_tetrahedra

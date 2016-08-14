@@ -1502,7 +1502,6 @@ contains
         real(dp), allocatable :: R(:,:)   ! used for basis functions output
         character(:), allocatable :: xyz(:) ! basis functions output
         integer, allocatable :: PM(:,:)
-        integer, allocatable :: P(:,:,:)
         real(dp) :: aa(4)  ! axis and angle 
         integer  :: fid
         integer  :: i,j,k ! loop variables
@@ -1778,8 +1777,7 @@ contains
             type is (am_class_space_group)
                 !
                 ! needs to be frac below.
-                P  = permutation_rep(seitz=sg%seitz_frac,tau=uc%tau_frac,flags='',prec=opts%prec)
-                PM = permutation_map(P)
+                PM = permutation_map( permutation_rep(seitz=sg%seitz_frac,tau=uc%tau_frac,flags='',prec=opts%prec) )
                 !
                 write(fid,'(5x)',advance='no')
                 write(fid,fmt1,advance='no') 'atoms'
@@ -2293,10 +2291,11 @@ contains
         !
         allocate(rep(ntaus,ntaus,nsyms))
         rep = 0
-        !
-        do i = 1, nsyms
-            ! determine the permutations of atomic indicies which results from each space symmetry operation
-            do j = 1,ntaus
+        ! determine the permutations of atomic indicies which results from each space symmetry operation
+        !$OMP PARALLEL PRIVATE(i,j,k,found,tau_rot) SHARED(ntaus,nsyms,seitz,tau,prec,rep)
+        !$OMP DO
+        do j = 1, ntaus
+            do i = 1, nsyms
                 found = .false.
                 ! apply rotational component
                 tau_rot = matmul(seitz(1:3,1:3,i),tau(:,j))
@@ -2308,44 +2307,29 @@ contains
                 endif
                 ! find matching atom
                 search : do k = 1, ntaus
-                    if (all(abs(tau_rot-tau(:,k)).lt.prec)) then
-                    rep(j,k,i) = 1
-                    found = .true.
-                    exit search ! break loop
+                    if (isequal(tau_rot,tau(:,k),prec)) then
+                        rep(j,k,i) = 1
+                        found = .true.
+                        exit search ! break loop
                     endif
                 enddo search
                 ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check to ensure atoms must permute onto each other
                 if (index(flags,'relax_pbc').eq.0) then
-                    if (found.eq..false.) stop 'ERROR [permutation_rep]: failed to find matching atom.'
+                    if (.not.found) stop 'ERROR [permutation_rep]: failed to find symmetry-equivalent match'
                 endif
             enddo
         enddo
+        !$OMP END DO
+        !$OMP END PARALLEL 
         !
-        ! check that each column and row of the rep sums to 1; i.e. rep(:,:,i) is orthonormal for all i.
-        !
-        ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check
-        ! to ensure atoms must permute onto each other
+        ! if "relax_pbc" is present (i.e. periodic boundary conditions are relax), perform check to ensure atoms must permute onto each other
         if (index(flags,'relax_pbc').eq.0) then
+            ! check that each column and row of the rep sums to 1; i.e. rep(:,:,i) is orthonormal for all i.
             do i = 1, nsyms
-                do j = 1, ntaus
-                    !
-                    if (sum(rep(:,j,i)).ne.1) then
-                       call am_print('ERROR','Permutation matrix has a column which does not sum to 1.')
-                       call am_print('i',i)
-                       call am_print_sparse('spy(P_i)',rep(:,:,i))
-                       call am_print('rep',rep(:,:,i))
-                       stop
-                    endif
-                    !
-                    if (sum(rep(j,:,i)).ne.1) then
-                       call am_print('ERROR','Permutation matrix has a row which does not sum to 1.')
-                       call am_print('i',i)
-                       call am_print_sparse('spy(P_i)',rep(:,:,i))
-                       call am_print('rep',rep(:,:,i))
-                       stop
-                    endif
-                    !
-                enddo
+            do j = 1, ntaus
+                if (sum(rep(:,j,i)).ne.1) stop 'ERROR [permutation_rep]: Permutation matrix has a column which does not sum to 1.'
+                if (sum(rep(j,:,i)).ne.1) stop 'ERROR [permutation_rep]: Permutation matrix has a row which does not sum to 1.'
+            enddo
             enddo
         endif
        !
