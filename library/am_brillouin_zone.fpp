@@ -45,9 +45,8 @@ module am_brillouin_zone
     type, public, extends(am_class_bz) :: am_class_fbz
         integer  :: n(3) ! mesh dimensions
         real(dp) :: s(3) ! shift
-        integer, allocatable :: kpt_int(:,:)  ! kpt(3,nkpts) kpoint integer indices in regular grid
-        ! get_tetrahedra
-        integer :: ntets                    ! number of tetrahedra
+        integer  :: ntets                    ! number of tetrahedra
+        integer , allocatable :: kpt_int(:,:)  ! kpt(3,nkpts) kpoint integer indices in regular grid
         integer , allocatable :: tet(:,:)   ! tetrahedra connectivity list (indices of corner kpoints)
         real(dp), allocatable :: tetv(:)    ! tetrahedra volume
         real(dp), allocatable :: tetw(:)    ! tetrahedron weight
@@ -94,6 +93,20 @@ contains
                 #:for ATTRIBUTE in ['kpt_cart','kpt_recp','w','fbz_id','ibz_id']
                     $:write_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
+                ! type-specific stuff
+                select type (dtv)
+                class is (am_class_fbz)
+                    ! non-allocatable
+                    #:for ATTRIBUTE in ['n','s','ntets']
+                        $:write_xml_attribute_nonallocatable(ATTRIBUTE)
+                    #:endfor
+                    ! allocatable
+                    #:for ATTRIBUTE in ['kpt_int','tet','tetv','tetw']
+                        $:write_xml_attribute_allocatable(ATTRIBUTE)
+                    #:endfor
+                class default
+                    ! do nothing
+                end select
             write(unit,'(a/)') '</brillouin_zone>'
         else
             stop 'ERROR [write_bz]: iotype /= LISTDIRECTED'
@@ -124,6 +137,20 @@ contains
                 #:for ATTRIBUTE in ['kpt_cart','kpt_recp','w','fbz_id','ibz_id']
                     $:read_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
+                ! type-specific stuff
+                select type (dtv)
+                class is (am_class_fbz)
+                    ! non-allocatable
+                    #:for ATTRIBUTE in ['n','s','ntets']
+                        $:read_xml_attribute_nonallocatable(ATTRIBUTE)
+                    #:endfor
+                    ! allocatable
+                    #:for ATTRIBUTE in ['kpt_int','tet','tetv','tetw']
+                        $:read_xml_attribute_allocatable(ATTRIBUTE)
+                    #:endfor
+                class default
+                    ! do nothing
+                end select
             read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
             ! return iostat
             iostat=-1
@@ -357,12 +384,11 @@ contains
         end function   generate_integer_monkhorst_pack_mesh
     end subroutine get_fbz
 
-    subroutine     get_irreducible(ibz,bas,fbz,pg,opts)
+    subroutine     get_irreducible(ibz,fbz,pg,opts)
         !
         implicit none
         !
         class(am_class_ibz)       , intent(out)   :: ibz
-        real(dp), intent(in) :: bas(3,3)
         type(am_class_fbz)        , intent(inout) :: fbz
         type(am_class_point_group), intent(in)    :: pg
         type(am_class_options)    , intent(in)    :: opts
@@ -371,7 +397,6 @@ contains
         integer, allocatable :: ind(:)
         integer, allocatable :: ibz_tet(:,:)
         integer, allocatable :: ibz_tet_inds(:)
-        real(dp),allocatable :: seitz_rec(:,:,:)
         integer, allocatable :: w(:)
         integer :: i,j,k
         !
