@@ -8,6 +8,9 @@
 <natoms>
             2 
 </natoms>
+<lattice_id>
+            0 
+</lattice_id>
 <tau_frac>
 <allocated>
   T 
