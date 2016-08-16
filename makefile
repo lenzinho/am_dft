@@ -1,4 +1,4 @@
-PROGS   = uc sym tensor tbvsk tbfit ibz tbdos
+PROGS   = uc sym tensor tbvsk tbfit tbforce tbdr ibz tbdos
 
 include makefile.inc
 
@@ -23,6 +23,12 @@ tbfit: $(AMLIB)
 
 tbdos: $(AMLIB) 
 	(cd prog_tbdos; $(MAKE) )
+
+tbforce: $(AMLIB) 
+	(cd prog_tbforce; $(MAKE) )
+
+tbdr: $(AMLIB) 
+	(cd prog_tbdr; $(MAKE) )
 
 ibz: $(AMLIB) 
 	(cd prog_ibz; $(MAKE) )

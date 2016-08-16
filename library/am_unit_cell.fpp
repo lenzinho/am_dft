@@ -17,6 +17,7 @@ module am_unit_cell
     type, public, extends(am_class_cell) :: am_class_unit_cell
         integer , allocatable :: pc_id(:) ! identifies corresponding atom in primitive cell
         integer , allocatable :: ic_id(:) ! identifies corresponding atom in irreducible cell
+        integer :: lattice_id
         contains
         procedure :: write_poscar
         procedure :: get_supercell
@@ -38,6 +39,12 @@ module am_unit_cell
         contains
         procedure :: get_primitive => get_primitive_cell
     end type am_class_prim_cell
+
+    type, public, extends(am_class_unit_cell) :: am_class_conv_cell
+        real(dp) :: centering(3,3) ! centering matrix
+    contains
+        ! procedure :: get_conventional => get_conventional_cell
+    end type am_class_conv_cell
 
     ! irreducible
 
@@ -84,7 +91,7 @@ contains
         if (iotype.eq.'LISTDIRECTED') then
             write(unit,'(a/)') '<unit_cell>'
                 ! non-allocatable
-                #:for ATTRIBUTE in ['bas','recbas','natoms']
+                #:for ATTRIBUTE in ['bas','recbas','natoms','lattice_id']
                     $:write_xml_attribute_nonallocatable(ATTRIBUTE)
                 #:endfor
                 ! allocatable        
@@ -137,7 +144,7 @@ contains
         if (iotype.eq.'LISTDIRECTED') then
             read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
                 ! non-allocatable
-                #:for ATTRIBUTE in ['bas','recbas','natoms']
+                #:for ATTRIBUTE in ['bas','recbas','natoms','lattice_id']
                     $:read_xml_attribute_nonallocatable(ATTRIBUTE)
                 #:endfor
                 ! allocatable        
@@ -564,7 +571,7 @@ contains
 
     ! primitive cell
 
-    subroutine     get_primitive_cell(pc,uc,opts)
+    subroutine      get_primitive_cell(pc,uc,opts)
         !
         use am_rank_and_sort, only : rank
         !
@@ -585,6 +592,8 @@ contains
         if (abs(det(pc%bas)).lt.tiny) stop 'ERROR [get_primitive]: singular basis'
         ! get reciprocal basis
         pc%recbas = inv(pc%bas)
+        ! get lattice id
+        pc%lattice_id = get_lattice_id(bas=pc%bas,prec=opts%prec)
         ! get basis transformation (uc fractional to pc fractional)
         uc2prim = matmul(pc%recbas,uc%bas)
         ! reduce atoms to primitive cell
@@ -615,6 +624,8 @@ contains
         ! print stdout
         if (opts%verbosity.ge.1) then
             allocate(character(2) :: str(pc%natoms))
+            !
+            write(*,'(a,a)') flare, 'lattice = '//trim(get_lattice_type(lattice_id=pc%lattice_id))
             !
             write(*,'(a,a)') flare, 'original basis ='
             call disp_indent()
@@ -734,7 +745,194 @@ contains
             if (any(uc_pc_id.eq.0)) stop 'Unit cell -> primitive cell map failed.'
             !
         end function   get_uc2pc_map
-    end subroutine get_primitive_cell
+    end subroutine  get_primitive_cell
+
+    ! conventional cell
+
+    function       get_lattice_id(bas,prec) result(lattice_id)
+        ! Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. Cambridge,
+        ! UK; New York: Cambridge University Press, 2008. p 282, table 10.3; p 288, table 10.4
+        !
+        !  code  lattice type
+        !     1  simple cubic cell                            
+        !     2  body-centered cubic cell                     
+        !     3  face-centered cubic cell                     
+        !     4  hexagonal cell                               
+        !     5  simple tetragonal cell                       
+        !     6  body-centered tetragonal cell                
+        !     7  rhombohedral (trigonal) cell                 
+        !     8  simple orthorhombic cell                     
+        !     9  body-centered orthorhombic cell              
+        !    10  face-centered orthorhombic cell              
+        !    11  base centered orthorhombic cell              
+        !    12  simple monoclinic cell                       
+        !    13  body-centered monoclinic cell                
+        !    14  triclinic cell
+        implicit none
+        !
+        real(dp), intent(in) :: bas(3,3) ! number of point group symmetries
+        real(dp), intent(in) :: prec
+        integer  :: lattice_id
+        real(dp) :: M_tensor(3,3) ! metric tensor
+        real(dp) :: M(6) ! metric tensor values (voigt notation)
+        integer  :: n_unique_diags
+        integer  :: n_unique_offdiags
+        integer  :: n_zeros_off_diags
+        ! get metric tensor
+        M_tensor = matmul(transpose(bas),bas)
+        ! voigt notation
+        M(1) = M_tensor(1,1) ! diags
+        M(2) = M_tensor(2,2) ! diags
+        M(3) = M_tensor(3,3) ! diags
+        M(4) = M_tensor(2,3) ! angle
+        M(5) = M_tensor(1,3) ! angle
+        M(6) = M_tensor(1,2) ! angle
+        ! initialize lattice_id
+        lattice_id = 0
+        ! start with high symmetry stuff and work way down
+        n_unique_diags    = count(unique_inds(M(1:3),prec).ne.0)
+        n_unique_offdiags = count(unique_inds(M(4:6),prec).ne.0)
+        n_zeros_off_diags = count(abs(M(4:6)).lt.prec)
+        ! figure lattice type
+        select case (n_unique_diags)
+        case(1)
+            select case(n_unique_offdiags)
+            case(1)
+                !    BRAV    CEN DI  OFF additional conditions
+                ! 2  CUBIC   I   1   1   (multiply offdiagonals by -3 and compare: 1 unique total)
+                ! 3  CUBIC   F   1   1   (multiply offdiagonals by 2 and compare: 1 unique total)
+                ! 1  CUBIC   P   1   1   *three zeros
+                ! 7  TRI     R   1   1   
+                if     (count(unique_inds([M(1:3),-3.0_dp*M(4:6)],prec).ne.0).eq.1) then
+                    lattice_id = 2
+                elseif (count(unique_inds([M(1:3),+2.0_dp*M(4:6)],prec).ne.0).eq.1) then
+                    lattice_id = 3
+                elseif (n_zeros_off_diags.eq.3) then
+                    lattice_id = 1
+                else
+                    lattice_id = 7
+                endif
+            case(2)
+                !    BRAV    CEN DI  OFF additional conditions
+                ! 6  TETRA   I   1   2   
+                lattice_id = 6
+            case(3)
+                !    BRAV    CEN DI  OFF additional conditions
+                ! 9  ORTH    I   1   3   
+                lattice_id = 9
+            end select
+        case(2)
+            select case(n_unique_offdiags)
+            case(1)
+                !    BRAV    CEN DI  OFF additional conditions
+                ! 5  TETRA   P   2   1   *three zeros
+                lattice_id = 5
+            case(2)
+                !    BRAV    CEN DI  OFF additional conditions
+                ! 11 ORTH    ABC 2   2   *two zeros
+                ! 4  HEX     P   2   2   *two zeros (multiply offdiagonals by 2 and compare: 3 unique total)
+                ! 13 MONO    I   2   3   
+                if     (n_zeros_off_diags.eq.2) then
+                    if (count(unique_inds([M(1:3),+2.0_dp*M(4:6)],prec).ne.0).eq.3) then
+                        lattice_id = 3
+                    else
+                        lattice_id = 2
+                    endif
+                else
+                    lattice_id = 13
+                endif
+            end select
+        case(3)
+            select case(n_unique_offdiags)
+            case(2)
+                !    BRAV    CEN DI  OFF additional conditions
+                ! 8  ORTH    P   3   1   *three zeros
+                ! 12 MONO    P   3   2   *two zeros
+                if     (n_zeros_off_diags.eq.3) then
+                    lattice_id = 8
+                else
+                    lattice_id = 12
+                endif
+            case(3)
+                !    BRAV    CEN DI  OFF additional conditions
+                ! 14 TRI     P   3   3   
+                ! 10 ORTH    F   3   3   
+                stop 'not implemented'
+            end select
+        end select
+        if (lattice_id.eq.0) stop 'ERROR [lattice_type]: unkown lattice type'
+        !
+    end function   get_lattice_id
+
+    function       get_lattice_type(lattice_id) result(lattice_type)
+        !
+        implicit none
+        !
+        integer, intent(in) :: lattice_id
+        character(:), allocatable :: lattice_type
+        !
+        select case(lattice_id)
+            case(1);  allocate(lattice_type,source='simple cubic')
+            case(2);  allocate(lattice_type,source='body-centered cubic')
+            case(3);  allocate(lattice_type,source='face-centered cubic')
+            case(4);  allocate(lattice_type,source='hexagonal')
+            case(5);  allocate(lattice_type,source='simple tetragonal')
+            case(6);  allocate(lattice_type,source='body-centered tetragonal')
+            case(7);  allocate(lattice_type,source='rhombohedral (trigonal)')
+            case(8);  allocate(lattice_type,source='simple orthorhombic')
+            case(9);  allocate(lattice_type,source='body-centered orthorhombic')
+            case(10); allocate(lattice_type,source='face-centered orthorhombic')
+            case(11); allocate(lattice_type,source='base-centered orthorhombic')
+            case(12); allocate(lattice_type,source='simple monoclinic')
+            case(13); allocate(lattice_type,source='base-centered monoclinic')
+            case(14); allocate(lattice_type,source='triclinic')
+        case default
+            stop 'ERROR [get_lattice_type]: Unknown lattice_id'
+        end select
+        !
+    end function   get_lattice_type
+
+    function       get_bravais_id(lattice_id) result(bravais_id)
+        !
+        implicit none
+        !
+        integer, intent(in) :: lattice_id
+        integer :: bravais_id
+        !
+        select case(lattice_id)
+        case(1:3);   bravais_id = 1 ! cubic 
+        case(4);     bravais_id = 2 ! hexagonal
+        case(5:6);   bravais_id = 3 ! tetragonal
+        case(7);     bravais_id = 4 ! trigonal
+        case(8:11);  bravais_id = 5 ! orthorhombic
+        case(12:13); bravais_id = 6 ! monoclinic
+        case(14);    bravais_id = 7 ! triclinic
+        case default
+            stop 'ERROR [get_bravais_id]: Unknown lattice_id'
+        end select
+    end function   get_bravais_id
+
+    pure function  get_celldm(bas) result(celldm)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: bas(3,3)
+        real(dp) :: M(3,3) ! metric tensor
+        real(dp) :: celldm(6)
+        real(dp) :: rad2deg
+        !
+        rad2deg = 180.0_dp/pi
+        ! 
+        M = matmul(transpose(bas),bas)
+        !
+        celldm(1) = sqrt(M(1,1))
+        celldm(2) = sqrt(M(2,2))
+        celldm(3) = sqrt(M(3,3))
+        celldm(4) = acos(M(2,3)/celldm(2)*celldm(3))*rad2deg
+        celldm(5) = acos(M(1,3)/celldm(1)*celldm(3))*rad2deg
+        celldm(6) = acos(M(1,2)/celldm(1)*celldm(2))*rad2deg
+        !
+    end function   get_celldm
 
     ! irreducible cell
 
@@ -1010,7 +1208,7 @@ contains
 
     ! deform (strain related stuff)
 
-    subroutine      deform(def,uc,opts)
+    subroutine     deform(def,uc,opts)
         !
         implicit none
         !
@@ -1034,9 +1232,9 @@ contains
             !
         enddo
         !
-    end subroutine  deform
+    end subroutine deform
 
-    function        apply_elastic_deformation(bas,deformation_code,strain_max,nstrains,iopt_verbosity) result(bas_def)
+    function       apply_elastic_deformation(bas,deformation_code,strain_max,nstrains,iopt_verbosity) result(bas_def)
         !
         !
         ! needs editing to conform. make this a "pure function" , push all outputs except errors into its caller.
@@ -1209,7 +1407,7 @@ contains
                 write(*,'(5x,i2,6f16.10)') i,def_mat(1,1,i),def_mat(2,2,i),def_mat(3,3,i),def_mat(2,3,i),def_mat(1,3,i),def_mat(1,2,i)
             enddo
         endif
-    end function    apply_elastic_deformation
+    end function   apply_elastic_deformation
 
 end module am_unit_cell
 

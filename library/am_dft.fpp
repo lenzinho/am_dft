@@ -56,7 +56,7 @@ contains
 	            ! check weights
 	            if ((sum(w)-1.0_dp).gt.tiny) stop 'ERROR [load_dft]: eigenval kpoint weights does not sum to one'
 	            ! create instance
-	            call dft%bz%create_bz(kpt_recp=kpt_recp, bas=dft%uc%bas, w=w, prec=opts%prec)
+	            call dft%bz%create_bz(kpt_recp=kpt_recp, bas=dft%uc%bas, prec=opts%prec)
 	            !
 	        elseif (index(flags,'procar').ne.0) then
 	        	! load dispersion from procar
@@ -69,7 +69,7 @@ contains
 	            ! load kpoints
 	            call read_procar(kpt=kpt_recp, w=w, iopt_filename=opts%procar, iopt_verbosity=0)
 	            ! create instance
-	            call dft%bz%create_bz(kpt_recp=kpt_recp, bas=dft%uc%bas, w=w, prec=opts%prec)
+	            call dft%bz%create_bz(kpt_recp=kpt_recp, bas=dft%uc%bas, prec=opts%prec)
 	            !
 	        else
 	            stop 'ERROR [load]: eigenval or procar flag required'

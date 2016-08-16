@@ -20,7 +20,7 @@ module am_options
         real(dp) :: pair_cutoff
         ! tbfit
         integer  :: skip
-        ! tbdos
+        ! tbdos / tbforce
         real(dp) :: Emin
         real(dp) :: Emax
         integer  :: nEs
@@ -28,6 +28,10 @@ module am_options
         character(max_argument_length) :: vsk_def
         character(max_argument_length) :: vsk_ref
         real(dp) :: delta
+        ! tbdr / tbforce
+        integer  :: ndivs
+        integer  :: npaths
+        character(max_argument_length) :: path_symb
         ! ibz
         integer  :: n(3) ! monkhorst pack mesh grid dimensions
         real(dp) :: s(3) ! monkhorst pack mesh grid shift
@@ -49,6 +53,7 @@ module am_options
         procedure :: parse_command_line_tbvsk
         procedure :: parse_command_line_tbdos
         procedure :: parse_command_line_tbforce
+        procedure :: parse_command_line_tbdr
         procedure :: parse_command_line_uc
         procedure :: parse_command_line_ibz
     end type am_class_options
@@ -81,6 +86,10 @@ contains
         opts%vsk_def          = ''
         opts%vsk_ref          = ''
         opts%delta            = 0.0_dp
+        ! tbdr
+        opts%ndivs            = 40
+        opts%npaths           = 0
+        opts%path_symb        = ''
         ! ibz
         opts%n                = [9,9,9]          ! monkhorst pack mesh grid dimensions
         opts%s                = real([0,0,0],dp) ! monkhorst pack mesh grid shift
@@ -407,7 +416,7 @@ contains
         class(am_class_options), intent(inout) :: opts
         character(max_argument_length) :: argument
         integer :: narg
-        integer :: i,j
+        integer :: i
         integer :: iostat
         !
         call opts%set_default
@@ -497,6 +506,18 @@ contains
                     write(*,'(5x,a)') '-delta <dbl>'
                     write(*,'(5x,a)') '     Denominator for finite-difference: (def-ref)/delta.'
                     write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-calc <dos/path>'
+                    write(*,'(5x,a)') '     Calculate either DOS or PATH, not both.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-E <E_min:dbl> <E_max:dbl> <nEs:int>'
+                    write(*,'(5x,a)') '     E_min and E_max define energy over which dos is calculated, nEs is the number of steps in the range.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-path <str>'
+                    write(*,'(5x,a)') '     High-symmetry path along the brillouin zone; e.g.: G-W-K-G-L-U-W-L-K|U-X (FCC)'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-ndivs <int>'
+                    write(*,'(5x,a)') '     Number of divisions along each direction of path; i.e. for each "-"'
+                    write(*,'(5x,a)') ''
                     stop
                 case('-verbosity')
                     i=i+1
@@ -518,6 +539,34 @@ contains
                     call get_command_argument(i,argument)
                     read(argument,*,iostat=iostat) opts%delta
                     if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                case('-calc')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    if (index(argument,'dos' ).ne.0) opts%flags = trim(opts%flags)//'dos'
+                    if (index(argument,'path').ne.0) opts%flags = trim(opts%flags)//'path'
+                case('-path')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,'(a)',iostat=iostat) opts%path_symb
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbdr]: iostat /= 0'
+                case('-ndivs')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%ndivs
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbdr]: iostat /= 0'
+                case('-E')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%Emin
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%Emax
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%nEs
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
                 case default
                     stop 'ERROR [parse_command_line_ibz]: unrecognized option'
             end select
@@ -525,7 +574,65 @@ contains
         if (len_trim(opts%vsk_def).eq.0) stop 'ERROR [parse_command_line_tbforce]: vsk_def is required'
         if (len_trim(opts%vsk_ref).eq.0) stop 'ERROR [parse_command_line_tbforce]: vsk_ref is required'
         if (abs(opts%delta).lt.tiny)     stop 'ERROR [parse_command_line_tbforce]: delta is required'
+        if ((index(opts%flags,'dos').eq.0).and.(index(opts%flags,'path').eq.0)) &
+            & stop 'ERROR [parse_command_line_tbforce]: calculate flag required'
+        if ((index(opts%flags,'dos').ne.0).and.(index(opts%flags,'path').ne.0)) &
+            & stop 'ERROR [parse_command_line_tbforce]: only one calculate flag allowed per run'
     end subroutine parse_command_line_tbforce
+
+    subroutine     parse_command_line_tbdr(opts)
+        !
+        implicit none
+        !
+        class(am_class_options), intent(inout) :: opts
+        character(max_argument_length) :: argument
+        integer :: narg
+        integer :: i,j
+        integer :: iostat
+        !
+        call opts%set_default
+        !
+        narg=command_argument_count()
+        !
+        i=0
+        do while ( i < narg )
+            i=i+1
+            call get_command_argument(i,argument)
+            select case(argument)
+                case('-h')
+                    write(*,'(5x,a)') '-h'
+                    write(*,'(5x,a)') '     Prints this message and exits.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-verbosity <int>'
+                    write(*,'(5x,a)') '     Controls stdout: (0) supress all output, (1) default, (2) verbose.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-path <str>'
+                    write(*,'(5x,a)') '     High-symmetry path along the brillouin zone; e.g.: G-W-K-G-L-U-W-L-K|U-X (FCC)'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-ndivs <int>'
+                    write(*,'(5x,a)') '     Number of divisions along each direction of path; i.e. for each "-"'
+                    write(*,'(5x,a)') ''
+                    stop
+                case('-verbosity')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%verbosity
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbdr]: iostat /= 0'
+                case('-path')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,'(a)',iostat=iostat) opts%path_symb
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbdr]: iostat /= 0'
+                case('-ndivs')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%ndivs
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbdr]: iostat /= 0'
+                case default
+                    stop 'ERROR [parse_command_line_tbdr]: unrecognized option'
+            end select
+        enddo
+    end subroutine parse_command_line_tbdr
 
     subroutine     parse_command_line_ibz(opts)
         !

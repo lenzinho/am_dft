@@ -25,10 +25,6 @@ module am_brillouin_zone
         integer  :: nkpts                       ! nkpts number of kpoints
         real(dp), allocatable :: kpt_cart(:,:)  ! kpt(3,nkpts) kpoint
         real(dp), allocatable :: kpt_recp(:,:)  ! kpt(3,nkpts) kpoint - notice that vasp IBZKPT is in reciprocal (fractional) units
-        real(dp), allocatable :: w(:)           ! w(nkpts) normalized weights
-        ! get_irreducible
-        integer , allocatable :: fbz_id(:)
-        integer , allocatable :: ibz_id(:)
         contains
         procedure :: create_bz
         procedure :: save => save_bz
@@ -45,11 +41,14 @@ module am_brillouin_zone
     type, public, extends(am_class_bz) :: am_class_fbz
         integer  :: n(3) ! mesh dimensions
         real(dp) :: s(3) ! shift
-        integer  :: ntets                    ! number of tetrahedra
-        integer , allocatable :: kpt_int(:,:)  ! kpt(3,nkpts) kpoint integer indices in regular grid
-        integer , allocatable :: tet(:,:)   ! tetrahedra connectivity list (indices of corner kpoints)
-        real(dp), allocatable :: tetv(:)    ! tetrahedra volume
-        real(dp), allocatable :: tetw(:)    ! tetrahedron weight
+        integer  :: ntets                     ! number of tetrahedra
+        real(dp), allocatable :: w(:)         ! w(nkpts) normalized weights
+        integer , allocatable :: kpt_int(:,:) ! kpt(3,nkpts) kpoint integer indices in regular grid
+        integer , allocatable :: tet(:,:)     ! tetrahedra connectivity list (indices of corner kpoints)
+        real(dp), allocatable :: tetv(:)      ! tetrahedra volume
+        real(dp), allocatable :: tetw(:)      ! tetrahedron weight
+        integer , allocatable :: fbz_id(:)
+        integer , allocatable :: ibz_id(:)
         contains
         procedure :: get_fbz
     end type am_class_fbz
@@ -64,11 +63,20 @@ module am_brillouin_zone
     ! PATH 
 
     type, public, extends(am_class_bz) :: am_class_path
+        integer :: ndivs ! number of divisions
+        integer :: nticks ! umber of ticks
+        character(:), allocatable :: kpt_symb(:)
+        real(dp)    , allocatable :: tick(:)
+        real(dp)    , allocatable :: x(:)
+        contains
+        procedure :: get_path
     end type am_class_path
 
     ! other stuff
 
     public :: get_tetrahedron_weight
+
+    public :: get_pathsymb
 
 contains
 
@@ -94,7 +102,7 @@ contains
                     $:write_xml_attribute_nonallocatable(ATTRIBUTE)
                 #:endfor
                 ! allocatable
-                #:for ATTRIBUTE in ['kpt_cart','kpt_recp','w','fbz_id','ibz_id']
+                #:for ATTRIBUTE in ['kpt_cart','kpt_recp']
                     $:write_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
                 ! type-specific stuff
@@ -105,8 +113,21 @@ contains
                         $:write_xml_attribute_nonallocatable(ATTRIBUTE)
                     #:endfor
                     ! allocatable
-                    #:for ATTRIBUTE in ['kpt_int','tet','tetv','tetw']
+                    #:for ATTRIBUTE in ['kpt_int','tet','tetv','tetw','fbz_id','ibz_id','w']
                         $:write_xml_attribute_allocatable(ATTRIBUTE)
+                    #:endfor
+                class is (am_class_path)
+                    ! non-allocatable
+                    #:for ATTRIBUTE in ['ndivs','nticks']
+                        $:write_xml_attribute_nonallocatable(ATTRIBUTE)
+                    #:endfor
+                    ! allocatable
+                    #:for ATTRIBUTE in ['tick','x']
+                        $:write_xml_attribute_allocatable(ATTRIBUTE)
+                    #:endfor
+                    ! alloctable string
+                    #:for ATTRIBUTE in ['kpt_symb']
+                        $:write_xml_attribute_allocatable_string(ATTRIBUTE)
                     #:endfor
                 class default
                     ! do nothing
@@ -130,6 +151,7 @@ contains
         logical :: isallocated
         integer :: dims_rank
         integer :: dims(10)
+        integer :: str_length
         !
         if (iotype.eq.'LISTDIRECTED') then
             read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
@@ -138,7 +160,7 @@ contains
                     $:read_xml_attribute_nonallocatable(ATTRIBUTE)
                 #:endfor
                 ! allocatable
-                #:for ATTRIBUTE in ['kpt_cart','kpt_recp','w','fbz_id','ibz_id']
+                #:for ATTRIBUTE in ['kpt_cart','kpt_recp']
                     $:read_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
                 ! type-specific stuff
@@ -149,8 +171,21 @@ contains
                         $:read_xml_attribute_nonallocatable(ATTRIBUTE)
                     #:endfor
                     ! allocatable
-                    #:for ATTRIBUTE in ['kpt_int','tet','tetv','tetw']
+                    #:for ATTRIBUTE in ['kpt_int','tet','tetv','tetw','fbz_id','ibz_id','w']
                         $:read_xml_attribute_allocatable(ATTRIBUTE)
+                    #:endfor
+                class is (am_class_path)
+                    ! non-allocatable
+                    #:for ATTRIBUTE in ['ndivs','nticks']
+                        $:read_xml_attribute_nonallocatable(ATTRIBUTE)
+                    #:endfor
+                    ! allocatable
+                    #:for ATTRIBUTE in ['tick','x']
+                        $:read_xml_attribute_allocatable(ATTRIBUTE)
+                    #:endfor
+                    ! alloctable string
+                    #:for ATTRIBUTE in ['kpt_symb']
+                        $:read_xml_attribute_allocatable_string(ATTRIBUTE)
                     #:endfor
                 class default
                     ! do nothing
@@ -201,7 +236,7 @@ contains
 
     ! create
 
-    subroutine     create_bz(bz,kpt_recp,kpt_cart,bas,prec,w)
+    subroutine     create_bz(bz,kpt_recp,kpt_cart,bas,prec)
         !
         ! kpt_recp points are shifted to be between [0,1)
         ! kpt_cart        are shifted to be in the wigner-seitz voronoi cell
@@ -211,7 +246,6 @@ contains
         class(am_class_bz), intent(out) :: bz
         real(dp), intent(in), optional :: kpt_recp(:,:)
         real(dp), intent(in), optional :: kpt_cart(:,:)
-        real(dp), intent(in), optional :: w(:)
         real(dp), intent(in) :: bas(3,3)
         real(dp), intent(in) :: prec
         real(dp) :: grid_points(3,27) ! voronoi points
@@ -240,8 +274,6 @@ contains
         else
             stop 'ERROR [create_bz]: either kpt_cart or kpt_recp must be present'
         endif
-        ! weights
-        if (present(w)) allocate(bz%w, source = w)
         ! generate voronoi points [cart]
         grid_points = meshgrid([-1:1],[-1:1],[-1:1])
         grid_points = matmul(bz%recbas,grid_points)
@@ -516,6 +548,217 @@ contains
         endif
         !
     end subroutine get_irreducible
+
+    ! path
+
+    subroutine     get_path(bzp,path_symb,ndivs,pc,opts)
+        !
+        implicit none
+        !
+        class(am_class_path)    , intent(out) :: bzp
+        character(*)            , intent(in) :: path_symb
+        type(am_class_prim_cell), intent(in) :: pc 
+        integer                 , intent(in) :: ndivs ! divisions between kpoint pairs
+        type(am_class_options)  , intent(in) :: opts
+        character(:), allocatable :: kpt_symb(:)
+        character(10000) :: kpt_symb_SE(2)
+        real(dp) :: kpt_S(3)
+        real(dp) :: kpt_E(3)
+        real(dp) :: kpt_D(3)
+        real(dp) :: d_SE ! distance from start to end
+        integer :: i,j,k,z,x
+        !
+        if (opts%verbosity.ge.1) call print_title('Brillouin-zone Path')
+        ! transfer bas
+        bzp%bas = pc%bas
+        ! transfer recbas
+        bzp%recbas = pc%recbas
+        ! split segment (G-W-K-G-L-U-W-L-K|U-X) => G, W, K, G, L, U, W, L, K|U, X
+        kpt_symb = strsplit(path_symb,delimiter='-')
+        ! get number of ticks 
+        bzp%nticks = size(kpt_symb)
+        ! allocate space for tick marks
+        allocate(bzp%tick(bzp%nticks))
+        ! transfer ndivs
+        bzp%ndivs = ndivs
+        ! total number of kpoints
+        bzp%nkpts = (bzp%nticks-1)*bzp%ndivs
+        ! allocate space for kpoints
+        allocate(bzp%x(bzp%nkpts))
+        allocate(bzp%kpt_recp(3,bzp%nkpts))
+        ! loop over directions
+        z = 0
+        do j = 1, bzp%nticks-1
+            ! check if it is a discontinuous jump
+            x = index(kpt_symb(j),'|')
+            if (x.ne.0) then; kpt_symb_SE(1) = trim(kpt_symb(j)((x+1):))
+            else;             kpt_symb_SE(1) = trim(kpt_symb(j))
+            endif
+            ! check if it is a discontinuous jump
+            x = index(kpt_symb(j+1),'|')
+            if (x.ne.0) then; kpt_symb_SE(2) = trim(kpt_symb(j+1)(1:(x-1)))
+            else;             kpt_symb_SE(2) = trim(kpt_symb(j+1))
+            endif
+            ! get path start and end coordinates
+            kpt_S = symb2kpt(lattice_id=pc%lattice_id, kpt_symb=kpt_symb_SE(1))
+            kpt_E = symb2kpt(lattice_id=pc%lattice_id, kpt_symb=kpt_symb_SE(2))
+            kpt_D = kpt_E-kpt_S
+            ! get normal distance along path
+            d_SE = sqrt(sum(kpt_D**2))/bzp%ndivs
+            ! increment along path to get x axis
+            do k = 1, bzp%ndivs
+                z = z + 1
+                if (z.eq.1) then
+                    bzp%x(z) = 0
+                else
+                    bzp%x(z) = bzp%x(z-1) + d_SE
+                endif
+                ! save tick location
+                if (k.eq.1) bzp%tick(j) = bzp%x(z)
+                ! save kpt_recp
+                bzp%kpt_recp(:,z) = kpt_S + (k-1)/real(bzp%ndivs,dp) * kpt_D
+            enddo
+        enddo
+        ! save last tick
+        bzp%tick(j) = bzp%x(z)
+        ! save kpt_symb, stupid fortran (can not use bzp%kpt_symb throughout beacuse of mysterious compiler problem)
+        allocate(bzp%kpt_symb,source=kpt_symb)
+        ! get kpt_cart
+        allocate(bzp%kpt_cart,source=matmul(bzp%recbas,bzp%kpt_recp))
+        ! stdout
+        if (opts%verbosity.ge.1) then
+            ! kpoint properties
+            write(*,'(a,a)') flare, 'path = '//path_symb
+            write(*,'(a,a)') flare, 'kpoints (per direction) = '//tostring(bzp%ndivs)
+            write(*,'(a,a)') flare, 'kpoints (total) = '//tostring(bzp%nkpts)
+            call disp_indent()
+            call disp(title='#'      ,style='underline',X=[1:bzp%nkpts]          ,fmt='i5'   ,advance='no')
+            call disp(title='x'      ,style='underline',X=          bzp%x        ,fmt='f10.5',advance='no')
+            call disp(title='[cart.]',style='underline',X=transpose(bzp%kpt_cart),fmt='f10.5',advance='no')
+            call disp(title='[frac.]',style='underline',X=transpose(bzp%kpt_recp),fmt='f10.5',advance='yes')
+        endif
+    end subroutine get_path
+
+    function       symb2kpt(lattice_id,kpt_symb) result(kpt)
+        !
+        implicit none
+        !
+        integer, intent(in) :: lattice_id
+        character(*), intent(in) :: kpt_symb
+        real(dp) :: kpt(3)
+        !
+        select case(lattice_id)
+        case(1) ! simple cubic
+            select case(trim(kpt_symb))
+            case('G'); kpt = [ 0.000_dp, 0.000_dp, 0.000_dp]
+            case('M'); kpt = [ 0.500_dp, 0.500_dp, 0.000_dp]
+            case('R'); kpt = [ 0.500_dp, 0.500_dp, 0.500_dp]
+            case('X'); kpt = [ 0.000_dp, 0.500_dp, 0.000_dp]
+            case default
+            stop 'ERROR [symb2kpt]: unknown symbol (lattice_id = 1)'
+            end select
+        case(2) ! bcc
+            select case(trim(kpt_symb))
+            case('G'); kpt = [ 0.000_dp, 0.000_dp, 0.000_dp]
+            case('H'); kpt = [ 0.500_dp,-0.500_dp, 0.500_dp]
+            case('P'); kpt = [ 0.250_dp, 0.250_dp, 0.250_dp]
+            case('N'); kpt = [ 0.000_dp, 0.000_dp, 0.500_dp]
+            case default
+            stop 'ERROR [symb2kpt]: unknown symbol (lattice_id = 2)'
+            end select
+        case(3) ! fcc
+            select case(trim(kpt_symb))
+            case('G'); kpt = [ 0.000_dp, 0.000_dp, 0.000_dp]
+            case('K'); kpt = [ 0.375_dp, 0.375_dp, 0.750_dp]
+            case('L'); kpt = [ 0.500_dp, 0.500_dp, 0.500_dp]
+            case('U'); kpt = [ 0.625_dp, 0.250_dp, 0.625_dp]
+            case('W'); kpt = [ 0.500_dp, 0.250_dp, 0.750_dp]
+            case('X'); kpt = [ 0.500_dp, 0.000_dp, 0.500_dp]
+            case default
+            stop 'ERROR [symb2kpt]: unknown symbol (lattice_id = 3)'
+            end select
+        case(4) ! hexagonal
+            select case(trim(kpt_symb))
+            case('G'); kpt = [ 0.000_dp, 0.000_dp, 0.000_dp]
+            case('A'); kpt = [ 0.000_dp, 0.000_dp, 0.500_dp]
+            case('H'); kpt = [ 1/3.0_dp, 1/3.0_dp, 0.500_dp]
+            case('K'); kpt = [ 1/3.0_dp, 1/3.0_dp, 0.000_dp]
+            case('L'); kpt = [ 0.500_dp, 0.000_dp, 0.500_dp]
+            case('M'); kpt = [ 0.500_dp, 0.000_dp, 0.000_dp]
+            case default
+            stop 'ERROR [symb2kpt]: unknown symbol (lattice_id = 4)'
+            end select
+        case(5) ! tetragonal (check if this is correct?)
+            select case(trim(kpt_symb))
+            case('G'); kpt = [ 0.000_dp, 0.000_dp, 0.000_dp]
+            case('A'); kpt = [ 0.500_dp, 0.500_dp, 0.500_dp]
+            case('M'); kpt = [ 0.500_dp, 0.500_dp, 0.000_dp]
+            case('R'); kpt = [ 0.000_dp, 0.500_dp, 0.500_dp]
+            case('X'); kpt = [ 0.000_dp, 0.500_dp, 0.000_dp]
+            case('Z'); kpt = [ 0.000_dp, 0.000_dp, 0.500_dp]
+            case default
+            stop 'ERROR [symb2kpt]: unknown symbol (lattice_id = 5)'
+            end select
+        case(13) ! body-centered tetragonal
+            select case(trim(kpt_symb))
+            case('G'); kpt = [ 0.000_dp, 0.000_dp, 0.000_dp]
+            case('M'); kpt = [ 0.500_dp, 0.500_dp,-0.500_dp]
+            case('X'); kpt = [ 0.000_dp, 0.000_dp, 0.500_dp]
+            case('P'); kpt = [ 0.250_dp, 0.250_dp, 0.250_dp]
+            case('N'); kpt = [ 0.000_dp, 0.500_dp, 0.000_dp]
+            case default
+            stop 'ERROR [symb2kpt]: unknown symbol (lattice_id = 13)'
+            end select
+        case(7) ! trigonal (maybe this is triclinic?)
+            select case(trim(kpt_symb))
+            case('G'); kpt = [ 0.000_dp, 0.000_dp, 0.000_dp]
+            case('L'); kpt = [ 0.500_dp,-0.500_dp, 0.000_dp]
+            case('M'); kpt = [ 0.000_dp, 0.000_dp, 0.500_dp]
+            case('N'); kpt = [-0.500_dp,-0.500_dp, 0.500_dp]
+            case('R'); kpt = [ 0.000_dp,-0.500_dp,-0.500_dp]
+            case('X'); kpt = [-0.500_dp, 0.000_dp, 0.000_dp]
+            case('Y'); kpt = [ 0.500_dp, 0.000_dp, 0.000_dp]
+            case('Z'); kpt = [-0.500_dp, 0.000_dp, 0.500_dp]
+            case default
+            stop 'ERROR [symb2kpt]: unknown symbol (lattice_id = 7)'
+            end select
+        case(8) ! orthorhombic (maybe this is not simple orthorhomnic but has another centering?)
+            select case(trim(kpt_symb))
+            case('G'); kpt = [ 0.000_dp, 0.000_dp, 0.000_dp]
+            case('R'); kpt = [ 0.500_dp, 0.500_dp, 0.500_dp]
+            case('S'); kpt = [ 0.500_dp, 0.500_dp, 0.000_dp]
+            case('T'); kpt = [ 0.000_dp, 0.500_dp, 0.500_dp]
+            case('U'); kpt = [ 0.500_dp, 0.000_dp, 0.500_dp]
+            case('X'); kpt = [ 0.500_dp, 0.000_dp, 0.000_dp]
+            case('Y'); kpt = [ 0.000_dp, 0.500_dp, 0.000_dp]
+            case('Z'); kpt = [ 0.000_dp, 0.000_dp, 0.500_dp]
+            case default
+            stop 'ERROR [symb2kpt]: unknown symbol (lattice_id = 8)'
+            end select
+        case default
+            stop 'ERROR [symb2kpt]: unknown lattice'
+        end select
+    end function   symb2kpt
+
+    function       get_pathsymb(lattice_id) result(path_symb)
+        !
+        implicit none
+        !
+        integer, intent(in) :: lattice_id
+        character(:), allocatable :: path_symb
+        ! get path
+        select case(lattice_id)
+        case(1);  allocate(path_symb, source='G-M-G-R-X|M-R') ! cubic
+        case(2);  allocate(path_symb, source='G-N-G-P-H|P-N') ! bcc
+        case(3);  allocate(path_symb, source='G-W-K-G-L-U-W-L-K|U-X') ! fcc
+        case(4);  allocate(path_symb, source='G-K-G-A-L-H|H-A|L-M|K-H') ! hexagonal
+        case(5);  allocate(path_symb, source='G-M-G-Z-R-A-Z|X-R|M-A') ! tetragonal
+        case(8);  allocate(path_symb, source='G-S-Y-G-Z-U-R-T|Z-T|Y-T|U-X|S-R') ! orthorhombic
+        case(12); allocate(path_symb, source='G-H-C-E-M1-A-X-H1|M-D-Z|Y-D') ! monoclinic
+        case default 
+            stop 'ERROR [get_standard_path]: unknown lattice_id (probably not yet implemented)'
+        end select
+    end function   get_pathsymb
 
     ! tetrahedra functions
 
@@ -805,234 +1048,6 @@ contains
         w=w*0.25_dp
         !
     end function   get_tetrahedron_weight
-
-
-
-
-
-
-
-!     subroutine     get_path()
-!         !
-!         implicit none
-!         !
-
-
-
-! !     function     standardpath(bravais) result(points)
-! !         !
-! !         integer, intent(in) :: bravais
-! !         character(len=3), allocatable :: points(:,:)
-! !         !
-! !         select case(trim(ucposcar%bravaislattice))
-! !             case('CUB')
-! !                 allocate(points(5,2))            
-! !                 points(1,:) = ['GM','X ']
-! !                 points(2,:) = ['X ','M ']
-! !                 points(3,:) = ['M ','GM']
-! !                 points(4,:) = ['GM','R ']
-! !                 points(5,:) = ['R ','X ']
-! !             case('FCC')
-! !                 allocate(points(9,2))
-! !                 points(1,:) = ['GM','X ']
-! !                 points(2,:) = ['X ','W ']
-! !                 points(3,:) = ['W ','K ']
-! !                 points(4,:) = ['K ','GM']
-! !                 points(5,:) = ['GM','L ']
-! !                 points(6,:) = ['L ','U ']
-! !                 points(7,:) = ['U ','W ']
-! !                 points(8,:) = ['W ','L ']
-! !                 points(9,:) = ['L ','K ']
-! !             case('BCC')
-! !                 allocate(points(5,2))
-! !                 points(1,:) = ['GM','H ']
-! !                 points(2,:) = ['H ','N ']
-! !                 points(3,:) = ['N ','GM']
-! !                 points(4,:) = ['GM','P ']
-! !                 points(5,:) = ['P ','H ']
-! !             case('HEX')
-! !                allocate(points(7,2))
-! !                 points(1,:) = ['GM','M ']
-! !                 points(2,:) = ['M ','K ']
-! !                 points(3,:) = ['K ','GM']
-! !                 points(4,:) = ['GM','A ']
-! !                 points(5,:) = ['A ','L ']
-! !                 points(6,:) = ['L ','H ']
-! !                 points(7,:) = ['H ','A ']
-! !             case('RHL1')
-! !                 allocate(points(9,2))
-! !                 points(1,:) = ['GM','L ']
-! !                 points(2,:) = ['L ','B1']
-! !                 points(3,:) = ['B ','Z ']
-! !                 points(4,:) = ['Z ','GM']
-! !                 points(5,:) = ['GM','X ']
-! !                 points(6,:) = ['Q ','F ']
-! !                 points(7,:) = ['F ','P1']
-! !                 points(8,:) = ['P1','Z ']
-! !                 points(9,:) = ['L ','P ']            
-! !             case('TRI')
-! !                 allocate(points(7,2))
-! !                 points(1,:) = ['X ','GM']
-! !                 points(2,:) = ['GM','Y ']
-! !                 points(3,:) = ['L ','GM']
-! !                 points(4,:) = ['GM','Z ']
-! !                 points(5,:) = ['N ','GM']
-! !                 points(6,:) = ['GM','M ']
-! !                 points(7,:) = ['R ','GM']
-! !             case('ORC')
-! !                 allocate(points(7,2))
-! !                 points(1,:) = ['X ','GM']
-! !                 points(2,:) = ['GM','Y ']
-! !                 points(3,:) = ['L ','GM']
-! !                 points(4,:) = ['GM','Z ']
-! !                 points(5,:) = ['N ','GM']
-! !                 points(6,:) = ['GM','M ']
-! !                 points(7,:) = ['R ','GM']
-! !             case('TET')
-! !                allocate(points(9,2))
-! !                 points(1,:) = ['GM','X ']
-! !                 points(2,:) = ['X ','M ']
-! !                 points(3,:) = ['M ','GM']
-! !                 points(4,:) = ['GM','Z ']
-! !                 points(5,:) = ['Z ','R ']
-! !                 points(6,:) = ['R ','A ']
-! !                 points(7,:) = ['A ','Z ']
-! !                 points(8,:) = ['X ','R ']
-! !                 points(9,:) = ['M ','A ']
-! !             case default
-! !                 stop 'could not find path for Bravais lattice'
-! !         end select
-! !         !
-! !     end function standardpath
-
-! !     subroutine lo_get_coordinates_from_symbolic_point(symbol,qv,ucposcar)
-! !         !
-! !         ! I have not bothered to add all Bravais lattices yet. I will fix that in due time.
-! !         !
-! !         character(len=*), intent(in) :: symbol
-! !         real(dp), dimension(3), intent(out) :: qv
-! !         type(lo_crystalstructure), intent(in) :: ucposcar
-! !         !
-! !         integer :: i
-! !         real(dp), dimension(3) :: v
-! !         real(dp) :: alpha,beta,gm,a,b,c
-! !         real(dp) :: w,x,y,z
-! !         !
-! !         ! Get some parameters from the poscar:
-! !         !
-! !         a=lo_norm(ucposcar%basis(1,:))*ucposcar%latpar
-! !         b=lo_norm(ucposcar%basis(2,:))*ucposcar%latpar
-! !         c=lo_norm(ucposcar%basis(3,:))*ucposcar%latpar
-! !         !
-! !         alpha=lo_angle_between_vectors(ucposcar%basis(1,:),ucposcar%basis(2,:))*180/lo_pi
-! !         beta=lo_angle_between_vectors(ucposcar%basis(2,:),ucposcar%basis(3,:))*180/lo_pi
-! !         gm=lo_angle_between_vectors(ucposcar%basis(1,:),ucposcar%basis(3,:))*180/lo_pi
-! !         !
-! !         v=0.0_dp
-! !         select case(trim(ucposcar%bravaislattice))
-! !             case('CUB')
-! !                 select case(trim(symbol))
-! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp]
-! !                     case('R');  v = [ 0.5_dp, 0.5_dp, 0.5_dp]
-! !                     case('M');  v = [ 0.5_dp, 0.5_dp, 0.0_dp]
-! !                     case('X');  v = [ 0.0_dp, 0.5_dp, 0.0_dp]
-! !                 end select
-! !             case('FCC')
-! !                 select case(trim(symbol))
-! !                 w = 0.25_dp
-! !                 x = 3.0_dp/4.0_dp
-! !                 y = 3.0_dp/8.0_dp
-! !                 z = 5.0_dp/8.0_dp
-! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp]
-! !                     case('X');  v = [ 0.0_dp, 0.5_dp, 0.5_dp]
-! !                     case('X2'); v = [ 0.5_dp, 0.5_dp, 1.0_dp]
-! !                     case('U');  v = [ 0.0_dp, z     , y     ]
-! !                     case('L');  v = [ 0.0_dp, 0.5_dp, 0.0_dp]
-! !                     case('W');  v = [ w     , x     , 0.5_dp]
-! !                     case('K');  v = [ y     , x     , y     ]
-! !                 end select
-! !             case('BCC')
-! !                 select case(trim(symbol))
-! !                     y = 0.25_dp
-! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp]
-! !                     case('H');  v = [ 0.5_dp,-0.5_dp, 0.5_dp]
-! !                     case('P');  v = [ y     , y     , y     ]
-! !                     case('N');  v = [ 0.0_dp, 0.0_dp, 0.5_dp]
-! !                 end select
-! !             case('HEX')
-! !                 select case(trim(symbol))
-! !                     y = 1.0_dp/3.0_dp
-! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp]
-! !                     case('A');  v = [ 0.0_dp, 0.0_dp, 0.5_dp]
-! !                     case('K');  v = [ y     , y     , 0.0_dp]
-! !                     case('H');  v = [ y     , y     , 0.5_dp]
-! !                     case('M');  v = [ 0.5_dp, 0.0_dp, 0.0_dp]
-! !                     case('L');  v = [ 0.5_dp, 0.0_dp, 0.5_dp]
-! !                 end select
-! !             case('BCT')
-! !                 select case(trim(symbol))
-! !                     y  = 0.25_dp
-! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp]
-! !                     case('M');  v = [ 0.5_dp, 0.5_dp,-0.5_dp]
-! !                     case('X');  v = [ 0.0_dp, 0.0_dp, 0.5_dp]
-! !                     case('P');  v = [ y     , y     , y     ]
-! !                     case('N');  v = [ 0.0_dp, 0.5_dp, 0.0_dp]
-! !                 end select
-! !             case('TET') ! normal tetragonal
-! !                 select case(trim(symbol))
-! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp]
-! !                     case('A');  v = [ 0.5_dp, 0.5_dp, 0.5_dp]
-! !                     case('M');  v = [ 0.5_dp, 0.5_dp, 0.0_dp]
-! !                     case('R');  v = [ 0.0_dp, 0.5_dp, 0.5_dp]
-! !                     case('X');  v = [ 0.0_dp, 0.5_dp, 0.0_dp]
-! !                     case('Z');  v = [ 0.0_dp, 0.0_dp, 0.5_dp]
-! !                 end select
-! !             case('RHL1')
-! !                 x = (1.0_dp+4.0_dp*cos(alpha*pi/180.0_dp))/(2.0_dp+4.0_dp*cos(alpha*pi/180.0_dp))
-! !                 y = 3.0_dp/4-x  /2
-! !                 select case(trim(symbol))
-! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp] ! Gamma
-! !                     case('B');  v = [ x     , 0.5_dp, 1-x   ] ! B
-! !                     case('B1'); v = [ 0.5_dp, 1-x   , x  -1 ] ! B1
-! !                     case('F');  v = [ 0.5_dp, 0.5_dp, 0.0_dp] ! F
-! !                     case('L');  v = [ 0.5_dp, 0.0_dp, 0.0_dp] ! L
-! !                     case('L1'); v = [ 0.0_dp, 0.0_dp,-0.5_dp] ! L1
-! !                     case('P');  v = [ x     , y     , y     ] ! P
-! !                     case('P1'); v = [ 1-y   , 1-y   , 1-x   ] ! P1
-! !                     case('P2'); v = [ y     , y     , x  -1 ] ! P2
-! !                     case('X');  v = [ y     , 0.0_dp,-y     ] ! X
-! !                     case('Z');  v = [ 0.5_dp, 0.5_dp, 0.5_dp] ! Z
-! !                 end select
-! !             case('TRI')
-! !                 select case(trim(symbol))
-! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp]
-! !                     case('L');  v = [ 0.5_dp,-0.5_dp, 0.0_dp]
-! !                     case('M');  v = [ 0.0_dp, 0.0_dp, 0.5_dp]
-! !                     case('N');  v = [-0.5_dp,-0.5_dp, 0.5_dp]
-! !                     case('R');  v = [ 0.0_dp,-0.5_dp,-0.5_dp]
-! !                     case('X');  v = [-0.5_dp, 0.0_dp, 0.0_dp]
-! !                     case('Y');  v = [ 0.5_dp, 0.0_dp, 0.0_dp]
-! !                     case('Z');  v = [-0.5_dp, 0.0_dp, 0.5_dp]
-! !                 end select
-! !             case('ORC')
-! !                 select case(trim(symbol))
-! !                     case('GM'); v = [ 0.0_dp, 0.0_dp, 0.0_dp]
-! !                     case('R');  v = [ 0.5_dp, 0.5_dp, 0.5_dp]
-! !                     case('S');  v = [ 0.5_dp, 0.5_dp, 0.0_dp]
-! !                     case('T');  v = [ 0.0_dp, 0.5_dp, 0.5_dp]
-! !                     case('U');  v = [ 0.5_dp, 0.0_dp, 0.5_dp]
-! !                     case('X');  v = [ 0.5_dp, 0.0_dp, 0.0_dp]
-! !                     case('Y');  v = [ 0.0_dp, 0.5_dp, 0.0_dp]
-! !                     case('Z');  v = [ 0.0_dp, 0.0_dp, 0.5_dp]
-! !                 end select
-! !         end select
-! !         qv=0.0_dp
-! !         do i=1,3
-! !             qv=qv+v(i)*ucposcar%recbasis(i,:)
-! !         enddo
-! !     end subroutine
-!     end subroutine get_path
-
 
 end module am_brillouin_zone
 

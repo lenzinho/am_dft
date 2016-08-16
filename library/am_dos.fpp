@@ -215,7 +215,7 @@ contains
         !$OMP END PARALLEL
     end function   get_dos_tetra
 
-    function       get_pdos_tetra(Ep,E,tet,tetw,weights) result(pD)
+    function       get_pdos_tetra(Ep,E,tet,tetw,weight) result(pD)
         !
         implicit none
         !
@@ -223,7 +223,7 @@ contains
         real(dp), intent(in) :: E(:,:) ! E(nbands,nkpts) band energies
         integer , intent(in) :: tet(:,:) ! tet(:,ntets) tetrahedra conenctivity
         real(dp), intent(in) :: tetw(:) ! tetw(ntets) weight of each tetrahedron
-        real(dp), intent(in) :: weights(:,:,:) ! weights(nprojections,nbands,nkpts), weights (per band per kpoint) for projected dos: can be absolute square of TB or BvK eigenvectors
+        real(dp), intent(in) :: weight(:,:,:) ! weights(nprojections,nbands,nkpts), weights (per band per kpoint) for projected dos: can be absolute square of TB or BvK eigenvectors
         real(dp), allocatable :: pD(:,:)
         integer  :: nEs
         integer  :: nbands
@@ -238,11 +238,11 @@ contains
         ! get number of tetrahedra
         ntets = size(tet,2)
         ! get number of projections
-        nprojections = size(weights,1)
+        nprojections = size(weight,1)
         ! allocate space 
         allocate(pD(nprojections,nEs))
         ! loop over energies, bands, tetrahedra
-        !$OMP PARALLEL PRIVATE(i,j,k,m,w) SHARED(pD,E,Ep,nEs,tetw,weights)
+        !$OMP PARALLEL PRIVATE(i,j,k,m,w) SHARED(pD,E,Ep,nEs,tetw,weight)
         !$OMP DO
         do i = 1, nEs
             ! initialize D(i)
@@ -255,7 +255,7 @@ contains
                 w = get_tetrahedron_weight(E=Ep(i),Ec=E(j,tet(:,k)),flags='delta,blochl')
                 ! loop over projections, increment pDOS with contributions from band j in tetrahedron k
                 do m = 1, nprojections
-                    pD(m,i) = pD(m,i) + tetw(k) * sum(w * weights(m,j,tet(:,k)) )
+                    pD(m,i) = pD(m,i) + tetw(k) * sum(w * weight(m,j,tet(:,k)) )
                 enddo
             enddo
             enddo

@@ -423,14 +423,14 @@ contains
         tb%dr%nbands = size(tb%dr%E,1) ! E(nbands,nkpts)
     end subroutine get_dispersion
 
-    subroutine     get_dos(tb,ibz,E,weights,opts)
+    subroutine     get_dos(tb,ibz,E,weight,opts)
         !
         implicit none
         !
         class(am_class_tightbinding), intent(inout) :: tb
         type(am_class_ibz)          , intent(in)  :: ibz
         real(dp), optional          , intent(in)  :: E(:)
-        real(dp), optional          , intent(in)  :: weights(:,:) ! weights(nbands,nkpts) additional projection weights
+        real(dp), optional          , intent(in)  :: weight(:,:) ! weights(nbands,nkpts) additional projection weights
         type(am_class_options)      , intent(in)  :: opts
         real(dp), allocatable :: C(:,:,:)
         real(dp) :: Emax ! maximum band energy
@@ -470,15 +470,15 @@ contains
         ! get projection weights for PDOS
         allocate(C,source=abs(tb%dr%C)**2)
         ! adjust projection weights if weights/bands/kpoints suppied
-        if (present(weights)) then
+        if (present(weight)) then
             do i = 1, ibz%nkpts
             do j = 1, tb%dr%nbands
-                C(:,j,i) = C(:,j,i)*weights(j,i)
+                C(:,j,i) = C(:,j,i)*weight(j,i)
             enddo
             enddo
         endif
         ! get partial DOS
-        tb%dos%pD = get_pdos_tetra(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw, weights=C)
+        tb%dos%pD = get_pdos_tetra(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw, weight=C)
     end subroutine get_dos
 
     ! export to matlab

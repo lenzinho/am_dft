@@ -1195,17 +1195,17 @@ module am_matlab
 
     pure function strsplit(str,delimiter) result(word)
         !
-        character(maximum_buffer_size), intent(in) :: str
+        character(*), intent(in) :: str
         character(1), intent(in) :: delimiter
-        character(len=:), allocatable :: word(:) ! character(500) :: word(500)
-        integer :: i, j, k
+        character(len=:), allocatable :: word(:)
+        integer :: i, j, k, m
         !
         j = 0; k = 0
         do i = 1, len(str)
             if (i .gt. k) then
             if ( str(i:i) .ne. delimiter ) then
                 ! determine the next position of delimiter
-                k = i+index(str(i:),delimiter)-1
+                k=i+index(str(i:),delimiter)-2
                 ! increase word count
                 j=j+1
             endif
@@ -1218,12 +1218,16 @@ module am_matlab
         do i = 1, len(str)
             if (i .gt. k) then
             if ( str(i:i) .ne. delimiter ) then
+                m = index(str(i:),delimiter)
                 ! determine the next position of delimiter
-                k = i+index(str(i:),delimiter)-1
+                k=i+index(str(i:),delimiter)-2
                 ! increase word count
                 j=j+1
-                word(j) = str(i:k)
-                ! write(*,"(I,A)") j, word(j)
+                if (m.ne.0) then
+                    word(j) = str(i:k)
+                else
+                    word(j) = str(i:)
+                endif
             endif
             endif
         enddo

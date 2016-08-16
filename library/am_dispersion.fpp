@@ -28,7 +28,7 @@ module am_dispersion
 
     type, public, extends(am_class_dispersion) :: am_class_tightbinding_dispersion
         complex(dp), allocatable :: C(:,:,:)     ! C(:,nbands,nkpts) tight binding coefficients (eigenvectors)
-        real(dp)   , allocatable :: weights(:,:) ! weights(nbands,nkpts) whatever weights may be interesting to save
+        real(dp)   , allocatable :: weight(:,:) ! weights(nbands,nkpts) whatever weights may be interesting to save
     end type am_class_tightbinding_dispersion
 
 contains
@@ -62,7 +62,7 @@ contains
                 select type (dtv)
                 class is (am_class_tightbinding_dispersion)
                     ! allocatable
-                    #:for ATTRIBUTE in ['C','weights']
+                    #:for ATTRIBUTE in ['C','weight']
                         $:write_xml_attribute_allocatable(ATTRIBUTE)
                     #:endfor
                 class default
@@ -101,7 +101,7 @@ contains
                 select type (dtv)
                 class is (am_class_tightbinding_dispersion)
                     ! allocatable
-                    #:for ATTRIBUTE in ['C','weights']
+                    #:for ATTRIBUTE in ['C','weight']
                         $:read_xml_attribute_allocatable(ATTRIBUTE)
                     #:endfor
                 class default
@@ -152,3 +152,10 @@ contains
     end subroutine  load_dr
 
 end module am_dispersion
+
+
+
+
+
+
+
