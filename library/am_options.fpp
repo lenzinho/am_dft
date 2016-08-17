@@ -24,6 +24,7 @@ module am_options
         real(dp) :: Emin
         real(dp) :: Emax
         integer  :: nEs
+        real(dp) :: nelecs
         ! tbforce
         character(max_argument_length) :: vsk_def
         character(max_argument_length) :: vsk_ref
@@ -82,6 +83,7 @@ contains
         opts%Emin             = 0.0_dp
         opts%Emax             = 0.0_dp
         opts%nEs              = 0
+        opts%nelecs           = 0.0_dp
         ! tbforce
         opts%vsk_def          = ''
         opts%vsk_ref          = ''
@@ -438,6 +440,10 @@ contains
                     write(*,'(5x,a)') '-prec <dbl>'
                     write(*,'(5x,a)') '     Numerical precision.'
                     write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-nelecs <dbl>'
+                    write(*,'(5x,a)') '     Number of valence electrons in the primitive cell occupying tight-binding bands (can be a rational number).'
+                    write(*,'(5x,a)') '     Can obtain this value from 2 * [NELECT/2 (OUTCAR) minus bands SKIPPED in performing tight binding fit].'
+                    write(*,'(5x,a)') ''
                     write(*,'(5x,a)') '-E <E_min:dbl> <E_max:dbl> <nEs:int>'
                     write(*,'(5x,a)') '     E_min and E_max define energy over which dos is calculated, nEs is the number of steps in the range.'
                     write(*,'(5x,a)') ''
@@ -446,27 +452,32 @@ contains
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*,iostat=iostat) opts%verbosity
-                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbdos]: iostat /= 0'
                 case('-prec')
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*,iostat=iostat) opts%prec
-                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbdos]: iostat /= 0'
+                case('-nelecs')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%nelecs
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbdos]: iostat /= 0'
                 case('-E')
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*,iostat=iostat) opts%Emin
-                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbdos]: iostat /= 0'
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*,iostat=iostat) opts%Emax
-                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbdos]: iostat /= 0'
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*,iostat=iostat) opts%nEs
-                    if (iostat.ne.0) stop 'ERROR [parse_command_line_ibz]: iostat /= 0'
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbdos]: iostat /= 0'
                 case default
-                    stop 'ERROR [parse_command_line_ibz]: unrecognized option'
+                    stop 'ERROR [parse_command_line_tbdos]: unrecognized option'
             end select
         enddo
     end subroutine parse_command_line_tbdos

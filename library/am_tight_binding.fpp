@@ -413,8 +413,9 @@ contains
         if ( any(selector_kpoint.eq.i) ) then
             ! construct hamiltonian
             H = tb%get_hamiltonian(pp=pp, kpt=bz%kpt_cart(:,i))
-            ! diagonalize hamiltonian
+            ! diagonalize hamiltonian 
             call am_zheev(A=H,V=V,D=D)
+            ! NOTE: ZHEEV returns eigenvalue in ascending order
             tb%dr%C(:,:,i) = V
             tb%dr%E(:,i) = D
         endif
@@ -845,7 +846,7 @@ contains
         endif
         !
         if (debug) then
-            write(*,'(a,a)')   flare, 'optimization parameters and conditions:'
+            write(*,'(a,a)') flare, 'optimization parameters and conditions:'
             write(*,'(5x,a,a)') 'irreducible matrix elements = '//tostring(tb%ft%nxs)
             write(*,'(5x,a,a)') 'selected k-points = '          //tostring(tb%ft%nkpts)
             write(*,'(5x,a,a)') 'bands = '                      //tostring(tb%ft%nbands)

@@ -2044,143 +2044,108 @@ module am_matlab
         !
     end function  sort_four_integers
 
-    ! cumulative sum / product (from numerical recipies)
+    ! cumulative sum / product
 
-    recursive function dcumprod(arr,seed) result(ans)
+    pure function dcumprod(x) result(y)
         !
         implicit none
         !
-        real(dp), intent(in) :: arr(:)
-        real(dp), intent(in), optional :: seed
-        real(dp), allocatable :: ans(:)
-        real(dp) :: sd
-        integer  :: n,j
-        integer  :: npar_cumprod
-        npar_cumprod = 8
+        real(dp), intent(in) :: x(:)
+        real(dp), allocatable :: y(:)
+        integer :: i,n
         !
-        n=size(arr)
-        allocate(ans(n))
+        n = size(x)
+        ! 
+        allocate(y(n))
+        ! initialize
+        y(1) = x(1)
+        ! loop
+        do i = 2, size(x)
+            y(i) = y(i-1)*x(i)
+        enddo
         !
-        if (n.eq.0) return
-        !
-        if (present(seed)) then
-            sd=seed
-        else
-            sd=1.0_dp
-        endif
-        !
-        ans(1)=arr(1)*sd
-        if (n < npar_cumprod) then
-            do j=2,n
-                ans(j)=ans(j-1)*arr(j)
-            end do
-        else
-            ans(2:n:2)=cumprod(arr(2:n:2)*arr(1:n-1:2),sd)
-            ans(3:n:2)=ans(2:n-1:2)*arr(3:n:2)
-        end if
-        !
-    end function       dcumprod
+    end function  dcumprod
 
-    recursive function icumprod(arr,seed) result(ans)
+    pure function icumprod(x) result(y)
         !
         implicit none
         !
-        integer, intent(in) :: arr(:)
-        integer, intent(in), optional :: seed
-        integer, allocatable :: ans(:)
-        integer :: sd
-        integer :: n,j
-        integer :: npar_cumprod
-        npar_cumprod = 8
+        integer, intent(in) :: x(:)
+        integer, allocatable :: y(:)
+        integer :: i,n
         !
-        n=size(arr)
-        allocate(ans(n))
+        n = size(x)
+        ! 
+        allocate(y(n))
+        ! initialize
+        y(1) = x(1)
+        ! loop
+        do i = 2, size(x)
+            y(i) = y(i-1)*x(i)
+        enddo
         !
-        if (n.eq.0) return
-        !
-        if (present(seed)) then
-            sd=seed
-        else
-            sd=1.0_dp
-        endif
-        !
-        ans(1)=arr(1)*sd
-        if (n < npar_cumprod) then
-            do j=2,n
-                ans(j)=ans(j-1)*arr(j)
-            end do
-        else
-            ans(2:n:2)=cumprod(arr(2:n:2)*arr(1:n-1:2),sd)
-            ans(3:n:2)=ans(2:n-1:2)*arr(3:n:2)
-        end if
-        !
-    end function       icumprod
+    end function  icumprod
 
-    recursive function dcumsum(arr,seed) result(ans)
+    pure function dcumsum(x) result(y)
         !
         implicit none
         !
-        real(dp), intent(in) :: arr(:)
-        real(dp), intent(in), optional :: seed
-        real(dp), allocatable :: ans(:)
-        real(dp) :: sd
-        integer  :: n,j
-        integer  :: npar_cumsum
-        npar_cumsum = 8
+        real(dp), intent(in) :: x(:)
+        real(dp), allocatable :: y(:)
+        integer :: i,n
         !
-        n=size(arr)
-        if (n.eq.0) return
+        n = size(x)
+        ! 
+        allocate(y(n))
+        ! initialize
+        y(1) = x(1)
+        ! loop
+        do i = 2, size(x)
+            y(i) = y(i-1) + x(i)
+        enddo
         !
-        if (present(seed)) then
-            sd=seed
-        else
-            sd=0.0_dp
-        endif
-        !
-        ans(1)=arr(1)+sd
-        if (n < npar_cumsum) then
-            do j=2,n
-                ans(j)=ans(j-1)+arr(j)
-            end do
-        else
-            ans(2:n:2)=cumsum(arr(2:n:2)+arr(1:n-1:2),sd)
-            ans(3:n:2)=ans(2:n-1:2)+arr(3:n:2)
-        end if
-        !
-    end function       dcumsum
+    end function  dcumsum
 
-    recursive function icumsum(arr,seed) result(ans)
+    pure function icumsum(x) result(y)
         !
         implicit none
         !
-        integer, intent(in) :: arr(:)
-        integer, intent(in), optional :: seed
-        integer, allocatable :: ans(:)
-        integer :: sd
-        integer :: n,j
-        integer :: npar_cumsum
-        npar_cumsum = 8
+        integer, intent(in) :: x(:)
+        integer, allocatable :: y(:)
+        integer :: i,n
         !
-        n=size(arr)
-        if (n.eq.0) return
+        n = size(x)
+        ! 
+        allocate(y(n))
+        ! initialize
+        y(1) = x(1)
+        ! loop
+        do i = 2, size(x)
+            y(i) = y(i-1) + x(i)
+        enddo
         !
-        if (present(seed)) then
-            sd=seed
-        else
-            sd=0.0_dp
-        endif
+    end function  icumsum
+
+    ! minimum 
+
+    pure function minpos(x) result(id)
         !
-        ans(1)=arr(1)+sd
-        if (n < npar_cumsum) then
-            do j=2,n
-                ans(j)=ans(j-1)+arr(j)
-            end do
-        else
-            ans(2:n:2)=cumsum(arr(2:n:2)+arr(1:n-1:2),sd)
-            ans(3:n:2)=ans(2:n-1:2)+arr(3:n:2)
-        end if
+        implicit none
         !
-    end function       icumsum
+        real(dp), intent(in) :: x(:)
+        integer  :: id
+        integer  :: i
+        real(dp) :: temp
+        ! loop
+        temp = 1.0D30
+        do i = 1, size(x)
+            if (x(i).lt.temp) then
+                temp = x(i)
+                id = i
+            endif
+        enddo
+        !
+    end function  minpos
 
     ! matrix generation
 
