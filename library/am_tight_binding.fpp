@@ -471,8 +471,9 @@ contains
             write(*,'(a,a)') flare, 'energy increment dE = '//tostring(dE)
         endif
         ! get DOS
-        ! tb%dos%D = get_dos_gauss(Ep=tb%dos%E, E=tb%dr%E, kptw=ibz%w, sigma=0.01_dp)
-        tb%dos%D = get_dos_tetra(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw)
+        tb%dos%D  =  get_dos_vs_Ep(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw)
+        ! get integrated DOS
+        tb%dos%iD = get_idos_vs_Ep(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw)
         ! get projection weights for PDOS
         allocate(C,source=abs(tb%dr%C)**2)
         ! adjust projection weights if weights/bands/kpoints suppied
@@ -484,7 +485,7 @@ contains
             enddo
         endif
         ! get partial DOS
-        tb%dos%pD = get_pdos_tetra(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw, weight=C)
+        tb%dos%pD = get_pdos_vs_Ep(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw, weight=C)
     end subroutine get_dos
 
     subroutine     get_fermi_energy(tb,ibz,nelecs)
@@ -497,7 +498,7 @@ contains
         ! number of electrons
         tb%dos%nelecs = nelecs
         ! number of spins per band = 1 (spin polarized) vs. 2 (nonspin polarized)
-        tb%dos%Ef = get_Ef(E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw, nelecs=tb%dos%nelecs/real(tb%spin,dp) )
+        tb%dos%Ef = get_Ef(E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw, nelecs=tb%dos%nelecs/real(tb%spin,dp))
         !
     end subroutine get_fermi_energy
 

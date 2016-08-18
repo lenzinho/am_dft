@@ -56,7 +56,7 @@ contains
                     $:write_xml_attribute_nonallocatable(ATTRIBUTE)
                 #:endfor
                 ! allocatable        
-                #:for ATTRIBUTE in ['E','D','pD']
+                #:for ATTRIBUTE in ['E','D','iD','pD']
                     $:write_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
             write(unit,'(a/)') '</dos>'
@@ -86,7 +86,7 @@ contains
                     $:read_xml_attribute_nonallocatable(ATTRIBUTE)
                 #:endfor
                 ! allocatable        
-                #:for ATTRIBUTE in ['E','D','pD']
+                #:for ATTRIBUTE in ['E','D','iD','pD']
                     $:read_xml_attribute_allocatable(ATTRIBUTE)
                 #:endfor
             read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
@@ -209,13 +209,13 @@ contains
         elw = Emin
         eup = Emax
         ! initailize bracketing 
-        idos_up = get_idos_ep(Ep=eup,E=E,tet=tet,tetw=tetw)
-        idos_lw = get_idos_ep(Ep=elw,E=E,tet=tet,tetw=tetw)
+        idos_up = get_idos_at_ep(Ep=eup,E=E,tet=tet,tetw=tetw)
+        idos_lw = get_idos_at_ep(Ep=elw,E=E,tet=tet,tetw=tetw)
         crit = 1.0d+10
         ! search for Ef by gradualling reducing bracketted region
         search : do i = 1, 1000 ! hard-coded 1000 maximum iterations
             try_Ef = (eup+elw) / 2.0_dp
-            idos_ep = get_idos_ep(Ep=try_Ef,E=E,tet=tet,tetw=tetw)
+            idos_ep = get_idos_at_ep(Ep=try_Ef,E=E,tet=tet,tetw=tetw)
             if (abs(idos_ep-nelecs).lt.crit) then
                 crit = abs(idos_ep-nelecs)
                 Ef = try_Ef
@@ -238,7 +238,7 @@ contains
 
     ! tetrahedra methods
 
-    function       get_dos_tetra(Ep,E,tet,tetw) result(D)
+    function       get_dos_vs_Ep(Ep,E,tet,tetw) result(D)
         !
         implicit none
         !
@@ -247,41 +247,52 @@ contains
         integer , intent(in) :: tet(:,:) ! tet(:,ntets) tetrahedra conenctivity
         real(dp), intent(in) :: tetw(:) ! tetw(ntets) weight of each tetrahedron
         real(dp), allocatable :: D(:)
-        integer  :: nEs
-        integer  :: nbands
-        integer  :: ntets
-        real(dp) :: wc(4) ! weights on tetrahedron tet
-        integer  :: i,j,k
+        integer :: nEs
+        integer :: i
         ! get number of probing energies
         nEs = size(Ep)
-        ! get n of band
-        nbands = size(E,1)
-        ! number of tetrahedra
-        ntets = size(tet,2)
         ! allocate space for dos
         allocate(D(nEs))
-        !$OMP PARALLEL PRIVATE(i,j,k,wc) SHARED(D,E,Ep,nEs,tetw)
+        !$OMP PARALLEL PRIVATE(i) SHARED(D,nEs,E,Ep,tet,tetw)
         !$OMP DO
         do i = 1, nEs
-            ! initialize D(i)
-            D(i) = 0.0_dp
             ! print progress
             call show_progress(iteration=i,maximum=nEs)
-            do j = 1, nbands
-            do k = 1, ntets
-                ! get tetrahedron corner weights
-                ! w = get_tetrahedron_weight(E=Ep(i),Ec=E(j,tet(:,k)),flags='delta,blochl')
-                wc = get_wc(Ep=Ep(i),Ec=E(j,tet(:,k)),ntets=ntets)
-                ! increment DOS with contributions from band j in tetrahedron k
-                D(i) = D(i) + tetw(k) * sum(wc)
-            enddo
-            enddo
+            ! get dos
+            D(i) = get_dos_at_ep(Ep=Ep(i),E=E,tet=tet,tetw=tetw)
         enddo
         !$OMP END DO
         !$OMP END PARALLEL
-    end function   get_dos_tetra
+    end function   get_dos_vs_Ep
 
-    function       get_pdos_tetra(Ep,E,tet,tetw,weight) result(pD)
+    function       get_idos_vs_Ep(Ep,E,tet,tetw) result(iD)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: Ep(:) ! probing energies
+        real(dp), intent(in) :: E(:,:) ! E(nbands,nkpts) band energies
+        integer , intent(in) :: tet(:,:) ! tet(:,ntets) tetrahedra conenctivity
+        real(dp), intent(in) :: tetw(:) ! tetw(ntets) weight of each tetrahedron
+        real(dp), allocatable :: iD(:)
+        integer :: nEs
+        integer :: i
+        ! get number of probing energies
+        nEs = size(Ep)
+        ! allocate space for dos
+        allocate(iD(nEs))
+        !$OMP PARALLEL PRIVATE(i) SHARED(iD,nEs,E,Ep,tet,tetw)
+        !$OMP DO
+        do i = 1, nEs
+            ! print progress
+            call show_progress(iteration=i,maximum=nEs)
+            ! get dos
+            iD(i) = get_idos_at_ep(Ep=Ep(i),E=E,tet=tet,tetw=tetw)
+        enddo
+        !$OMP END DO
+        !$OMP END PARALLEL
+    end function   get_idos_vs_Ep
+
+    function       get_pdos_vs_Ep(Ep,E,tet,tetw,weight) result(pD)
         !
         implicit none
         !
@@ -318,7 +329,7 @@ contains
             do j = 1, nbands
             do k = 1, ntets
                 ! get tetrahedron corner weights
-                wc = get_wc(Ep=Ep(i),Ec=E(j,tet(:,k)),ntets=ntets)
+                wc = get_delta_wc(Ep=Ep(i),Ec=E(j,tet(:,k)),ntets=ntets)
                 ! loop over projections, increment pDOS with contributions from band j in tetrahedron k
                 do m = 1, nprojections
                     pD(m,i) = pD(m,i) + tetw(k) * sum(wc * weight(m,j,tet(:,k)) )
@@ -328,9 +339,9 @@ contains
         enddo
         !$OMP END DO
         !$OMP END PARALLEL
-    end function   get_pdos_tetra
+    end function   get_pdos_vs_Ep
 
-    function       get_wc(Ep,Ec,ntets) result(wc)
+    function       get_heaviside_wc(Ep,Ec,ntets) result(wc)
         ! get linear tetrahedron corner weights for delta function with Blochl corrections
         implicit none
         !
@@ -419,135 +430,94 @@ contains
             wc(k3)=0.25_dp/ntets
             wc(k4)=0.25_dp/ntets
         endif
-    end function   get_wc
+        ! 
+        wc = wc * ntets
+        !
+    end function   get_heaviside_wc
 
-        ! function       get_tetrahedron_weight(E,Ec,flags) result(w)
-        !     !
-        !     ! flags = heavi/delta, blochl
-        !     !
-        !     use am_rank_and_sort
-        !     !
-        !     implicit none
-        !     !
-        !     real(dp)    , intent(in) :: Ec(4)
-        !     character(*), intent(in) :: flags
-        !     real(dp) :: w(4)
-        !     real(dp) :: E,e1,e2,e3,e4,f
-        !     real(dp) :: Ei(4)
-        !     integer :: bracket
-        !     integer :: i
-        !     ! get sorted values
-        !     Ei = foursort(Ec)
-        !     e1 = Ei(1)
-        !     e2 = Ei(2)
-        !     e3 = Ei(3)
-        !     e4 = Ei(4)
-        !     !
-        !     if (e1.gt.e2) stop 'ERROR [tetrahedron_weights]: sorting failed'
-        !     if (e2.gt.e3) stop 'ERROR [tetrahedron_weights]: sorting failed'
-        !     if (e3.gt.e4) stop 'ERROR [tetrahedron_weights]: sorting failed'
-        !     !
-        !     bracket = 0
-        !     if     (E.lt.e1) then; bracket = 1
-        !     elseif (E.lt.e2) then; bracket = 2
-        !     elseif (E.lt.e3) then; bracket = 3
-        !     elseif (E.lt.e4) then; bracket = 4
-        !     elseif (E.gt.e4) then; bracket = 5
-        !     else
-        !         stop 'ERROR [tetrahedron_weights]: bracketing failed'
-        !     endif
-        !     !
-        !     if (index(flags,'heavi').ne.0) then
-        !         select case(bracket)
-        !         case (1)
-        !             w(1) = 0.0_dp
-        !             w(2) = 0.0_dp
-        !             w(3) = 0.0_dp
-        !             w(4) = 0.0_dp
-        !             f    = 0.0_dp
-        !         case (2)
-        !             w(1) = -((E-e1)**3*((E-e1)*(1.0_dp/(e1-e2)+1.0_dp/(e1-e3)+1.0_dp/(e1-e4))+4.0_dp))/((e1-e2)*(e1-e3)*(e1-e4))
-        !             w(2) =  ((E-e1)**4*1.0_dp/(e1-e2)**2)/((e1-e3)*(e1-e4))
-        !             w(3) =  ((E-e1)**4*1.0_dp/(e1-e3)**2)/((e1-e2)*(e1-e4))
-        !             w(4) =  ((E-e1)**4*1.0_dp/(e1-e4)**2)/((e1-e2)*(e1-e3))
-        !             f    =  ((E-e1)**2*(-1.2D1))/((e1-e2)*(e1-e3)*(e1-e4))
-        !         case (3)
-        !             w(1) =  (E-e1)**2/((e1-e3)*(e1-e4))+(((E-e1)**2/((e1-e3)*(e1-e4))+((E-e1)*(E-e2)*(E-e3))/((e1-e3)*(e1-e4)*(e2-e3)))*(E-e3))/(e1-e3)+((E-e4)*((E-e1)**2/((e1-e3)*(e1-e4))+((E-e2)**2*(E-e4))/((e1-e4)*(e2-e3)*(e2-e4))+((E-e1)*(E-e2)*(E-e3))/((e1-e3)*(e1-e4)*(e2-e3))))/(e1-e4)
-        !             w(2) =  ((((E-e2)**2*(E-e4))/((e1-e4)*(e2-e3)*(e2-e4))+((E-e1)*(E-e2)*(E-e3))/((e1-e3)*(e1-e4)*(e2-e3)))*(E-e3))/(e2-e3)+(E-e1)**2/((e1-e3)*(e1-e4))+((E-e2)**2*(E-e4))/((e1-e4)*(e2-e3)*(e2-e4))+((E-e2)**2*(E-e4)**2*1.0_dp/(e2-e4)**2)/((e1-e4)*(e2-e3))+((E-e1)*(E-e2)*(E-e3))/((e1-e3)*(e1-e4)*(e2-e3))
-        !             w(3) = -((((E-e2)**2*(E-e4))/((e1-e4)*(e2-e3)*(e2-e4))+((E-e1)*(E-e2)*(E-e3))/((e1-e3)*(e1-e4)*(e2-e3)))*(E-e2))/(e2-e3)-(((E-e1)**2/((e1-e3)*(e1-e4))+((E-e1)*(E-e2)*(E-e3))/((e1-e3)*(e1-e4)*(e2-e3)))*(E-e1))/(e1-e3)
-        !             w(4) = -((E-e1)*((E-e1)**2/((e1-e3)*(e1-e4))+((E-e2)**2*(E-e4))/((e1-e4)*(e2-e3)*(e2-e4))+((E-e1)*(E-e2)*(E-e3))/((e1-e3)*(e1-e4)*(e2-e3))))/(e1-e4)-((E-e2)**3*(E-e4)*1.0_dp/(e2-e4)**2)/((e1-e4)*(e2-e3))
-        !             f    =  (E*2.4D1-e1*1.2D1-e2*1.2D1+((E-e2)**2*(e1*3.0_dp+e2*3.0_dp-e3*3.0_dp-e4*3.0_dp)*4.0_dp)/((e2-e3)*(e2-e4)))/((e1-e3)*(e1-e4))
-        !         case (4)
-        !             w(1) = -((E-e4)**4*1.0_dp/(e1-e4)**2)/((e2-e4)*(e3-e4))+1.0_dp
-        !             w(2) = -((E-e4)**4*1.0_dp/(e2-e4)**2)/((e1-e4)*(e3-e4))+1.0_dp
-        !             w(3) = -((E-e4)**4*1.0_dp/(e3-e4)**2)/((e1-e4)*(e2-e4))+1.0_dp
-        !             w(4) =  ((E-e4)**3*((E-e4)*(1.0_dp/(e1-e4)+1.0_dp/(e2-e4)+1.0_dp/(e3-e4))-4.0_dp))/((e1-e4)*(e2-e4)*(e3-e4))+1.0_dp
-        !             f    =  ((E-e4)**2*(-1.2D1))/((e1-e4)*(e2-e4)*(e3-e4))
-        !         case (5)
-        !             w(1) = 1.0_dp
-        !             w(2) = 1.0_dp
-        !             w(3) = 1.0_dp
-        !             w(4) = 1.0_dp
-        !             f    = 0.0_dp
-        !         case default
-        !             stop 'ERROR [tetrahedron_weights]: heaviside, invalid bracket'
-        !         end select
-        !     elseif (index(flags,'delta').ne.0) then
-        !         select case(bracket)
-        !         case (1)
-        !             w(1) = 0.0_dp
-        !             w(2) = 0.0_dp
-        !             w(3) = 0.0_dp
-        !             w(4) = 0.0_dp
-        !             f    = 0.0_dp
-        !         case (2)
-        !             w(1) =   (E-e1)**2*1.0_dp/(e1-e2)**2*1.0_dp/(e1-e3)**2*1.0_dp/(e1-e4)**2*(E*(e4*(e2+e3)+e2*e3-e1*(e2+e3+e4)*2.0_dp+e1**2*3.0_dp)+e1*(e4*(e2+e3)+e2*e3)*2.0_dp-e1**2*(e2+e3+e4)-e2*e3*e4*3.0_dp)*(-4.0_dp)
-        !             w(2) =  ((E-e1)**3*1.0_dp/(e1-e2)**2*4.0_dp)/((e1-e3)*(e1-e4))
-        !             w(3) =  ((E-e1)**3*1.0_dp/(e1-e3)**2*4.0_dp)/((e1-e2)*(e1-e4))
-        !             w(4) =  ((E-e1)**3*1.0_dp/(e1-e4)**2*4.0_dp)/((e1-e2)*(e1-e3))
-        !             f    = -(E*2.4D1-e1*2.4D1)/((e1-e2)*(e1-e3)*(e1-e4))
-        !         case (3)
-        !             w(1) = (1.0_dp/(e1-e3)**2*1.0_dp/(e1-e4)**2*(E**2*(e1**2*e2*3.0_dp+e3*e4**2*3.0_dp+e3**2*e4*3.0_dp-e1*e3*e4*6.0_dp-e2*e3*e4*3.0_dp)-E**3*(e1*e2*2.0_dp-e1*e3*2.0_dp-e1*e4*2.0_dp-e2*e3-e2*e4+e3*e4+e1**2+e3**2+e4**2)-E*(e3**2*e4**2*3.0_dp+e1**2*e2*e3*3.0_dp+e1**2*e2*e4*3.0_dp-e1**2*e3*e4*3.0_dp-e1*e2*e3*e4*6.0_dp)+e1**2*e2*e3**2+e1**2*e2*e4**2+e1*e3**2*e4**2*2.0_dp-e1**2*e3*e4**2-e1**2*e3**2*e4+e2*e3**2*e4**2-e1*e2*e3*e4**2*2.0_dp-e1*e2*e3**2*e4*2.0_dp+e1**2*e2*e3*e4)*(-4.0_dp))/((e2-e3)*(e2-e4))
-        !             w(2) = (1.0_dp/(e2-e3)**2*1.0_dp/(e2-e4)**2*(E**2*(e1*e2**2*3.0_dp+e3*e4**2*3.0_dp+e3**2*e4*3.0_dp-e1*e3*e4*3.0_dp-e2*e3*e4*6.0_dp)-E**3*(e1*e2*2.0_dp-e1*e3-e1*e4-e2*e3*2.0_dp-e2*e4*2.0_dp+e3*e4+e2**2+e3**2+e4**2)-E*(e3**2*e4**2*3.0_dp+e1*e2**2*e3*3.0_dp+e1*e2**2*e4*3.0_dp-e2**2*e3*e4*3.0_dp-e1*e2*e3*e4*6.0_dp)+e1*e2**2*e3**2+e1*e2**2*e4**2+e1*e3**2*e4**2+e2*e3**2*e4**2*2.0_dp-e2**2*e3*e4**2-e2**2*e3**2*e4-e1*e2*e3*e4**2*2.0_dp-e1*e2*e3**2*e4*2.0_dp+e1*e2**2*e3*e4)*(-4.0_dp))/((e1-e3)*(e1-e4))
-        !             w(3) = (1.0_dp/(e1-e3)**2*1.0_dp/(e2-e3)**2*(E**2*(e1*e2**2*3.0_dp+e1**2*e2*3.0_dp+e3**2*e4*3.0_dp-e1*e2*e3*6.0_dp-e1*e2*e4*3.0_dp)-E**3*(e1*e2-e1*e3*2.0_dp-e1*e4-e2*e3*2.0_dp-e2*e4+e3*e4*2.0_dp+e1**2+e2**2+e3**2)-E*(e1**2*e2**2*3.0_dp-e1*e2*e3**2*3.0_dp+e1*e3**2*e4*3.0_dp+e2*e3**2*e4*3.0_dp-e1*e2*e3*e4*6.0_dp)-e1*e2**2*e3**2-e1**2*e2*e3**2+e1**2*e2**2*e3*2.0_dp+e1**2*e2**2*e4+e1**2*e3**2*e4+e2**2*e3**2*e4+e1*e2*e3**2*e4-e1*e2**2*e3*e4*2.0_dp-e1**2*e2*e3*e4*2.0_dp)*4.0_dp)/((e1-e4)*(e2-e4))
-        !             w(4) = (1.0_dp/(e1-e4)**2*1.0_dp/(e2-e4)**2*(E**2*(e1*e2**2*3.0_dp+e1**2*e2*3.0_dp+e3*e4**2*3.0_dp-e1*e2*e3*3.0_dp-e1*e2*e4*6.0_dp)-E**3*(e1*e2-e1*e3-e1*e4*2.0_dp-e2*e3-e2*e4*2.0_dp+e3*e4*2.0_dp+e1**2+e2**2+e4**2)-E*(e1**2*e2**2*3.0_dp-e1*e2*e4**2*3.0_dp+e1*e3*e4**2*3.0_dp+e2*e3*e4**2*3.0_dp-e1*e2*e3*e4*6.0_dp)+e1**2*e2**2*e3-e1*e2**2*e4**2-e1**2*e2*e4**2+e1**2*e2**2*e4*2.0_dp+e1**2*e3*e4**2+e2**2*e3*e4**2+e1*e2*e3*e4**2-e1*e2**2*e3*e4*2.0_dp-e1**2*e2*e3*e4*2.0_dp)*4.0_dp)/((e1-e3)*(e2-e3))
-        !             f    = (e1*e2*(-2.4D1)+e3*e4*2.4D1+E*(e1+e2-e3-e4)*2.4D1)/((e1-e3)*(e1-e4)*(e2-e3)*(e2-e4))
-        !         case (4)
-        !             w(1) =  ((E-e4)**3*1.0_dp/(e1-e4)**2*(-4.0_dp))/((e2-e4)*(e3-e4))
-        !             w(2) =  ((E-e4)**3*1.0_dp/(e2-e4)**2*(-4.0_dp))/((e1-e4)*(e3-e4))
-        !             w(3) =  ((E-e4)**3*1.0_dp/(e3-e4)**2*(-4.0_dp))/((e1-e4)*(e2-e4))
-        !             w(4) =   (E-e4)**2*1.0_dp/(e1-e4)**2*1.0_dp/(e2-e4)**2*1.0_dp/(e3-e4)**2*(E*(e1*e2+e1*e3+e2*e3-e4*(e1*2.0_dp+e2*2.0_dp+e3*2.0_dp)+e4**2*3.0_dp)+e4*(e1*(e2+e3)*2.0_dp+e2*e3*2.0_dp)-e4**2*(e1+e2+e3)-e1*e2*e3*3.0_dp)*4.0_dp
-        !             f    = -(E*2.4D1-e4*2.4D1)/((e1-e4)*(e2-e4)*(e3-e4))
-        !         case (5)
-        !             w(1) = 0.0_dp
-        !             w(2) = 0.0_dp
-        !             w(3) = 0.0_dp
-        !             w(4) = 0.0_dp
-        !             f    = 0.0_dp
-        !         case default
-        !             stop 'ERROR [tetrahedron_weights]: delta, invalid bracket'
-        !         end select
-        !     else
-        !         stop 'ERROR [tetrahedron_weights]: integration type /= heavi or delta'
-        !     endif
-        !     ! check for NaNs
-        !     if (any(isnan(w))) stop 'ERROR [tetrahedron_weights]: NaN obtained'
-        !     ! apply Bloch correction
-        !     if (index(flags,'blochl').ne.0) then
-        !         f = f*0.25_dp
-        !         do i = 1,4
-        !             w(1)=w(1)+0.025_dp*f*(Ec(i)-e1)
-        !             w(2)=w(2)+0.025_dp*f*(Ec(i)-e2)
-        !             w(3)=w(3)+0.025_dp*f*(Ec(i)-e3)
-        !             w(4)=w(4)+0.025_dp*f*(Ec(i)-e4)
-        !         enddo
-        !     endif
-        !     ! divide by four because ... anyway seems right.
-        !     w=w*0.25_dp
-        !     !
-        ! end function   get_tetrahedron_weight
+    function       get_delta_wc(Ep,Ec,ntets) result(wc)
+        ! get linear tetrahedron corner weights for delta function with Blochl corrections
+        implicit none
+        !
+        real(dp), intent(in) :: Ep    ! probing energy
+        real(dp), intent(in) :: Ec(4) ! corner energies
+        real(dp) :: wc(4)
+        integer  :: ntets
+        real(dp) :: dosEp
+        real(dp) :: e1,e2,e3,e4
+        integer  :: k1,k2,k3,k4
+        real(dp) :: o13,f12,f13,f14,f21,f23,f31,f32,f34,f24,f41,f42
+        integer  :: inds(4)
+        ! initialize shortcut
+        o13  = 1.0_dp/3.0_dp
+        ! rank corner weights in increasing order
+        inds = fourrank(Ec)
+        ! sort weights
+        e1 = Ec(inds(1))
+        e2 = Ec(inds(2))
+        e3 = Ec(inds(3))
+        e4 = Ec(inds(4))
+        ! k1-k4 are the irreducible k-points corresponding to e1-e4
+        k1 = inds(1)
+        k2 = inds(2)
+        k3 = inds(3)
+        k4 = inds(4)
+        ! calculate weights wc
+        if     (Ep.le.e1) then
+            ! Eq B1 from Blochl's PhysRevB.49.16223
+            wc(k1)=0.0_dp
+            wc(k2)=0.0_dp
+            wc(k3)=0.0_dp
+            wc(k4)=0.0_dp
+        elseif (Ep.le.e2) then
+            f12 = (Ep-e2)/(e1-e2)
+            f21 = 1.0_dp - f12
+            f13 = (Ep-e3)/(e1-e3)
+            f31 = 1.0_dp - f13
+            f14 = (Ep-e4)/(e1-e4)
+            f41 = 1.0_dp - f14
+            dosEp  = 3.0_dp * f21 * f31 * f41 / (Ep-e1)
+            wc(k1) = o13 * (f12 + f13 + f14)
+            wc(k2) = o13 * f21
+            wc(k3) = o13 * f31
+            wc(k4) = o13 * f41
+            wc = wc * dosEp
+        elseif (Ep.le.e3) then
+            f13 = (Ep-e3)/(e1-e3)
+            f31 = 1.0_dp - f13
+            f14 = (Ep-e4)/(e1-e4)
+            f41 = 1.0_dp-f14
+            f23 = (Ep-e3)/(e2-e3)
+            f32 = 1.0_dp - f23
+            f24 = (Ep-e4)/(e2-e4)
+            f42 = 1.0_dp - f24
+            dosEp  = 3.0_dp * (f23*f31 + f32*f24)
+            wc(k1) = f14 * o13 + f13*f31*f23 / dosEp
+            wc(k2) = f23 * o13 + f24*f24*f32 / dosEp
+            wc(k3) = f32 * o13 + f31*f31*f23 / dosEp
+            wc(k4) = f41 * o13 + f42*f24*f32 / dosEp
+            dosEp  = dosEp / (e4-e1)
+            wc = wc * dosEp
+        elseif (Ep.le.e4) then
+            f14 = (Ep-e4)/(e1-e4)
+            f24 = (Ep-e4)/(e2-e4)
+            f34 = (Ep-e4)/(e3-e4)
+            dosEp  = 3.0_dp * f14 * f24 * f34 / (e4-Ep)
+            wc(k1) = f14 * o13
+            wc(k2) = f24 * o13
+            wc(k3) = f34 * o13
+            wc(k4) = (3.0_dp - f14 - f24 - f34 ) * o13
+            wc = wc * dosEp
+        elseif (Ep.gt.e4) then
+            wc(k1)=0.0_dp
+            wc(k2)=0.0_dp
+            wc(k3)=0.0_dp
+            wc(k4)=0.0_dp
+       endif
+       !
+    end function   get_delta_wc
 
-    pure function  get_idos_ep(Ep,E,tet,tetw) result(idos)
+    pure function  get_idos_at_Ep(Ep,E,tet,tetw) result(idos)
         ! return integrated DOS at Ep
         implicit none
         !
@@ -594,10 +564,9 @@ contains
                 endif
             enddo
         enddo
-        !
-    end function   get_idos_ep
+    end function   get_idos_at_Ep
 
-    pure function  get_dos_ep(Ep,E,tet,tetw) result(dosEp)
+    pure function  get_dos_at_Ep(Ep,E,tet,tetw) result(dosEp)
         ! returns DOS at Ep
         implicit none
         !
@@ -645,7 +614,7 @@ contains
             enddo
         enddo
         !
-    end function   get_dos_ep
+    end function   get_dos_at_Ep
 
 end module am_dos
 
