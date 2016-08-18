@@ -25,6 +25,7 @@ module am_options
         real(dp) :: Emax
         integer  :: nEs
         real(dp) :: nelecs
+        real(dp) :: degauss
         ! tbforce
         character(max_argument_length) :: vsk_def
         character(max_argument_length) :: vsk_ref
@@ -84,6 +85,7 @@ contains
         opts%Emax             = 0.0_dp
         opts%nEs              = 0
         opts%nelecs           = 0.0_dp
+        opts%degauss          = 0.5_dp
         ! tbforce
         opts%vsk_def          = ''
         opts%vsk_ref          = ''
@@ -440,6 +442,9 @@ contains
                     write(*,'(5x,a)') '-prec <dbl>'
                     write(*,'(5x,a)') '     Numerical precision.'
                     write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-degauss <dbl>'
+                    write(*,'(5x,a)') '     Smearing width used by special kpoint integration. Default is 0.25 eV.'
+                    write(*,'(5x,a)') ''
                     write(*,'(5x,a)') '-nelecs <dbl>'
                     write(*,'(5x,a)') '     Number of valence electrons in the primitive cell occupying tight-binding bands (can be a rational number).'
                     write(*,'(5x,a)') '     Can obtain this value from 2 * [NELECT/2 (OUTCAR) minus bands SKIPPED in performing tight binding fit].'
@@ -457,6 +462,11 @@ contains
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*,iostat=iostat) opts%prec
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbdos]: iostat /= 0'
+                case('-degauss')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%degauss
                     if (iostat.ne.0) stop 'ERROR [parse_command_line_tbdos]: iostat /= 0'
                 case('-nelecs')
                     i=i+1
