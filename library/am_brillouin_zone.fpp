@@ -509,15 +509,17 @@ contains
         if (opts%verbosity.ge.1) call print_title('Irreducible Tetrahedra')
         ! allocate space
         allocate(ibz_tet(4,fbz%ntets))
-        ! get irreducible tetrahedra
+        ! sort to get irreducible tetrahedra
         do i = 1, fbz%ntets
-            ibz_tet(:,i) = fbz%ibz_id(fbz%tet(:,i))
-            ibz_tet(:,i) = ibz_tet(sort_four_integers(ibz_tet(:,i)),i)
+            ibz_tet(:,i) = foursort( fbz%ibz_id(fbz%tet(:,i)) )
         enddo
         ! get unique tetrahedra
         ibz_tet_inds = trim_null(unique_inds(ibz_tet))
         ! get number of irreducible tetrahedra
         ibz%ntets = size(ibz_tet_inds)
+        ! clear
+        if (allocated(w)) deallocate(w)
+        allocate(w(ibz%ntets))
         ! allocate stuff
         allocate(ibz%tet(4,ibz%ntets))
         allocate(ibz%tetv(ibz%ntets))
@@ -533,16 +535,19 @@ contains
             enddo
             ibz%tetw(i) = j * fbz%tetw(ibz_tet_inds(i))
             ibz%tetv(i) =     fbz%tetv(ibz_tet_inds(i))
+            ! save integer
+            w(i) = j
         enddo
         ! print stdout
         if (opts%verbosity.ge.1) then
             ! tetrahedra properties
-            write(*,*) flare, 'tetrahedra = '//tostring(ibz%ntets)
-            write(*,*) flare, 'tetrahedra volume = '//tostring(ibz%tetv(1))
+            write(*,*) flare, 'irreducible tetrahedra = '//tostring(ibz%ntets)
+            write(*,*) flare, 'tetrahedron volume = '//tostring(ibz%tetv(1))
             call disp_indent()
-            call disp(title='#'                ,style='underline',X=[1:ibz%ntets]      ,fmt='i5'  ,advance='no')
-            call disp(title='connectivity list',style='underline',X=transpose(ibz%tet) ,fmt='i5'  ,advance='no')
-            call disp(title='w'                ,style='underline',X=          ibz%tetw ,fmt='f10.5',advance='yes')
+            call disp(title='#'                ,style='underline',X=[1:ibz%ntets]      ,fmt='i5'   ,advance='no')
+            call disp(title='connectivity list',style='underline',X=transpose(ibz%tet) ,fmt='i5'   ,advance='no')
+            call disp(title='w [int]'          ,style='underline',X=              w    ,fmt='i5'   ,advance='no')
+            call disp(title='w [norm]'         ,style='underline',X=          ibz%tetw ,fmt='f10.5',advance='yes')
         endif
         !
     end subroutine get_irreducible

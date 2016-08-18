@@ -40,6 +40,7 @@ module am_tight_binding
     end type am_class_tightbinding_dos
 
     type, public :: am_class_tightbinding
+        integer :: spin                                ! number of spins per band = 1 (spin polarized) vs. 2 (nonspin polarized)
         integer :: nshells                             ! how many shells irreducible atoms
         integer :: nVs                                 ! number of irreducible matrix element values
         real(dp), allocatable :: V(:)                  ! their values
@@ -54,6 +55,7 @@ module am_tight_binding
         procedure :: get_hamiltonian
         procedure :: get_dispersion
         procedure :: get_dos
+        procedure :: get_fermi_energy
         procedure :: initialize_ft
         procedure :: optimize_matrix_element
         procedure :: read_irreducible_matrix_element
@@ -88,7 +90,7 @@ contains
         if (iotype.eq.'LISTDIRECTED') then
             write(unit,'(a/)') '<tb>'
                 ! non-allocatable
-                #:for ATTRIBUTE in ['nshells','nVs']
+                #:for ATTRIBUTE in ['nshells','nVs','spin']
                     $:write_xml_attribute_nonallocatable(ATTRIBUTE)
                 #:endfor
                 ! allocatable        
@@ -127,7 +129,7 @@ contains
         if (iotype.eq.'LISTDIRECTED') then
             read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
                 ! non-allocatable
-                #:for ATTRIBUTE in ['nshells','nVs']
+                #:for ATTRIBUTE in ['nshells','nVs','spin']
                     $:read_xml_attribute_nonallocatable(ATTRIBUTE)
                 #:endfor
                 ! allocatable        
@@ -206,6 +208,9 @@ contains
         integer :: i,j,k
         !
         if (opts%verbosity.ge.1) call print_title('Symmetry-adapted tight-binding parameters')
+        ! number of spins per band = 1 (spin polarized) vs. 2 (nonspin polarized)
+        ! spin polarized calculations not yet supported
+        tb%spin = 2
         ! get point group in tight binding basis
         tb%pg = get_tightbinding_pointgroup(pg=pg, pc=pc, ic=ic)
         ! set number of shells
@@ -481,6 +486,20 @@ contains
         ! get partial DOS
         tb%dos%pD = get_pdos_tetra(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw, weight=C)
     end subroutine get_dos
+
+    subroutine     get_fermi_energy(tb,ibz,nelecs)
+        !
+        implicit none
+        !
+        class(am_class_tightbinding), intent(inout) :: tb
+        class(am_class_ibz)         , intent(in)    :: ibz
+        real(dp)                    , intent(in)    :: nelecs
+        ! number of electrons
+        tb%dos%nelecs = nelecs
+        ! number of spins per band = 1 (spin polarized) vs. 2 (nonspin polarized)
+        tb%dos%Ef = get_Ef(E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw, nelecs=tb%dos%nelecs/real(tb%spin,dp) )
+        !
+    end subroutine get_fermi_energy
 
     ! export to matlab
 

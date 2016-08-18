@@ -125,6 +125,14 @@ module am_matlab
         module procedure dcumprod, icumprod
     end interface ! cumprod
 
+    interface foursort
+        module procedure d_foursort, i_foursort
+    end interface ! foursort
+
+    interface fourrank
+        module procedure d_fourrank, i_fourrank
+    end interface ! fourrank
+
     interface rref
         module procedure :: z_rref, d_rref
     end interface ! rref
@@ -1948,7 +1956,39 @@ module am_matlab
 
     ! basic sorting
 
-    pure function sort_four_doubles(n) result(ind)
+    pure function d_foursort(x) result(y)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: x(4)
+        real(dp) :: y(4)
+        !
+        y = x
+        if (y(1).gt.y(2)) then; y([1,2]) = y([2,1]); endif
+        if (y(3).gt.y(4)) then; y([3,4]) = y([4,3]); endif
+        if (y(1).gt.y(3)) then; y([1,3]) = y([3,1]); endif
+        if (y(2).gt.y(4)) then; y([2,4]) = y([4,2]); endif
+        if (y(2).gt.y(3)) then; y([2,3]) = y([3,2]); endif
+        !
+    end function  d_foursort
+
+    pure function i_foursort(x) result(y)
+        !
+        implicit none
+        !
+        integer, intent(in) :: x(4)
+        integer :: y(4)
+        !
+        y = x
+        if (y(1).gt.y(2)) then; y([1,2]) = y([2,1]); endif
+        if (y(3).gt.y(4)) then; y([3,4]) = y([4,3]); endif
+        if (y(1).gt.y(3)) then; y([1,3]) = y([3,1]); endif
+        if (y(2).gt.y(4)) then; y([2,4]) = y([4,2]); endif
+        if (y(2).gt.y(3)) then; y([2,3]) = y([3,2]); endif
+        !
+    end function  i_foursort
+
+    pure function d_fourrank(n) result(ind)
         ! borrowed from olle, who took it from stack overflow
         implicit none
         !
@@ -1994,13 +2034,13 @@ module am_matlab
             ind=(/lowest,middle2,middle1,highest/)
         endif
         !
-    end function  sort_four_doubles
+    end function  d_fourrank
 
-    pure function sort_four_integers(n) result(ind)
+    pure function i_fourrank(n) result(ind)
         ! borrowed from olle, who took it from stack overflow
         implicit none
         !
-        integer, intent(in) :: n(4)
+        integer,intent(in) :: n(4)
         integer :: ind(4)
         integer :: low1,high1,low2,high2,highest,lowest,middle1,middle2
         !    
@@ -2042,7 +2082,7 @@ module am_matlab
             ind=(/lowest,middle2,middle1,highest/)
         endif
         !
-    end function  sort_four_integers
+    end function  i_fourrank
 
     ! cumulative sum / product
 
