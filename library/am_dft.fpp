@@ -22,9 +22,23 @@ module am_dft
 			procedure :: load => load_dft
     end type am_class_dft
 
-contains
+    type, public :: am_class_wavecar
+    	integer :: nb1max
+    	integer :: nb2max
+    	integer :: nb3max
+    	integer :: nkpts
+    	integer :: nbands
+    	integer :: nspins
+        complex(sp), allocatable :: psi(:,:,:, :,:,:) ! psi(x,y,z, kpt,band,spin)
+    end type am_class_wavecar
 
-	!
+    type, public, extends(am_class_dft) :: am_class_vasp
+		type(am_class_wavecar)    :: wc
+		contains
+			procedure :: load_wavecar
+	end type am_class_vasp
+
+contains
 
     subroutine     load_dft(dft,opts,flags)
         ! flags = dispersion: fermi/(eigenval,procar)
@@ -107,6 +121,39 @@ contains
 	    endif
         !
     end subroutine load_dft
+
+	subroutine     load_wavecar(vasp,opts)
+        ! flags = dispersion: fermi/(eigenval,procar)
+        implicit none
+        !
+        class(am_class_vasp)  ,intent(out) :: vasp
+        type(am_class_options), intent(in) :: opts
+    	integer :: nb1max,nb2max,nb3max
+    	integer :: i,j,k
+        ! transfer options
+        vasp%wc%nkpts  = size(opts%kpt_id)
+        vasp%wc%nbands = size(opts%band_id)
+        vasp%wc%nspins = size(opts%spin_id)
+        ! query workspace
+        call read_wavecar(kpt_id=opts%kpt_id(1), band_id=opts%band_id(1), spin_id=opts%spin_id(1), &
+        	& nb1max=nb1max,nb2max=nb2max,nb3max=nb3max, iopt_filename=opts%wavecar, iopt_verbosity=opts%verbosity)
+        ! save mesh dimensions
+		vasp%wc%nb1max = nb1max
+		vasp%wc%nb2max = nb2max
+		vasp%wc%nb3max = nb3max
+        ! allocate space
+        allocate(vasp%wc%psi(nb1max*2+1,nb2max*2+1,nb3max*2+1, vasp%wc%nkpts,vasp%wc%nbands,vasp%wc%nspins))
+        ! read band
+        do i = 1, vasp%wc%nkpts
+    	do j = 1, vasp%wc%nbands
+		do k = 1, vasp%wc%nspins
+        	call read_wavecar(kpt_id=opts%kpt_id(i), band_id=opts%band_id(j), spin_id=opts%spin_id(k), &
+        		& psi=vasp%wc%psi(:,:,:,i,j,k), iopt_filename=opts%wavecar, iopt_verbosity=0)
+        enddo
+        enddo
+        enddo
+        !
+	end subroutine load_wavecar
 
 end module am_dft
 

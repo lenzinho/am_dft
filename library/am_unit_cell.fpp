@@ -1081,7 +1081,7 @@ contains
             call template_orbital_basis(ic)
             !
             if (opts%verbosity.ge.1)  then
-                write(*,'(a,a)') flare, 'Template produced: template.tb_orbitals'
+                write(*,'(a,a)') flare, 'Template produced: template.orbitals'
                 call print_title('Done!')
             endif
             !
@@ -1109,7 +1109,7 @@ contains
             integer :: fid
             ! export file
             fid = 1
-            open(unit=fid,file='template.tb_orbitals',status='replace',action='write')
+            open(unit=fid,file='template.orbitals',status='replace',action='write')
                 ! spin polarized?
                 write(fid,'(a)') 'spin: off'
                 ! irreducible atoms

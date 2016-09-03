@@ -2300,13 +2300,16 @@ contains
             d(k,1) = norm2(tau(:,k)-ref(:,1))
             d(k,2) = norm2(tau(:,k)-ref(:,2))
         enddo
-        ! permutation map
+        ! initialize permutation map
         allocate(PM(ntaus,nsyms))
         ! determine the permutations of atomic indicies which results from each space symmetry operation
         !$OMP PARALLEL PRIVATE(i,j,k,found,tau_rot) SHARED(ntaus,nsyms,seitz,tau,prec,PM)
         !$OMP DO
         do j = 1, ntaus
             do i = 1, nsyms
+                ! initialize
+                PM(j,i) = 0.0_dp
+                ! set found
                 found = .false.
                 ! apply rotational component
                 tau_rot = matmul(seitz(1:3,1:3,i),tau(:,j))

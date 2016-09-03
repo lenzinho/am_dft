@@ -244,6 +244,8 @@ contains
             endif
             enddo
         enddo
+        ! write template
+        call tb%write_irreducible_matrix_element(fname='template.tb_vsk')
         !
         contains
         function     get_tightbinding_pointgroup(pg,pc,ic) result(tb_pg)
@@ -698,19 +700,27 @@ contains
         !
     end function   get_matrix_element
 
-    subroutine     write_irreducible_matrix_element(tb)
+    subroutine     write_irreducible_matrix_element(tb,fname)
         !
         implicit none
         !
         class(am_class_tightbinding), intent(in) :: tb
+        character(*), optional, intent(in) :: fname
+        character(:), allocatable :: fname_internal
         integer :: k ! shell index
         integer :: alpha
         integer :: beta
         integer :: i
         integer :: fid
+        ! set fname
+        if (present(fname)) then
+            allocate(fname_internal,source=fname)
+        else
+            allocate(fname_internal,source='outfile.tb_vsk')
+        endif
         ! write point group
         fid = 1
-        open(unit=fid,file='outfile.tb_vsk',status='replace',action='write')
+        open(unit=fid,file=fname_internal,status='replace',action='write')
             !
             write(fid,'(a5,a16,3a6)') '#', 'V', 'shell', 'alpha', 'beta'
             do i = 1, tb%nVs

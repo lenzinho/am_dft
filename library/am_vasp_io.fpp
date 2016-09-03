@@ -4,6 +4,7 @@ module am_vasp_io
     use dispmodule
     use am_constants
     use am_matlab
+    use am_mkl, only : det
 
     implicit none
 
@@ -53,7 +54,7 @@ module am_vasp_io
         verbosity = 1
         if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
         !
-        if (verbosity.ge.1) call print_title('Reading IBZKPT')
+        if (verbosity.ge.1) call print_title('IBZKPT')
         !
         fid = 1
         open(unit=fid,file=trim(fname),status='old',action='read',iostat=iostat)
@@ -154,7 +155,7 @@ module am_vasp_io
         close(fid)
     end subroutine read_ibzkpt 
 
-    subroutine     read_procar(nkpts,nbands,nions,norbitals,nspins,E,occ,kpt,w,orbitals,lmproj,iopt_filename,iopt_verbosity)
+    subroutine     read_procar(nkpts,nbands,nions,norbitals,nspinss,E,occ,kpt,w,orbitals,lmproj,iopt_filename,iopt_verbosity)
         !>
         !> Reads PROCAR into file.
         !>
@@ -162,13 +163,13 @@ module am_vasp_io
         !> nbands number of bands
         !> nions number of ions
         !> norbitals number of orbitals
-        !> nspins number of spins
+        !> nspinss number of spins
         !> E(nbands,nkpts) energies
         !> occ(nbands,nkpts) occupancies
         !> kpt(3,nkpts) kpoint
         !> w(nkpts) weights (normalized)
         !> orbitals(norbitals) names of orbitals
-        !> lmproj(nspins,norbitals,nions,nbands,nkpts)
+        !> lmproj(nspinss,norbitals,nions,nbands,nkpts)
         !>
         implicit none
         !
@@ -180,19 +181,19 @@ module am_vasp_io
         integer              , intent(out), optional :: nbands    !> nbands number of bands
         integer              , intent(out), optional :: nions     !> nions number of ions
         integer              , intent(out), optional :: norbitals !> norbitals number of orbitals
-        integer              , intent(out), optional :: nspins    !> nspins number of spins
+        integer              , intent(out), optional :: nspinss    !> nspinss number of spins
         real(dp), allocatable, intent(out), optional :: E(:,:)    !> E(nbands,nkpts) energies
         real(dp), allocatable, intent(out), optional :: occ(:,:)  !> occ(nbands,nkpts) occupancies
         real(dp), allocatable, intent(out), optional :: kpt(:,:)  !> kpt(3,nkpts) kpoint
         real(dp), allocatable, intent(out), optional :: w(:)      !> w(nkpts) weights (normalized)
         character(:), allocatable, intent(out), optional :: orbitals(:)     !> orbitals(norbitals) names of orbitals
-        real(dp), allocatable, intent(out), optional :: lmproj(:,:,:,:,:)   !> lmproj(nspins,norbitals,nions,nbands,nkpts)
+        real(dp), allocatable, intent(out), optional :: lmproj(:,:,:,:,:)   !> lmproj(nspinss,norbitals,nions,nbands,nkpts)
         ! <INTERNAL>
-        integer :: internal_nkpts     !> nkpts number of kpoints
-        integer :: internal_nbands    !> nbands number of bands
-        integer :: internal_nions     !> nions number of ions
-        integer :: internal_norbitals !> norbitals number of orbitals
-        integer :: internal_nspins    !> nspins number of spins
+        integer :: x_nkpts     !> nkpts number of kpoints
+        integer :: x_nbands    !> nbands number of bands
+        integer :: x_nions     !> nions number of ions
+        integer :: x_norbitals !> norbitals number of orbitals
+        integer :: x_nspinss    !> nspinss number of spins
         integer :: fid ! file id
         integer :: iostat
         character(maximum_buffer_size) :: buffer ! read buffer
@@ -204,12 +205,12 @@ module am_vasp_io
         verbosity = 1
         if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
         !
-        internal_nspins = 1 ! not yet implemented!
-        if (present(nspins)) nspins = internal_nspins
+        x_nspinss = 1 ! not yet implemented!
+        if (present(nspinss)) nspinss = x_nspinss
         !
         !
         !
-        if (verbosity.ge.1) call print_title('Reading PROCAR')
+        if (verbosity.ge.1) call print_title('PROCAR')
         !
         fid = 1
         open(unit=fid,file=trim(fname),status='old',action='read',iostat=iostat)
@@ -222,29 +223,29 @@ module am_vasp_io
             read(unit=fid,fmt='(a)') buffer
             word = strsplit(buffer,delimiter=' ')
             !> nkpts number of kpoints
-            read(word(4),*)  internal_nkpts
-            if (present(nkpts)) nkpts = internal_nkpts
+            read(word(4),*)  x_nkpts
+            if (present(nkpts)) nkpts = x_nkpts
             !> nbands number of bands
-            read(word(8),*)  internal_nbands
-            if (present(nbands)) nbands = internal_nbands
+            read(word(8),*)  x_nbands
+            if (present(nbands)) nbands = x_nbands
             !> nions number of ions
-            read(word(12),*) internal_nions
-            if (present(nions)) nions = internal_nions
+            read(word(12),*) x_nions
+            if (present(nions)) nions = x_nions
             !
-            if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'kpoints = ', tostring(internal_nkpts)
-            if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'bands = ', tostring(internal_nbands)
-            if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'ions = ', tostring(internal_nions)
+            if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'kpoints = ', tostring(x_nkpts)
+            if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'bands = ', tostring(x_nbands)
+            if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'ions = ', tostring(x_nions)
             !
             !> E(nbands,nkpts) energies
             !> occ(nbands,nkpts) occupancies
             !> kpt(3,nkpts) kpoint
             !> w(nkpts) normalized weights
-            if (present(E))   allocate(E(internal_nbands,internal_nkpts))
-            if (present(occ)) allocate(occ(internal_nbands,internal_nkpts))
-            if (present(kpt)) allocate(kpt(3,internal_nkpts))
-            if (present(w))   allocate(w(internal_nkpts))
+            if (present(E))   allocate(E(x_nbands,x_nkpts))
+            if (present(occ)) allocate(occ(x_nbands,x_nkpts))
+            if (present(kpt)) allocate(kpt(3,x_nkpts))
+            if (present(w))   allocate(w(x_nkpts))
             !
-            do i = 1,internal_nkpts
+            do i = 1,x_nkpts
                 ! (LINE 3,62) skip line
                 read(unit=fid,fmt=*)
                 ! (LINE 4,63) kpt-point    1 :    0.50000000 0.50000000 0.50000000     weight = 0.00625000
@@ -261,7 +262,7 @@ module am_vasp_io
                     read(word(9),*) w(i)
                 endif
                 !
-                do j = 1, internal_nbands
+                do j = 1, x_nbands
                     ! (LINE 5,64) skip line
                     read(unit=fid,fmt=*)
                     ! (LINE 6,65) band   1 # energy   -3.91737559 # occ.  2.00000000
@@ -279,29 +280,29 @@ module am_vasp_io
                         word = strsplit(buffer,delimiter=' ')
                         !> norbitals number of orbitals
                         norbitals = size(word)-2 ! minus 2 to account for the ion, which is not an orbital, and the total!
-                        if (present(norbitals)) norbitals = internal_norbitals
-                        if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'orbitals = ', tostring(internal_norbitals)
+                        if (present(norbitals)) norbitals = x_norbitals
+                        if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'orbitals = ', tostring(x_norbitals)
                         !> orbitals(norbitals) names of orbitals
                         if (present(orbitals)) then
-                            allocate(character(len=15) :: orbitals(internal_norbitals))
-                            do l = 1, internal_norbitals
+                            allocate(character(len=15) :: orbitals(x_norbitals))
+                            do l = 1, x_norbitals
                                 orbitals(l) = word(l+1)
                             enddo
                             if (verbosity.ge.1) write(*,'(a,a,100(x,a))' ) flare, 'orbitals =', ( trim(orbitals(l)), l = 1, norbitals)
                         endif
-                        !> lmproj(nspins,norbitals,nions,nbands,nkpts)
-                        if (present(lmproj)) allocate(lmproj(internal_nspins,internal_norbitals,internal_nions,internal_nbands,internal_nkpts))
+                        !> lmproj(nspinss,norbitals,nions,nbands,nkpts)
+                        if (present(lmproj)) allocate(lmproj(x_nspinss,x_norbitals,x_nions,x_nbands,x_nkpts))
                         !
                     endif
                     ! (LINE 9,10) 
                     ! 1  0.224  0.003  0.001  0.009  0.000  0.000  0.000  0.000  0.000  0.237
                     ! 2  0.224  0.003  0.001  0.009  0.000  0.000  0.000  0.000  0.000  0.237
-                    do l = 1, internal_nions
+                    do l = 1, x_nions
                         read(unit=fid,fmt='(a)') buffer
                         word = strsplit(buffer,delimiter=' ')
                         if (present(lmproj)) then
                             do m = 1, norbitals
-                                !> lmproj(nspins,norbitals,nions,nbands,nkpts) (spins not implemented yet!)
+                                !> lmproj(nspinss,norbitals,nions,nbands,nkpts) (spins not implemented yet!)
                                 read(word(m+1),*) lmproj(1,m,l,j,i)
                             enddo
                         endif
@@ -317,20 +318,20 @@ module am_vasp_io
         close(fid)
     end subroutine read_procar
 
-    subroutine     read_prjcar(nkpts,nbands,nspins,nkpts_prim,bas_prim,k_prim,w_prim,kpt,w,E,kproj,iopt_filename,iopt_verbosity)
+    subroutine     read_prjcar(nkpts,nbands,nspinss,nkpts_prim,bas_prim,k_prim,w_prim,kpt,w,E,kproj,iopt_filename,iopt_verbosity)
         !>
         !> Reads PRJCAR into variables.
         !>
         !> nkpts_prim number of primitive kpoints (POSCAR.prim)
         !> nkpts number of kpoints (KPOINTS)
         !> nbands number of bands
-        !> nspins number of spin components
+        !> nspinss number of spin components
         !> bas_prim(3,3) reciprocal basis (POSCAR.prim)
         !> k_prim(nkpts_prim) normalized kpoint weights (POSCAR.prim)
         !> kpt(3,nkpts) kvector (POSCAR)
         !> w(nkpts) normalized kpoint weights (POSCAR)
         !> E(nbands,nkpts) energies
-        !> kproj(nspin,nkpts_prim,nbands,nkpts)
+        !> kproj(nspins,nkpts_prim,nbands,nkpts)
         !>
         implicit none
         !
@@ -341,14 +342,14 @@ module am_vasp_io
         integer,intent(out) :: nkpts_prim      !> nkpts_prim number of primitive kpoints (POSCAR.prim)
         integer,intent(out) :: nkpts           !> nkpts number of kpoints (KPOINTS)
         integer,intent(out) :: nbands          !> nbands number of bands
-        integer,intent(out) :: nspins          !> nspins number of spin components
+        integer,intent(out) :: nspinss          !> nspinss number of spin components
         real(dp), intent(out) :: bas_prim(3,3) !> bas_prim(3,3) reciprocal basis (POSCAR.prim)
         real(dp), allocatable, intent(out) :: k_prim(:,:) !> k_prim(3,nkpts_prim) kvector (POSCAR.prim)
         real(dp), allocatable, intent(out) :: w_prim(:)   !> w_prim(nkpts_prim) weights (POSCAR.prim, normalized)
         real(dp), allocatable, intent(out) :: kpt(:,:)    !> kpt(3,nkpts) kvector (POSCAR)
         real(dp), allocatable, intent(out) :: w(:)        !> w(nkpts) weights (POSCAR, normalized)
         real(dp), allocatable, intent(out) :: E(:,:)      !> E(nbands,nkpts) energies
-        real(dp), allocatable, intent(out) :: kproj(:,:,:,:) !> kproj(nspin,nkpts_prim,nbands,nkpts)
+        real(dp), allocatable, intent(out) :: kproj(:,:,:,:) !> kproj(nspins,nkpts_prim,nbands,nkpts)
         integer :: n !> spin index
         ! i/o
         integer :: fid, iostat
@@ -362,7 +363,7 @@ module am_vasp_io
         !
         !
         !
-        if (verbosity.ge.1) call print_title('Reading PRJCAR')
+        if (verbosity.ge.1) call print_title('PRJCAR')
         !
         ! SKIM FILE TO DETEMRINE PARAMETERS NECESSARY TO ALLOCATE SPACE
         !
@@ -375,7 +376,7 @@ module am_vasp_io
             nkpts_prim = 0
             nkpts  = 0
             nbands = 0
-            nspins = 0
+            nspinss = 0
             !
             do
                 read(unit=fid,fmt='(a)',iostat=iostat) buffer
@@ -389,8 +390,8 @@ module am_vasp_io
                     if (i .gt. nkpts_prim) nkpts_prim = i
                 case('spin')
                     read(word(3),*)  i
-                    !> nspins number of spin components
-                    if (i .gt. nspins) nspins = i
+                    !> nspinss number of spin components
+                    if (i .gt. nspinss) nspinss = i
                 case('kpt-point')
                     read(word(5),*)  i
                     !> nkpts number of kpoints (KPOINTS)
@@ -408,7 +409,7 @@ module am_vasp_io
         !
         if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'kpoint projections = ', tostring(nkpts_prim)
         if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'kpoints = ', tostring(nkpts)
-        if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'spins = ', tostring(nspins)
+        if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'spins = ', tostring(nspinss)
         if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'bands = ', tostring(nbands)
         !> k_prim(3,nkpts_prim) kvector (POSCAR.prim)
         allocate(k_prim(3,nkpts_prim))
@@ -420,8 +421,8 @@ module am_vasp_io
         allocate(w(nkpts))
         !> E(nbands,nkpts) energies
         allocate(E(nbands,nkpts))
-        !> kproj(nspins,nkpts_prim,nbands,nkpts)
-        allocate(kproj(nspins,nkpts_prim,nbands,nkpts))   
+        !> kproj(nspinss,nkpts_prim,nbands,nkpts)
+        allocate(kproj(nspinss,nkpts_prim,nbands,nkpts))   
         !
         ! OPEN TO READ STUFF
         !
@@ -483,7 +484,7 @@ module am_vasp_io
                 case('band')
                     read(word(2),*) j ! j is band index
                     read(word(4),*) E(j,i)
-                    !> kproj(nspin,nkpts_prim,nbands,nkpts)
+                    !> kproj(nspins,nkpts_prim,nbands,nkpts)
                     read(unit=fid,fmt=*) kproj(n,:,j,i)
                 end select
             endif
@@ -494,18 +495,18 @@ module am_vasp_io
         !
     end subroutine read_prjcar
 
-    subroutine     read_eigenval(nkpts,nbands,nspins,nelecs,kpt,w,E,lmproj,iopt_filename,iopt_verbosity)
+    subroutine     read_eigenval(nkpts,nbands,nspinss,nelecs,kpt,w,E,lmproj,iopt_filename,iopt_verbosity)
         !>
         !> Read EIGENVAL into variables
         !>
         !> nkpts number of kpoints
         !> nbands number of bands
-        !> nspins number of spins
+        !> nspinss number of spins
         !> nelects number of electrons
         !> kpt(3,nkpts) kpoint
         !> w(nkpts) weights (normalized)
         !> E(nbands,nkpts) energies
-        !> lmproj(nspins,norbitals,nions,nbands,nkpts) projections for spins 
+        !> lmproj(nspinss,norbitals,nions,nbands,nkpts) projections for spins 
         !>
         implicit none
         !
@@ -513,18 +514,18 @@ module am_vasp_io
         integer :: ispin !> vasp ispin flag
         integer              , intent(out), optional :: nkpts      !> nkpts number of kpoints
         integer              , intent(out), optional :: nbands     !> nbands number of bands
-        integer              , intent(out), optional :: nspins     !> nspins number of spins
+        integer              , intent(out), optional :: nspinss     !> nspinss number of spins
         integer              , intent(out), optional :: nelecs     !> nelects number of electrons
         real(dp), allocatable, intent(out), optional :: kpt(:,:)   !> kpt(3,nkpts) kpoint
         real(dp), allocatable, intent(out), optional :: w(:)       !> w(nkpts) weights (normalized)
         real(dp), allocatable, intent(out), optional :: E(:,:)     !> E(nbands,nkpts) energies
-        real(dp), allocatable, intent(out), optional :: lmproj(:,:,:,:,:) !> lmproj(nspins,norbitals,nions,nbands,nkpts) projections for spins
+        real(dp), allocatable, intent(out), optional :: lmproj(:,:,:,:,:) !> lmproj(nspinss,norbitals,nions,nbands,nkpts) projections for spins
         ! <INTERNAL PARAMETERS>
-        integer :: internal_nkpts     !> nkpts number of kpoints
-        integer :: internal_nbands    !> nbands number of bands
-        integer :: internal_nspins    !> nspins number of spins
-        integer :: internal_norbitals !> norbitals number of ions - NO INFORMATION ABOUT THIS IN EIGEVAL, SET TO 1
-        integer :: internal_nions     !> nions number of ions - NO INFORMATION ABOUT THIS IN EIGEVAL, SET TO 1
+        integer :: x_nkpts     !> nkpts number of kpoints
+        integer :: x_nbands    !> nbands number of bands
+        integer :: x_nspinss    !> nspinss number of spins
+        integer :: x_norbitals !> norbitals number of ions - NO INFORMATION ABOUT THIS IN EIGEVAL, SET TO 1
+        integer :: x_nions     !> nions number of ions - NO INFORMATION ABOUT THIS IN EIGEVAL, SET TO 1
         ! i/o
         real(dp) :: try
         integer :: fid
@@ -551,7 +552,7 @@ module am_vasp_io
             verbosity = 1
         endif
         !
-        if (verbosity.ge.1) call print_title('Reading EIGENVAL')
+        if (verbosity.ge.1) call print_title('EIGENVAL')
         !
         fid = 1
         open(unit=fid,file=trim(fname),status='old',action='read',iostat=iostat)
@@ -580,19 +581,19 @@ module am_vasp_io
                 read(word(1),*) nelecs
             endif
             !> nkpts number of kpoints
-            read(word(2),*) internal_nkpts
+            read(word(2),*) x_nkpts
             if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'kpoints = ', trim(word(2))
             if (present(nkpts)) then
-                nkpts = internal_nkpts
+                nkpts = x_nkpts
             endif
             !> nbands number of bands
             read(word(3),*) nbands_without_spin
             if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'bands (neglecting spin) = ', trim(word(3))
             !
-            if (present(kpt)) allocate(kpt(3,internal_nkpts))
-            if (present(w))   allocate(w(internal_nkpts))
+            if (present(kpt)) allocate(kpt(3,x_nkpts))
+            if (present(w))   allocate(w(x_nkpts))
             !
-            do i = 1, internal_nkpts
+            do i = 1, x_nkpts
                 ! (LINE 7) skip
                 read(fid,*)
                 ! (LINE 8)   0.0000000E+00  0.0000000E+00  0.0000000E+00  0.3356718E-04
@@ -619,42 +620,42 @@ module am_vasp_io
                         ! determine which format
                         read(word(size(word)),*) try
                         if (abs(try-1.0_dp).lt.tiny) then
-                            !> nspins number of spins
-                            internal_nspins = size(word)-2
+                            !> nspinss number of spins
+                            x_nspinss = size(word)-2
                         else
-                            !> nspins number of spins
-                            internal_nspins = size(word)-1
+                            !> nspinss number of spins
+                            x_nspinss = size(word)-1
                         endif
-                        if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'spins = ', tostring(internal_nspins)
-                        if (present(nspins)) then
-                            nspins = internal_nspins
+                        if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'spins = ', tostring(x_nspinss)
+                        if (present(nspinss)) then
+                            nspinss = x_nspinss
                         endif
-                        internal_nbands = nbands_without_spin*internal_nspins
-                        if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'bands (with spin) = ', tostring(internal_nbands)
+                        x_nbands = nbands_without_spin*x_nspinss
+                        if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'bands (with spin) = ', tostring(x_nbands)
                         if (present(nbands)) then 
-                            nbands = internal_nbands
+                            nbands = x_nbands
                         endif
-                        if (present(E)) allocate(E(internal_nbands,internal_nkpts))
-                        !> lmproj(nspins,norbitals,nions,nbands,nkpts) projections for spins
+                        if (present(E)) allocate(E(x_nbands,x_nkpts))
+                        !> lmproj(nspinss,norbitals,nions,nbands,nkpts) projections for spins
                         !> this array contains the projection character onto everything from oribtals, to ions, to spins
                         !> for systems with 2 spins, the spin component of lmproj is binary with 0 or 1
                         !> for dirac spinors with 4 spin components (spin orbit coupling), the spin component of lmproj takes on non-integer values
-                        internal_nions = 1
-                        internal_norbitals = 1
+                        x_nions = 1
+                        x_norbitals = 1
                         if (present(lmproj)) then
-                            allocate(lmproj(internal_nspins,internal_norbitals,internal_nions,internal_nbands,internal_nkpts))
+                            allocate(lmproj(x_nspinss,x_norbitals,x_nions,x_nbands,x_nkpts))
                             lmproj = 0.0_dp
                         endif
                         !
                     endif
-                    do m = 1, internal_nspins
+                    do m = 1, x_nspinss
                         j_and_m = j_and_m + 1
                         !> E(nbands,nkpts) energies
                         !> this array has one entry per band per spin
                         if (present(E)) then
                             read(word(m+1),*) E(j_and_m,i)
                         endif
-                        !> lmproj(nspins,norbitals,nions,nbands,nkpts) projections for spins
+                        !> lmproj(nspinss,norbitals,nions,nbands,nkpts) projections for spins
                         if (present(lmproj)) lmproj(m,1,1,j_and_m,i) = 1.0_dp
                     enddo
                     !
@@ -664,7 +665,307 @@ module am_vasp_io
         !
     end subroutine read_eigenval
 
-    ! read_doscar(efermi=Ef, nedos=dft%dos%nEs, dos=dft%dos%D, E=dft%dos%E, iopt_filename=opts%doscar, iopt_verbosity=0)
+    subroutine     read_wavecar(kpt_id,band_id,spin_id, nb1max,nb2max,nb3max, psi, iopt_filename,iopt_verbosity)
+        !
+        implicit none
+        !
+        integer     , intent(in) :: kpt_id  ! kpt,band,spin index of wavefunction to read
+        integer     , intent(in) :: band_id ! kpt,band,spin index of wavefunction to read
+        integer     , intent(in) :: spin_id ! kpt,band,spin index of wavefunction to read
+        integer     , intent(out), optional :: nb1max ! for allocation of array
+        integer     , intent(out), optional :: nb2max ! for allocation of array
+        integer     , intent(out), optional :: nb3max ! for allocation of array
+        complex(sp) , intent(out), optional :: psi(:,:,:)
+        character(*), intent(in) , optional :: iopt_filename
+        integer     , intent(in) , optional :: iopt_verbosity
+        character(max_argument_length) :: fname
+        real(dp), allocatable :: xlist(:)
+        real(dp), allocatable :: ylist(:)
+        real(dp), allocatable :: zlist(:)
+        real(dp)   , allocatable :: occ(:)
+        complex(dp), allocatable :: E(:)
+        real(dp) :: a(3,3), recbas(3,3)
+        real(dp) :: wk(3)
+        real(dp) :: ecut
+        real(dp) :: vol
+        complex(sp), allocatable :: coeff_nG(:)
+        real(dp) :: xrecl,xnspins,xprec,x_nkpts,x_nbands,x_npws
+        integer  :: recl, nspins, prec, nkpts, nbands, npws
+        integer, allocatable :: G(:,:) ! G(1:3,nGs)
+        integer :: x_nb1max
+        integer :: x_nb2max
+        integer :: x_nb3max
+        integer :: max_npws
+        integer :: irec, iband, l
+        integer :: i, j ! loop variables
+        integer :: fid
+        integer :: verbosity
+        integer :: iostat
+        !
+        if (present(iopt_filename)) then
+            fname = iopt_filename
+        else
+            fname = "WAVECAR"
+        endif
+        !
+        if (present(iopt_verbosity)) then
+            verbosity = iopt_verbosity
+        else
+            verbosity = 1
+        endif
+        !
+        if (verbosity.ge.1) call print_title('WAVECAR')
+        !
+        if (verbosity.ge.1) write(*,'(a,a)') flare, 'file read = '//trim(fname)
+        ! initialize FID
+        fid = 1
+        ! initialize record length
+        recl=24
+        open(unit=fid,file=trim(fname),access='direct',recl=recl,iostat=iostat,status='old')
+            if (iostat.ne. 0) stop 'ERROR [read_wavecar]: problem reading WAVECAR. Check that file exists.'
+            read(unit=fid,rec=1) xrecl, xnspins, xprec
+            ! recl
+            recl = nint(xrecl)
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'recl = '//tostring(recl)
+            ! spins
+            nspins = nint(xnspins)
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'nspins = '//tostring(nspins)
+            ! precision
+            prec = nint(xprec)
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'prec = '//tostring(prec)
+            ! check if complex wavecar is sp
+            if (prec.eq.45210) stop 'ERROR [read_wavecar]: WAVECAR must be in complex(sp), i.e. complex*16'
+            if (spin_id.gt.nspins) stop 'ERROR [read_wavecar]: spin_id exceeds the number of spins'
+        close(unit=fid)
+        ! open again
+        open(unit=fid,file=fname,access='direct',recl=recl,iostat=iostat,status='old')
+            if (iostat.ne. 0) stop 'ERROR [read_wavecar]: problem reading WAVECAR. Check that file exists.'
+            ! number of kpts, number of bands, cutoff energy, real-space basis
+            read(unit=fid,rec=2) x_nkpts, x_nbands, ecut, ((a(j,i),j=1,3),i=1,3)
+            ! nkpts
+            nkpts = nint(x_nkpts)
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'nkpts = '//tostring(nkpts)
+            ! nbands
+            nbands = nint(x_nbands)
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'nbands = '//tostring(nbands)
+            ! checks
+            if (kpt_id.gt.nkpts) stop 'ERROR [read_wavecar]: kpt_id exceeds the number of kpoints'
+            if (band_id.gt.nbands) stop 'ERROR [read_wavecar]: band_id exceeds the number of bands'
+            ! stdout
+            if (verbosity.ge.1) then
+                write(*,'(a,a)') flare, 'bas = '
+                call disp_indent()
+                call disp(X=a)
+            endif
+            ! get reciprocal cell volume
+            vol = det(a)
+            ! stdout
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'vol = '//tostring(vol)
+            ! get reciprocal basis
+            recbas = inv(a) * 2*pi
+            ! recbas
+            if (verbosity.ge.1) then
+                write(*,'(a,a)') flare, 'recbas (using 2pi convention) = '
+                call disp_indent()
+                call disp(X=recbas)
+            endif
+            ! estimate number of plane waves
+            call estimate_npws(ecut=ecut,recbas=recbas,x_nb1max=x_nb1max,x_nb2max=x_nb2max,x_nb3max=x_nb3max,max_npws=max_npws)
+            ! stdout
+            if (verbosity.ge.1) then
+                write(*,'(a,a)') flare, 'x_nb1max = '//tostring(x_nb1max)
+                write(*,'(a,a)') flare, 'x_nb2max = '//tostring(x_nb2max)
+                write(*,'(a,a)') flare, 'x_nb3max = '//tostring(x_nb3max)
+                write(*,'(a,a)') flare, 'max_npws = '//tostring(max_npws)
+            endif
+            ! derail
+            if (present(nb1max).or.present(nb2max).or.present(nb3max)) then
+                ! query workspace
+                nb1max = x_nb1max
+                nb2max = x_nb2max
+                nb3max = x_nb3max
+            elseif (present(psi)) then
+                ! write wave-function
+                ! find the wave function
+                irec=3+(kpt_id-1)*(nbands+1)+(spin_id-1)*nkpts*(nbands+1)
+                ! allocate space for energies and occupancies
+                allocate(occ(nbands))
+                allocate(E(nbands))
+                ! read the number of plane waves, the reciprocal lattice coordinate, and the band_id energy and occupancy
+                read(unit=fid,rec=irec) x_npws, (wk(i),i=1,3), (E(iband),occ(iband),iband=1,nbands)
+                ! convert to integer
+                npws = nint(x_npws)
+                ! stdout
+                if (verbosity.ge.1) write(*,'(a,a)') flare, 'npws = '//tostring(npws)
+                ! get reciprocal lattice vectors offset by wk which have kinetic energies below cutoff
+                G = get_G(x_nb1max=x_nb1max,x_nb2max=x_nb2max,x_nb3max=x_nb3max,recbas=recbas,wk=wk,ecut=ecut,max_npws=max_npws,npws=npws)
+                ! set record to planewave expansion coefficients corresponding to a particular band
+                irec=irec+band_id
+                ! allocate number of planewaves for coefficients
+                allocate(coeff_nG(npws))
+                ! plane-wave expansion coefficients depend on band index and kpoint, as expected wavefunctions corresponding to eigenvectors
+                read(unit=fid,rec=irec) (coeff_nG(l), l=1 , npws)
+                ! get real-space grid in fractional coordinates 
+                allocate(xlist,source=[0:2*x_nb1max]/real(1+2*x_nb1max,dp))
+                allocate(ylist,source=[0:2*x_nb2max]/real(1+2*x_nb2max,dp))
+                allocate(zlist,source=[0:2*x_nb3max]/real(1+2*x_nb3max,dp))
+                ! fourier transform plane waves to obtain real space wave function
+                psi = get_psi(vol=vol,wk=wk,coeff_nG=coeff_nG,G=G,xlist=xlist,ylist=ylist,zlist=zlist)
+            else
+                stop 'ERROR [read_wavecar]: nb1max,nb2max,nb3max or psi must be requested'
+            endif
+        close(fid)
+        contains
+        function     get_G(x_nb1max,x_nb2max,x_nb3max,recbas,wk,ecut,max_npws,npws) result(G)
+            ! Count the number of plane waves that have energy below the plane-wave cutoff energy and checks 
+            ! that it matches the value written by vasp; record reciprocal lattice points corresponding to these planewaves
+            implicit none
+            !
+            integer , intent(in) :: x_nb1max
+            integer , intent(in) :: x_nb2max
+            integer , intent(in) :: x_nb3max
+            real(dp), intent(in) :: recbas(3,3)
+            real(dp), intent(in) :: wk(3)
+            real(dp), intent(in) :: ecut
+            integer , intent(in) :: max_npws
+            integer , intent(in) :: npws
+            integer, allocatable :: G(:,:) ! G(1:3,nGs)
+            integer, allocatable :: x_G(:,:) ! G(1:3,nGs)
+            integer, allocatable :: gx_list(:)
+            integer, allocatable :: gy_list(:)
+            integer, allocatable :: gz_list(:)
+            real(dp) :: kpt(3)
+            integer :: i, j, k, n ! loop variables
+            real(dp) :: c
+            real(dp) :: etot
+            ! allocate space
+            allocate(x_G(3,max_npws))
+            ! constant 'c' is 2m/hbar**2 in units of 1/eV Ang^2 (value is adjusted in final decimal places to agree with 
+            ! VASP value; program checks for discrepancy of any results between this and VASP values)
+            ! hbar/2m = 0.26246582250210965422d0 / eV Ang^2
+            c = 0.262465831d0 ! to match vasp
+            ! Generate the FFT grid used by VASP
+            gx_list = fftshift([-x_nb1max:x_nb1max])
+            gy_list = fftshift([-x_nb2max:x_nb2max])
+            gz_list = fftshift([-x_nb3max:x_nb3max])
+            ! initialize planewave counter
+            n=0
+            ! loop over reciprocal lattice points
+            do k = 1, 2*x_nb3max+1
+            do j = 1, 2*x_nb2max+1
+            do i = 1, 2*x_nb1max+1
+                kpt  = matmul(recbas, wk + [gx_list(i),gy_list(j),gz_list(k)] )
+                ! calculate the free-electron planewave energy
+                ! etot = hbar^2 | k + G |^2 / 2m; note c = 1/(hbar^2/2m)
+                etot = norm2(kpt)**2/c
+                ! check whether it is below the planewave expansion cutoff energy
+                if (etot.lt.ecut) then
+                    n=n+1
+                    x_G(1,n)=gx_list(i)
+                    x_G(2,n)=gy_list(j)
+                    x_G(3,n)=gz_list(k)
+                endif
+            enddo
+            enddo
+            enddo
+            ! check that the number of planewaves match saved value
+            if (n.ne.npws) stop 'ERROR [read_wavecar]: mismatched number of planewaves for which hbar^2 | k + G |^2 / 2m < E_cutoff'
+            ! mismatch could be require a small adjustment in c value
+            ! mismatch could be due to using gamma version o vasp to generate wavecar
+            allocate(G,source=x_G(1:3,1:npws))
+        end function get_G
+        function     get_psi(vol,wk,coeff_nG,G,xlist,ylist,zlist) result(psi)
+            !
+            implicit none
+            !
+            real(dp)   , intent(in) :: wk(3)
+            real(dp)   , intent(in) :: vol
+            complex(sp), intent(in) :: coeff_nG(:)
+            integer    , intent(in) :: G(:,:) ! G(1:3,nGs)
+            real(dp)   , intent(in) :: xlist(:)
+            real(dp)   , intent(in) :: ylist(:)
+            real(dp)   , intent(in) :: zlist(:)
+            complex(sp),allocatable :: psi(:,:,:)
+            integer  :: n, m, o
+            integer  :: i, j, k, l ! loop variables
+            ! get sizes
+            n = size(xlist)
+            m = size(ylist)
+            o = size(zlist)
+            ! initialize wavefunction on realspace grid [0,1)
+            allocate(psi(n,m,o))
+            psi = 0.0_dp
+            ! loop real space coordinates
+            do k = 1, n
+            do j = 1, m
+            do i = 1, o
+                ! loop over planewaves
+                do l = 1, npws
+                    ! G is a list of reciprocal lattice points (integer kpt_id values in fractional coordinates; i.e. no forbidden points)
+                    ! this is essentially performing the fourier transform to obtain the wave function in real space
+                    psi(i,j,k) = psi(i,j,k) + coeff_nG(l) * exp(itwopi*dot_product( wk + G(:,l), [xlist(i),ylist(j),zlist(k)] ) )
+                enddo
+                psi(i,j,k) = psi(i,j,k)/sqrt(vol)
+            enddo
+            enddo
+            enddo
+        end function get_psi
+        subroutine     estimate_npws(ecut,recbas,x_nb1max,x_nb2max,x_nb3max,max_npws)
+            !
+            implicit none
+            !
+            real(dp), intent(in) :: ecut
+            real(dp), intent(in) :: recbas(3,3)
+            integer :: x_nb1max , x_nb2max , x_nb3max
+            integer :: max_npws
+            real(dp) :: vtmp(3)
+            real(dp) :: c
+            real(dp) :: phi12,phi13,phi23,phi123,sinphi123
+            integer :: x_nb1maxA, x_nb2maxA, x_nb3maxA
+            integer :: x_nb1maxB, x_nb2maxB, x_nb3maxB
+            integer :: x_nb1maxC, x_nb2maxC, x_nb3maxC
+            integer :: npmaxA , npmaxB , npmaxC
+            real(dp) :: vmag
+            ! constant 'c' is 2m/hbar**2 in units of 1/eV Ang^2 (value is adjusted in final decimal places to agree with 
+            ! VASP value; program checks for discrepancy of any results between this and VASP values)
+            ! hbar/2m = 0.26246582250210965422d0 / eV Ang^2
+            c = 0.262465831d0 ! to match vasp
+            ! estimate the number of planewaves along each primitive direction
+            phi12=acos(dot_product(recbas(:,1),recbas(:,2))/(norm2(recbas(:,1))*norm2(recbas(:,2))))
+            vtmp = cross_product(recbas(:,1),recbas(:,2))
+            vmag=sqrt(vtmp(1)**2+vtmp(2)**2+vtmp(3)**2)
+            sinphi123=(dot_product(recbas(:,3),Vtmp))/(vmag*norm2(recbas(:,3)))
+            x_nb1maxA=(sqrt(ecut*c)/(norm2(recbas(:,1))*abs(sin(phi12))))+1
+            x_nb2maxA=(sqrt(ecut*c)/(norm2(recbas(:,2))*abs(sin(phi12))))+1
+            x_nb3maxA=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sinphi123)))+1
+            npmaxA=nint(4.*pi*x_nb1maxA*x_nb2maxA*x_nb3maxA/3.)
+            ! repeat...
+            phi13=acos(dot_product(recbas(:,1),recbas(:,3))/(norm2(recbas(:,1))*norm2(recbas(:,3))))
+            vtmp = cross_product(recbas(:,1),recbas(:,3))
+            vmag=sqrt(vtmp(1)**2+vtmp(2)**2+vtmp(3)**2)
+            sinphi123=(dot_product(recbas(:,2),Vtmp))/(vmag*norm2(recbas(:,2)))
+            phi123=abs(asin(sinphi123))
+            x_nb1maxB=(sqrt(ecut*c)/(norm2(recbas(:,1))*abs(sin(phi13))))+1
+            x_nb2maxB=(sqrt(ecut*c)/(norm2(recbas(:,2))*abs(sinphi123)))+1
+            x_nb3maxB=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sin(phi13))))+1
+            npmaxB=nint(4.*pi*x_nb1maxB*x_nb2maxB*x_nb3maxB/3.)
+            ! repeat...
+            phi23=acos(dot_product(recbas(:,2),recbas(:,3))/(norm2(recbas(:,2))*norm2(recbas(:,3))))
+            vtmp = cross_product(recbas(:,2),recbas(:,3))
+            vmag=sqrt(vtmp(1)**2+vtmp(2)**2+vtmp(3)**2)
+            sinphi123=(dot_product(recbas(:,1),Vtmp))/(vmag*norm2(recbas(:,1)))
+            phi123=abs(asin(sinphi123))
+            x_nb1maxC=(sqrt(ecut*c)/(norm2(recbas(:,1))*abs(sinphi123)))+1
+            x_nb2maxC=(sqrt(ecut*c)/(norm2(recbas(:,2))*abs(sin(phi23))))+1
+            x_nb3maxC=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sin(phi23))))+1 
+            npmaxC=nint(4.*pi*x_nb1maxC*x_nb2maxC*x_nb3maxC/3.)
+            ! get the largest values in each of the three cases
+            x_nb1max=max(x_nb1maxA,x_nb1maxB,x_nb1maxC)
+            x_nb2max=max(x_nb2maxA,x_nb2maxB,x_nb2maxC)
+            x_nb3max=max(x_nb3maxA,x_nb3maxB,x_nb3maxC)
+            max_npws=min(npmaxA,npmaxB,npmaxC)
+        end subroutine estimate_npws
+    end subroutine read_wavecar
 
     subroutine     read_doscar(efermi,nedos,dos,E,iopt_filename,iopt_verbosity)
         !
@@ -681,7 +982,7 @@ module am_vasp_io
         character(max_argument_length) :: fname
         integer :: verbosity
         integer :: iostat
-        integer :: internal_nedos
+        integer :: x_nedos
         integer :: fid
         integer :: i
         !
@@ -725,14 +1026,14 @@ module am_vasp_io
                 endif
             endif
             ! number of dos enegies
-            read(word(3),*) internal_nedos
-            if (present(nedos)) nedos = internal_nedos
-            if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'energies = ', tostring(internal_nedos)
+            read(word(3),*) x_nedos
+            if (present(nedos)) nedos = x_nedos
+            if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'energies = ', tostring(x_nedos)
             ! allocate space for dos
-            allocate(E(internal_nedos))
-            allocate(dos(internal_nedos))
+            allocate(E(x_nedos))
+            allocate(dos(x_nedos))
             ! (LINE 7) -11.571  0.0000E+00  0.0000E+00
-            do i = 1, internal_nedos
+            do i = 1, x_nedos
                 read(unit=fid,fmt='(a)') buffer
                 word = strsplit(buffer,delimiter=' ')
                 read(word(1),*) E(i)

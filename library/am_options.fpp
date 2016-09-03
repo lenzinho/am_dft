@@ -37,11 +37,16 @@ module am_options
         ! ibz
         integer  :: n(3) ! monkhorst pack mesh grid dimensions
         real(dp) :: s(3) ! monkhorst pack mesh grid shift
-        ! 
+        ! wave
+        integer, allocatable :: kpt_id(:)
+        integer, allocatable :: band_id(:)
+        integer, allocatable :: spin_id(:)
+        !
         character(max_argument_length) :: ibzkpt
         character(max_argument_length) :: procar
         character(max_argument_length) :: prjcar
         character(max_argument_length) :: eigenval
+        character(max_argument_length) :: wavecar
         character(max_argument_length) :: doscar
         character(max_argument_length) :: poscar
         character(max_argument_length) :: wan_amn
@@ -58,6 +63,7 @@ module am_options
         procedure :: parse_command_line_tbdr
         procedure :: parse_command_line_uc
         procedure :: parse_command_line_ibz
+        procedure :: parse_command_line_wave
     end type am_class_options
 
 contains
@@ -97,13 +103,19 @@ contains
         ! ibz
         opts%n                = [9,9,9]          ! monkhorst pack mesh grid dimensions
         opts%s                = real([0,0,0],dp) ! monkhorst pack mesh grid shift
-        !
+        ! wave
+        opts%kpt_id           = 1
+        opts%band_id          = 1
+        opts%spin_id          = 1
+        ! vasp files
         opts%ibzkpt           = 'IBZKPT'
         opts%procar           = 'PROCAR'
         opts%prjcar           = 'PRJCAR'
         opts%doscar           = 'DOSCAR'
+        opts%wavecar          = 'WAVECAR'
         opts%eigenval         = 'EIGENVAL'
         opts%poscar           = 'POSCAR'
+        ! wannier90 files
         opts%wan_amn          = 'wannier90.amn'
         opts%wan_mmn          = 'wannier90.mmn'
         opts%wan_win          = 'wannier90.win'
@@ -608,7 +620,7 @@ contains
         class(am_class_options), intent(inout) :: opts
         character(max_argument_length) :: argument
         integer :: narg
-        integer :: i,j
+        integer :: i
         integer :: iostat
         !
         call opts%set_default
@@ -720,6 +732,94 @@ contains
             end select
         enddo
     end subroutine parse_command_line_ibz
+
+    subroutine     parse_command_line_wave(opts)
+        !
+        implicit none
+        !
+        class(am_class_options), intent(inout) :: opts
+        character(max_argument_length) :: argument
+        integer :: narg
+        integer :: i
+        integer :: iostat
+        !
+        call opts%set_default
+        !
+        narg=command_argument_count()
+        !
+        i=0
+        do while ( i < narg )
+            i=i+1
+            call get_command_argument(i,argument)
+            select case(argument)
+                case('-h')
+                    write(*,'(5x,a)') '-h'
+                    write(*,'(5x,a)') '     Prints this message and exits.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-verbosity <int>'
+                    write(*,'(5x,a)') '     Controls stdout: (0) supress all output, (1) default, (2) verbose.'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-kpt <int>'
+                    write(*,'(5x,a)') '     K-point index of wavefunction. Example: 0 ; 3 ; 2-3 ; 1,4,6 , with zero corresponding to all kpoints in wavecar'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-band <int>'
+                    write(*,'(5x,a)') '     Band index of wavefunction. Example: 0 ; 3 ; 2-3 ; 1,4,6 , with zero corresponding to all bands in wavecar'
+                    write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-spin <int>'
+                    write(*,'(5x,a)') '     spin index of wavefunction. Example: 0 ; 1 ; 2 ; 1-2 , with zero corresponding to all bands in wavecar'
+                    write(*,'(5x,a)') ''
+                    stop
+                case('-verbosity')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    read(argument,*,iostat=iostat) opts%verbosity
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_wave]: iostat /= 0'
+                case('-kpt')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    opts%kpt_id = parse(argument=argument)
+                case('-band')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    opts%band_id = parse(argument=argument)
+                case('-spin')
+                    i=i+1
+                    call get_command_argument(i,argument)
+                    opts%spin_id = parse(argument=argument)
+                case default
+                    stop 'ERROR [parse_command_line_wave]: unrecognized option'
+            end select
+        enddo
+        contains 
+        function     parse(argument) result(array)
+            !
+            implicit none
+            !
+            character(max_argument_length) :: argument
+            character(len=:), allocatable :: word(:)
+            integer, allocatable :: array(:)
+            integer :: n, j
+            integer :: iostat
+            ! parse
+            if     (index(trim(argument),'-').ne.0) then
+                word = strsplit(trim(argument),'-')
+                n = size(word)
+                if (n.gt.2) stop 'ERROR [parse_command_line_wave]: too many inputs'
+                allocate(array,source = [ str2int(trim(word(1))) : str2int(trim(word(2))) ])
+            elseif (index(trim(argument),',').ne.0) then
+                word = strsplit(trim(argument),',')
+                n = size(word)
+                allocate(array(n))
+                do j = 1, n
+                    array(j) = str2int(trim(word(j)))
+                enddo
+            else
+                allocate(array(1))
+                read(argument,*,iostat=iostat) array(1)
+                if (iostat.ne.0) stop 'ERROR [parse_command_line_wave]: iostat /= 0'
+            endif
+        end function parse
+    end subroutine parse_command_line_wave
 
 end module
 

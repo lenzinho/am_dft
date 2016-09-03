@@ -46,6 +46,10 @@ module am_matlab
         module procedure dmeshgrid, imeshgrid
     end interface ! meshgrid
 
+    interface fftshift
+        module procedure i_fftshift, d_fftshift
+    end interface ! fftshift
+
     interface rot2irrep
         module procedure rot2irrep_l, rot2irrep_j
     end interface ! rot2irrep
@@ -1256,6 +1260,30 @@ module am_matlab
           new = string(1:idx-1)//ins//string(idx+len(place):len(string))
         end if
     end function       strrep 
+
+    ! type conversion
+
+    function     str2int(str) result(num)
+        !
+        implicit none
+        !
+        character(*), intent(in) :: str
+        integer :: num
+        !
+        num = nint(str2dbl(str))
+        !
+    end function str2int
+
+    function     str2dbl(str) result(num)
+        !
+        implicit none
+        !
+        character(*), intent(in) :: str
+        real(dp) :: num
+        !
+        read(str,*) num
+        !
+    end function str2dbl
     
     ! vector
 
@@ -2539,6 +2567,46 @@ module am_matlab
         C(An+1:Bn,Am+1:Bm) = B
         !
     end function  direct_sum
+
+    pure function d_fftshift(x) result(y)
+        ! converts array:
+        !    -5    -4    -3    -2    -1     0     1     2     3     4     5
+        ! to:
+        !     1     2     3     4     5    -5    -4    -3    -2    -1     0
+        ! by permuting positions. The latter is used by fft routines.
+        implicit none
+        !
+        real(dp), intent(in) :: x(:)
+        real(dp),allocatable :: y(:)
+        integer :: n
+        !
+        n = size(x)
+        !
+        allocate(y(n))
+        ! 
+        y = cshift(x,floor(n/2.0_dp))
+        !
+    end function  d_fftshift
+
+    pure function i_fftshift(x) result(y)
+        ! converts array:
+        !    -5    -4    -3    -2    -1     0     1     2     3     4     5
+        ! to:
+        !     1     2     3     4     5    -5    -4    -3    -2    -1     0
+        ! by permuting positions. The latter is used by fft routines.
+        implicit none
+        !
+        integer, intent(in) :: x(:)
+        integer,allocatable :: y(:)
+        integer :: n
+        !
+        n = size(x)
+        !
+        allocate(y(n))
+        ! 
+        y = cshift(x,floor(n/2.0_dp))
+        !
+    end function  i_fftshift
 
     ! logicals
 

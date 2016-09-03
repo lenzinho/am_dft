@@ -1,4 +1,4 @@
-PROGS   = uc sym tensor tbvsk tbfit tbforce tbdr ibz tbdos
+PROGS   = uc sym tensor tbvsk tbfit tbforce tbdr ibz tbdos wave
 
 include makefile.inc
 
@@ -33,6 +33,9 @@ tbdr: $(AMLIB)
 ibz: $(AMLIB) 
 	(cd prog_ibz; $(MAKE) )
 
+wave: $(AMLIB) 
+	(cd prog_wave; $(MAKE) )
+
 $(AMLIB): 
 	(cd $(DIRLIB); $(MAKE) )
 
@@ -43,7 +46,10 @@ clean:
 	(cd prog_tbvsk;  $(MAKE) clean)
 	(cd prog_tbfit;  $(MAKE) clean)
 	(cd prog_tbdos;  $(MAKE) clean)
+	(cd prog_tbforce;$(MAKE) clean)
+	(cd prog_tbdr;   $(MAKE) clean)
 	(cd prog_ibz; 	 $(MAKE) clean)
+	(cd prog_wave; 	 $(MAKE) clean)
 	(cd $(DIRLIB); 	 $(MAKE) clean)
 
 

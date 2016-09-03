@@ -399,11 +399,9 @@ contains
             integer , allocatable :: PM(:,:)
             integer , allocatable :: shell_id(:)
             integer  :: i,j,k
-            !
             ! PM(uc%natoms,sg%nsyms) shows how atoms are permuted by each space symmetry operation
             ! (IMPORTANT: Must use [cart]! The rotation operation needs to be strictly unitary.)
-            ! (NOTE 	: If rotational group, rather than point group were used, can probably perform check by ommiting skip_check.)
-            PM = permutation_map(seitz=pg%seitz_cart, tau=sphere%tau_cart, flags='relax_pbc,skip_check', prec=opts%prec)
+            PM = permutation_map(seitz=pg%seitz_cart, tau=sphere%tau_cart, flags='relax_pbc', prec=opts%prec)
             ! get pairs starting with closest atoms first
             allocate(shell_id(sphere%natoms))
             shell_id=0
@@ -418,14 +416,12 @@ contains
                     enddo
                 endif
             enddo
-            !
             !  Permutation matrix for Si (first atom is in a shell by itself, second three atoms are in a shell by themselves):
 			!  atom 1 [ 0.00000, 0.00000, 0.00000]:  1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1
 			!  atom 2 [ 1.35750, 1.35750, 1.35750]:  2   4   3   5   0   0   0   0   0   0   5   5   3   2   4   2   4   3   0   0   0   0   0   0   0   0   0   0   5   2   2   4   2   3   0   0   0   0   0   0   0   0   5   5   4   3   4   3
 			!  atom 3 [-1.35750,-1.35750, 1.35750]:  3   5   2   4   0   0   0   0   0   0   2   3   5   5   3   4   2   4   0   0   0   0   0   0   0   0   0   0   3   5   3   3   4   2   0   0   0   0   0   0   0   0   4   2   5   5   2   4
 			!  atom 4 [ 1.35750,-1.35750,-1.35750]:  4   2   5   3   0   0   0   0   0   0   4   2   4   3   5   5   3   2   0   0   0   0   0   0   0   0   0   0   4   4   5   2   3   4   0   0   0   0   0   0   0   0   2   3   3   2   5   5
 			!  atom 5 [-1.35750, 1.35750,-1.35750]:  5   3   4   2   0   0   0   0   0   0   3   4   2   4   2   3   5   5   0   0   0   0   0   0   0   0   0   0   2   3   4   5   5   5   0   0   0   0   0   0   0   0   3   4   2   4   3   2
-			!
         end function   identify_shells
     end subroutine get_primitive_shell
 
