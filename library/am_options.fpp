@@ -309,6 +309,9 @@ contains
                     write(*,'(5x,a)') '-prec <dbl>'
                     write(*,'(5x,a)') '     Numerical precision.'
                     write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-wavefunction'
+                    write(*,'(5x,a)') '     Fits wavefunction in addition to eigenvalues. Requires "-file wavecar".'
+                    write(*,'(5x,a)') ''
                     write(*,'(5x,a)') '-file <eigenval/procar/wavecar>'
                     write(*,'(5x,a)') '     File containing dispersion to fit.'
                     write(*,'(5x,a)') ''
@@ -332,6 +335,8 @@ contains
                     call get_command_argument(i,argument)
                     read(argument,*,iostat=iostat) opts%prec
                     if (iostat.ne.0) stop 'ERROR [parse_command_line_tbfit]: iostat /= 0'
+                case('-wavefunction')
+                    opts%flags=trim(opts%flags)//'wavefunction'
                 case('-file')
                     i=i+1
                     call get_command_argument(i,argument)
@@ -369,6 +374,10 @@ contains
         !
         if (index(opts%flags,'skip').eq.0) then
             stop 'ERROR [parse_command_line_tbfit]: skip must be specified! See tbfit -h.'
+        endif
+        !
+        if ((index(opts%flags,'wavefunction').ne.0).and.(index(opts%flags,'wavecar').eq.0)) then
+            stop 'ERROR [parse_command_line_tbfit]: wavefunction fitting requires "-file wavecar"'
         endif
         !
     end subroutine parse_command_line_tbfit
