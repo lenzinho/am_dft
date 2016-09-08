@@ -309,7 +309,7 @@ contains
                     write(*,'(5x,a)') '-prec <dbl>'
                     write(*,'(5x,a)') '     Numerical precision.'
                     write(*,'(5x,a)') ''
-                    write(*,'(5x,a)') '-file <eigenval/procar>'
+                    write(*,'(5x,a)') '-file <eigenval/procar/wavecar>'
                     write(*,'(5x,a)') '     File containing dispersion to fit.'
                     write(*,'(5x,a)') ''
                     write(*,'(5x,a)') '-shift <fermi/minimum/none>'
@@ -339,8 +339,10 @@ contains
                         opts%flags=trim(opts%flags)//'eigenval'
                     elseif (index(argument,'procar')) then
                         opts%flags=trim(opts%flags)//'procar'
+                    elseif (index(argument,'procar')) then
+                        opts%flags=trim(opts%flags)//'wavecar'
                     else
-                        stop 'ERROR [parse_command_line_tbfit]: file /= eigenval or procar'
+                        stop 'ERROR [parse_command_line_tbfit]: file /= eigenval, procar, or wavecar'
                     endif
                 case('-shift')
                     i=i+1

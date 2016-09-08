@@ -1,4 +1,4 @@
-#:include "fypp_macros.fpp"
+! #:include "fypp_macros.fpp"
 module am_dft
 
     use dispmodule
@@ -44,13 +44,15 @@ contains
         ! flags = dispersion: fermi/(eigenval,procar)
         implicit none
         !
-        class(am_class_dft)   ,intent(out) :: dft
+        class(am_class_dft)  ,intent(out) :: dft
         type(am_class_options), intent(in) :: opts
         character(*)          , intent(in) :: flags
+        integer :: nb1max,nb2max,nb3max
         real(dp), allocatable :: kpt_recp(:,:) ! kpoint coordinates
         real(dp), allocatable :: w(:)     ! normalized weights
         real(dp) :: Ef
         real(dp) :: offset
+        integer :: i
         !
         if (opts%verbosity.ge.1) call print_title('DFT')
         !
@@ -85,8 +87,36 @@ contains
 	            ! create instance
 	            call dft%bz%create_bz(kpt_recp=kpt_recp, bas=dft%uc%bas, prec=opts%prec)
 	            !
+            elseif  (index(flags,'wavecar').ne.0) then
+                ! type-specific stuff
+                select type (dft)
+                type is (am_class_vasp)
+	            	! query wavecar
+			        call query_wavecar(nb1max=nb1max,nb2max=nb2max,nb3max=nb3max, &
+			        	& nkpts=dft%bz%nkpts,nbands=dft%dr%nbands,fname=opts%wavecar,verbosity=0)
+			        ! allocate kpoint space
+			        allocate(kpt_recp(3,dft%bz%nkpts))
+			        ! read kpoints
+			        do i = 1, dft%bz%nkpts
+						call read_wavecar(kpt_id=i, band_id=1, spin_id=1, kpt=kpt_recp(1:3,i), &
+							& iopt_filename=opts%wavecar, iopt_verbosity=0)
+			        enddo
+		            ! create bz instance
+		            ! NOTE: BAS USED FOR BZ CREATION IS READ FROM POSCAR RATHER THAN FROM WAVECAR
+		            call dft%bz%create_bz(kpt_recp=kpt_recp, bas=dft%uc%bas, prec=opts%prec)
+			        ! allocate space for dispersion
+			        allocate(dft%dr%E(dft%dr%nbands,dft%bz%nkpts))
+			        ! read dispersion
+			        do i = 1, dft%bz%nkpts
+						call read_wavecar(kpt_id=i, band_id=1, spin_id=1, E=dft%dr%E(:,i), &
+							& iopt_filename=opts%wavecar, iopt_verbosity=0)
+			        enddo
+                class default
+                    ! do nothing
+                    stop 'ERROR [load]: type must be vasp in order to read wavecar'
+                end select
 	        else
-	            stop 'ERROR [load]: eigenval or procar flag required'
+	            stop 'ERROR [load]: eigenval, procar, or wavecar flag required'
 	        endif
 	        ! check for flags asking for shift in energy
 	        if     (index(flags,'minimum').ne.0) then
@@ -128,16 +158,16 @@ contains
         !
         class(am_class_vasp)  ,intent(out) :: vasp
         type(am_class_options), intent(in) :: opts
-    	integer :: nb1max,nb2max,nb3max
+    	integer :: nb1max,nb2max,nb3max,nkpts,nbands
     	integer :: i,j,k
         ! transfer options
         vasp%wc%nkpts  = size(opts%kpt_id)
         vasp%wc%nbands = size(opts%band_id)
         vasp%wc%nspins = size(opts%spin_id)
         ! query workspace
-        call read_wavecar(kpt_id=opts%kpt_id(1), band_id=opts%band_id(1), spin_id=opts%spin_id(1), &
-        	& nb1max=nb1max,nb2max=nb2max,nb3max=nb3max, iopt_filename=opts%wavecar, iopt_verbosity=opts%verbosity)
-        ! save mesh dimensions
+        call query_wavecar(nb1max=nb1max,nb2max=nb2max,nb3max=nb3max, &
+        	& nkpts=nkpts,nbands=nbands,fname=opts%wavecar,verbosity=opts%verbosity)
+        ! save mesh parameters [-nb1max:nb1max], [-nb2max:nb2max], [-nb3max:nb3max]
 		vasp%wc%nb1max = nb1max
 		vasp%wc%nb2max = nb2max
 		vasp%wc%nb3max = nb3max
@@ -147,8 +177,8 @@ contains
         do i = 1, vasp%wc%nkpts
     	do j = 1, vasp%wc%nbands
 		do k = 1, vasp%wc%nspins
-        	call read_wavecar(kpt_id=opts%kpt_id(i), band_id=opts%band_id(j), spin_id=opts%spin_id(k), &
-        		& psi=vasp%wc%psi(:,:,:,i,j,k), iopt_filename=opts%wavecar, iopt_verbosity=0)
+			call read_wavecar(kpt_id=opts%kpt_id(i), band_id=opts%band_id(j), spin_id=opts%spin_id(k), &
+				& psi=vasp%wc%psi(:,:,:,i,j,k), iopt_filename=opts%wavecar, iopt_verbosity=0)
         enddo
         enddo
         enddo

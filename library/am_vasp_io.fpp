@@ -665,29 +665,179 @@ module am_vasp_io
         !
     end subroutine read_eigenval
 
-    subroutine     read_wavecar(kpt_id,band_id,spin_id, nb1max,nb2max,nb3max, psi, iopt_filename,iopt_verbosity)
+    subroutine     query_wavecar(nb1max,nb2max,nb3max,nkpts,nbands, fname,verbosity)
+        !
+        implicit none
+        !
+        integer     , intent(out) :: nb1max
+        integer     , intent(out) :: nb2max
+        integer     , intent(out) :: nb3max
+        integer     , intent(out) :: nbands
+        integer     , intent(out) :: nkpts
+        character(*), intent(in) , optional :: fname
+        integer     , intent(in) , optional :: verbosity
+        integer :: max_npws
+        integer :: kpt_id  ! kpt,band,spin index of wavefunction to read
+        integer :: band_id ! kpt,band,spin index of wavefunction to read
+        integer :: spin_id ! kpt,band,spin index of wavefunction to read
+        real(dp) :: bas(3,3)
+        real(dp) :: recbas(3,3)
+        real(dp) :: ecut
+        real(dp) :: vol
+        real(dp) :: xrecl,xnspins,xprec,xnkpts,xnbands
+        integer  ::  recl, nspins, prec
+        integer :: i, j ! loop variables
+        integer :: fid
+        integer :: iostat
+        !
+        ! initialize parameters
+        fid = 1
+        kpt_id = 1
+        band_id = 1
+        spin_id = 1
+        ! 
+        if (verbosity.ge.1) call print_title('WAVECAR')
+        !
+        if (verbosity.ge.1) write(*,'(a,a)') flare, 'file read = '//trim(fname)
+        ! initialize record length
+        recl=24
+        open(unit=fid,file=trim(fname),access='direct',recl=recl,iostat=iostat,status='old')
+            if (iostat.ne. 0) stop 'ERROR [read_wavecar]: problem reading WAVECAR. Check that file exists.'
+            ! read record length, number of spins, and wavefunction precision
+            read(unit=fid,rec=1) xrecl, xnspins, xprec
+            ! recl
+            recl = nint(xrecl)
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'recl = '//tostring(recl)
+            ! spins
+            nspins = nint(xnspins)
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'nspins = '//tostring(nspins)
+            ! precision
+            prec = nint(xprec)
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'prec = '//tostring(prec)
+            ! check if complex wavecar is sp
+            if (prec.eq.45210) stop 'ERROR [read_wavecar]: WAVECAR must be in complex(sp), i.e. complex*16'
+            if (spin_id.gt.nspins) stop 'ERROR [read_wavecar]: spin_id exceeds the number of spins'
+        close(unit=fid)
+        ! open again
+        open(unit=fid,file=fname,access='direct',recl=recl,iostat=iostat,status='old')
+            if (iostat.ne. 0) stop 'ERROR [read_wavecar]: problem reading WAVECAR. Check that file exists.'
+            ! number of kpts, number of bands, cutoff energy, real-space basis
+            read(unit=fid,rec=2) xnkpts, xnbands, ecut, ((bas(j,i),j=1,3),i=1,3)
+            ! nkpts
+            nkpts = nint(xnkpts)
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'nkpts = '//tostring(nkpts)
+            ! nbands
+            nbands = nint(xnbands)
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'nbands = '//tostring(nbands)
+            ! stdout
+            if (verbosity.ge.1) then
+                write(*,'(a,a)') flare, 'bas = '
+                call disp_indent()
+                call disp(X=bas)
+            endif
+            ! get reciprocal cell volume
+            vol = det(bas)
+            ! stdout
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'vol = '//tostring(vol)
+            ! get reciprocal basis
+            recbas = inv(bas) * 2*pi
+            ! recbas
+            if (verbosity.ge.1) then
+                write(*,'(a,a)') flare, 'recbas (using 2pi convention) = '
+                call disp_indent()
+                call disp(X=recbas)
+            endif
+            ! estimate number of plane waves
+            call estimate_npws(ecut=ecut,recbas=recbas,x_nb1max=nb1max,x_nb2max=nb2max,x_nb3max=nb3max,max_npws=max_npws)
+            ! stdout
+            if (verbosity.ge.1) then
+                write(*,'(a,a)') flare, 'nb1max = '//tostring(nb1max)
+                write(*,'(a,a)') flare, 'nb2max = '//tostring(nb2max)
+                write(*,'(a,a)') flare, 'nb3max = '//tostring(nb3max)
+                write(*,'(a,a)') flare, 'max_npws = '//tostring(max_npws)
+            endif
+        close(fid)
+        contains
+        subroutine     estimate_npws(ecut,recbas,x_nb1max,x_nb2max,x_nb3max,max_npws)
+            !
+            implicit none
+            !
+            real(dp), intent(in) :: ecut
+            real(dp), intent(in) :: recbas(3,3)
+            integer :: x_nb1max , x_nb2max , x_nb3max
+            integer :: max_npws
+            real(dp) :: vtmp(3)
+            real(dp) :: c
+            real(dp) :: phi12,phi13,phi23,phi123,sinphi123
+            integer :: x_nb1maxA, x_nb2maxA, x_nb3maxA
+            integer :: x_nb1maxB, x_nb2maxB, x_nb3maxB
+            integer :: x_nb1maxC, x_nb2maxC, x_nb3maxC
+            integer :: npmaxA , npmaxB , npmaxC
+            real(dp) :: vmag
+            ! constant 'c' is 2m/hbar**2 in units of 1/eV Ang^2 (value is adjusted in final decimal places to agree with 
+            ! VASP value; program checks for discrepancy of any results between this and VASP values)
+            ! hbar/2m = 0.26246582250210965422d0 / eV Ang^2
+            c = 0.262465831d0 ! to match vasp
+            ! estimate the number of planewaves along each primitive direction
+            phi12=acos(dot_product(recbas(:,1),recbas(:,2))/(norm2(recbas(:,1))*norm2(recbas(:,2))))
+            vtmp = cross_product(recbas(:,1),recbas(:,2))
+            vmag=sqrt(vtmp(1)**2+vtmp(2)**2+vtmp(3)**2)
+            sinphi123=(dot_product(recbas(:,3),Vtmp))/(vmag*norm2(recbas(:,3)))
+            x_nb1maxA=(sqrt(ecut*c)/(norm2(recbas(:,1))*abs(sin(phi12))))+1
+            x_nb2maxA=(sqrt(ecut*c)/(norm2(recbas(:,2))*abs(sin(phi12))))+1
+            x_nb3maxA=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sinphi123)))+1
+            npmaxA=nint(4.*pi*x_nb1maxA*x_nb2maxA*x_nb3maxA/3.)
+            ! repeat...
+            phi13=acos(dot_product(recbas(:,1),recbas(:,3))/(norm2(recbas(:,1))*norm2(recbas(:,3))))
+            vtmp = cross_product(recbas(:,1),recbas(:,3))
+            vmag=sqrt(vtmp(1)**2+vtmp(2)**2+vtmp(3)**2)
+            sinphi123=(dot_product(recbas(:,2),Vtmp))/(vmag*norm2(recbas(:,2)))
+            phi123=abs(asin(sinphi123))
+            x_nb1maxB=(sqrt(ecut*c)/(norm2(recbas(:,1))*abs(sin(phi13))))+1
+            x_nb2maxB=(sqrt(ecut*c)/(norm2(recbas(:,2))*abs(sinphi123)))+1
+            x_nb3maxB=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sin(phi13))))+1
+            npmaxB=nint(4.*pi*x_nb1maxB*x_nb2maxB*x_nb3maxB/3.)
+            ! repeat...
+            phi23=acos(dot_product(recbas(:,2),recbas(:,3))/(norm2(recbas(:,2))*norm2(recbas(:,3))))
+            vtmp = cross_product(recbas(:,2),recbas(:,3))
+            vmag=sqrt(vtmp(1)**2+vtmp(2)**2+vtmp(3)**2)
+            sinphi123=(dot_product(recbas(:,1),Vtmp))/(vmag*norm2(recbas(:,1)))
+            phi123=abs(asin(sinphi123))
+            x_nb1maxC=(sqrt(ecut*c)/(norm2(recbas(:,1))*abs(sinphi123)))+1
+            x_nb2maxC=(sqrt(ecut*c)/(norm2(recbas(:,2))*abs(sin(phi23))))+1
+            x_nb3maxC=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sin(phi23))))+1 
+            npmaxC=nint(4.*pi*x_nb1maxC*x_nb2maxC*x_nb3maxC/3.)
+            ! get the largest values in each of the three cases
+            x_nb1max=max(x_nb1maxA,x_nb1maxB,x_nb1maxC)
+            x_nb2max=max(x_nb2maxA,x_nb2maxB,x_nb2maxC)
+            x_nb3max=max(x_nb3maxA,x_nb3maxB,x_nb3maxC)
+            max_npws=min(npmaxA,npmaxB,npmaxC)
+        end subroutine estimate_npws
+    end subroutine query_wavecar
+
+    subroutine     read_wavecar(kpt_id,band_id,spin_id, psi, occ,E,kpt, iopt_filename,iopt_verbosity)
         !
         implicit none
         !
         integer     , intent(in) :: kpt_id  ! kpt,band,spin index of wavefunction to read
         integer     , intent(in) :: band_id ! kpt,band,spin index of wavefunction to read
         integer     , intent(in) :: spin_id ! kpt,band,spin index of wavefunction to read
-        integer     , intent(out), optional :: nb1max ! for allocation of array
-        integer     , intent(out), optional :: nb2max ! for allocation of array
-        integer     , intent(out), optional :: nb3max ! for allocation of array
         complex(sp) , intent(out), optional :: psi(:,:,:)
+        real(dp)    , intent(out), optional :: kpt(3)
+        real(dp)    , intent(out), optional :: occ(:) ! nbands
+        real(dp)    , intent(out), optional :: E(:) ! nbands
         character(*), intent(in) , optional :: iopt_filename
         integer     , intent(in) , optional :: iopt_verbosity
         character(max_argument_length) :: fname
         real(dp), allocatable :: xlist(:)
         real(dp), allocatable :: ylist(:)
         real(dp), allocatable :: zlist(:)
-        real(dp)   , allocatable :: occ(:)
-        complex(dp), allocatable :: E(:)
         real(dp) :: a(3,3), recbas(3,3)
-        real(dp) :: wk(3)
+        real(dp) :: x_kpt(3)
         real(dp) :: ecut
         real(dp) :: vol
+        real(dp)   , allocatable :: x_occ(:)
+        complex(dp), allocatable :: x_E(:)
         complex(sp), allocatable :: coeff_nG(:)
         real(dp) :: xrecl,xnspins,xprec,x_nkpts,x_nbands,x_npws
         integer  :: recl, nspins, prec, nkpts, nbands, npws
@@ -778,27 +928,25 @@ module am_vasp_io
                 write(*,'(a,a)') flare, 'x_nb3max = '//tostring(x_nb3max)
                 write(*,'(a,a)') flare, 'max_npws = '//tostring(max_npws)
             endif
-            ! derail
-            if (present(nb1max).or.present(nb2max).or.present(nb3max)) then
-                ! query workspace
-                nb1max = x_nb1max
-                nb2max = x_nb2max
-                nb3max = x_nb3max
-            elseif (present(psi)) then
-                ! write wave-function
-                ! find the wave function
-                irec=3+(kpt_id-1)*(nbands+1)+(spin_id-1)*nkpts*(nbands+1)
-                ! allocate space for energies and occupancies
-                allocate(occ(nbands))
-                allocate(E(nbands))
-                ! read the number of plane waves, the reciprocal lattice coordinate, and the band_id energy and occupancy
-                read(unit=fid,rec=irec) x_npws, (wk(i),i=1,3), (E(iband),occ(iband),iband=1,nbands)
+            ! find the wave function
+            irec=3+(kpt_id-1)*(nbands+1)+(spin_id-1)*nkpts*(nbands+1)
+            ! allocate space for energies and occupancies
+            allocate(x_occ(nbands))
+            allocate(x_E(nbands))
+            ! read the number of plane waves, the reciprocal lattice coordinate, and the band_id energy and occupancy
+            read(unit=fid,rec=irec) x_npws, (x_kpt(i),i=1,3), (x_E(iband),x_occ(iband),iband=1,nbands)
+            !
+            if (present(occ)) occ = x_occ
+            if (present(E))   E = real(x_E,dp)
+            if (present(kpt)) kpt = x_kpt
+            ! construct wave function
+            if (present(psi)) then
                 ! convert to integer
                 npws = nint(x_npws)
                 ! stdout
                 if (verbosity.ge.1) write(*,'(a,a)') flare, 'npws = '//tostring(npws)
-                ! get reciprocal lattice vectors offset by wk which have kinetic energies below cutoff
-                G = get_G(x_nb1max=x_nb1max,x_nb2max=x_nb2max,x_nb3max=x_nb3max,recbas=recbas,wk=wk,ecut=ecut,max_npws=max_npws,npws=npws)
+                ! get reciprocal lattice vectors offset by x_kpt which have kinetic energies below cutoff
+                G = get_G(x_nb1max=x_nb1max,x_nb2max=x_nb2max,x_nb3max=x_nb3max,recbas=recbas,x_kpt=x_kpt,ecut=ecut,max_npws=max_npws,npws=npws)
                 ! set record to planewave expansion coefficients corresponding to a particular band
                 irec=irec+band_id
                 ! allocate number of planewaves for coefficients
@@ -810,13 +958,11 @@ module am_vasp_io
                 allocate(ylist,source=[0:2*x_nb2max]/real(1+2*x_nb2max,dp))
                 allocate(zlist,source=[0:2*x_nb3max]/real(1+2*x_nb3max,dp))
                 ! fourier transform plane waves to obtain real space wave function
-                psi = get_psi(vol=vol,wk=wk,coeff_nG=coeff_nG,G=G,xlist=xlist,ylist=ylist,zlist=zlist)
-            else
-                stop 'ERROR [read_wavecar]: nb1max,nb2max,nb3max or psi must be requested'
+                psi = get_psi(vol=vol,x_kpt=x_kpt,coeff_nG=coeff_nG,G=G,xlist=xlist,ylist=ylist,zlist=zlist)
             endif
         close(fid)
         contains
-        function     get_G(x_nb1max,x_nb2max,x_nb3max,recbas,wk,ecut,max_npws,npws) result(G)
+        function     get_G(x_nb1max,x_nb2max,x_nb3max,recbas,x_kpt,ecut,max_npws,npws) result(G)
             ! Count the number of plane waves that have energy below the plane-wave cutoff energy and checks 
             ! that it matches the value written by vasp; record reciprocal lattice points corresponding to these planewaves
             implicit none
@@ -825,7 +971,7 @@ module am_vasp_io
             integer , intent(in) :: x_nb2max
             integer , intent(in) :: x_nb3max
             real(dp), intent(in) :: recbas(3,3)
-            real(dp), intent(in) :: wk(3)
+            real(dp), intent(in) :: x_kpt(3)
             real(dp), intent(in) :: ecut
             integer , intent(in) :: max_npws
             integer , intent(in) :: npws
@@ -854,7 +1000,7 @@ module am_vasp_io
             do k = 1, 2*x_nb3max+1
             do j = 1, 2*x_nb2max+1
             do i = 1, 2*x_nb1max+1
-                kpt  = matmul(recbas, wk + [gx_list(i),gy_list(j),gz_list(k)] )
+                kpt  = matmul(recbas, x_kpt + [gx_list(i),gy_list(j),gz_list(k)] )
                 ! calculate the free-electron planewave energy
                 ! etot = hbar^2 | k + G |^2 / 2m; note c = 1/(hbar^2/2m)
                 etot = norm2(kpt)**2/c
@@ -874,11 +1020,11 @@ module am_vasp_io
             ! mismatch could be due to using gamma version o vasp to generate wavecar
             allocate(G,source=x_G(1:3,1:npws))
         end function get_G
-        function     get_psi(vol,wk,coeff_nG,G,xlist,ylist,zlist) result(psi)
+        function     get_psi(vol,x_kpt,coeff_nG,G,xlist,ylist,zlist) result(psi)
             !
             implicit none
             !
-            real(dp)   , intent(in) :: wk(3)
+            real(dp)   , intent(in) :: x_kpt(3)
             real(dp)   , intent(in) :: vol
             complex(sp), intent(in) :: coeff_nG(:)
             integer    , intent(in) :: G(:,:) ! G(1:3,nGs)
@@ -903,7 +1049,7 @@ module am_vasp_io
                 do l = 1, npws
                     ! G is a list of reciprocal lattice points (integer kpt_id values in fractional coordinates; i.e. no forbidden points)
                     ! this is essentially performing the fourier transform to obtain the wave function in real space
-                    psi(i,j,k) = psi(i,j,k) + coeff_nG(l) * exp(itwopi*dot_product( wk + G(:,l), [xlist(i),ylist(j),zlist(k)] ) )
+                    psi(i,j,k) = psi(i,j,k) + coeff_nG(l) * exp(itwopi*dot_product( x_kpt + G(:,l), [xlist(i),ylist(j),zlist(k)] ) )
                 enddo
                 psi(i,j,k) = psi(i,j,k)/sqrt(vol)
             enddo

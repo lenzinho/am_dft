@@ -4,10 +4,12 @@ s = xml_read('save.dos');
 %
 x = str2num(s.E.value);
 y = reshape(str2num(s.pD.value),s.pD.shape);
+z = str2num(s.iD.value);
 %
 figure(1);clf;set(gcf,'color','white');hold on;
 xp=x;
-yp=sum(y(  :,:),1); h(1)=plot(x,yp,'k');
+yp=              z; h(1)=plot(x,yp,'c.');
+yp=cumsum(sum(y(  :,:),1))*(xp(2)-xp(1)); h(1)=plot(x,yp,'k');
 yp=sum(y(6:8,:),1); h(2)=plot(x,yp,'b');
 yp=sum(y(1:5,:),1); h(3)=plot(x,yp,'g');
 %
@@ -17,7 +19,7 @@ axis tight; grid on; box on;
 line([-10 10],[0 0],'color','k')
 %
 % ylim([-1 2]*6)
-xlim([-10 2])
+% xlim([-10 2])
 legend(h,{'tot','p','d'})
 %
 set(gcf,'PaperUnits','centimeters');
