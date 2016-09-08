@@ -44,7 +44,7 @@ contains
         ! flags = dispersion: fermi/(eigenval,procar)
         implicit none
         !
-        class(am_class_dft)  ,intent(out) :: dft
+        class(am_class_dft)   ,intent(out) :: dft
         type(am_class_options), intent(in) :: opts
         character(*)          , intent(in) :: flags
         integer :: nb1max,nb2max,nb3max

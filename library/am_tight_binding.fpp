@@ -784,7 +784,7 @@ contains
         implicit none
         !   
         class(am_class_tightbinding), intent(inout) :: tb
-        type(am_class_dft)          , intent(in) :: dft
+        class(am_class_dft)         , intent(in) :: dft ! can be dft or vasp
         type(am_class_prim_pair)    , intent(in) :: pp
         type(am_class_options)      , intent(in) :: opts
         character(*)                , intent(in) :: flags
