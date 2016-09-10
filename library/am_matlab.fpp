@@ -593,6 +593,28 @@ module am_matlab
         !
     end function  laguerre
 
+    pure function Ylm(l,m,theta,phi)
+        !
+        ! computes spherical harmonics. Theta and phi in radians. size(theta) must equal size(phi); together they define the radial coordinates.
+        !
+        ! W. H. Press, B. P. Flannery, S. A. Teukolsky, and W. T. Vetterling, Numerical Recipes in Fortran 77: The Art
+        ! of Scientific Computing, 2 edition (Cambridge University Press, Cambridge England ; New York, 1992), p 246.
+        ! 
+        implicit none
+        !
+        integer , intent(in) :: l, m
+        real(dp), intent(in) :: theta(:), phi(:)
+        complex(dp), allocatable :: Ylm(:)
+        integer :: n
+        ! 
+        n = size(theta)
+        !
+        allocate(Ylm(n))
+        !
+        Ylm = sqrt( real(2*l+1,dp)/fourpi * factorial(l-m)/real(factorial(l+m),dp) ) * legendre(l,m,cos(theta)) * exp(cmplx_i*m*phi)
+        !
+    end function  Ylm
+
     pure function heavi(m)
         !
         ! A. V. Podolskiy and P. Vogl, Phys. Rev. B 69, 233101 (2004). Eq 15

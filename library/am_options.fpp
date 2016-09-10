@@ -308,9 +308,9 @@ contains
                     write(*,'(5x,a)') ''
                     write(*,'(5x,a)') '-prec <dbl>'
                     write(*,'(5x,a)') '     Numerical precision.'
-                    write(*,'(5x,a)') ''
-                    write(*,'(5x,a)') '-wavefunction'
-                    write(*,'(5x,a)') '     Fits wavefunction in addition to eigenvalues. Requires "-file wavecar".'
+!                     write(*,'(5x,a)') ''
+!                     write(*,'(5x,a)') '-wavefunction'
+!                     write(*,'(5x,a)') '     Fits wavefunction in addition to eigenvalues. Requires "-file wavecar".'
                     write(*,'(5x,a)') ''
                     write(*,'(5x,a)') '-file <eigenval/procar/wavecar>'
                     write(*,'(5x,a)') '     File containing dispersion to fit.'
@@ -335,8 +335,8 @@ contains
                     call get_command_argument(i,argument)
                     read(argument,*,iostat=iostat) opts%prec
                     if (iostat.ne.0) stop 'ERROR [parse_command_line_tbfit]: iostat /= 0'
-                case('-wavefunction')
-                    opts%flags=trim(opts%flags)//'wavefunction'
+!                 case('-wavefunction')
+!                     opts%flags=trim(opts%flags)//'wavefunction'
                 case('-file')
                     i=i+1
                     call get_command_argument(i,argument)

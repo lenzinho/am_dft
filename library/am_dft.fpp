@@ -23,13 +23,15 @@ module am_dft
     end type am_class_dft
 
     type, public :: am_class_wavecar
-    	integer :: nb1max
-    	integer :: nb2max
-    	integer :: nb3max
+    	integer :: n(3) ! total divisions along each primitive direction
+    	integer :: n_fft(3) ! utilized for creation of fft mesh x = [-n(1):n(1)], etc, followed by meshgrid(z,y,x)
     	integer :: nkpts
     	integer :: nbands
     	integer :: nspins
-        complex(sp), allocatable :: psi(:,:,:, :,:,:) ! psi(x,y,z, kpt,band,spin)
+    	integer :: nrpts
+    	real(dp)   , allocatable :: rpt(:,:) ! rpt(3,nrpts)
+        complex(sp), allocatable :: psi(:,:,:,:) ! psi(nrpts,kpt,band,spin)
+
     end type am_class_wavecar
 
     type, public, extends(am_class_dft) :: am_class_vasp
@@ -94,6 +96,8 @@ contains
 	            	! query wavecar
 			        call query_wavecar(nb1max=nb1max,nb2max=nb2max,nb3max=nb3max, &
 			        	& nkpts=dft%bz%nkpts,nbands=dft%dr%nbands,fname=opts%wavecar,verbosity=0)
+			        ! load wavecar
+			        call dft%wc%load(opts=opts)
 			        ! allocate kpoint space
 			        allocate(kpt_recp(3,dft%bz%nkpts))
 			        ! read kpoints
@@ -152,33 +156,39 @@ contains
         !
     end subroutine load_dft
 
-	subroutine     load_wavecar(vasp,opts)
+	subroutine     load_wavecar(dft,opts)
         ! flags = dispersion: fermi/(eigenval,procar)
         implicit none
         !
-        class(am_class_vasp)  ,intent(out) :: vasp
+        class(am_class_vasp)  ,intent(out) :: dft
         type(am_class_options), intent(in) :: opts
     	integer :: nb1max,nb2max,nb3max,nkpts,nbands
-    	integer :: i,j,k
+    	integer :: i,j,k,n
         ! transfer options
-        vasp%wc%nkpts  = size(opts%kpt_id)
-        vasp%wc%nbands = size(opts%band_id)
-        vasp%wc%nspins = size(opts%spin_id)
+        dft%wc%nkpts  = size(opts%kpt_id)
+        dft%wc%nbands = size(opts%band_id)
+        dft%wc%nspins = size(opts%spin_id)
         ! query workspace
         call query_wavecar(nb1max=nb1max,nb2max=nb2max,nb3max=nb3max, &
         	& nkpts=nkpts,nbands=nbands,fname=opts%wavecar,verbosity=opts%verbosity)
         ! save mesh parameters [-nb1max:nb1max], [-nb2max:nb2max], [-nb3max:nb3max]
-		vasp%wc%nb1max = nb1max
-		vasp%wc%nb2max = nb2max
-		vasp%wc%nb3max = nb3max
-        ! allocate space
-        allocate(vasp%wc%psi(nb1max*2+1,nb2max*2+1,nb3max*2+1, vasp%wc%nkpts,vasp%wc%nbands,vasp%wc%nspins))
+		dft%wc%nb1max = nb1max
+		dft%wc%nb2max = nb2max
+		dft%wc%nb3max = nb3max
+		! variables
+		dft%wc%n(1) = nb1max*2+1
+		dft%wc%n(2) = nb2max*2+1
+		dft%wc%n(3) = nb3max*2+1
+        ! number of real space points
+        dft%wc%nrpts  = product(n)
+        ! allocate space for psi, save flattened version
+        allocate(dft%wc%psi(n*m*o,dft%wc%nkpts,dft%wc%nbands,dft%wc%nspins))
         ! read band
-        do i = 1, vasp%wc%nkpts
-    	do j = 1, vasp%wc%nbands
-		do k = 1, vasp%wc%nspins
+        do i = 1, dft%wc%nkpts
+    	do j = 1, dft%wc%nbands
+		do k = 1, dft%wc%nspins
 			call read_wavecar(kpt_id=opts%kpt_id(i), band_id=opts%band_id(j), spin_id=opts%spin_id(k), &
-				& psi=vasp%wc%psi(:,:,:,i,j,k), iopt_filename=opts%wavecar, iopt_verbosity=0)
+				& psi=dft%wc%psi(:,i,j,k), iopt_filename=opts%wavecar, iopt_verbosity=0)
         enddo
         enddo
         enddo

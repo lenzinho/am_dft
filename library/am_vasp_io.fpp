@@ -748,7 +748,7 @@ module am_vasp_io
                 call disp(X=recbas)
             endif
             ! estimate number of plane waves
-            call estimate_npws(ecut=ecut,recbas=recbas,x_nb1max=nb1max,x_nb2max=nb2max,x_nb3max=nb3max,max_npws=max_npws)
+            call estimate_npws(ecut=ecut,recbas=recbas,n_fft(1)=nb1max,n_fft(2)=nb2max,n_fft(3)=nb3max,max_npws=max_npws)
             ! stdout
             if (verbosity.ge.1) then
                 write(*,'(a,a)') flare, 'nb1max = '//tostring(nb1max)
@@ -758,13 +758,13 @@ module am_vasp_io
             endif
         close(fid)
         contains
-        subroutine     estimate_npws(ecut,recbas,x_nb1max,x_nb2max,x_nb3max,max_npws)
+        subroutine     estimate_npws(ecut,recbas,n_fft(1),n_fft(2),n_fft(3),max_npws)
             !
             implicit none
             !
             real(dp), intent(in) :: ecut
             real(dp), intent(in) :: recbas(3,3)
-            integer :: x_nb1max , x_nb2max , x_nb3max
+            integer :: n_fft(1) , n_fft(2) , n_fft(3)
             integer :: max_npws
             real(dp) :: vtmp(3)
             real(dp) :: c
@@ -808,30 +808,28 @@ module am_vasp_io
             x_nb3maxC=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sin(phi23))))+1 
             npmaxC=nint(4.*pi*x_nb1maxC*x_nb2maxC*x_nb3maxC/3.)
             ! get the largest values in each of the three cases
-            x_nb1max=max(x_nb1maxA,x_nb1maxB,x_nb1maxC)
-            x_nb2max=max(x_nb2maxA,x_nb2maxB,x_nb2maxC)
-            x_nb3max=max(x_nb3maxA,x_nb3maxB,x_nb3maxC)
+            n_fft(1)=max(x_nb1maxA,x_nb1maxB,x_nb1maxC)
+            n_fft(2)=max(x_nb2maxA,x_nb2maxB,x_nb2maxC)
+            n_fft(3)=max(x_nb3maxA,x_nb3maxB,x_nb3maxC)
             max_npws=min(npmaxA,npmaxB,npmaxC)
         end subroutine estimate_npws
     end subroutine query_wavecar
 
-    subroutine     read_wavecar(kpt_id,band_id,spin_id, psi, occ,E,kpt, iopt_filename,iopt_verbosity)
+    subroutine     read_wavecar(kpt_id,band_id,spin_id, psi,rgrid, occ,E,kpt, iopt_filename,iopt_verbosity)
         !
         implicit none
         !
         integer     , intent(in) :: kpt_id  ! kpt,band,spin index of wavefunction to read
         integer     , intent(in) :: band_id ! kpt,band,spin index of wavefunction to read
         integer     , intent(in) :: spin_id ! kpt,band,spin index of wavefunction to read
-        complex(sp) , intent(out), optional :: psi(:,:,:)
+        complex(sp) , intent(out), optional, allocatable :: psi(:) !  wave function defined on rgrid
+        real(dp)    , intent(out), optional, allocatable :: rgrid(:,:)
         real(dp)    , intent(out), optional :: kpt(3)
         real(dp)    , intent(out), optional :: occ(:) ! nbands
         real(dp)    , intent(out), optional :: E(:) ! nbands
         character(*), intent(in) , optional :: iopt_filename
         integer     , intent(in) , optional :: iopt_verbosity
         character(max_argument_length) :: fname
-        real(dp), allocatable :: xlist(:)
-        real(dp), allocatable :: ylist(:)
-        real(dp), allocatable :: zlist(:)
         real(dp) :: a(3,3), recbas(3,3)
         real(dp) :: x_kpt(3)
         real(dp) :: ecut
@@ -842,9 +840,9 @@ module am_vasp_io
         real(dp) :: xrecl,xnspins,xprec,x_nkpts,x_nbands,x_npws
         integer  :: recl, nspins, prec, nkpts, nbands, npws
         integer, allocatable :: G(:,:) ! G(1:3,nGs)
-        integer :: x_nb1max
-        integer :: x_nb2max
-        integer :: x_nb3max
+        integer :: n_fft(1)
+        integer :: n_fft(2)
+        integer :: n_fft(3)
         integer :: max_npws
         integer :: irec, iband, l
         integer :: i, j ! loop variables
@@ -920,12 +918,10 @@ module am_vasp_io
                 call disp(X=recbas)
             endif
             ! estimate number of plane waves
-            call estimate_npws(ecut=ecut,recbas=recbas,x_nb1max=x_nb1max,x_nb2max=x_nb2max,x_nb3max=x_nb3max,max_npws=max_npws)
+            call estimate_npws(ecut=ecut,recbas=recbas,n_fft=n_fft,max_npws=max_npws)
             ! stdout
             if (verbosity.ge.1) then
-                write(*,'(a,a)') flare, 'x_nb1max = '//tostring(x_nb1max)
-                write(*,'(a,a)') flare, 'x_nb2max = '//tostring(x_nb2max)
-                write(*,'(a,a)') flare, 'x_nb3max = '//tostring(x_nb3max)
+                write(*,'(a,a)') flare, 'n_fft = '//tostring(n_ftt)
                 write(*,'(a,a)') flare, 'max_npws = '//tostring(max_npws)
             endif
             ! find the wave function
@@ -941,12 +937,14 @@ module am_vasp_io
             if (present(kpt)) kpt = x_kpt
             ! construct wave function
             if (present(psi)) then
+                ! check for rgrid
+                if (.not.present(rgrid)) stop 'ERROR [rgrid must be present when psi is called.'
                 ! convert to integer
                 npws = nint(x_npws)
                 ! stdout
                 if (verbosity.ge.1) write(*,'(a,a)') flare, 'npws = '//tostring(npws)
                 ! get reciprocal lattice vectors offset by x_kpt which have kinetic energies below cutoff
-                G = get_G(x_nb1max=x_nb1max,x_nb2max=x_nb2max,x_nb3max=x_nb3max,recbas=recbas,x_kpt=x_kpt,ecut=ecut,max_npws=max_npws,npws=npws)
+                G = get_G(n_ftt=n_ftt,recbas=recbas,x_kpt=x_kpt,ecut=ecut,npws=npws)
                 ! set record to planewave expansion coefficients corresponding to a particular band
                 irec=irec+band_id
                 ! allocate number of planewaves for coefficients
@@ -954,73 +952,68 @@ module am_vasp_io
                 ! plane-wave expansion coefficients depend on band index and kpoint, as expected wavefunctions corresponding to eigenvectors
                 read(unit=fid,rec=irec) (coeff_nG(l), l=1 , npws)
                 ! get real-space grid in fractional coordinates 
-                allocate(xlist,source=[0:2*x_nb1max]/real(1+2*x_nb1max,dp))
-                allocate(ylist,source=[0:2*x_nb2max]/real(1+2*x_nb2max,dp))
-                allocate(zlist,source=[0:2*x_nb3max]/real(1+2*x_nb3max,dp))
-                ! fourier transform plane waves to obtain real space wave function
-                psi = get_psi(vol=vol,x_kpt=x_kpt,coeff_nG=coeff_nG,G=G,xlist=xlist,ylist=ylist,zlist=zlist)
+                rgrid = dmeshgrid( v1=[0:2*n_ftt(3)]/real(1+2*n_ftt(3),dp), &
+                                 & v2=[0:2*n_ftt(2)]/real(1+2*n_ftt(2),dp), &
+                                 & v3=[0:2*n_ftt(1)]/real(1+2*n_ftt(1),dp))
+                ! fourier transform plane waves to obtain real-space wavefunctions
+                psi = get_psi(vol=vol,x_kpt=x_kpt,coeff_nG=coeff_nG,G=G,rgrid=rgrid)
             endif
         close(fid)
         contains
-        function     get_G(x_nb1max,x_nb2max,x_nb3max,recbas,x_kpt,ecut,max_npws,npws) result(G)
+        function       get_G(n_ftt,recbas,x_kpt,ecut,npws) result(G)
             ! Count the number of plane waves that have energy below the plane-wave cutoff energy and checks 
             ! that it matches the value written by vasp; record reciprocal lattice points corresponding to these planewaves
             implicit none
             !
-            integer , intent(in) :: x_nb1max
-            integer , intent(in) :: x_nb2max
-            integer , intent(in) :: x_nb3max
+            integer , intent(in) :: n_ftt(3)
             real(dp), intent(in) :: recbas(3,3)
             real(dp), intent(in) :: x_kpt(3)
-            real(dp), intent(in) :: ecut
-            integer , intent(in) :: max_npws
-            integer , intent(in) :: npws
+            real(dp), intent(in) :: ecut ! planewave kinetic-energy cutoff
+            integer , intent(in) :: npws ! number of planewaves
             integer, allocatable :: G(:,:) ! G(1:3,nGs)
-            integer, allocatable :: x_G(:,:) ! G(1:3,nGs)
-            integer, allocatable :: gx_list(:)
-            integer, allocatable :: gy_list(:)
-            integer, allocatable :: gz_list(:)
+            integer, allocatable :: gx(:)
+            integer, allocatable :: gy(:)
+            integer, allocatable :: gz(:)
             real(dp) :: kpt(3)
             integer :: i, j, k, n ! loop variables
             real(dp) :: c
             real(dp) :: etot
             ! allocate space
-            allocate(x_G(3,max_npws))
+            allocate(G(3,npws))
             ! constant 'c' is 2m/hbar**2 in units of 1/eV Ang^2 (value is adjusted in final decimal places to agree with 
             ! VASP value; program checks for discrepancy of any results between this and VASP values)
             ! hbar/2m = 0.26246582250210965422d0 / eV Ang^2
             c = 0.262465831d0 ! to match vasp
             ! Generate the FFT grid used by VASP
-            gx_list = fftshift([-x_nb1max:x_nb1max])
-            gy_list = fftshift([-x_nb2max:x_nb2max])
-            gz_list = fftshift([-x_nb3max:x_nb3max])
+            gx = fftshift([-n_ftt(1):n_ftt(1)])
+            gy = fftshift([-n_ftt(2):n_ftt(2)])
+            gz = fftshift([-n_ftt(3):n_ftt(3)])
             ! initialize planewave counter
             n=0
             ! loop over reciprocal lattice points
-            do k = 1, 2*x_nb3max+1
-            do j = 1, 2*x_nb2max+1
-            do i = 1, 2*x_nb1max+1
-                kpt  = matmul(recbas, x_kpt + [gx_list(i),gy_list(j),gz_list(k)] )
+            do k = 1, 2*n_ftt(3)+1
+            do j = 1, 2*n_ftt(2)+1
+            do i = 1, 2*n_ftt(1)+1
+                kpt  = matmul(recbas, x_kpt + [gx(i),gy(j),gz(k)] )
                 ! calculate the free-electron planewave energy
                 ! etot = hbar^2 | k + G |^2 / 2m; note c = 1/(hbar^2/2m)
                 etot = norm2(kpt)**2/c
                 ! check whether it is below the planewave expansion cutoff energy
                 if (etot.lt.ecut) then
                     n=n+1
-                    x_G(1,n)=gx_list(i)
-                    x_G(2,n)=gy_list(j)
-                    x_G(3,n)=gz_list(k)
+                    G(1,n)=gx(i)
+                    G(2,n)=gy(j)
+                    G(3,n)=gz(k)
                 endif
             enddo
             enddo
             enddo
-            ! check that the number of planewaves match saved value
-            if (n.ne.npws) stop 'ERROR [read_wavecar]: mismatched number of planewaves for which hbar^2 | k + G |^2 / 2m < E_cutoff'
-            ! mismatch could be require a small adjustment in c value
-            ! mismatch could be due to using gamma version o vasp to generate wavecar
-            allocate(G,source=x_G(1:3,1:npws))
-        end function get_G
-        function     get_psi(vol,x_kpt,coeff_nG,G,xlist,ylist,zlist) result(psi)
+            ! NOTE: THIS ROUTINE CAN TRIP AN OUT-OF-BOUNDS ERROR IF MORE PLANEWAVES ARE COUNTED THAN IDENTIFIED BY VASP
+            ! ERROR: mismatched number of planewaves for which hbar^2 | k + G |^2 / 2m < E_cutoff
+            ! the mismatch could be require a small adjustment in c value
+            ! the mismatch could be due to using gamma version o vasp to generate wavecar
+        end function   get_G
+        function       get_psi(vol,x_kpt,coeff_nG,G,rgrid) result(psi)
             !
             implicit none
             !
@@ -1028,49 +1021,41 @@ module am_vasp_io
             real(dp)   , intent(in) :: vol
             complex(sp), intent(in) :: coeff_nG(:)
             integer    , intent(in) :: G(:,:) ! G(1:3,nGs)
-            real(dp)   , intent(in) :: xlist(:)
-            real(dp)   , intent(in) :: ylist(:)
-            real(dp)   , intent(in) :: zlist(:)
-            complex(sp),allocatable :: psi(:,:,:)
+            real(dp)   , intent(in) :: rgrid(:,:)
+            complex(sp),allocatable :: psi(:)
             integer  :: n, m, o
             integer  :: i, j, k, l ! loop variables
             ! get sizes
-            n = size(xlist)
-            m = size(ylist)
-            o = size(zlist)
-            ! initialize wavefunction on realspace grid [0,1)
-            allocate(psi(n,m,o))
-            psi = 0.0_dp
+            n = size(rgrid,2)
+            ! initialize wavefunction on realspace grid [0,1): rgrid
+            allocate(psi(n))
             ! loop real space coordinates
-            do k = 1, n
-            do j = 1, m
-            do i = 1, o
+            do i = 1, n
+                psi(i) = 0.0_dp
                 ! loop over planewaves
                 do l = 1, npws
                     ! G is a list of reciprocal lattice points (integer kpt_id values in fractional coordinates; i.e. no forbidden points)
                     ! this is essentially performing the fourier transform to obtain the wave function in real space
-                    psi(i,j,k) = psi(i,j,k) + coeff_nG(l) * exp(itwopi*dot_product( x_kpt + G(:,l), [xlist(i),ylist(j),zlist(k)] ) )
+                    psi(i) = psi(i) + coeff_nG(l) * exp(itwopi*dot_product( x_kpt + G(:,l), rgrid(3,i) ) )
                 enddo
-                psi(i,j,k) = psi(i,j,k)/sqrt(vol)
+                psi(i) = psi(i)/sqrt(vol)
             enddo
-            enddo
-            enddo
-        end function get_psi
-        subroutine     estimate_npws(ecut,recbas,x_nb1max,x_nb2max,x_nb3max,max_npws)
+        end function   get_psi
+        subroutine     estimate_npws(ecut,recbas,n_fft,max_npws)
             !
             implicit none
             !
-            real(dp), intent(in) :: ecut
-            real(dp), intent(in) :: recbas(3,3)
-            integer :: x_nb1max , x_nb2max , x_nb3max
-            integer :: max_npws
+            real(dp), intent(in)  :: ecut
+            real(dp), intent(in)  :: recbas(3,3)
+            integer , intent(out) :: n_fft(3)
+            integer , intent(out) :: max_npws
             real(dp) :: vtmp(3)
             real(dp) :: c
             real(dp) :: phi12,phi13,phi23,phi123,sinphi123
-            integer :: x_nb1maxA, x_nb2maxA, x_nb3maxA
-            integer :: x_nb1maxB, x_nb2maxB, x_nb3maxB
-            integer :: x_nb1maxC, x_nb2maxC, x_nb3maxC
-            integer :: npmaxA , npmaxB , npmaxC
+            integer  :: x_nb1maxA, x_nb2maxA, x_nb3maxA
+            integer  :: x_nb1maxB, x_nb2maxB, x_nb3maxB
+            integer  :: x_nb1maxC, x_nb2maxC, x_nb3maxC
+            integer  :: npmaxA , npmaxB , npmaxC
             real(dp) :: vmag
             ! constant 'c' is 2m/hbar**2 in units of 1/eV Ang^2 (value is adjusted in final decimal places to agree with 
             ! VASP value; program checks for discrepancy of any results between this and VASP values)
@@ -1106,9 +1091,9 @@ module am_vasp_io
             x_nb3maxC=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sin(phi23))))+1 
             npmaxC=nint(4.*pi*x_nb1maxC*x_nb2maxC*x_nb3maxC/3.)
             ! get the largest values in each of the three cases
-            x_nb1max=max(x_nb1maxA,x_nb1maxB,x_nb1maxC)
-            x_nb2max=max(x_nb2maxA,x_nb2maxB,x_nb2maxC)
-            x_nb3max=max(x_nb3maxA,x_nb3maxB,x_nb3maxC)
+            n_fft(1)=max(x_nb1maxA,x_nb1maxB,x_nb1maxC)
+            n_fft(2)=max(x_nb2maxA,x_nb2maxB,x_nb2maxC)
+            n_fft(3)=max(x_nb3maxA,x_nb3maxB,x_nb3maxC)
             max_npws=min(npmaxA,npmaxB,npmaxC)
         end subroutine estimate_npws
     end subroutine read_wavecar
@@ -1603,6 +1588,64 @@ module am_vasp_io
         close(fid)
         !
     end subroutine read_eig
+
+
+    ! auxiliary function
+
+
+    function     get_fft_mesh(n_fft(1),n_fft(2),n_fft(3),recbas,x_kpt,ecut,max_npws,npws) result(G)
+        ! Count the number of plane waves that have energy below the plane-wave cutoff energy and checks 
+        ! that it matches the value written by vasp; record reciprocal lattice points corresponding to these planewaves
+        implicit none
+        !
+        integer , intent(in) :: n_fft(1)
+        integer , intent(in) :: n_fft(2)
+        integer , intent(in) :: n_fft(3)
+        real(dp), intent(in) :: recbas(3,3)
+        real(dp), intent(in) :: x_kpt(3)
+        real(dp), intent(in) :: ecut
+        integer , intent(in) :: max_npws
+        integer , intent(in) :: npws
+        integer, allocatable :: G(:,:) ! G(1:3,nGs)
+        integer, allocatable :: x_G(:,:) ! G(1:3,nGs)
+        integer, allocatable :: gx_list(:)
+        integer, allocatable :: gy_list(:)
+        integer, allocatable :: gz_list(:)
+        real(dp) :: kpt(3)
+        integer :: i, j, k, n ! loop variables
+        real(dp) :: c
+        real(dp) :: etot
+        ! allocate space
+        allocate(x_G(3,max_npws))
+        ! constant 'c' is 2m/hbar**2 in units of 1/eV Ang^2 (value is adjusted in final decimal places to agree with 
+        ! VASP value; program checks for discrepancy of any results between this and VASP values)
+        ! hbar/2m = 0.26246582250210965422d0 / eV Ang^2
+        c = 0.262465831d0 ! to match vasp
+        ! Generate the FFT grid used by VASP
+        gx_list = fftshift([-n_fft(1):n_fft(1)])
+        gy_list = fftshift([-n_fft(2):n_fft(2)])
+        gz_list = fftshift([-n_fft(3):n_fft(3)])
+        ! initialize planewave counter
+        n=0
+        ! loop over reciprocal lattice points
+        do k = 1, 2*n_fft(3)+1
+        do j = 1, 2*n_fft(2)+1
+        do i = 1, 2*n_fft(1)+1
+            kpt  = matmul(recbas, x_kpt + [gx_list(i),gy_list(j),gz_list(k)] )
+            ! calculate the free-electron planewave energy
+            ! etot = hbar^2 | k + G |^2 / 2m; note c = 1/(hbar^2/2m)
+            etot = norm2(kpt)**2/c
+            ! check whether it is below the planewave expansion cutoff energy
+            if (etot.lt.ecut) then
+                n=n+1
+                x_G(1,n)=gx_list(i)
+                x_G(2,n)=gy_list(j)
+                x_G(3,n)=gz_list(k)
+            endif
+        enddo
+        enddo
+        enddo
+    end function get_fft_mesh
 
 !     subroutine read_mmn(iopt_filename,iopt_verbosity)
 !         !>
