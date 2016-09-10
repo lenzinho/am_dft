@@ -264,14 +264,8 @@ contains
             where(uc%Z(:).eq.unique_Z(i)) atype = i
         enddo
         !
-        call write_poscar_internal(&
-            bas=uc%bas,&
-            natoms=uc%natoms,&
-            nspecies=nspecies,&
-            symb=symb,&
-            tau_frac=uc%tau_frac,&
-            atype=atype,&
-            iopt_filename=file_output_poscar)
+        call write_poscar_internal(bas=uc%bas, natoms=uc%natoms, nspecies=nspecies, symb=symb, &
+            & tau_frac=uc%tau_frac, atype=atype, header='', fname=file_output_poscar, verbosity=1)
         !
     end subroutine  write_poscar
 

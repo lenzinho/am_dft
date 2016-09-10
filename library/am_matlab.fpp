@@ -1370,7 +1370,7 @@ module am_matlab
 
     ! grid functions
 
-    pure function dmeshgrid(n1,n2,n3) result(grid_points)
+    pure function dmeshgrid(v1,v2,v3) result(grid_points)
         !> 
         !> Generates a mesh of lattice vectors (fractional coordinates) around the origin. 
         !> n(1), n(2), n(3) specifies the number of mesh points away from 0, i.e. [-n:1:n]
@@ -1379,40 +1379,46 @@ module am_matlab
         !>
         implicit none
         !
-        real(dp), intent(in) :: n1(:)
-        real(dp), intent(in) :: n2(:)
-        real(dp), intent(in), optional :: n3(:)
-        real(dp), allocatable :: grid_points(:,:) !> voronoi points (27=3^3)
+        real(dp), intent(in) :: v1(:)
+        real(dp), intent(in) :: v2(:)
+        real(dp), intent(in), optional :: v3(:)
+        real(dp), allocatable :: grid_points(:,:) !> grid_points(3,npts) voronoi points (27=3^3)
         integer :: i1,i2,i3,j
+        integer :: n1,n2,n3
         !
-        if (present(n3)) then
+        if (present(v3)) then
             !
-            allocate(grid_points(3,size(n1)*size(n2)*size(n3)))
-            grid_points = 0
+            n1 = size(v1)
+            n2 = size(v2)
+            n3 = size(v3)
+            !
+            allocate(grid_points(3,n1*n2*n3))
             !
             j=0
-            do i1 = 1, size(n1)
-            do i2 = 1, size(n2)
-            do i3 = 1, size(n3)
+            do i1 = 1, n1
+            do i2 = 1, n2
+            do i3 = 1, n3
                 j=j+1
-                grid_points(1,j)=n1(i1)
-                grid_points(2,j)=n2(i2)
-                grid_points(3,j)=n3(i3)
+                grid_points(1,j)=v1(i1)
+                grid_points(2,j)=v2(i2)
+                grid_points(3,j)=v3(i3)
             enddo
             enddo
             enddo
             !
         else
             !
-            allocate(grid_points(2,size(n1)*size(n2)))
-            grid_points = 0
+            n1 = size(v1)
+            n2 = size(v2)
+            !
+            allocate(grid_points(2,n1*n2))
             !
             j=0
-            do i1 = 1, size(n1)
-            do i2 = 1, size(n2)
+            do i1 = 1, n1
+            do i2 = 1, n2
                 j=j+1
-                grid_points(1,j)=n1(i1)
-                grid_points(2,j)=n2(i2)
+                grid_points(1,j)=v1(i1)
+                grid_points(2,j)=v2(i2)
             enddo
             enddo
             !
@@ -1420,19 +1426,19 @@ module am_matlab
         !
     end function  dmeshgrid
 
-    pure function imeshgrid(n1,n2,n3) result(grid_points)
+    pure function imeshgrid(v1,v2,v3) result(grid_points)
         !
         implicit none
         !
-        integer, intent(in) :: n1(:)
-        integer, intent(in) :: n2(:)
-        integer, intent(in), optional :: n3(:)
+        integer, intent(in) :: v1(:)
+        integer, intent(in) :: v2(:)
+        integer, intent(in), optional :: v3(:)
         real(dp), allocatable :: grid_points(:,:)
         !
-        if (present(n3)) then
-            grid_points=dmeshgrid(real(n1,dp),real(n2,dp),real(n3,dp))
+        if (present(v3)) then
+            grid_points=dmeshgrid(real(v1,dp),real(v2,dp),real(v3,dp))
         else
-            grid_points=dmeshgrid(real(n1,dp),real(n2,dp))
+            grid_points=dmeshgrid(real(v1,dp),real(v2,dp))
         endif
         !
     end function  imeshgrid

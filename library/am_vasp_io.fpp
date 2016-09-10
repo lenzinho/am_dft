@@ -1,4 +1,4 @@
-#:include "fypp_macros.fpp"
+! #:include "fypp_macros.fpp"
 module am_vasp_io
 
     use dispmodule
@@ -14,7 +14,7 @@ module am_vasp_io
 
     ! vasp
 
-    subroutine     read_ibzkpt(nkpts,kpt,w,ntets,vtet,tet,wtet,iopt_filename,iopt_verbosity) 
+    subroutine     read_ibzkpt(nkpts,kpt,w,ntets,vtet,tet,wtet,fname,verbosity) 
         !>
         !> Reads IBZKPT into variables.
         !>
@@ -28,10 +28,6 @@ module am_vasp_io
         !>
         implicit none
         !
-        character(len=*), optional, intent(in) :: iopt_filename
-        character(max_argument_length) :: fname
-        integer, optional, intent(in) :: iopt_verbosity
-        integer :: verbosity
         integer ,              intent(out), optional :: nkpts   !> nkpts number of kpoints
         real(dp), allocatable, intent(out), optional :: kpt(:,:)!> kpt(3,nkpts) kpoint vectors
         real(dp), allocatable, intent(out), optional :: w(:)    !> weights normalized
@@ -39,20 +35,16 @@ module am_vasp_io
         real(dp), allocatable, intent(out), optional :: vtet(:) !> vtet(ntets) tetrahedron volume
         integer , allocatable, intent(out), optional :: tet(:,:)!> tet(4,ntets) tetrahedron connection table
         real(dp), allocatable, intent(out), optional :: wtet(:) !> wtet(ntets) weights
+        character(len=*), intent(in) :: fname
+        integer         , intent(in) :: verbosity
         integer  :: nkpts_internal, ntets_internal
         real(dp) :: vtet_tmp
         integer, allocatable :: w_int(:) ! w_int(nkpts) integer weights
-        !
         integer :: iostat
         integer :: fid ! file id
         character(maximum_buffer_size) :: buffer ! read buffer
         character(len=:), allocatable :: word(:) ! read buffer
         integer :: i ! loop variables
-        !
-        fname = "IBZKPT"
-        if ( present(iopt_filename) ) fname = iopt_filename
-        verbosity = 1
-        if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
         !
         if (verbosity.ge.1) call print_title('IBZKPT')
         !
@@ -155,7 +147,7 @@ module am_vasp_io
         close(fid)
     end subroutine read_ibzkpt 
 
-    subroutine     read_procar(nkpts,nbands,nions,norbitals,nspinss,E,occ,kpt,w,orbitals,lmproj,iopt_filename,iopt_verbosity)
+    subroutine     read_procar(nkpts,nbands,nions,norbitals,nspins,E,occ,kpt,w,orbitals,lmproj,fname,verbosity)
         !>
         !> Reads PROCAR into file.
         !>
@@ -163,52 +155,43 @@ module am_vasp_io
         !> nbands number of bands
         !> nions number of ions
         !> norbitals number of orbitals
-        !> nspinss number of spins
+        !> nspins number of spins
         !> E(nbands,nkpts) energies
         !> occ(nbands,nkpts) occupancies
         !> kpt(3,nkpts) kpoint
         !> w(nkpts) weights (normalized)
         !> orbitals(norbitals) names of orbitals
-        !> lmproj(nspinss,norbitals,nions,nbands,nkpts)
+        !> lmproj(nspins,norbitals,nions,nbands,nkpts)
         !>
         implicit none
         !
-        character(*), optional :: iopt_filename
-        character(max_argument_length) :: fname
-        integer, optional :: iopt_verbosity
-        integer :: verbosity
         integer              , intent(out), optional :: nkpts     !> nkpts number of kpoints
         integer              , intent(out), optional :: nbands    !> nbands number of bands
         integer              , intent(out), optional :: nions     !> nions number of ions
         integer              , intent(out), optional :: norbitals !> norbitals number of orbitals
-        integer              , intent(out), optional :: nspinss    !> nspinss number of spins
+        integer              , intent(out), optional :: nspins    !> nspins number of spins
         real(dp), allocatable, intent(out), optional :: E(:,:)    !> E(nbands,nkpts) energies
         real(dp), allocatable, intent(out), optional :: occ(:,:)  !> occ(nbands,nkpts) occupancies
         real(dp), allocatable, intent(out), optional :: kpt(:,:)  !> kpt(3,nkpts) kpoint
         real(dp), allocatable, intent(out), optional :: w(:)      !> w(nkpts) weights (normalized)
         character(:), allocatable, intent(out), optional :: orbitals(:)     !> orbitals(norbitals) names of orbitals
-        real(dp), allocatable, intent(out), optional :: lmproj(:,:,:,:,:)   !> lmproj(nspinss,norbitals,nions,nbands,nkpts)
+        real(dp), allocatable, intent(out), optional :: lmproj(:,:,:,:,:)   !> lmproj(nspins,norbitals,nions,nbands,nkpts)
+        character(len=*), intent(in) :: fname
+        integer         , intent(in) :: verbosity
         ! <INTERNAL>
         integer :: x_nkpts     !> nkpts number of kpoints
         integer :: x_nbands    !> nbands number of bands
         integer :: x_nions     !> nions number of ions
         integer :: x_norbitals !> norbitals number of orbitals
-        integer :: x_nspinss    !> nspinss number of spins
+        integer :: x_nspins    !> nspins number of spins
         integer :: fid ! file id
         integer :: iostat
         character(maximum_buffer_size) :: buffer ! read buffer
         character(len=:), allocatable :: word(:) ! read buffer
         integer :: i, j, l, m ! loop variables
         !
-        fname = "PROCAR"
-        if ( present(iopt_filename) ) fname = iopt_filename
-        verbosity = 1
-        if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
-        !
-        x_nspinss = 1 ! not yet implemented!
-        if (present(nspinss)) nspinss = x_nspinss
-        !
-        !
+        x_nspins = 1 ! not yet implemented!
+        if (present(nspins)) nspins = x_nspins
         !
         if (verbosity.ge.1) call print_title('PROCAR')
         !
@@ -290,8 +273,8 @@ module am_vasp_io
                             enddo
                             if (verbosity.ge.1) write(*,'(a,a,100(x,a))' ) flare, 'orbitals =', ( trim(orbitals(l)), l = 1, norbitals)
                         endif
-                        !> lmproj(nspinss,norbitals,nions,nbands,nkpts)
-                        if (present(lmproj)) allocate(lmproj(x_nspinss,x_norbitals,x_nions,x_nbands,x_nkpts))
+                        !> lmproj(nspins,norbitals,nions,nbands,nkpts)
+                        if (present(lmproj)) allocate(lmproj(x_nspins,x_norbitals,x_nions,x_nbands,x_nkpts))
                         !
                     endif
                     ! (LINE 9,10) 
@@ -302,7 +285,7 @@ module am_vasp_io
                         word = strsplit(buffer,delimiter=' ')
                         if (present(lmproj)) then
                             do m = 1, norbitals
-                                !> lmproj(nspinss,norbitals,nions,nbands,nkpts) (spins not implemented yet!)
+                                !> lmproj(nspins,norbitals,nions,nbands,nkpts) (spins not implemented yet!)
                                 read(word(m+1),*) lmproj(1,m,l,j,i)
                             enddo
                         endif
@@ -318,14 +301,14 @@ module am_vasp_io
         close(fid)
     end subroutine read_procar
 
-    subroutine     read_prjcar(nkpts,nbands,nspinss,nkpts_prim,bas_prim,k_prim,w_prim,kpt,w,E,kproj,iopt_filename,iopt_verbosity)
+    subroutine     read_prjcar(nkpts,nbands,nspins,nkpts_prim,bas_prim,k_prim,w_prim,kpt,w,E,kproj,fname,verbosity)
         !>
         !> Reads PRJCAR into variables.
         !>
         !> nkpts_prim number of primitive kpoints (POSCAR.prim)
         !> nkpts number of kpoints (KPOINTS)
         !> nbands number of bands
-        !> nspinss number of spin components
+        !> nspins number of spin components
         !> bas_prim(3,3) reciprocal basis (POSCAR.prim)
         !> k_prim(nkpts_prim) normalized kpoint weights (POSCAR.prim)
         !> kpt(3,nkpts) kvector (POSCAR)
@@ -335,14 +318,10 @@ module am_vasp_io
         !>
         implicit none
         !
-        character(*), optional :: iopt_filename
-        character(max_argument_length) :: fname
-        integer, optional :: iopt_verbosity
-        integer :: verbosity
         integer,intent(out) :: nkpts_prim      !> nkpts_prim number of primitive kpoints (POSCAR.prim)
         integer,intent(out) :: nkpts           !> nkpts number of kpoints (KPOINTS)
         integer,intent(out) :: nbands          !> nbands number of bands
-        integer,intent(out) :: nspinss          !> nspinss number of spin components
+        integer,intent(out) :: nspins          !> nspins number of spin components
         real(dp), intent(out) :: bas_prim(3,3) !> bas_prim(3,3) reciprocal basis (POSCAR.prim)
         real(dp), allocatable, intent(out) :: k_prim(:,:) !> k_prim(3,nkpts_prim) kvector (POSCAR.prim)
         real(dp), allocatable, intent(out) :: w_prim(:)   !> w_prim(nkpts_prim) weights (POSCAR.prim, normalized)
@@ -350,6 +329,8 @@ module am_vasp_io
         real(dp), allocatable, intent(out) :: w(:)        !> w(nkpts) weights (POSCAR, normalized)
         real(dp), allocatable, intent(out) :: E(:,:)      !> E(nbands,nkpts) energies
         real(dp), allocatable, intent(out) :: kproj(:,:,:,:) !> kproj(nspins,nkpts_prim,nbands,nkpts)
+        character(len=*), intent(in) :: fname
+        integer         , intent(in) :: verbosity
         integer :: n !> spin index
         ! i/o
         integer :: fid, iostat
@@ -357,11 +338,6 @@ module am_vasp_io
         character(len=:), allocatable :: word(:)
         ! loop variables
         integer :: i, j
-        !        !
-        fname = "PRJCAR"; if (present(iopt_filename)) fname = iopt_filename
-        verbosity = 1; if (present(iopt_verbosity)) verbosity = iopt_verbosity
-        !
-        !
         !
         if (verbosity.ge.1) call print_title('PRJCAR')
         !
@@ -376,7 +352,7 @@ module am_vasp_io
             nkpts_prim = 0
             nkpts  = 0
             nbands = 0
-            nspinss = 0
+            nspins = 0
             !
             do
                 read(unit=fid,fmt='(a)',iostat=iostat) buffer
@@ -390,8 +366,8 @@ module am_vasp_io
                     if (i .gt. nkpts_prim) nkpts_prim = i
                 case('spin')
                     read(word(3),*)  i
-                    !> nspinss number of spin components
-                    if (i .gt. nspinss) nspinss = i
+                    !> nspins number of spin components
+                    if (i .gt. nspins) nspins = i
                 case('kpt-point')
                     read(word(5),*)  i
                     !> nkpts number of kpoints (KPOINTS)
@@ -409,7 +385,7 @@ module am_vasp_io
         !
         if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'kpoint projections = ', tostring(nkpts_prim)
         if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'kpoints = ', tostring(nkpts)
-        if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'spins = ', tostring(nspinss)
+        if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'spins = ', tostring(nspins)
         if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'bands = ', tostring(nbands)
         !> k_prim(3,nkpts_prim) kvector (POSCAR.prim)
         allocate(k_prim(3,nkpts_prim))
@@ -421,8 +397,8 @@ module am_vasp_io
         allocate(w(nkpts))
         !> E(nbands,nkpts) energies
         allocate(E(nbands,nkpts))
-        !> kproj(nspinss,nkpts_prim,nbands,nkpts)
-        allocate(kproj(nspinss,nkpts_prim,nbands,nkpts))   
+        !> kproj(nspins,nkpts_prim,nbands,nkpts)
+        allocate(kproj(nspins,nkpts_prim,nbands,nkpts))   
         !
         ! OPEN TO READ STUFF
         !
@@ -495,18 +471,18 @@ module am_vasp_io
         !
     end subroutine read_prjcar
 
-    subroutine     read_eigenval(nkpts,nbands,nspinss,nelecs,kpt,w,E,lmproj,iopt_filename,iopt_verbosity)
+    subroutine     read_eigenval(nkpts,nbands,nspins,nelecs,kpt,w,E,lmproj,fname,verbosity)
         !>
         !> Read EIGENVAL into variables
         !>
         !> nkpts number of kpoints
         !> nbands number of bands
-        !> nspinss number of spins
+        !> nspins number of spins
         !> nelects number of electrons
         !> kpt(3,nkpts) kpoint
         !> w(nkpts) weights (normalized)
         !> E(nbands,nkpts) energies
-        !> lmproj(nspinss,norbitals,nions,nbands,nkpts) projections for spins 
+        !> lmproj(nspins,norbitals,nions,nbands,nkpts) projections for spins 
         !>
         implicit none
         !
@@ -514,16 +490,18 @@ module am_vasp_io
         integer :: ispin !> vasp ispin flag
         integer              , intent(out), optional :: nkpts      !> nkpts number of kpoints
         integer              , intent(out), optional :: nbands     !> nbands number of bands
-        integer              , intent(out), optional :: nspinss     !> nspinss number of spins
+        integer              , intent(out), optional :: nspins     !> nspins number of spins
         integer              , intent(out), optional :: nelecs     !> nelects number of electrons
         real(dp), allocatable, intent(out), optional :: kpt(:,:)   !> kpt(3,nkpts) kpoint
         real(dp), allocatable, intent(out), optional :: w(:)       !> w(nkpts) weights (normalized)
         real(dp), allocatable, intent(out), optional :: E(:,:)     !> E(nbands,nkpts) energies
-        real(dp), allocatable, intent(out), optional :: lmproj(:,:,:,:,:) !> lmproj(nspinss,norbitals,nions,nbands,nkpts) projections for spins
+        real(dp), allocatable, intent(out), optional :: lmproj(:,:,:,:,:) !> lmproj(nspins,norbitals,nions,nbands,nkpts) projections for spins
+        character(len=*)     , intent(in) :: fname
+        integer              , intent(in) :: verbosity
         ! <INTERNAL PARAMETERS>
         integer :: x_nkpts     !> nkpts number of kpoints
         integer :: x_nbands    !> nbands number of bands
-        integer :: x_nspinss    !> nspinss number of spins
+        integer :: x_nspins    !> nspins number of spins
         integer :: x_norbitals !> norbitals number of ions - NO INFORMATION ABOUT THIS IN EIGEVAL, SET TO 1
         integer :: x_nions     !> nions number of ions - NO INFORMATION ABOUT THIS IN EIGEVAL, SET TO 1
         ! i/o
@@ -534,23 +512,6 @@ module am_vasp_io
         character(len=:), allocatable :: word(:)
         ! loop variables
         integer :: i, j, m, j_and_m
-        ! standard optionals
-        character(*), intent(in), optional :: iopt_filename
-        integer, intent(in), optional :: iopt_verbosity
-        character(max_argument_length) :: fname
-        integer :: verbosity
-        !
-        if (present(iopt_filename)) then
-            fname = iopt_filename
-        else
-            fname = "EIGENVAL"
-        endif
-        !
-        if (present(iopt_verbosity)) then
-            verbosity = iopt_verbosity
-        else
-            verbosity = 1
-        endif
         !
         if (verbosity.ge.1) call print_title('EIGENVAL')
         !
@@ -620,42 +581,42 @@ module am_vasp_io
                         ! determine which format
                         read(word(size(word)),*) try
                         if (abs(try-1.0_dp).lt.tiny) then
-                            !> nspinss number of spins
-                            x_nspinss = size(word)-2
+                            !> nspins number of spins
+                            x_nspins = size(word)-2
                         else
-                            !> nspinss number of spins
-                            x_nspinss = size(word)-1
+                            !> nspins number of spins
+                            x_nspins = size(word)-1
                         endif
-                        if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'spins = ', tostring(x_nspinss)
-                        if (present(nspinss)) then
-                            nspinss = x_nspinss
+                        if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'spins = ', tostring(x_nspins)
+                        if (present(nspins)) then
+                            nspins = x_nspins
                         endif
-                        x_nbands = nbands_without_spin*x_nspinss
+                        x_nbands = nbands_without_spin*x_nspins
                         if (verbosity.ge.1) write(*,'(a,a,a)') flare, 'bands (with spin) = ', tostring(x_nbands)
                         if (present(nbands)) then 
                             nbands = x_nbands
                         endif
                         if (present(E)) allocate(E(x_nbands,x_nkpts))
-                        !> lmproj(nspinss,norbitals,nions,nbands,nkpts) projections for spins
+                        !> lmproj(nspins,norbitals,nions,nbands,nkpts) projections for spins
                         !> this array contains the projection character onto everything from oribtals, to ions, to spins
                         !> for systems with 2 spins, the spin component of lmproj is binary with 0 or 1
                         !> for dirac spinors with 4 spin components (spin orbit coupling), the spin component of lmproj takes on non-integer values
                         x_nions = 1
                         x_norbitals = 1
                         if (present(lmproj)) then
-                            allocate(lmproj(x_nspinss,x_norbitals,x_nions,x_nbands,x_nkpts))
+                            allocate(lmproj(x_nspins,x_norbitals,x_nions,x_nbands,x_nkpts))
                             lmproj = 0.0_dp
                         endif
                         !
                     endif
-                    do m = 1, x_nspinss
+                    do m = 1, x_nspins
                         j_and_m = j_and_m + 1
                         !> E(nbands,nkpts) energies
                         !> this array has one entry per band per spin
                         if (present(E)) then
                             read(word(m+1),*) E(j_and_m,i)
                         endif
-                        !> lmproj(nspinss,norbitals,nions,nbands,nkpts) projections for spins
+                        !> lmproj(nspins,norbitals,nions,nbands,nkpts) projections for spins
                         if (present(lmproj)) lmproj(m,1,1,j_and_m,i) = 1.0_dp
                     enddo
                     !
@@ -665,23 +626,20 @@ module am_vasp_io
         !
     end subroutine read_eigenval
 
-    subroutine     query_wavecar(nb1max,nb2max,nb3max,nkpts,nbands, fname,verbosity)
+    subroutine     query_wavecar(n_fft,nkpts,nbands,fname,verbosity)
         !
         implicit none
         !
-        integer     , intent(out) :: nb1max
-        integer     , intent(out) :: nb2max
-        integer     , intent(out) :: nb3max
-        integer     , intent(out) :: nbands
-        integer     , intent(out) :: nkpts
+        integer     , intent(out), optional :: n_fft(3)
+        integer     , intent(out), optional :: nbands
+        integer     , intent(out), optional :: nkpts
         character(*), intent(in) , optional :: fname
         integer     , intent(in) , optional :: verbosity
-        integer :: max_npws
         integer :: kpt_id  ! kpt,band,spin index of wavefunction to read
         integer :: band_id ! kpt,band,spin index of wavefunction to read
         integer :: spin_id ! kpt,band,spin index of wavefunction to read
         real(dp) :: bas(3,3)
-        real(dp) :: recbas(3,3)
+        real(dp) :: recbas(3,3) ! two pi convetion = keep it local to this function.
         real(dp) :: ecut
         real(dp) :: vol
         real(dp) :: xrecl,xnspins,xprec,xnkpts,xnbands
@@ -724,12 +682,12 @@ module am_vasp_io
             ! number of kpts, number of bands, cutoff energy, real-space basis
             read(unit=fid,rec=2) xnkpts, xnbands, ecut, ((bas(j,i),j=1,3),i=1,3)
             ! nkpts
-            nkpts = nint(xnkpts)
-            if (verbosity.ge.1) write(*,'(a,a)') flare, 'nkpts = '//tostring(nkpts)
-            ! nbands
-            nbands = nint(xnbands)
-            if (verbosity.ge.1) write(*,'(a,a)') flare, 'nbands = '//tostring(nbands)
-            ! stdout
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'nkpts = '//tostring(nint(xnkpts))
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'nbands = '//tostring(nint(xnbands))
+            ! output
+            if (present(nkpts)) nkpts = nint(xnkpts)
+            if (present(nbands)) nbands = nint(xnbands)
+            ! nband
             if (verbosity.ge.1) then
                 write(*,'(a,a)') flare, 'bas = '
                 call disp_indent()
@@ -739,7 +697,7 @@ module am_vasp_io
             vol = det(bas)
             ! stdout
             if (verbosity.ge.1) write(*,'(a,a)') flare, 'vol = '//tostring(vol)
-            ! get reciprocal basis
+            ! get reciprocal basis (two pi convetion used here)
             recbas = inv(bas) * 2*pi
             ! recbas
             if (verbosity.ge.1) then
@@ -748,88 +706,28 @@ module am_vasp_io
                 call disp(X=recbas)
             endif
             ! estimate number of plane waves
-            call estimate_npws(ecut=ecut,recbas=recbas,n_fft(1)=nb1max,n_fft(2)=nb2max,n_fft(3)=nb3max,max_npws=max_npws)
-            ! stdout
-            if (verbosity.ge.1) then
-                write(*,'(a,a)') flare, 'nb1max = '//tostring(nb1max)
-                write(*,'(a,a)') flare, 'nb2max = '//tostring(nb2max)
-                write(*,'(a,a)') flare, 'nb3max = '//tostring(nb3max)
-                write(*,'(a,a)') flare, 'max_npws = '//tostring(max_npws)
+            if (present(n_fft)) then
+                n_fft = estimate_n_fft(ecut=ecut,recbas=recbas)
+                ! stdout
+                if (verbosity.ge.1) write(*,'(a,a)') flare, 'n_fft = '//tostring(n_fft)
             endif
         close(fid)
-        contains
-        subroutine     estimate_npws(ecut,recbas,n_fft(1),n_fft(2),n_fft(3),max_npws)
-            !
-            implicit none
-            !
-            real(dp), intent(in) :: ecut
-            real(dp), intent(in) :: recbas(3,3)
-            integer :: n_fft(1) , n_fft(2) , n_fft(3)
-            integer :: max_npws
-            real(dp) :: vtmp(3)
-            real(dp) :: c
-            real(dp) :: phi12,phi13,phi23,phi123,sinphi123
-            integer :: x_nb1maxA, x_nb2maxA, x_nb3maxA
-            integer :: x_nb1maxB, x_nb2maxB, x_nb3maxB
-            integer :: x_nb1maxC, x_nb2maxC, x_nb3maxC
-            integer :: npmaxA , npmaxB , npmaxC
-            real(dp) :: vmag
-            ! constant 'c' is 2m/hbar**2 in units of 1/eV Ang^2 (value is adjusted in final decimal places to agree with 
-            ! VASP value; program checks for discrepancy of any results between this and VASP values)
-            ! hbar/2m = 0.26246582250210965422d0 / eV Ang^2
-            c = 0.262465831d0 ! to match vasp
-            ! estimate the number of planewaves along each primitive direction
-            phi12=acos(dot_product(recbas(:,1),recbas(:,2))/(norm2(recbas(:,1))*norm2(recbas(:,2))))
-            vtmp = cross_product(recbas(:,1),recbas(:,2))
-            vmag=sqrt(vtmp(1)**2+vtmp(2)**2+vtmp(3)**2)
-            sinphi123=(dot_product(recbas(:,3),Vtmp))/(vmag*norm2(recbas(:,3)))
-            x_nb1maxA=(sqrt(ecut*c)/(norm2(recbas(:,1))*abs(sin(phi12))))+1
-            x_nb2maxA=(sqrt(ecut*c)/(norm2(recbas(:,2))*abs(sin(phi12))))+1
-            x_nb3maxA=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sinphi123)))+1
-            npmaxA=nint(4.*pi*x_nb1maxA*x_nb2maxA*x_nb3maxA/3.)
-            ! repeat...
-            phi13=acos(dot_product(recbas(:,1),recbas(:,3))/(norm2(recbas(:,1))*norm2(recbas(:,3))))
-            vtmp = cross_product(recbas(:,1),recbas(:,3))
-            vmag=sqrt(vtmp(1)**2+vtmp(2)**2+vtmp(3)**2)
-            sinphi123=(dot_product(recbas(:,2),Vtmp))/(vmag*norm2(recbas(:,2)))
-            phi123=abs(asin(sinphi123))
-            x_nb1maxB=(sqrt(ecut*c)/(norm2(recbas(:,1))*abs(sin(phi13))))+1
-            x_nb2maxB=(sqrt(ecut*c)/(norm2(recbas(:,2))*abs(sinphi123)))+1
-            x_nb3maxB=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sin(phi13))))+1
-            npmaxB=nint(4.*pi*x_nb1maxB*x_nb2maxB*x_nb3maxB/3.)
-            ! repeat...
-            phi23=acos(dot_product(recbas(:,2),recbas(:,3))/(norm2(recbas(:,2))*norm2(recbas(:,3))))
-            vtmp = cross_product(recbas(:,2),recbas(:,3))
-            vmag=sqrt(vtmp(1)**2+vtmp(2)**2+vtmp(3)**2)
-            sinphi123=(dot_product(recbas(:,1),Vtmp))/(vmag*norm2(recbas(:,1)))
-            phi123=abs(asin(sinphi123))
-            x_nb1maxC=(sqrt(ecut*c)/(norm2(recbas(:,1))*abs(sinphi123)))+1
-            x_nb2maxC=(sqrt(ecut*c)/(norm2(recbas(:,2))*abs(sin(phi23))))+1
-            x_nb3maxC=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sin(phi23))))+1 
-            npmaxC=nint(4.*pi*x_nb1maxC*x_nb2maxC*x_nb3maxC/3.)
-            ! get the largest values in each of the three cases
-            n_fft(1)=max(x_nb1maxA,x_nb1maxB,x_nb1maxC)
-            n_fft(2)=max(x_nb2maxA,x_nb2maxB,x_nb2maxC)
-            n_fft(3)=max(x_nb3maxA,x_nb3maxB,x_nb3maxC)
-            max_npws=min(npmaxA,npmaxB,npmaxC)
-        end subroutine estimate_npws
     end subroutine query_wavecar
 
-    subroutine     read_wavecar(kpt_id,band_id,spin_id, psi,rgrid, occ,E,kpt, iopt_filename,iopt_verbosity)
+    subroutine     read_wavecar(rpt_frac,kpt_id,band_id,spin_id,psi, occ,E,kpt, fname,verbosity)
         !
         implicit none
         !
+        real(dp)    , intent(in), optional :: rpt_frac(:,:) ! only required for psi output
         integer     , intent(in) :: kpt_id  ! kpt,band,spin index of wavefunction to read
         integer     , intent(in) :: band_id ! kpt,band,spin index of wavefunction to read
         integer     , intent(in) :: spin_id ! kpt,band,spin index of wavefunction to read
-        complex(sp) , intent(out), optional, allocatable :: psi(:) !  wave function defined on rgrid
-        real(dp)    , intent(out), optional, allocatable :: rgrid(:,:)
-        real(dp)    , intent(out), optional :: kpt(3)
-        real(dp)    , intent(out), optional :: occ(:) ! nbands
-        real(dp)    , intent(out), optional :: E(:) ! nbands
-        character(*), intent(in) , optional :: iopt_filename
-        integer     , intent(in) , optional :: iopt_verbosity
-        character(max_argument_length) :: fname
+        character(*), intent(in) :: fname
+        integer     , intent(in) :: verbosity
+        complex(sp) , intent(out), optional :: psi(:) !  wave function defined on rpt_frac
+        real(dp)    , intent(out), optional :: kpt(3) ! kpoint coordinate
+        real(dp)    , intent(out), optional :: occ(:) ! occ( nbands )
+        real(dp)    , intent(out), optional :: E(:)   ! E( nbands )
         real(dp) :: a(3,3), recbas(3,3)
         real(dp) :: x_kpt(3)
         real(dp) :: ecut
@@ -840,27 +738,11 @@ module am_vasp_io
         real(dp) :: xrecl,xnspins,xprec,x_nkpts,x_nbands,x_npws
         integer  :: recl, nspins, prec, nkpts, nbands, npws
         integer, allocatable :: G(:,:) ! G(1:3,nGs)
-        integer :: n_fft(1)
-        integer :: n_fft(2)
         integer :: n_fft(3)
-        integer :: max_npws
         integer :: irec, iband, l
         integer :: i, j ! loop variables
         integer :: fid
-        integer :: verbosity
         integer :: iostat
-        !
-        if (present(iopt_filename)) then
-            fname = iopt_filename
-        else
-            fname = "WAVECAR"
-        endif
-        !
-        if (present(iopt_verbosity)) then
-            verbosity = iopt_verbosity
-        else
-            verbosity = 1
-        endif
         !
         if (verbosity.ge.1) call print_title('WAVECAR')
         !
@@ -897,7 +779,7 @@ module am_vasp_io
             nbands = nint(x_nbands)
             if (verbosity.ge.1) write(*,'(a,a)') flare, 'nbands = '//tostring(nbands)
             ! checks
-            if (kpt_id.gt.nkpts) stop 'ERROR [read_wavecar]: kpt_id exceeds the number of kpoints'
+            if (kpt_id.gt.nkpts)   stop 'ERROR [read_wavecar]: kpt_id exceeds the number of kpoints'
             if (band_id.gt.nbands) stop 'ERROR [read_wavecar]: band_id exceeds the number of bands'
             ! stdout
             if (verbosity.ge.1) then
@@ -918,12 +800,9 @@ module am_vasp_io
                 call disp(X=recbas)
             endif
             ! estimate number of plane waves
-            call estimate_npws(ecut=ecut,recbas=recbas,n_fft=n_fft,max_npws=max_npws)
+            n_fft = estimate_n_fft(ecut=ecut,recbas=recbas)
             ! stdout
-            if (verbosity.ge.1) then
-                write(*,'(a,a)') flare, 'n_fft = '//tostring(n_ftt)
-                write(*,'(a,a)') flare, 'max_npws = '//tostring(max_npws)
-            endif
+            if (verbosity.ge.1) write(*,'(a,a)') flare, 'n_fft = '//tostring(n_fft)
             ! find the wave function
             irec=3+(kpt_id-1)*(nbands+1)+(spin_id-1)*nkpts*(nbands+1)
             ! allocate space for energies and occupancies
@@ -937,35 +816,31 @@ module am_vasp_io
             if (present(kpt)) kpt = x_kpt
             ! construct wave function
             if (present(psi)) then
-                ! check for rgrid
-                if (.not.present(rgrid)) stop 'ERROR [rgrid must be present when psi is called.'
+                ! check for rpt_frac
+                if (.not.present(rpt_frac)) stop 'ERROR [read_wavecar]: rpt_frac must be present when psi is called.'
                 ! convert to integer
                 npws = nint(x_npws)
                 ! stdout
                 if (verbosity.ge.1) write(*,'(a,a)') flare, 'npws = '//tostring(npws)
                 ! get reciprocal lattice vectors offset by x_kpt which have kinetic energies below cutoff
-                G = get_G(n_ftt=n_ftt,recbas=recbas,x_kpt=x_kpt,ecut=ecut,npws=npws)
+                G = get_G(n_fft=n_fft, recbas=recbas, x_kpt=x_kpt, ecut=ecut, npws=npws)
                 ! set record to planewave expansion coefficients corresponding to a particular band
                 irec=irec+band_id
                 ! allocate number of planewaves for coefficients
                 allocate(coeff_nG(npws))
                 ! plane-wave expansion coefficients depend on band index and kpoint, as expected wavefunctions corresponding to eigenvectors
                 read(unit=fid,rec=irec) (coeff_nG(l), l=1 , npws)
-                ! get real-space grid in fractional coordinates 
-                rgrid = dmeshgrid( v1=[0:2*n_ftt(3)]/real(1+2*n_ftt(3),dp), &
-                                 & v2=[0:2*n_ftt(2)]/real(1+2*n_ftt(2),dp), &
-                                 & v3=[0:2*n_ftt(1)]/real(1+2*n_ftt(1),dp))
-                ! fourier transform plane waves to obtain real-space wavefunctions
-                psi = get_psi(vol=vol,x_kpt=x_kpt,coeff_nG=coeff_nG,G=G,rgrid=rgrid)
+                ! Fourier transform plane waves to obtain real-space wavefunctions
+                psi = get_psi(vol=vol,x_kpt=x_kpt,coeff_nG=coeff_nG,G=G,rpt_frac=rpt_frac)
             endif
         close(fid)
         contains
-        function       get_G(n_ftt,recbas,x_kpt,ecut,npws) result(G)
+        function       get_G(n_fft,recbas,x_kpt,ecut,npws) result(G)
             ! Count the number of plane waves that have energy below the plane-wave cutoff energy and checks 
             ! that it matches the value written by vasp; record reciprocal lattice points corresponding to these planewaves
             implicit none
             !
-            integer , intent(in) :: n_ftt(3)
+            integer , intent(in) :: n_fft(3)
             real(dp), intent(in) :: recbas(3,3)
             real(dp), intent(in) :: x_kpt(3)
             real(dp), intent(in) :: ecut ! planewave kinetic-energy cutoff
@@ -985,15 +860,15 @@ module am_vasp_io
             ! hbar/2m = 0.26246582250210965422d0 / eV Ang^2
             c = 0.262465831d0 ! to match vasp
             ! Generate the FFT grid used by VASP
-            gx = fftshift([-n_ftt(1):n_ftt(1)])
-            gy = fftshift([-n_ftt(2):n_ftt(2)])
-            gz = fftshift([-n_ftt(3):n_ftt(3)])
+            gx = fftshift([-n_fft(1):n_fft(1)])
+            gy = fftshift([-n_fft(2):n_fft(2)])
+            gz = fftshift([-n_fft(3):n_fft(3)])
             ! initialize planewave counter
             n=0
             ! loop over reciprocal lattice points
-            do k = 1, 2*n_ftt(3)+1
-            do j = 1, 2*n_ftt(2)+1
-            do i = 1, 2*n_ftt(1)+1
+            do k = 1, 2*n_fft(3)+1
+            do j = 1, 2*n_fft(2)+1
+            do i = 1, 2*n_fft(1)+1
                 kpt  = matmul(recbas, x_kpt + [gx(i),gy(j),gz(k)] )
                 ! calculate the free-electron planewave energy
                 ! etot = hbar^2 | k + G |^2 / 2m; note c = 1/(hbar^2/2m)
@@ -1013,7 +888,7 @@ module am_vasp_io
             ! the mismatch could be require a small adjustment in c value
             ! the mismatch could be due to using gamma version o vasp to generate wavecar
         end function   get_G
-        function       get_psi(vol,x_kpt,coeff_nG,G,rgrid) result(psi)
+        function       get_psi(vol,x_kpt,coeff_nG,G,rpt_frac) result(psi)
             !
             implicit none
             !
@@ -1021,84 +896,29 @@ module am_vasp_io
             real(dp)   , intent(in) :: vol
             complex(sp), intent(in) :: coeff_nG(:)
             integer    , intent(in) :: G(:,:) ! G(1:3,nGs)
-            real(dp)   , intent(in) :: rgrid(:,:)
-            complex(sp),allocatable :: psi(:)
-            integer  :: n, m, o
-            integer  :: i, j, k, l ! loop variables
+            real(dp)   , intent(in) :: rpt_frac(:,:)
+            complex(sp), allocatable :: psi(:)
+            integer  :: n
+            integer  :: i, j
             ! get sizes
-            n = size(rgrid,2)
-            ! initialize wavefunction on realspace grid [0,1): rgrid
+            n = size(rpt_frac,2)
+            ! initialize wavefunction on realspace grid [0,1): rpt_frac
             allocate(psi(n))
             ! loop real space coordinates
             do i = 1, n
                 psi(i) = 0.0_dp
                 ! loop over planewaves
-                do l = 1, npws
+                do j = 1, npws
                     ! G is a list of reciprocal lattice points (integer kpt_id values in fractional coordinates; i.e. no forbidden points)
                     ! this is essentially performing the fourier transform to obtain the wave function in real space
-                    psi(i) = psi(i) + coeff_nG(l) * exp(itwopi*dot_product( x_kpt + G(:,l), rgrid(3,i) ) )
+                    psi(i) = psi(i) + coeff_nG(j) * exp(itwopi*dot_product( x_kpt + G(:,j), rpt_frac(1:3,i) ) )
                 enddo
                 psi(i) = psi(i)/sqrt(vol)
             enddo
         end function   get_psi
-        subroutine     estimate_npws(ecut,recbas,n_fft,max_npws)
-            !
-            implicit none
-            !
-            real(dp), intent(in)  :: ecut
-            real(dp), intent(in)  :: recbas(3,3)
-            integer , intent(out) :: n_fft(3)
-            integer , intent(out) :: max_npws
-            real(dp) :: vtmp(3)
-            real(dp) :: c
-            real(dp) :: phi12,phi13,phi23,phi123,sinphi123
-            integer  :: x_nb1maxA, x_nb2maxA, x_nb3maxA
-            integer  :: x_nb1maxB, x_nb2maxB, x_nb3maxB
-            integer  :: x_nb1maxC, x_nb2maxC, x_nb3maxC
-            integer  :: npmaxA , npmaxB , npmaxC
-            real(dp) :: vmag
-            ! constant 'c' is 2m/hbar**2 in units of 1/eV Ang^2 (value is adjusted in final decimal places to agree with 
-            ! VASP value; program checks for discrepancy of any results between this and VASP values)
-            ! hbar/2m = 0.26246582250210965422d0 / eV Ang^2
-            c = 0.262465831d0 ! to match vasp
-            ! estimate the number of planewaves along each primitive direction
-            phi12=acos(dot_product(recbas(:,1),recbas(:,2))/(norm2(recbas(:,1))*norm2(recbas(:,2))))
-            vtmp = cross_product(recbas(:,1),recbas(:,2))
-            vmag=sqrt(vtmp(1)**2+vtmp(2)**2+vtmp(3)**2)
-            sinphi123=(dot_product(recbas(:,3),Vtmp))/(vmag*norm2(recbas(:,3)))
-            x_nb1maxA=(sqrt(ecut*c)/(norm2(recbas(:,1))*abs(sin(phi12))))+1
-            x_nb2maxA=(sqrt(ecut*c)/(norm2(recbas(:,2))*abs(sin(phi12))))+1
-            x_nb3maxA=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sinphi123)))+1
-            npmaxA=nint(4.*pi*x_nb1maxA*x_nb2maxA*x_nb3maxA/3.)
-            ! repeat...
-            phi13=acos(dot_product(recbas(:,1),recbas(:,3))/(norm2(recbas(:,1))*norm2(recbas(:,3))))
-            vtmp = cross_product(recbas(:,1),recbas(:,3))
-            vmag=sqrt(vtmp(1)**2+vtmp(2)**2+vtmp(3)**2)
-            sinphi123=(dot_product(recbas(:,2),Vtmp))/(vmag*norm2(recbas(:,2)))
-            phi123=abs(asin(sinphi123))
-            x_nb1maxB=(sqrt(ecut*c)/(norm2(recbas(:,1))*abs(sin(phi13))))+1
-            x_nb2maxB=(sqrt(ecut*c)/(norm2(recbas(:,2))*abs(sinphi123)))+1
-            x_nb3maxB=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sin(phi13))))+1
-            npmaxB=nint(4.*pi*x_nb1maxB*x_nb2maxB*x_nb3maxB/3.)
-            ! repeat...
-            phi23=acos(dot_product(recbas(:,2),recbas(:,3))/(norm2(recbas(:,2))*norm2(recbas(:,3))))
-            vtmp = cross_product(recbas(:,2),recbas(:,3))
-            vmag=sqrt(vtmp(1)**2+vtmp(2)**2+vtmp(3)**2)
-            sinphi123=(dot_product(recbas(:,1),Vtmp))/(vmag*norm2(recbas(:,1)))
-            phi123=abs(asin(sinphi123))
-            x_nb1maxC=(sqrt(ecut*c)/(norm2(recbas(:,1))*abs(sinphi123)))+1
-            x_nb2maxC=(sqrt(ecut*c)/(norm2(recbas(:,2))*abs(sin(phi23))))+1
-            x_nb3maxC=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sin(phi23))))+1 
-            npmaxC=nint(4.*pi*x_nb1maxC*x_nb2maxC*x_nb3maxC/3.)
-            ! get the largest values in each of the three cases
-            n_fft(1)=max(x_nb1maxA,x_nb1maxB,x_nb1maxC)
-            n_fft(2)=max(x_nb2maxA,x_nb2maxB,x_nb2maxC)
-            n_fft(3)=max(x_nb3maxA,x_nb3maxB,x_nb3maxC)
-            max_npws=min(npmaxA,npmaxB,npmaxC)
-        end subroutine estimate_npws
     end subroutine read_wavecar
 
-    subroutine     read_doscar(efermi,nedos,dos,E,iopt_filename,iopt_verbosity)
+    subroutine     read_doscar(efermi,nedos,dos,E,fname,verbosity)
         !
         implicit none
         !
@@ -1106,28 +926,14 @@ module am_vasp_io
         integer              , intent(out), optional :: nedos
         real(dp), allocatable, intent(out), optional :: dos(:)
         real(dp), allocatable, intent(out), optional :: E(:)
-        character(*)         , intent(in) , optional :: iopt_filename
-        integer              , intent(in) , optional :: iopt_verbosity
+        character(*)         , intent(in) , optional :: fname
+        integer              , intent(in) , optional :: verbosity
         character(maximum_buffer_size) :: buffer
         character(len=:), allocatable  :: word(:)
-        character(max_argument_length) :: fname
-        integer :: verbosity
         integer :: iostat
         integer :: x_nedos
         integer :: fid
         integer :: i
-        !
-        if (present(iopt_filename)) then
-            fname = iopt_filename
-        else
-            fname = "DOSCAR"
-        endif
-        !
-        if (present(iopt_verbosity)) then
-            verbosity = iopt_verbosity
-        else
-            verbosity = 1
-        endif
         !
         if (verbosity.ge.1) call print_title('DOSCAR')
         !
@@ -1174,7 +980,7 @@ module am_vasp_io
         close(fid)
     end subroutine read_doscar
 
-    subroutine     read_poscar(bas,natoms,nspecies,symb,tau_frac,atype,iopt_filename,iopt_verbosity)
+    subroutine     read_poscar(bas,natoms,nspecies,symb,tau_frac,atype,fname,verbosity)
         ! Reads poscar into variables performing basic checks on the way. Call it like this:
         !
         !    bas(3,3) column vectors a(1:3,i), a(1:3,j), a(1:3,kpt)
@@ -1196,6 +1002,8 @@ module am_vasp_io
         integer , allocatable :: natoms_per_species(:) ! number of atoms per species
         real(dp), allocatable, intent(out) :: tau_frac(:,:) ! atomic coordinates tau_frac_read(3,natoms) in fractional
         integer , allocatable, intent(out) :: atype(:) ! type of atom tau_frac_read(natoms)
+        character(*), intent(in) :: fname
+        integer     , intent(in) :: verbosity
         ! subroutine internal parameters
         real(dp) :: recbas(3,3)
         real(dp) :: vol
@@ -1214,14 +1022,6 @@ module am_vasp_io
         character(:), allocatable :: disp_str(:)
         ! optional i/o
         integer :: iostat
-        character(*), optional :: iopt_filename
-        character(max_argument_length) :: fname
-        integer, optional :: iopt_verbosity
-        integer :: verbosity
-        fname = "POSCAR"
-        if ( present(iopt_filename) ) fname = iopt_filename
-        verbosity = 1
-        if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
         !
         call tostring_set(sep=' ')
         !
@@ -1361,7 +1161,7 @@ module am_vasp_io
         close(fid)
     end subroutine read_poscar
 
-    subroutine     write_poscar(bas,natoms,nspecies,symb,tau_frac,atype,iopt_filename,iopt_header)
+    subroutine     write_poscar(bas,natoms,nspecies,symb,tau_frac,atype,header,fname,verbosity)
         !>
         !> Write poscar based on structure data.
         !>
@@ -1373,21 +1173,18 @@ module am_vasp_io
         character(len=*), intent(in) :: symb(:) ! 1 symb per species
         real(dp), intent(in) :: tau_frac(:,:) ! atomic coordinates tau_frac_read(3,natoms) in fractional
         integer , intent(in) :: atype(:) ! type of atom tau_frac_read(natoms)
+        character(*), intent(in) :: header
+        character(*), intent(in) :: fname
+        integer     , intent(in) :: verbosity
         ! file i/o
         integer :: fid
         ! loop variables
         integer :: i, j, n
         ! optional i/o
-        character(*), optional :: iopt_filename
-        character(max_argument_length) :: fname
-        character(*), optional :: iopt_header
-        character(max_argument_length) :: header
-        fname = 'outfile.POSCAR'
-        if ( present(iopt_filename) ) fname = iopt_filename
-        header = 'POSCAR'
-        if ( present(iopt_header) )  header = iopt_header
+        ! fname = 'outfile.POSCAR'
+        ! header = 'POSCAR'
         !
-        call print_title('Writing POSCAR')
+        if (verbosity.ge.1) call print_title('Writing POSCAR')
         !
         fid = 1
         open(unit=fid,file=trim(fname),status='replace',action='write')
@@ -1435,7 +1232,7 @@ module am_vasp_io
 
     ! wannier90
 
-    subroutine     read_amn(U,nbands,nkpts,nwanniers,iopt_filename,iopt_verbosity)
+    subroutine     read_amn(U,nbands,nkpts,nwanniers,fname,verbosity)
         !>
         !> U is equal to a_matrix if there is no disentanglment.
         !>
@@ -1444,24 +1241,17 @@ module am_vasp_io
         !
         complex(dp), intent(out), allocatable :: U(:,:,:)
         integer, intent(out) :: nbands, nkpts, nwanniers
+        character(*), intent(in) :: fname
+        integer     , intent(in) :: verbosity
         integer  :: nwanprojs
         real(dp) :: a_real, a_imag
         integer  :: i, m, n, k
-        !
         character(maximum_buffer_size) :: buffer ! read buffer
         character(len=:), allocatable :: word(:) ! read buffer
-        !
         integer :: iostat
         integer :: fid
-        character(*), optional :: iopt_filename
-        character(max_argument_length) :: fname
-        integer, optional :: iopt_verbosity
-        integer :: verbosity
         !
-        fname = "wannier90.amn"
-        if ( present(iopt_filename) ) fname = iopt_filename
-        verbosity = 1
-        if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
+        ! fname = "wannier90.amn"
         !
         if (verbosity.ge.1) call print_title('Reading wannier unitary matrix (U matrix)')
         !
@@ -1503,7 +1293,7 @@ module am_vasp_io
         !
     end subroutine read_amn
 
-    subroutine     read_eig(E,nbands,nkpts,iopt_filename,iopt_verbosity)
+    subroutine     read_eig(E,nbands,nkpts,fname,verbosity)
         !>
         !> it seems that the U is equal to the a_matrix if there is no disentanglment.
         !>
@@ -1513,23 +1303,16 @@ module am_vasp_io
         real(dp), intent(out), allocatable :: E(:,:) !> E(nbands,nkpts) energies
         integer, intent(out) :: nbands
         integer, intent(out) :: nkpts
+        character(*), intent(in) :: fname
+        integer     , intent(in) :: verbosity
         real(dp) :: Ein
         integer  :: i, j, k
-        !
         character(maximum_buffer_size) :: buffer ! read buffer
         character(len=:), allocatable :: word(:) ! read buffer
-        !
         integer :: fid
         integer :: iostat
-        character(*), optional :: iopt_filename
-        character(max_argument_length) :: fname
-        integer, optional :: iopt_verbosity
-        integer :: verbosity
         !
-        fname = "wannier90.eig"
-        if ( present(iopt_filename) ) fname = iopt_filename
-        verbosity = 1
-        if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
+        ! fname = "wannier90.eig"
         !
         if (verbosity.ge.1) call print_title('Reading eigenvalues for wannier')
         !
@@ -1592,62 +1375,61 @@ module am_vasp_io
 
     ! auxiliary function
 
-
-    function     get_fft_mesh(n_fft(1),n_fft(2),n_fft(3),recbas,x_kpt,ecut,max_npws,npws) result(G)
-        ! Count the number of plane waves that have energy below the plane-wave cutoff energy and checks 
-        ! that it matches the value written by vasp; record reciprocal lattice points corresponding to these planewaves
+    function      estimate_n_fft(ecut,recbas) result(n_fft)
+        !
         implicit none
         !
-        integer , intent(in) :: n_fft(1)
-        integer , intent(in) :: n_fft(2)
-        integer , intent(in) :: n_fft(3)
-        real(dp), intent(in) :: recbas(3,3)
-        real(dp), intent(in) :: x_kpt(3)
-        real(dp), intent(in) :: ecut
-        integer , intent(in) :: max_npws
-        integer , intent(in) :: npws
-        integer, allocatable :: G(:,:) ! G(1:3,nGs)
-        integer, allocatable :: x_G(:,:) ! G(1:3,nGs)
-        integer, allocatable :: gx_list(:)
-        integer, allocatable :: gy_list(:)
-        integer, allocatable :: gz_list(:)
-        real(dp) :: kpt(3)
-        integer :: i, j, k, n ! loop variables
+        real(dp), intent(in)  :: ecut
+        real(dp), intent(in)  :: recbas(3,3)
+        integer  :: n_fft(3)
+        real(dp) :: vtmp(3)
         real(dp) :: c
-        real(dp) :: etot
-        ! allocate space
-        allocate(x_G(3,max_npws))
+        real(dp) :: phi12,phi13,phi23,phi123,sinphi123
+        integer  :: x_nb1maxA, x_nb2maxA, x_nb3maxA
+        integer  :: x_nb1maxB, x_nb2maxB, x_nb3maxB
+        integer  :: x_nb1maxC, x_nb2maxC, x_nb3maxC
+        integer  :: npmaxA , npmaxB , npmaxC
+        real(dp) :: vmag
         ! constant 'c' is 2m/hbar**2 in units of 1/eV Ang^2 (value is adjusted in final decimal places to agree with 
         ! VASP value; program checks for discrepancy of any results between this and VASP values)
         ! hbar/2m = 0.26246582250210965422d0 / eV Ang^2
         c = 0.262465831d0 ! to match vasp
-        ! Generate the FFT grid used by VASP
-        gx_list = fftshift([-n_fft(1):n_fft(1)])
-        gy_list = fftshift([-n_fft(2):n_fft(2)])
-        gz_list = fftshift([-n_fft(3):n_fft(3)])
-        ! initialize planewave counter
-        n=0
-        ! loop over reciprocal lattice points
-        do k = 1, 2*n_fft(3)+1
-        do j = 1, 2*n_fft(2)+1
-        do i = 1, 2*n_fft(1)+1
-            kpt  = matmul(recbas, x_kpt + [gx_list(i),gy_list(j),gz_list(k)] )
-            ! calculate the free-electron planewave energy
-            ! etot = hbar^2 | k + G |^2 / 2m; note c = 1/(hbar^2/2m)
-            etot = norm2(kpt)**2/c
-            ! check whether it is below the planewave expansion cutoff energy
-            if (etot.lt.ecut) then
-                n=n+1
-                x_G(1,n)=gx_list(i)
-                x_G(2,n)=gy_list(j)
-                x_G(3,n)=gz_list(k)
-            endif
-        enddo
-        enddo
-        enddo
-    end function get_fft_mesh
+        ! estimate the number of planewaves along each primitive direction
+        phi12=acos(dot_product(recbas(:,1),recbas(:,2))/(norm2(recbas(:,1))*norm2(recbas(:,2))))
+        vtmp = cross_product(recbas(:,1),recbas(:,2))
+        vmag=sqrt(vtmp(1)**2+vtmp(2)**2+vtmp(3)**2)
+        sinphi123=(dot_product(recbas(:,3),Vtmp))/(vmag*norm2(recbas(:,3)))
+        x_nb1maxA=(sqrt(ecut*c)/(norm2(recbas(:,1))*abs(sin(phi12))))+1
+        x_nb2maxA=(sqrt(ecut*c)/(norm2(recbas(:,2))*abs(sin(phi12))))+1
+        x_nb3maxA=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sinphi123)))+1
+        npmaxA=nint(4.*pi*x_nb1maxA*x_nb2maxA*x_nb3maxA/3.)
+        ! repeat...
+        phi13=acos(dot_product(recbas(:,1),recbas(:,3))/(norm2(recbas(:,1))*norm2(recbas(:,3))))
+        vtmp = cross_product(recbas(:,1),recbas(:,3))
+        vmag=sqrt(vtmp(1)**2+vtmp(2)**2+vtmp(3)**2)
+        sinphi123=(dot_product(recbas(:,2),Vtmp))/(vmag*norm2(recbas(:,2)))
+        phi123=abs(asin(sinphi123))
+        x_nb1maxB=(sqrt(ecut*c)/(norm2(recbas(:,1))*abs(sin(phi13))))+1
+        x_nb2maxB=(sqrt(ecut*c)/(norm2(recbas(:,2))*abs(sinphi123)))+1
+        x_nb3maxB=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sin(phi13))))+1
+        npmaxB=nint(4.*pi*x_nb1maxB*x_nb2maxB*x_nb3maxB/3.)
+        ! repeat...
+        phi23=acos(dot_product(recbas(:,2),recbas(:,3))/(norm2(recbas(:,2))*norm2(recbas(:,3))))
+        vtmp = cross_product(recbas(:,2),recbas(:,3))
+        vmag=sqrt(vtmp(1)**2+vtmp(2)**2+vtmp(3)**2)
+        sinphi123=(dot_product(recbas(:,1),Vtmp))/(vmag*norm2(recbas(:,1)))
+        phi123=abs(asin(sinphi123))
+        x_nb1maxC=(sqrt(ecut*c)/(norm2(recbas(:,1))*abs(sinphi123)))+1
+        x_nb2maxC=(sqrt(ecut*c)/(norm2(recbas(:,2))*abs(sin(phi23))))+1
+        x_nb3maxC=(sqrt(ecut*c)/(norm2(recbas(:,3))*abs(sin(phi23))))+1 
+        npmaxC=nint(4.*pi*x_nb1maxC*x_nb2maxC*x_nb3maxC/3.)
+        ! get the largest values in each of the three cases
+        n_fft(1)=max(x_nb1maxA,x_nb1maxB,x_nb1maxC)
+        n_fft(2)=max(x_nb2maxA,x_nb2maxB,x_nb2maxC)
+        n_fft(3)=max(x_nb3maxA,x_nb3maxB,x_nb3maxC)
+    end function  estimate_n_fft
 
-!     subroutine read_mmn(iopt_filename,iopt_verbosity)
+!     subroutine read_mmn(fname,verbosity)
 !         !>
 !         !> Definition of overlap m_matrix. Eq. (25) PhysRevB 56 12847
 !         !>
@@ -1664,9 +1446,9 @@ module am_vasp_io
 !         implicit none
 !         !
 !         fname = "wannier90.mmn"
-!         if ( present(iopt_filename) ) fname = iopt_filename
+!         if ( present(fname) ) fname = fname
 !         verbosity = 1
-!         if ( present(iopt_verbosity) ) verbosity = iopt_verbosity
+!         if ( present(verbosity) ) verbosity = verbosity
 !         !
 !         !
 !         !

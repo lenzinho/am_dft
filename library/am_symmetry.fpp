@@ -113,8 +113,8 @@ contains
             symb=symb,&
             tau_frac=uc%tau_frac,&
             atype=atype,&
-            iopt_filename=opts%poscar,&
-            iopt_verbosity=opts%verbosity)
+            fname=opts%poscar,&
+            verbosity=opts%verbosity)
         !
         allocate(uc%Z(uc%natoms))
         do i = 1, uc%natoms

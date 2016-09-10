@@ -777,7 +777,7 @@ contains
         close(fid)
     end subroutine read_irreducible_matrix_element
 
-    ! optimizer
+    ! dispersion optimizer
 
     subroutine     optimize_matrix_element(tb,dft,pp,opts,flags)
         !
@@ -1111,6 +1111,22 @@ contains
             call mkl_free_buffers
         end if
     end function   compute_jacobian
+
+    ! wave function stuff
+
+    subroutine  wavefunction_map(tb,dft)
+        !
+        implicit none
+        !
+        ! QUESTIONS:
+        ! 1) DFT psi is defined on a real space grid. One wave function per k-point per band
+        !    TB orbital is per band (should be all the same for kpoints?) How to project...?
+        !
+        type(am_class_tightbinding), intent(inout) :: tb
+        type(am_class_dft)         , intent(in) :: dft
+
+
+    end subroutine
 
 end module am_tight_binding
 
