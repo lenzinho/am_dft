@@ -1114,19 +1114,28 @@ contains
 
     ! wave function stuff
 
-    subroutine  wavefunction_map(tb,dft)
+    subroutine     map_wavefunction(tb,dft)
         !
         implicit none
         !
         ! QUESTIONS:
         ! 1) DFT psi is defined on a real space grid. One wave function per k-point per band
         !    TB orbital is per band (should be all the same for kpoints?) How to project...?
+        !    Probably need one DFT-TB map per k-point. Rotate the DFT Hamiltonian onto the TB
+        !    basis at every k and use the TB Hamiltonian to get matrix elements.
         !
         type(am_class_tightbinding), intent(inout) :: tb
         type(am_class_dft)         , intent(in) :: dft
+        !
+        
+        ! get spherical harmonics 
+        pp
+
+        dft%wc%rpt_frac 
+        dft%wc%nrpts
 
 
-    end subroutine
+    end subroutine map_wavefunction
 
 end module am_tight_binding
 
