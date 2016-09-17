@@ -39,6 +39,9 @@ module am_tight_binding
     type, extends(am_class_dos) :: am_class_tightbinding_dos
     end type am_class_tightbinding_dos
 
+    type, extends(am_class_df) :: am_class_tightbinding_df
+    end type am_class_tightbinding_df
+
     type, public :: am_class_tightbinding
         integer :: spin                                ! number of spins per band = 1 (spin polarized) vs. 2 (nonspin polarized)
         integer :: nshells                             ! how many shells irreducible atoms
@@ -49,12 +52,15 @@ module am_tight_binding
         type(am_class_tightbinding_pointgroup) :: pg   ! point group in tight binding representation
         type(am_class_tightbinding_dispersion) :: dr   ! band dispersion computed using the tight binding model
         type(am_class_tightbinding_dos)        :: dos  ! density of states
+        type(am_class_tightbinding_df)         :: df   ! dielectric function
         type(am_class_tightbinding_fitter)     :: ft   ! fitter for optimizing tight binding matrix elements
         contains
         procedure :: initialize_tb
         procedure :: get_hamiltonian
         procedure :: get_dispersion
+        procedure :: get_hamiltonian_kgradient
         procedure :: get_dos
+        procedure :: get_df
         procedure :: get_fermi_energy
         procedure :: initialize_ft
         procedure :: optimize_matrix_element
@@ -321,130 +327,20 @@ contains
         end function ps2D
     end subroutine initialize_tb
 
-    function       get_hamiltonian(tb,pp,kpt) result(H)
-        ! 
-        ! Get tight binding Hamiltonian at kpt.
-        ! 
-        implicit none
-        !
-        class(am_class_tightbinding), intent(in) :: tb     ! tight binding matrix elements
-        type(am_class_prim_pair)    , intent(in) :: pp     ! primitive pairs
-        real(dp)                    , intent(in) :: kpt(3) ! cart
-        complex(dp), allocatable, target :: Hsub_target(:,:)
-        real(dp)   , allocatable, target :: pg_target(:,:,:)
-        integer    , allocatable :: selector_shell(:)
-        real(dp)   , pointer     :: Dm(:,:), Dn(:,:)
-        integer    , allocatable :: S(:),E(:)
-        complex(dp), allocatable :: H(:,:)
-        complex(dp), pointer     :: Hsub(:,:)
-        integer :: m ! primitive atom 1 index 
-        integer :: n ! primitive atom 2 index
-        integer :: k ! shell (primitive)
-        integer :: l ! shell (irreducible)
-        integer :: p ! atoms
-        integer :: ip_nshells
-        ! get number of irreducile shell
-        ip_nshells = maxval(abs(pp%ip_id(:)))
-        ! selector
-        if (allocated(tb%ft%selector_shell)) then
-            allocate(selector_shell, source=tb%ft%selector_shell)
-        else
-            allocate(selector_shell, source=[1:ip_nshells])
-        endif
-        ! allocate space for vectors demarking start and end of Hamiltonian subsection
-        allocate(S, source=tb%pg%S)
-        allocate(E, source=tb%pg%E)
-        ! allocate workspace for H subsection (initialized later)
-        allocate(Hsub_target(tb%pg%nbases,tb%pg%nbases))
-        ! allocate workspace for H subsection (initialized later)
-        allocate(pg_target, source=tb%pg%sym)
-        ! allocate and initialize
-        allocate(H(tb%pg%nbases,tb%pg%nbases))
-        H = cmplx(0,0,dp)
-        ! construct Hamiltonian
-        do l = 1, ip_nshells
-        if ( any(selector_shell.eq.l) ) then
-            do k = 1, pp%nshells
-            if (abs(pp%ip_id(k)).eq.l) then
-                ! primitive atom indicies
-                m = pp%shell(k)%m
-                n = pp%shell(k)%n
-                ! compute bloch sum by loop over atoms in shell
-                do p = 1, pp%shell(k)%natoms
-                    ! set pointers
-                    Hsub => Hsub_target(S(m):E(m), S(n):E(n))
-                    Dm   =>   pg_target(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p))
-                    Dn   =>   pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p))
-                    ! get matrix elements (initialize Hsub)
-                    Hsub = get_matrix_element(tb=tb, ip_id=pp%ip_id(k))
-                    ! rotate matrix elements as needed to get from the tau_frac(:,1) => tau_frac(:,x)
-                    Hsub = matmul(matmul(transpose(Dm), Hsub), Dn)
-                    ! multiply exponential factor from Bloch sum
-                    Hsub = Hsub * exp(-itwopi*dot_product(pp%shell(k)%tau_cart(1:3,p), kpt)) ! kpt [rec. cart.]
-                    ! this pair's contribution to the Hamiltonian
-                    H(S(m):E(m), S(n):E(n)) = H(S(m):E(m), S(n):E(n)) + Hsub
-                enddo
-            endif
-            enddo
-            !
-            if (debug) then
-                if (.not.ishermitian(H)) stop 'ERROR [get_hamiltonian]: H is not Hermitian!'
-            endif
-        endif
-        enddo
-    end function   get_hamiltonian
-
-    subroutine     get_dispersion(tb,pp,bz)
-        !
-        implicit none
-        !
-        class(am_class_tightbinding), intent(inout) :: tb
-        type(am_class_prim_pair)    , intent(in) :: pp
-        class(am_class_bz)          , intent(in) :: bz
-        integer    , allocatable :: selector_kpoint(:)
-        complex(dp), allocatable :: H(:,:), V(:,:)
-        real(dp)   , allocatable :: D(:)
-        integer :: i
-        ! selector
-        if (allocated(tb%ft%selector_kpoint)) then
-            allocate(selector_kpoint, source=tb%ft%selector_kpoint)
-        else
-            allocate(selector_kpoint, source=[1:bz%nkpts])
-        endif
-        ! tight binding coefficients
-        if (.not.allocated(tb%dr%C)) allocate(tb%dr%C(tb%pg%nbases,tb%pg%nbases,bz%nkpts))
-        ! eigenvalues
-        if (.not.allocated(tb%dr%E)) allocate(tb%dr%E(tb%pg%nbases,bz%nkpts))
-        ! loop over kpoints
-        do i = 1, bz%nkpts
-        if ( any(selector_kpoint.eq.i) ) then
-            ! construct hamiltonian
-            H = tb%get_hamiltonian(pp=pp, kpt=bz%kpt_cart(:,i))
-            ! diagonalize hamiltonian 
-            call am_zheev(A=H,V=V,D=D)
-            ! NOTE: ZHEEV returns eigenvalue in ascending order
-            tb%dr%C(:,:,i) = V
-            tb%dr%E(:,i) = D
-        endif
-        enddo
-        ! save number of bands
-        tb%dr%nbands = size(tb%dr%E,1) ! E(nbands,nkpts)
-    end subroutine get_dispersion
-
     subroutine     get_dos(tb,ibz,E,weight,opts)
         !
         implicit none
         !
         class(am_class_tightbinding), intent(inout) :: tb
-        type(am_class_ibz)          , intent(in)  :: ibz
-        real(dp), optional          , intent(in)  :: E(:)
-        real(dp), optional          , intent(in)  :: weight(:,:) ! weights(nbands,nkpts) additional projection weights
-        type(am_class_options)      , intent(in)  :: opts
+        type(am_class_ibz)          , intent(in) :: ibz
+        real(dp), optional          , intent(in) :: E(:)
+        real(dp), optional          , intent(in) :: weight(:,:) ! weights(nbands,nkpts) additional projection weights
+        type(am_class_options)      , intent(in) :: opts
         real(dp), allocatable :: C(:,:,:)
         real(dp) :: Emax ! maximum band energy
         real(dp) :: Emin ! minimum band energy
         real(dp) :: dE   ! energy increment
-        integer  :: i,j,k
+        integer  :: i,j
         !
         if (opts%verbosity.ge.1) call print_title('Density of states')
         ! region over which there are bands
@@ -475,7 +371,7 @@ contains
         ! get DOS
         tb%dos%D  =  get_dos_vs_Ep(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw)
         ! get integrated DOS
-        tb%dos%iD = get_idos_vs_Ep(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw)
+        tb%dos%id = get_idos_vs_Ep(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw)
         ! get projection weights for PDOS
         allocate(C,source=abs(tb%dr%C)**2)
         ! adjust projection weights if weights/bands/kpoints suppied
@@ -490,6 +386,151 @@ contains
         tb%dos%pD = get_pdos_vs_Ep(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw, weight=C)
     end subroutine get_dos
 
+    subroutine     get_df(tb,ibz,E,opts)
+        !
+        implicit none
+        !
+        class(am_class_tightbinding), intent(inout) :: tb
+        type(am_class_ibz)          , intent(in)  :: ibz
+        real(dp), optional          , intent(in)  :: E(:)
+        type(am_class_options)      , intent(in)  :: opts
+        real(dp), allocatable :: Ecv(:,:)   ! Ecv(ninterbands,nkpts)
+        real(dp), allocatable :: Fcv(:,:,:) ! FermiDirac occupation weights to select conduction and valence states
+        real(dp), allocatable :: Pcv(:,:,:) ! abs(momentum matrix element) squared, weights(nprojections,nbands,nkpts)
+        real(dp) :: try
+        real(dp) :: m_e  ! electron mass
+        real(dp) :: c    ! c = pi * hbar^2 * e^2 / (2 * permitivty * m_e * hw ) df coefficient for correct units
+        real(dp) :: Emax ! maximum band energy
+        real(dp) :: Emin ! minimum band energy
+        real(dp) :: dE   ! energy increment
+        integer  :: ninterbands
+        integer  :: i,f,k,n
+        real(dp) :: kT
+        real(dp), allocatable :: y(:)
+        !
+        if (opts%verbosity.ge.1) call print_title('Dielectric Function')
+        ! used for fermi-distribution
+        kT = 0.025_dp
+        ! electron mass
+        m_e = 1.0_dp
+        write(*,*) 'ELECTRON MASS IS NOT SET, DF UNITS ARE WRONG!'
+        ! c = pi * hbar^2 * e^2 / (2 * permitivty * m_e * hw )
+        c = 1.0_dp
+        write(*,*) 'DF COEFFICIENT IS NOT SET, UNITS ARE WRONG!'
+        ! these have no meaning here
+        tb%df%nelecs = 0.0_dp ! number of electrons
+        tb%df%Ef = 0.0_dp ! fermi energy
+        ! region over which there are bands
+        Emin = minval(tb%dr%E(:,:))
+        Emax = maxval(tb%dr%E(:,:))
+        ! check if an energy range has been input
+        if (present(E)) then
+            allocate(tb%df%E,source=E)
+            dE = E(2)-E(1)
+            tb%df%nEs = size(E)
+        else
+            ! if not, create one an energy sampling with 1 meV spacing
+            dE = 0.01_dp
+            tb%df%E = regspace(0.01_dp,Emax-Emin,dE)
+            tb%df%nEs = size(tb%df%E,1)
+        endif
+        ! number of interband band-band combinations, defined as (f,i) pairs for which f>i
+        ninterbands = tb%dr%nbands**2 - sum([1:tb%dr%nbands])
+        ! preliminary stuff to stdout
+        if (opts%verbosity.ge.1) then 
+            write(*,'(a,a)') flare, 'bands = '//tostring(tb%dr%nbands)
+            write(*,'(a,a)') flare, 'interband pairs = '//tostring(ninterbands)
+            write(*,'(a,a)') flare, 'tetrahedra = '//tostring(ibz%ntets)
+            write(*,'(a,a)') flare, 'lowest energy = '//tostring(Emin)
+            write(*,'(a,a)') flare, 'highest energy = '//tostring(Emax)
+            write(*,'(a,a)') flare, 'highest - lowest = '//tostring(Emax-Emin)
+            write(*,'(a,a)') flare, 'probing energies = '//tostring(tb%df%nEs)
+            write(*,'(a,a)') flare, 'lower energy range = '//tostring(tb%df%E(1))
+            write(*,'(a,a)') flare, 'upper energy range = '//tostring(tb%df%E(tb%df%nEs))
+            write(*,'(a,a)') flare, 'energy increment dE = '//tostring(dE)
+            write(*,'(a,a)') flare, 'degauss = '//tostring(opts%degauss)
+        endif
+        ! save interbands also as projections
+        tb%df%nprojections = ninterbands
+        ! allocate space for energies
+        allocate(Ecv(ninterbands,ibz%nkpts))
+        ! allocate space for moment matrix elements
+        allocate(Pcv(tb%df%nprojections,ninterbands,ibz%nkpts))
+        ! allocate space for Fermi Dirac weights
+        allocate(Fcv(tb%df%nprojections,ninterbands,ibz%nkpts))
+        ! calculate momentum matrix element from Pcv =  [ < f | grad_k H | i > ]^ 2
+        do k = 1, ibz%nkpts
+            n = 0
+            do i = 1  , tb%dr%nbands
+            do f = i+1, tb%dr%nbands ! b/c (i/=j) and (i,j)==(j,i)
+                n = n+1
+                ! set energy difference between intial and final state 
+                Ecv(n,k) = tb%dr%E(f,k)-tb%dr%E(i,k)
+                ! matrix element between initial and final state
+                Pcv(n,n,k) = abs( dot_product(conjg(tb%dr%C(:,f,k)), matmul(tb%dr%Hk(:,:,k),tb%dr%C(:,i,k))) )**2
+                ! Fermi-Dirac weights for JDOS
+                Fcv(n,n,k) = fermi_dirac( tb%dr%E(f,k)/kT ) - fermi_dirac( tb%dr%E(i,k)/kT )
+                ! this is essentially equivalent to the Fcv version above
+                    ! if ((tb%dr%E(f,k).gt.0.0_dp).and.(tb%dr%E(i,k).lt.0.0_dp)) then
+                    !     Fcv(n,n,k) = 1.0_dp
+                    ! else
+                    !     Fcv(n,n,k) = 0.0_dp
+                    ! endif
+                
+            enddo
+            enddo
+        enddo
+        ! get interband-projected jDOS
+        if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'computing interband-projected JDOS ...'
+        tb%df%pD = get_pdos_vs_Ep(Ep=tb%df%E, E=Ecv, tet=ibz%tet, tetw=ibz%tetw, weight=Fcv)
+        ! get total jDOS
+        if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'computing total JDOS ...'
+        allocate(tb%df%D,source=sum(tb%df%pD,1))
+        ! get dielectic function
+!         if (opts%verbosity.ge.1) write(*,*) flare, 'computing interband-projected transition strengths ...'
+!         tb%df%e2 = get_pdos_vs_Ep(Ep=tb%df%E, E=Ecv, tet=ibz%tet, tetw=ibz%tetw, weight=Fcv*Pcv)
+
+
+        ! get interband-projected jDOS
+        ! tb%df%pjDOS = get_pdos_vs_Ep(Ep=tb%df%E, E=Ecv, tet=ibz%tet, tetw=ibz%tetw, weight=Fcv)
+
+        ! tb%df%D  =  get_dos_vs_Ep(Ep=tb%df%E, E=Ecv, tet=ibz%tet, tetw=ibz%tetw)
+
+        ! get quick jDOS
+        write(*,*) flare, 'joint density of states'
+        call disp_indent()
+        call disp(title='E'          ,style='underline',X=tb%df%E                ,fmt='f10.5',advance='no')
+        call disp(title='[tetra]'    ,style='underline',X=sum(tb%df%pD,1)        ,fmt='f10.5',advance='no')
+        y = get_dos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,flags='gauss')
+        call disp(title='[gauss]'    ,style='underline',X=y                      ,fmt='f10.5',advance='yes')
+
+
+
+        ! WHY DOES interband-projected jDOS NOT MATCH WIEN2k RESULTS?
+        ! WHY DOES interband-projected jDOS NOT MATCH WIEN2k RESULTS?
+        ! WHY DOES interband-projected jDOS NOT MATCH WIEN2k RESULTS?
+
+
+        ! ! ! get imaginary dielectric function: Mei.2016.JMC.VNx.optical Eq. 1
+        ! tb%df%Fcv = 2.0_dp * get_pdos_vs_Ep(Ep=tb%df%E, E=Ecv, tet=ibz%tet, tetw=ibz%tetw, weight=Pcv) / ( m_e * tb%df%E )
+        ! ! ! get imaginary dielectric function: Mei.2016.JMC.VNx.optical Eq. 1
+        ! allocate(tb%df%e2,source=c*sum(tb%df%Fcv*tb%df%pD,1)/tb%df%E)
+
+
+
+        ! kramer kronig to obtain e1
+
+
+
+
+        ! open(unit=1,file='jdos.test',status='replace',action='write')
+        ! call disp(unit=1,X=tb%df%pD)
+        ! close(unit=1)
+
+
+
+    end subroutine get_df
+
     subroutine     get_fermi_energy(tb,ibz,nelecs)
         !
         implicit none
@@ -497,12 +538,54 @@ contains
         class(am_class_tightbinding), intent(inout) :: tb
         class(am_class_ibz)         , intent(in)    :: ibz
         real(dp)                    , intent(in)    :: nelecs
+        ! verify that all inputs are present
+        if (.not.allocated(tb%dr%E))  stop 'ERROR [get_fermi_energy]: dispersion relation is required'
+        if (.not.allocated(ibz%tet))  stop 'ERROR [get_fermi_energy]: tetrahedra connectivity list is required'
+        if (.not.allocated(ibz%tetw)) stop 'ERROR [get_fermi_energy]: tetrahedra weights are is required'
         ! number of electrons
         tb%dos%nelecs = nelecs
         ! number of spins per band = 1 (spin polarized) vs. 2 (nonspin polarized)
         tb%dos%Ef = get_Ef(E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw, nelecs=tb%dos%nelecs/real(tb%spin,dp))
         !
     end subroutine get_fermi_energy
+
+    subroutine     get_dispersion(tb)
+        !
+        implicit none
+        !
+        class(am_class_tightbinding), intent(inout) :: tb
+        integer    , allocatable :: selector_kpoint(:)
+        complex(dp), allocatable :: V(:,:)
+        real(dp)   , allocatable :: D(:)
+        integer :: nkpts
+        integer :: i
+        ! get number of kpoints
+        nkpts = size(tb%dr%H,3)
+        ! selector
+        if (allocated(tb%ft%selector_kpoint)) then
+            allocate(selector_kpoint, source=tb%ft%selector_kpoint)
+        else
+            allocate(selector_kpoint, source=[1:nkpts])
+        endif
+        ! tight binding coefficients
+        if (.not.allocated(tb%dr%C)) allocate(tb%dr%C(tb%pg%nbases,tb%pg%nbases,nkpts))
+        ! eigenvalues
+        if (.not.allocated(tb%dr%E)) allocate(tb%dr%E(tb%pg%nbases,nkpts))
+        ! check if hamiltonian exists
+        if (.not.allocated(tb%dr%H)) stop 'ERROR [get_dispersion]: tb hamiltonian does not exist.'
+        ! loop over kpoints
+        do i = 1, nkpts
+        if ( any(selector_kpoint.eq.i) ) then
+            ! diagonalize hamiltonian 
+            call am_zheev(A=tb%dr%H(:,:,i),V=V,D=D)
+            ! NOTE: ZHEEV returns eigenvalue in ascending order
+            tb%dr%C(:,:,i) = V
+            tb%dr%E(:,i) = D
+        endif
+        enddo
+        ! save number of bands
+        tb%dr%nbands = size(tb%dr%E,1) ! E(nbands,nkpts)
+    end subroutine get_dispersion
 
     ! export to matlab
 
@@ -608,6 +691,183 @@ contains
         close(fid)
     end subroutine export_to_matlab
 
+    ! Hamiltonian stuff
+
+    subroutine     get_hamiltonian(tb,pp,bz)
+        !
+        implicit none
+        !
+        class(am_class_tightbinding), intent(inout) :: tb
+        type(am_class_prim_pair)    , intent(in) :: pp
+        class(am_class_bz)          , intent(in) :: bz
+        integer    , allocatable :: selector_kpoint(:)
+        integer :: i
+        ! selector
+        if (allocated(tb%ft%selector_kpoint)) then
+            allocate(selector_kpoint, source=tb%ft%selector_kpoint)
+        else
+            allocate(selector_kpoint, source=[1:bz%nkpts])
+        endif
+        ! tight binding coefficients
+        if (.not.allocated(tb%dr%C)) allocate(tb%dr%C(tb%pg%nbases,tb%pg%nbases,bz%nkpts))
+        ! eigenvalues
+        if (.not.allocated(tb%dr%E)) allocate(tb%dr%E(tb%pg%nbases,bz%nkpts))
+        ! hamiltonian space
+        if (.not.allocated(tb%dr%H)) allocate(tb%dr%H(tb%pg%nbases,tb%pg%nbases,bz%nkpts))
+        ! loop over kpoints
+        do i = 1, bz%nkpts
+        if ( any(selector_kpoint.eq.i) ) then
+            ! construct hamiltonian
+            tb%dr%H(:,:,i) = get_hamiltonian_matrix(tb=tb, pp=pp, kpt=bz%kpt_cart(:,i))
+        endif
+        enddo
+        ! save number of bands
+        tb%dr%nbands = size(tb%dr%E,1) ! E(nbands,nkpts)
+        contains
+        function       get_hamiltonian_matrix(tb,pp,kpt) result(H)
+            ! 
+            ! Get tight binding Hamiltonian at kpt.
+            ! 
+            implicit none
+            !
+            type(am_class_tightbinding), intent(in) :: tb     ! tight binding matrix elements
+            type(am_class_prim_pair)   , intent(in) :: pp     ! primitive pairs
+            real(dp)                   , intent(in) :: kpt(3) ! cart
+            complex(dp), allocatable, target :: Hsub_target(:,:)
+            real(dp)   , allocatable, target :: pg_target(:,:,:)
+            integer    , allocatable :: selector_shell(:)
+            real(dp)   , pointer     :: Dm(:,:), Dn(:,:)
+            integer    , allocatable :: S(:),E(:)
+            complex(dp), allocatable :: H(:,:)
+            complex(dp), pointer     :: Hsub(:,:)
+            integer :: m ! primitive atom 1 index 
+            integer :: n ! primitive atom 2 index
+            integer :: k ! shell (primitive)
+            integer :: l ! shell (irreducible)
+            integer :: p ! atoms
+            integer :: ip_nshells
+            ! get number of irreducile shell
+            ip_nshells = maxval(abs(pp%ip_id(:)))
+            ! selector
+            if (allocated(tb%ft%selector_shell)) then
+                allocate(selector_shell, source=tb%ft%selector_shell)
+            else
+                allocate(selector_shell, source=[1:ip_nshells])
+            endif
+            ! allocate space for vectors demarking start and end of Hamiltonian subsection
+            allocate(S, source=tb%pg%S)
+            allocate(E, source=tb%pg%E)
+            ! allocate workspace for H subsection (initialized later)
+            allocate(Hsub_target(tb%pg%nbases,tb%pg%nbases))
+            ! allocate workspace for H subsection (initialized later)
+            allocate(pg_target, source=tb%pg%sym)
+            ! allocate and initialize
+            allocate(H(tb%pg%nbases,tb%pg%nbases))
+            H = cmplx(0,0,dp)
+            ! construct Hamiltonian
+            do l = 1, ip_nshells
+            if ( any(selector_shell.eq.l) ) then
+                do k = 1, pp%nshells
+                if (abs(pp%ip_id(k)).eq.l) then
+                    ! primitive atom indicies
+                    m = pp%shell(k)%m
+                    n = pp%shell(k)%n
+                    ! compute bloch sum by loop over atoms in shell
+                    do p = 1, pp%shell(k)%natoms
+                        ! set pointers
+                        Hsub => Hsub_target(S(m):E(m), S(n):E(n))
+                        Dm   =>   pg_target(S(m):E(m), S(m):E(m), pp%shell(k)%pg_id(p))
+                        Dn   =>   pg_target(S(n):E(n), S(n):E(n), pp%shell(k)%pg_id(p))
+                        ! get matrix elements (initialize Hsub)
+                        Hsub = get_matrix_element(tb=tb, ip_id=pp%ip_id(k))
+                        ! rotate matrix elements as needed to get from the tau_frac(:,1) => tau_frac(:,x)
+                        Hsub = matmul(matmul(transpose(Dm), Hsub), Dn)
+                        ! multiply exponential factor from Bloch sum
+                        Hsub = Hsub * exp(-itwopi*dot_product(pp%shell(k)%tau_cart(1:3,p), kpt)) ! kpt [rec. cart.]
+                        ! this pair's contribution to the Hamiltonian
+                        H(S(m):E(m), S(n):E(n)) = H(S(m):E(m), S(n):E(n)) + Hsub
+                    enddo
+                endif
+                enddo
+                !
+                if (debug) then
+                    if (.not.ishermitian(H)) stop 'ERROR [get_hamiltonian]: H is not Hermitian!'
+                endif
+            endif
+            enddo
+        end function   get_hamiltonian_matrix
+    end subroutine get_hamiltonian
+
+    subroutine     get_hamiltonian_kgradient(tb,fbz)
+        ! get momentum-derivative of hamiltonian matrix element by neglecting intra-atomic contribution
+        implicit none
+        !
+        class(am_class_tightbinding), intent(inout) :: tb ! properties here are usually dEcvned on ibz
+        type(am_class_fbz)          , intent(in) :: fbz ! must be the full monkhorst-pack brillouin zone with ibz_id indices corresponding to ibz points
+        complex(dp), allocatable :: wrk(:,:,:) ! wrkspace
+        real(dp), allocatable :: R(:,:)
+        logical , allocatable :: mask(:)
+        integer :: nRs
+        integer :: i,j,ii
+        ! tight binding coefficients
+        if (.not.allocated(tb%dr%C)) stop 'ERROR [get_optical_matrix_element]: eigenvectors are required'
+        ! eigenvalues
+        if (.not.allocated(tb%dr%E)) stop 'ERROR [get_optical_matrix_element]: band energies are required'
+        ! hamiltonian space
+        if (.not.allocated(tb%dr%H)) stop 'ERROR [get_optical_matrix_element]: Hamiltonians are required'
+        ! k-space derivative of hamiltonian
+        if (.not.allocated(tb%dr%Hk)) allocate(tb%dr%Hk,mold=tb%dr%H)
+        ! initialize
+        tb%dr%Hk = 0.0_dp
+        ! k kpont mesh is dEcvned on N divisions between [0,1); dEcvne real-space Fourier lattice-point integer mesh as:
+        R = meshgrid( v1=real([0:fbz%n(1)]-floor(fbz%n(1)/2.0_dp),dp), &
+                    & v2=real([0:fbz%n(2)]-floor(fbz%n(2)/2.0_dp),dp), &
+                    & v3=real([0:fbz%n(3)]-floor(fbz%n(3)/2.0_dp),dp))
+        ! get number of real points
+        nRs = size(R,2)
+        ! allocate workspace
+        allocate(wrk(tb%dr%nbands,tb%dr%nbands,nRs))
+        ! initialize
+        wrk = 0.0_dp
+        ! ibz mask; size(tb%dr%H,3) = number of ibz kpoints
+        allocate(mask( size(tb%dr%H,3) ))
+        ! initialize
+        mask = .true.
+        ! Fourier transform Hamiltonian to real space and multiply by R to differentiate
+        !$OMP PARALLEL PRIVATE(i,ii,j) SHARED(nRs,fbz,wrk,R,tb)
+        !$OMP DO
+        do j = 1, nRs
+            do ii = 1, fbz%nkpts
+                ! select ibz kpoint rather than fbz point
+                i = fbz%ibz_id(ii) 
+                ! construct real-space hamiltonian (i.e. fourier transform H)
+                wrk(:,:,j) = wrk(:,:,j) + tb%dr%H(:,:,i) * exp(-itwopi*dot_product(fbz%kpt_recp(:,i),R(:,j)))
+            enddo ! k
+            ! multiply by R
+            wrk(:,:,j) = norm2(R(:,j)) * wrk(:,:,j)
+        enddo ! R
+        !$OMP END DO
+        !$OMP END PARALLEL
+        ! fourier transform back to reciprocal space (only do ibz points this time)
+        !$OMP PARALLEL PRIVATE(i,ii,j) SHARED(nRs,mask,fbz,wrk,R,tb)
+        !$OMP DO
+        do ii = 1, fbz%nkpts
+            ! select ibz kpoint rather than fbz point
+            i = fbz%ibz_id(ii)
+            ! if statement to select only ibz point
+            if (mask(i)) then
+                do j = 1, nRs
+                    ! construct real-space hamiltonian (i.e. fourier transform H)
+                    tb%dr%Hk(:,:,i) = tb%dr%Hk(:,:,i) + wrk(:,:,j) * exp(itwopi*dot_product(fbz%kpt_recp(:,i),R(:,j)))
+                enddo ! R
+                ! mark this ibz point as done
+                mask(i) = .false.
+            endif
+        enddo ! k
+        !$OMP END DO
+        !$OMP END PARALLEL
+    end subroutine get_hamiltonian_kgradient
+    
     ! matrix element stuff
 
     subroutine     set_matrix_element(tb,V,flags)
@@ -644,7 +904,6 @@ contains
         else
             stop 'ERROR [set_matrix_element]: unknown flag set_matrix_element_dummies'
         endif
-        !
         ! clear irreducible matrix elements in each shell
         do k = 1, tb%nshells
             tb%tens(k)%V = 0
@@ -685,7 +944,8 @@ contains
         real(dp), allocatable :: V(:,:)
         integer :: id
         integer :: m,n
-        !
+        ! check inputs
+        if (.not.allocated(tb%tens)) stop 'ERROR [get_matrix_element]: tensor pair shell properties is required' ! matrix elemnts probably have not been read in with tb%read_irreducible_matrix_element(fname='infile.tb_vsk')
         ! note the absolute value
         id = abs(ip_id)
         ! get primitive atom indices
@@ -1043,8 +1303,10 @@ contains
         type(am_class_prim_pair)   , intent(in) :: pp
         type(am_class_dft)         , intent(in) :: dft
         real(dp), allocatable :: R(:)
-        ! get tb dispersion 
-        call tb%get_dispersion(pp=pp, bz=dft%bz)
+        ! construct tb hamiltonian
+        call tb%get_hamiltonian(pp=pp,bz=dft%bz)
+        ! diagonalize tb hamiltonian to get dispersion
+        call tb%get_dispersion()
         ! calculate residual vector indices
         R = pack(dft%dr%E([1:tb%ft%nbands]+tb%ft%skip, tb%ft%selector_kpoint) - tb%dr%E(:,tb%ft%selector_kpoint) , .true.)
         !
@@ -1119,7 +1381,7 @@ contains
         implicit none
         !
         ! QUESTIONS:
-        ! 1) DFT psi is defined on a real space grid. One wave function per k-point per band
+        ! 1) DFT psi is dEcvned on a real space grid. One wave function per k-point per band
         !    TB orbital is per band (should be all the same for kpoints?) How to project...?
         !    Probably need one DFT-TB map per k-point. Rotate the DFT Hamiltonian onto the TB
         !    basis at every k and use the TB Hamiltonian to get matrix elements.
@@ -1127,14 +1389,8 @@ contains
         type(am_class_tightbinding), intent(inout) :: tb
         type(am_class_dft)         , intent(in) :: dft
         !
-        
-        ! get spherical harmonics 
-        pp
-
-        dft%wc%rpt_frac 
-        dft%wc%nrpts
-
-
+        ! not implemented yet
+        stop 'ERROR [map_wavefunction]: NOT YET IMPLEMENTED'
     end subroutine map_wavefunction
 
 end module am_tight_binding

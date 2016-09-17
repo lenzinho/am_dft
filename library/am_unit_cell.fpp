@@ -60,6 +60,7 @@ module am_unit_cell
     ! shell
 
     type, public, extends(am_class_unit_cell) :: am_shell_cell
+        logical :: isonsite ! onsite
         real(dp):: center(3) ! center of shell [cart]
         integer :: i ! identifies irreducible atoms (center)
         integer :: j ! identifies irreducible atoms (shell)

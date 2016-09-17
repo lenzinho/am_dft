@@ -20,7 +20,7 @@ module am_dos
         real(dp), allocatable :: E(:)    ! energies
         real(dp), allocatable :: D(:)    ! dos(nEs)
         real(dp), allocatable :: iD(:)   ! integrated dos(nEs)
-        real(dp), allocatable :: pD(:,:) ! projected dos pD(nEs)
+        real(dp), allocatable :: pD(:,:) ! projected dos pD(nprojections,nEs)
         contains
         procedure :: save => save_dos
         procedure :: load => load_dos
@@ -29,6 +29,13 @@ module am_dos
         generic :: write(formatted) => write_dos
         generic :: read(formatted)  => read_dos
     end type am_class_dos
+
+    type, public, extends(am_class_dos) :: am_class_df
+        real(dp), allocatable :: e1(:)     ! dielectric function e = e1 + i e2
+        real(dp), allocatable :: e2(:)     ! dielectric function e = e1 + i e2
+        real(dp), allocatable :: Fcv(:,:)  ! Fcv(nprojections,nEs) interband-projected oscilator strength
+        ! NEED TO ADD TO WRITE DOS STUFF
+    end type am_class_df
 
     public :: get_Ef
 
@@ -136,7 +143,7 @@ contains
     ! gaussian method
 
     function       get_dos_quick(Ep,E,kptw,degauss,flags) result(D)
-        ! flags = fermi, mp, mv
+        ! flags = fermi, mp, mv, gauss, lorentz
         implicit none
         !
         real(dp), intent(in) :: Ep(:)    ! probing energies
@@ -175,6 +182,10 @@ contains
                     D(i) = D(i) + kptw(k) * methfessel_paxton_dydx(x=xp,n=1)
                 elseif (index(flags,'mv').ne.0) then
                     D(i) = D(i) + kptw(k) * marzari_vanderbilt_dydx(x=xp)
+                elseif (index(flags,'gauss').ne.0) then
+                    D(i) = D(i) + kptw(k) * gauss(x=xp)
+                elseif (index(flags,'lorentz').ne.0) then
+                    D(i) = D(i) + kptw(k) * lorentz(x=xp)
                 else
                     stop 'ERROR [get_dos_quick]: flag not recognized'
                 endif
@@ -446,7 +457,7 @@ contains
         !
     end function   get_theta_wc
 
-    pure function  get_delta_wc(Ep,Ec) result(wc)
+    function       get_delta_wc(Ep,Ec) result(wc)
         ! get linear tetrahedron corner weights for delta function with Blochl corrections
         implicit none
         !
@@ -479,7 +490,7 @@ contains
             wc(k2)=0.0_dp
             wc(k3)=0.0_dp
             wc(k4)=0.0_dp
-        elseif (Ep.le.e2) then
+        elseif (Ep.lt.e2) then
             f12 = (Ep-e2)/(e1-e2)
             f21 = 1.0_dp - f12
             f13 = (Ep-e3)/(e1-e3)
@@ -492,7 +503,7 @@ contains
             wc(k3) = o13 * f31
             wc(k4) = o13 * f41
             wc = wc * dosEp
-        elseif (Ep.le.e3) then
+        elseif (Ep.lt.e3) then
             f13 = (Ep-e3)/(e1-e3)
             f31 = 1.0_dp - f13
             f14 = (Ep-e4)/(e1-e4)
@@ -508,7 +519,7 @@ contains
             wc(k4) = f41 * o13 + f42*f24*f32 / dosEp
             dosEp  = dosEp / (e4-e1)
             wc = wc * dosEp
-        elseif (Ep.le.e4) then
+        elseif (Ep.lt.e4) then
             f14 = (Ep-e4)/(e1-e4)
             f24 = (Ep-e4)/(e2-e4)
             f34 = (Ep-e4)/(e3-e4)
@@ -548,7 +559,7 @@ contains
         idos = 0.0_dp
         do j = 1, ntets
             do i = 1, nbands
-                ! get energies at the vertetxes of the j-th tethedron in ascending order
+                ! get energies at the vertices of the j-th tethedron in ascending order
                 Ec(1:4) = foursort(E(i,tet(:,j)))
                 ! map to 
                 e1 = Ec(1)
@@ -625,199 +636,6 @@ contains
         enddo
         !
     end function   get_dos_at_Ep
-
-    ! heaviside (theta) integration functions
-
-    pure function methfessel_paxton(x,n) result(y)
-        ! theta function : PRB 40, 3616 (1989).
-        implicit none
-        !
-        real(dp), intent(in) :: x
-        integer , intent(in) :: n
-        real(dp) :: y
-        
-        real(dp) :: a, hp, arg, hd
-        integer :: i, ni
-        real(dp), parameter :: maxarg = 200.0_dp
-        
-        ! Methfessel-Paxton
-        y = gauss_freq(x * sqrt(2.0_dp) )
-        if (n.eq.0) return
-        hd = 0.0_dp
-        arg = min(maxarg, x**2)
-        hp = exp(- arg)
-        ni = 0
-        a = 1.0_dp / sqrt (pi)
-        do i=1,n
-            hd = 2.0_dp*x*hp-2.0_dp*real(ni,dp)*hd
-            ni = ni+1
-            a = -a/(real(i,dp)*4.0_dp)
-            y = y-a*hd
-            hp = 2.0_dp*x*hd-2.0_dp*real(ni,dp)*hp
-            ni = ni+1
-      enddo
-    end function  methfessel_paxton
-
-    pure function fermi_dirac(x) result(y)
-        !
-        implicit none
-        !
-        real(dp), intent(in) :: x
-        real(dp) :: y
-        real(dp) :: maxarg
-        maxarg = 200.0_dp
-        ! Fermi-Dirac smearing
-        if (x.lt.-maxarg) then
-            y = 0.0_dp
-        elseif (x.gt.maxarg) then
-            y = 1.0_dp
-        else
-            y = 1.0_dp/(1.0_dp + exp(-x))
-        endif
-    end function  fermi_dirac
-
-    pure function marzari_vanderbilt(x) result(y)
-        ! theta function: PRL 82, 3296 (1999)
-        ! 1/2*erf(x-1/sqrt(2)) + 1/sqrt(2*pi)*exp(-(x-1/sqrt(2))**2) + 1/2
-        implicit none
-        !
-        real(dp), intent(in) :: x
-        real(dp) :: y
-        real(dp) :: arg, xp
-        real(dp) :: maxarg
-        maxarg = 200.0_dp
-        ! Cold smearing
-         xp = x - 1.0_dp / sqrt (2.0_dp)
-         arg = min (maxarg, xp**2)
-         y = 0.5d0 * erf (xp) + 1.0_dp / sqrt (2.0_dp * pi) * exp (- arg) + 0.5d0
-    end function  marzari_vanderbilt
-
-    pure function erf(x)
-      !---------------------------------------------------------------------
-      !
-      !     Error function - computed from the rational approximations of
-      !     W. J. Cody, Math. Comp. 22 (1969), pages 631-637.
-      !
-      !     for abs(x) le 0.47 erf is calculated directly
-      !     for abs(x) gt 0.47 erf is calculated via erf(x)=1-erfc(x)
-      !
-      implicit none  
-      real(dp), intent(in) :: x
-      real(dp) :: x2, p1(4), q1(4)
-      real(dp) :: erf
-      !
-      p1 = [2.426679552305318E2_dp, 2.197926161829415E1_dp, 6.996383488619136_dp,  -3.560984370181538E-2_dp]
-      q1 = [2.150588758698612E2_dp, 9.116490540451490E1_dp, 1.508279763040779E1_dp, 1.000000000000000_dp]
-      !
-      if (abs(x).gt.6.0_dp) then  
-         !  erf(6)=1-10^(-17) cannot be distinguished from 1
-         erf = sign (1.0_dp, x)  
-      else  
-         if (abs(x).le.0.47_dp) then  
-            x2 = x**2  
-            erf = x*(p1(1)+x2*(p1(2)+x2*(p1(3)+x2*p1(4))))/(q1(1)+x2*(q1(2)+x2*(q1(3)+x2*q1(4))))
-         else  
-            erf = 1.0_dp - erfc(x)  
-         endif
-      endif
-    end function  erf
-
-    pure function erfc(x)
-      !     erfc(x) = 1-erf(x)  - See comments in erf
-      implicit none  
-      real(dp),intent(in) :: x
-      real(dp)            :: erfc
-      real(dp) :: ax, x2, xm2, p2(8), q2(8), p3(5), q3(5), pim1
-      !
-      p2 = [ 3.004592610201616E2_dp,  4.519189537118719E2_dp,  3.393208167343437E2_dp,  1.529892850469404E2_dp,  4.316222722205674E1_dp,  7.211758250883094_dp,    5.641955174789740E-1_dp,-1.368648573827167E-7_dp]
-      q2 = [ 3.004592609569833E2_dp,  7.909509253278980E2_dp,  9.313540948506096E2_dp,  6.389802644656312E2_dp,  2.775854447439876E2_dp,  7.700015293522947E1_dp,  1.278272731962942E1_dp,  1.000000000000000_dp]
-      p3 = [-2.996107077035422E-3_dp,-4.947309106232507E-2_dp,  -2.269565935396869E-1_dp,-2.786613086096478E-1_dp,  -2.231924597341847E-2_dp]
-      q3 = [ 1.062092305284679E-2_dp, 1.913089261078298E-1_dp,  1.051675107067932_dp,    1.987332018171353_dp,     1.000000000000000_dp]
-      pim1 = 0.56418958354775629_dp  ! sqrt(1/pi)
-      ax = abs(x)  
-      if (ax > 26.0_dp) then  
-         !  erfc(26.0)=10^(-296); erfc(9.0)=10^(-37);
-         erfc = 0.0_dp  
-      elseif (ax.gt.4.0_dp) then
-         xm2=(1.0_dp/ax)**2
-         erfc=(1.0_dp/ax)*exp(-2.0_dp)*(pim1+xm2*(p3(1)+xm2*(p3(2)+xm2*(p3(3)+xm2*(p3(4)+xm2*p3(5)))))/(q3(1)+xm2*(q3(2)+xm2*(q3(3)+xm2*(q3(4)+xm2*q3(5))))))
-      elseif(ax.gt.0.47_dp)then
-         erfc=exp(-x**2)*(p2(1)+ax*(p2(2)+ax*(p2(3)+ax*(p2(4)+ax*(p2(5)+ax*(p2(6)+ax*(p2(7)+ax*p2(8))))))))/(q2(1)+ax*(q2(2)+ax*(q2(3)+ax*(q2(4)+ax*(q2(5)+ax*(q2(6)+ax*(q2(7)+ax*q2(8))))))))
-      else
-         erfc=1.0_dp-erf(ax)
-      endif
-      ! erf(-x)=-erf(x)  =>  erfc(-x) = 2-erfc(x)
-      if (x < 0.0_dp) erfc = 2.0_dp - erfc 
-    end function  erfc
-
-    pure function gauss_freq(x)
-        !     gauss_freq(x) = (1+erf(x/sqrt(2)))/2 = erfc(-x/sqrt(2))/2
-        implicit none
-        !
-        real(dp),intent(in) :: x
-        real(dp)            :: gauss_freq
-        !
-        gauss_freq = 0.5_dp * erfc(-x*0.7071067811865475_dp)
-        !
-    end function  gauss_freq
-
-    ! derivatives of theta functions (= delta functions)
-
-    pure function fermi_dirac_dydx(x) result(y)
-        ! derivative of Fermi-Dirac function: 0.5/(1.0+cosh(x))
-        implicit none
-        real(dp), intent(in) :: x
-        real(dp) :: y
-        !
-        if (abs(x).le.36.0_dp) then
-            y = 1.0_dp/(2.0_dp+exp(-x)+exp(+x))
-            ! in order to avoid problems for large values of x in the e
-        else
-            y = 0.0_dp
-        endif
-    end function  fermi_dirac_dydx
-
-    pure function marzari_vanderbilt_dydx(x) result(y)
-        ! 1/sqrt(pi)*exp(-(x-1/sqrt(2))**2)*(2-sqrt(2)*x)
-        implicit none
-        real(dp), intent(in) :: x
-        real(dp) :: y
-        real(dp) :: arg
-        real(dp) :: sqrtpm1
-        !
-        sqrtpm1 = 0.564189583547756_dp ! 1/sqrt(pi)
-        arg = min(200.0_dp,(x-1.0_dp/sqrt(2.0_dp))**2)
-        y = sqrtpm1*exp(-arg)*(2.0_dp-sqrt(2.0_dp)*x)
-    end function  marzari_vanderbilt_dydx
-
-    pure function methfessel_paxton_dydx(x, n) result(y)
-        ! derivative of the corresponding Methfessel-Paxton wgauss
-        implicit none
-        real(dp), intent(in) :: x
-        integer , intent(in) :: n
-        real(dp) :: y
-        real(dp) :: a, arg, hp, hd
-        integer :: i, ni
-        real(dp) :: sqrtpm1
-        !
-        sqrtpm1 = 0.564189583547756_dp ! 1/sqrt(pi)
-        arg = min(200.0_dp, x**2)
-        y = exp(-arg)*sqrtpm1
-        if (n.eq.0) return
-        hd = 0.0_dp
-        hp = exp(-arg)
-        ni = 0
-        a  = sqrtpm1
-        do i = 1, n
-            hd = 2.0_dp*x*hp-2.0_dp*real(ni,dp)*hd
-            ni = ni+1
-            a  = -a/(real(i,dp)*4.0_dp)
-            hp = 2.0_dp*x*hd-2.0_dp*real(ni,dp)*hp
-            ni = ni+1
-            y  = y+a*hp
-        enddo
-    end function  methfessel_paxton_dydx
-
 
 end module am_dos
 

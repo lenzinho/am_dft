@@ -99,19 +99,89 @@ with expansion coefficients $c_{i\alpha}$. $\lowdin$ are L\"{o}wdin orbitals, or
 &= \sum_j \braket{\vec{r},i\alpha | \ham | \vec{r},j\beta} e^{-i \vec{k}\cdot\vec{r}_{ij}} .
 \end{align}
 %
-$\bondvec = \vec{r}_i - \vec{r}_j$ represents the bond connecting atom pair $i$ and $j$. The summation, which over runs over all atoms in the crystal, can be factored into sums over over neighbor shells $s$ and over neighbor pairs $p_s$ in shell $s$:
+$\bondvec = \vec{r}_i - \vec{r}_j$ represents the bond connecting atom pair $i$ and $j$. The tight-binding parameters $\braket{\vec{r},i\alpha | \ham | \vec{r},j\beta}$ are called on-site energies when $i=j$ and hopping terms otherwise. Together, they completely specify the electronic band dispersion in the crystal.  
+
+Having established a general protocol for constructing momentum-dependent Hamiltonians and computing band dispersion relations from tight-binding parameters, we now describe transformation properties and symmetry relations for determining an irreducible set of symmetry-adapted matrix elements. The action of point symmetries\footnote{Point symmetry operations are rotations and reflections which restore the lattice onto itself.} $R$ on cartesian vectors are realized as
+\begin{equation}
+R \vec{r} \rightarrow \vec{r} '.
+\end{equation}
+Analogously, the action of $R$ on atomic-like orbitals which transform like spherical harmonics is
+\begin{equation}
+\wignerDl(R)\ket{i\alpha} \rightarrow \ket{i\beta}.
+\end{equation}
+in which the Wigner functions \footnote{Wigner functions couple states with different magnetic, but identical azimuthal quantum numbers, meaning that rotations cannot, for example, change a $p$ state into a $d$ state, only into linear combination of $p$ states, i.e. $p_x \rightarrow p_y$}
+% LAX p 43 Eq 2.5.18
+\begin{equation}
+\wignerDl(R) = e^{- \theta \hat{n} \cdot \hat{L} /\hbar}
+\end{equation}
+are $(2l+1)$-dimensional unitary square matrices which parameterize proper rotations through the angle $\theta$ and axis $\hat{n}$. Improper rotations are obtained by premultiplying the scalar inversion operator $(-1)^l$. \cite{sharma_general_1979,el-batanouny_symmetry_2008} $\hbar$ is Planck's reduced constant and $\hat{L}$ is the angular momentum operator. % WOOOTEN p 604 after Eq. 14.164
+
+The action of $R$ on a state vector in Hilbert space
+\begin{equation}
+\wignerD(R) \ket{\psi} \rightarrow \ket{\psi'}
+\end{equation}
+combines permutations resulting from the rotation of atoms onto their equivalents and from magnetic-quantum-number coupling which arises from the transformational properties of spherical harmonics. For point symmetries, which have no translational component, 
+\begin{align}
+\wignerD(R) = \bigoplus_l \wignerDl(R)
+\end{align}
 %
+is a direct sum of Wigner functions $\wignerDl$. 
+
+
+
+
+Point symmetry operations $R$ either stabilize bond $\bondvec$ or rotate them onto symmetric equivalents. The collection of bonds which are related by symmetry operations $R$ form a neighbor shell $s$. 
+
+
+
+
+The summation, which over runs over all atoms in the crystal, can be factored into sums over over neighbor shells $s$ and symmetries $R$ connecting atoms in shell $s$: \footnote{Shells are collection of atoms related by  }
+%
+\abmei{need to figure this equation out below. goal: write it using Wigner matrices}
 \begin{align}
 \label{eq:matrix_element_shell}
 \ham^{\alpha\beta}_{ij}(\vec{k}) 
-&= \sum_s \sum_{p_s} \braket{\vec{r},i\alpha | \ham | \vec{r},j\beta} e^{-i \vec{k} \cdot  \vec{r}_{ij} } \\
-&= \sum_s \sum_{R} \braket{\vec{r},i\alpha | \ham | \vec{r},j\beta} e^{-i \vec{k} \cdot R\vec{r}_{ij} }
+&= \sum_s \sum_{R} \braket{\vec{r},i\alpha | \wignerD(R) \ham \wignerD^\dag(R) | \vec{r},j\beta} e^{-i \vec{k} \cdot R\vec{r}_{ij} }
 \end{align}
 %
-Shells are collection of atoms related by $R$ rotations and reflections which restore the lattice onto itself, i.e. crystallographic point symmetry operations.
 
 
-The tight-binding parameters $\braket{\vec{r},i\alpha | \ham | \vec{r},j\beta}$ are called on-site energies when $i=j$ and hopping terms otherwise. Together, they completely specify the electronic band dispersion in the crystal.  
+The outer product of state vectors defines the transformation properties of matrix elements. From Eq. \ref{eq:transformation}, $ \mathbb{D}(R)\ket{\psi}\bra{\psi}\mathbb{D}^\dag(R) \rightarrow \ket{\psi'}\bra{\psi'}$. For matrix elements, \cite{el-batanouny_symmetry_2008}
+% WOOTEN p 78, Eq. 13.9
+\begin{equation}
+\label{eq:transformation_matrix}
+\ham( R\vec{r}) = \mathbb{D}^\dag(R) \ham(\vec{r}) \wignerD \rightarrow \ham(\vec{r}')
+\end{equation}
+%
+Since symmetries restore the lattice, state vectors, and matrix elements to an indistinguishable state, the symmetry representation must commute with the Hamiltonian, i.e. $[\ham(\vec{r}),\wignerD] = 0$. As a result, the symmetry relations are required:
+% NYE p 11, Eq. 22
+\begin{equation}
+\label{eq:stab}
+\ham^{\alpha\beta}_{ij}(\vec{r}) = \sum_{\mu\nu} \ham^{\mu\nu}_{ij}(\vec{r}) \mathbb{D}_{\mu\alpha}(R) \mathbb{D}_{\nu\beta}(R).
+\end{equation}
+%
+In addition to point symmetries, another symmetry which is important is that due to the interchanging of orbitals positions:
+%
+\begin{equation}
+\label{eq:intrinsic}
+\ham^{\alpha\beta}_{ij}(\vec{r}) = (-1)^{l_\alpha+l_\beta} \ham^{\beta\alpha}_{ji}(\vec{r}),
+\end{equation}
+%
+in which the prefactor arrises from orbital parity. Together Eqs. \ref{eq:stab} and \ref{eq:intrinsic} specify all relevant symmetries relations between matrix elements.
+
+
+
+
+
+
+
+
+
+ 
+
+
+
+
 
 
 
@@ -131,7 +201,7 @@ The B1 NaCl-structure VN primitive lattice is defined by basis vectors $a_1 = a_
   p_{x}] .
 \end{equation}
 
-In the extended crystal beyond the primitive cell, the NaCl-structure lattice can be represented as two interpenetrating V cation and N anion face-centered cubic sublattices displaced by half a primitive cell. Each cation (anion) has six equivalent first neighbor anions (cations) at $\bondvec = a_o [0 0 \frac{1}{2}]$ and twelve second neighbor cations (anions) at $\bondvec = a_o[0 \frac{1}{2} \frac{1}{2}]$. Describing up to second-neighbor interactions yields the tight-binding Hamiltonian:
+Beyond the primitive cell, the NaCl-structure lattice can be represented as two interpenetrating V cation and N anion face-centered cubic sublattices displaced by half a primitive cell. Each cation (anion) has six equivalent first neighbor anions (cations) at $\bondvec = a_o [0 0 \frac{1}{2}]$ and twelve second neighbor cations (anions) at $\bondvec = a_o[0 \frac{1}{2} \frac{1}{2}]$. Describing up to second-neighbor interactions yields the tight-binding Hamiltonian:
 %
 \begin{equation}
 \label{eq:ham_explicit}
@@ -258,52 +328,6 @@ the energies of V 3$d$ $E_g$ and $T_{2g}$ states; the difference $\Delta = \epsi
 \end{equation}
 
 On-site interactions yield dispersionless energy integrals, as demonstrated by Eqs. \ref{eq:0pp} and \ref{eq:0dd}. The inclusion of neighbor interactions associated with finite bond vectors (i.e., $\vec{r}_{ij} \neq 0$) introduces nontrivial Fourier components and contribute hopping elements that modulate band energies throughout the Brillouin zone. In order to determine irreducible off-site parameters and subsequently $\ham_{\textrm{V}1}^{dp}(\vec{k})$, $\ham_{\textrm{N}2}^{pp}(\vec{k})$, and $\ham_{\textrm{V}2}^{dd}(\vec{k})$ (Eq. \ref{eq:ham_explicit}), explicit relations are developed between hopping parameters using crystallographic point symmetries and orbital translational properties. 
-
-Point symmetries $R$ either stabilize bond vectors $\bondvec$ or rotate them onto symmetric equivalents. In cartesian space, the action of $R$ is accomplished through $R \vec{r}_{ij} \rightarrow \vec{r}_{ij}'$. Analogously, in the tight-binding Hilbert space, state vectors transform as
-%
-\begin{equation}
-\label{eq:transformation}
-\wignerD \ket{\psi} \rightarrow \ket{\psi'}
-\end{equation}
-%
-in which
-%
-\begin{align}
-\wignerD = \bigoplus_l \wignerDl
-\end{align}
-%
-are the representation of a point symmetry $R$ on the tight-binding basis. The direct sum runs over azimuthal quantum numbers $l$ in the primitive cell. Wigner functions are $(2l+1)$-dimensional unitary square matrices which describe proper rotations of spherical harmonics, $\wignerDl \ket{i\alpha} \rightarrow \ket{j\beta}$, by the angle $\theta$ and axis $\hat{n}$:
-% LAX p 43 Eq 2.5.18
-\begin{equation}
-\wignerDl = e^{- \theta \hat{n} \cdot \hat{L} /\hbar}.
-\end{equation}
-%
-in which $\hbar$ is Planck's reduced constant and $\hat{L}$ is the angular momentum operator. Improper rotations are obtained by premultiplying the scalar inversion operator $(-1)^l$. \cite{sharma_general_1979,el-batanouny_symmetry_2008} % WOOOTEN p 604 after Eq. 14.164
-
-The outer product of state vectors defines the transformation properties of matrix elements. From Eq. \ref{eq:transformation}, $ \mathbb{D}(R)\ket{\psi}\bra{\psi}\mathbb{D}^\dag(R) \rightarrow \ket{\psi'}\bra{\psi'}$. For matrix elements, \cite{el-batanouny_symmetry_2008}
-% WOOTEN p 78, Eq. 13.9
-\begin{equation}
-\label{eq:transformation_matrix}
-\ham( R\vec{r}) = \mathbb{D}^\dag(R) \ham(\vec{r}) \wignerD \rightarrow \ham(\vec{r}')
-\end{equation}
-%
-Since symmetries restore the lattice, state vectors, and matrix elements to an indistinguishable state, the symmetry representation must commute with the Hamiltonian, i.e. $[\ham(\vec{r}),\wignerD] = 0$. As a result, the symmetry relations are required:
-% NYE p 11, Eq. 22
-\begin{equation}
-\label{eq:stab}
-\ham^{\alpha\beta}_{ij}(\vec{r}) = \sum_{\mu\nu} \ham^{\mu\nu}_{ij}(\vec{r}) \mathbb{D}_{\mu\alpha}(R) \mathbb{D}_{\nu\beta}(R).
-\end{equation}
-%
-In addition to point symmetries, another symmetry which is important is that due to the interchanging of orbitals positions:
-%
-\begin{equation}
-\label{eq:intrinsic}
-\ham^{\alpha\beta}_{ij}(\vec{r}) = (-1)^{l_\alpha+l_\beta} \ham^{\beta\alpha}_{ji}(\vec{r}),
-\end{equation}
-%
-in which the prefactor arrises from orbital parity. Together Eqs. \ref{eq:stab} and \ref{eq:intrinsic} specify all relevant symmetries relations between matrix elements. 
-
-
 
 
 

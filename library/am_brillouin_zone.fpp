@@ -569,7 +569,7 @@ contains
         real(dp) :: kpt_E(3)
         real(dp) :: kpt_D(3)
         real(dp) :: d_SE ! distance from start to end
-        integer :: i,j,k,z,x
+        integer :: j,k,z,x
         !
         if (opts%verbosity.ge.1) call print_title('Brillouin-zone Path')
         ! transfer bas
@@ -777,7 +777,7 @@ contains
         integer :: tetrahedron(4,6)      ! tetrahedron(nvertices,ntets) four verticies of the six tetrahedra making up one box
         integer :: nboxes
         integer :: t ! tetrahedron counter
-        integer :: i,j,k
+        integer :: i,k
         ! divide mesh into boxes
         box = grid2box(kpt_int,n)
         ! divide a single box into six tetrahedron

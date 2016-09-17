@@ -2096,7 +2096,7 @@ contains
 
     ! low-level symmetry functions used for constructing space/point groups
 
-    pure function   translations_from_basis(tau,Z,prec,flags) result(T)
+    pure function  translations_from_basis(tau,Z,prec,flags) result(T)
         !
         !> flags string can contain 'prim', 'zero', 'relax' and any combination of each
         !> if it has 'zero'  : add [0,0,0] to the T vectors returned
@@ -2172,9 +2172,9 @@ contains
         allocate(T(3,nTs))
         T = wrk(1:3,1:nTs)
         !
-    end function    translations_from_basis
+    end function   translations_from_basis
 
-    pure function   is_symmetry_valid(seitz,tau,Z,prec,flags)
+    pure function  is_symmetry_valid(seitz,tau,Z,prec,flags)
         !
         ! check whether symmetry operation is valid
         !
@@ -2263,9 +2263,9 @@ contains
             return
         endif
         !
-    end function    is_symmetry_valid
+    end function   is_symmetry_valid
 
-    function        permutation_map(seitz,tau,prec,flags) result(PM)
+    function       permutation_map(seitz,tau,prec,flags) result(PM)
         !
         ! find permutation representation; i.e. which atoms are connected by space symmetry oprations R, T.
         ! also works to find which kpoint or atoms (in shell) are connected by point group operations
@@ -2342,9 +2342,9 @@ contains
         enddo
         !$OMP END DO
         !$OMP END PARALLEL
-    end function    permutation_map
+    end function   permutation_map
 
-    function        reduce_to_wigner_seitz(tau,grid_points) result(tau_ws)
+    function       reduce_to_wigner_seitz(tau,grid_points) result(tau_ws)
         !> reduces kpoint (in fractional) to the first Brillouin zone (Wigner-Seitz cell, defined in cartesian coordinates)
         !> cartesian kpoint is returned! 
         implicit none
@@ -2373,7 +2373,7 @@ contains
             enddo
         end do
         !
-    end function    reduce_to_wigner_seitz
+    end function   reduce_to_wigner_seitz
 
 end module am_symmetry
 

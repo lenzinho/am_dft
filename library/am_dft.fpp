@@ -116,11 +116,11 @@ contains
 	            stop 'ERROR [load]: eigenval, procar, or wavecar flag required'
 	        endif
 	        ! check for flags asking for shift in energy
-	        if     (index(flags,'minimum').ne.0) then
+	        if     (index(flags,'shift:minimum').ne.0) then
 	        	! shift lowest band energy to zero; E(nbands,nkpts)
 	        	offset = minval(dft%dr%E((opts%skip+1):,:))
 				dft%dr%E  = dft%dr%E  - offset
-        	elseif (index(flags,'fermi').ne.0) then
+        	elseif (index(flags,'shift:fermi').ne.0) then
         		! shift fermi level to zero
 	        	call read_doscar(efermi=Ef, nedos=dft%dos%nEs, dos=dft%dos%D, E=dft%dos%E, fname=opts%doscar, verbosity=0)
 	        	offset = Ef

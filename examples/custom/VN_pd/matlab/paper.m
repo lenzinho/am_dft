@@ -6,7 +6,7 @@ for c = [sqrt(3),2/sqrt(3),sqrt(3)/2]
 pg.sym(abs(pg.sym-c)<1E-7) = c;
 end
 
-shell= [3];
+shell= [4];
 v    = sym('v',[1,14],'real');
 kpt  = sym('k',[1,3],'real');
 

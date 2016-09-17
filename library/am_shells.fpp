@@ -14,7 +14,7 @@ module am_shells
     private
 
     type, public :: am_class_pair_shell
-        integer :: nshells ! how many shells irreducible atoms
+        integer :: nshells  ! how many shells irreducible atoms
         type(am_shell_cell), allocatable :: shell(:) ! shell(k)
         integer, allocatable :: ip_id(:) ! identifies irreducible pair
         integer, allocatable :: pp_id(:) ! identifies primitive cell pair
@@ -173,7 +173,6 @@ contains
         !
         ! print title
         if (opts%verbosity.ge.1) call print_title('Primitive neighbor pairs')
-        !
         ! get maxmimum number of pair shells
         nshells=0
         do i = 1, pc%natoms
@@ -182,11 +181,10 @@ contains
             ! get number of pairs
             nshells = nshells + maxval(identify_shells(sphere=sphere,pg=pg))
         enddo
-        !
         ! allocate pair space, pair centered on atom pc%natoms 
         pp%nshells = nshells
         allocate( pp%shell(pp%nshells) )
-        ! 
+        ! loop
         k = 0 ! shell index
         do i = 1, pc%natoms
           	! create sphere containing atoms a maximum distance of a choosen atom (atoms are translated to as close to sphere center as possible)
@@ -242,6 +240,12 @@ contains
                 call pp%shell(k)%rotg%get_rotational_group(pg=pg, uc=pp%shell(k), opts=opts, flags='cart')
                 ! determine reversal group, space symmetries, which interchange the position of atoms at the edges of the bond
                 call pp%shell(k)%revg%get_reversal_group(pg=pg  , v=pp%shell(k)%tau_cart(1:3,1), opts=opts, flags='cart')
+                ! determine if the shell is an on-site
+                if (all(abs(pp%shell(k)%tau_cart(:,1)).lt.tiny)) then
+                    pp%shell(k)%isonsite = .true.
+                else
+                    pp%shell(k)%isonsite = .false.
+                endif
             enddo
         enddo
         ! print stuff
@@ -265,6 +269,7 @@ contains
                 write(*,'(a30)',advance='no') centertitle('v(cart)',30)
                 write(*,'(a10)',advance='no') '|v(frac)|'
                 write(*,'(a30)',advance='no') centertitle('v(frac)',30)
+                write(*,'(a8)' ,advance='no') 'onsite?'
                 write(*,*)
                 write(*,'(5x)' ,advance='no')
                 write(*,'(a5)' ,advance='no')      repeat('-',5)
@@ -279,6 +284,7 @@ contains
                 write(*,'(a30)',advance='no') ' '//repeat('-',29)
                 write(*,'(a10)',advance='no') ' '//repeat('-',9)
                 write(*,'(a30)',advance='no') ' '//repeat('-',29)
+                write(*,'(a8)' ,advance='no') ' '//repeat('-',7)
                 write(*,*)
                 do k = 1, pp%nshells
                 if (i.eq.pp%shell(k)%m) then
@@ -295,6 +301,7 @@ contains
                     write(*,'(3f10.3)',advance='no') 	   pp%shell(k)%tau_cart(1:3,1)
                     write(*,'(f10.3)' ,advance='no') norm2(pp%shell(k)%tau_frac(1:3,1))
                     write(*,'(3f10.3)',advance='no') 	   pp%shell(k)%tau_frac(1:3,1)
+                    write(*,'(l8)'    ,advance='no') pp%shell(k)%isonsite
                     write(*,*)
                 endif
                 enddo
@@ -499,6 +506,7 @@ contains
             write(*,'(a30)',advance='no') centertitle('v(cart)',30)
             write(*,'(a10)',advance='no') '|v(frac)|'
             write(*,'(a30)',advance='no') centertitle('v(frac)',30)
+            write(*,'(a8)' ,advance='no') 'onsite?'
             write(*,*)
             write(*,'(5x)' ,advance='no')
             write(*,'(a5)' ,advance='no')      repeat('-',5)
@@ -513,6 +521,7 @@ contains
             write(*,'(a30)',advance='no') ' '//repeat('-',29)
             write(*,'(a10)',advance='no') ' '//repeat('-',9)
             write(*,'(a30)',advance='no') ' '//repeat('-',29)
+            write(*,'(a8)' ,advance='no') ' '//repeat('-',7)
             write(*,*)
             do k = 1, ip%nshells
                 write(*,'(5x)'    ,advance='no')
@@ -528,6 +537,7 @@ contains
                 write(*,'(3f10.3)',advance='no')       ip%shell(k)%tau_cart(1:3,1)
                 write(*,'(f10.3)' ,advance='no') norm2(ip%shell(k)%tau_frac(1:3,1))
                 write(*,'(3f10.3)',advance='no')       ip%shell(k)%tau_frac(1:3,1)
+                write(*,'(l8)'    ,advance='no') ip%shell(k)%isonsite
                 write(*,*)
             enddo
             ! write maps

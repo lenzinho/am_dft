@@ -16,7 +16,7 @@ module am_dispersion
 
     type, public :: am_class_dispersion
         integer :: nbands
-        real(dp), allocatable :: E(:,:) ! E(nbands,nkpts) energies
+        real(dp), allocatable :: E(:,:)   ! E(nbands,nkpts) energies
         contains
         procedure :: save => save_dr
         procedure :: load => load_dr
@@ -27,8 +27,10 @@ module am_dispersion
     end type am_class_dispersion
 
     type, public, extends(am_class_dispersion) :: am_class_tightbinding_dispersion
-        complex(dp), allocatable :: C(:,:,:)    ! C(:,nbands,nkpts) tight binding coefficients (eigenvectors)
+        complex(dp), allocatable :: H(:,:,:)    ! H(:,:,nkpts) tight binding Hamiltonian
+        complex(dp), allocatable :: C(:,:,:)    ! C(:,:,nkpts) tight binding coefficients (eigenvectors)
         real(dp)   , allocatable :: weight(:,:) ! weights(nbands,nkpts) whatever weights may be interesting to save
+        complex(dp), allocatable :: Hk(:,:,:)   ! Hk(:,:,nkpts) momentum-derivitive of Hamiltonian, i.e. grad_k H
     end type am_class_tightbinding_dispersion
 
 contains

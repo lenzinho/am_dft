@@ -149,8 +149,8 @@ module am_symmetry_tensor
 
     ! operates on tensors
 
-    subroutine     symmetrize(tens,pg,opts,property,pc,ic,shell)
-        !                                          |-----------| tight binding input
+    subroutine      symmetrize(tens,pg,opts,property,pc,ic,shell)
+        !                                           |-----------| tight binding input
         !
         implicit none
         !
@@ -342,11 +342,11 @@ module am_symmetry_tensor
             endif
             !
         end subroutine initialize_tensor
-    end subroutine symmetrize
+    end subroutine  symmetrize
 
     ! creates flattened representation
 
-    subroutine     get_flat_intrinsic_group(flat_ig,tens,atom_m,atom_n)
+    subroutine      get_flat_intrinsic_group(flat_ig,tens,atom_m,atom_n)
         !
         implicit none
         !
@@ -440,9 +440,9 @@ module am_symmetry_tensor
         ! get relations
         flat_ig%relations = get_relations(sym=flat_ig%sym, nbases=flat_ig%nbases, gen=flat_ig%mt%gen)
         !
-    end subroutine get_flat_intrinsic_group
+    end subroutine  get_flat_intrinsic_group
 
-    subroutine     get_flat_point_group(flat_pg,tens,pg,atom_m,atom_n)
+    subroutine      get_flat_point_group(flat_pg,tens,pg,atom_m,atom_n)
         !
         class(am_class_flat_group), intent(out):: flat_pg ! flat point group
         class(am_class_tensor)    , intent(in) :: tens    ! tensor
@@ -503,11 +503,11 @@ module am_symmetry_tensor
             stop 'ERROR [get_flat_point_group]: identity is not first.'
         endif
         !
-    end subroutine get_flat_point_group
+    end subroutine  get_flat_point_group
 
     ! produces rotation which operates on a subsection of the Hamiltonian (useful for determining symmetry relations)
 
-    function       ps2tb(R_cart,atom) result(H)
+    function        ps2tb(R_cart,atom) result(H)
         ! construct rotation representation which transforms all orbitals on input atom
         implicit none
         !
@@ -537,11 +537,11 @@ module am_symmetry_tensor
             H(S(i):E(i), S(i):E(i)) = rot2irrep(l=atom%azimuthal(i), R=R_cart)
         enddo
         !
-    end function   ps2tb
+    end function    ps2tb
 
     ! super operators
 
-    pure function  transp_operator(n) result(M_superop)
+    pure function   transp_operator(n) result(M_superop)
         ! transposition superoperator (c_ij -> c_ji), flat rep
         implicit none
         !
@@ -558,9 +558,9 @@ module am_symmetry_tensor
         enddo
         enddo
         !
-    end function   transp_operator
+    end function    transp_operator
 
-    pure function  transp_parity_sign(atom_m,atom_n) result(S)
+    pure function   transp_parity_sign(atom_m,atom_n) result(S)
         ! sign under : (l,l',m) = (-1)^(l+l') (l',l,m)
         implicit none
         !
@@ -577,9 +577,9 @@ module am_symmetry_tensor
         enddo
         enddo
         !
-    end function   transp_parity_sign
+    end function    transp_parity_sign
 
-    function       orbital_parity(atom_m,atom_n) result(L_superop)
+    function        orbital_parity(atom_m,atom_n) result(L_superop)
         !
         ! Transpose superoperator: (l,l',m) = (-1)^(l+l') (l',l,m)
         !
@@ -630,7 +630,7 @@ module am_symmetry_tensor
         ! check to make sure things are correct
         if (.not.isequal(Ap_flat,matmul(L_superop,A_flat))) stop 'A /= Ap'
         !
-    end function   orbital_parity
+    end function    orbital_parity
 
 end module am_symmetry_tensor
 

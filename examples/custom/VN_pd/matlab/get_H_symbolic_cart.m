@@ -2,7 +2,7 @@ function [H] = get_H_symbolic_cart(pg,v,kpt,shell)
 i2pi = 2*sqrt(-1)*pi;
 H(1:8,1:8) = 0;
 H = sym(H);
-a = sym('a');
+a = sym('a','real');
 if any(shell==1)
 H(1:5,1:5) = H(1:5,1:5) + pg.sym(1:5,1:5,1)' * getV1(v(1:2)) * pg.sym(1:5,1:5,1) * exp(i2pi*dot(kpt,[+0.00000 +0.00000 +0.00000]));
 end

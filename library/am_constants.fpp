@@ -9,6 +9,7 @@ module am_constants
     integer    , parameter :: dp      = kind(0.0D0) !> double precision
     real(dp)   , parameter :: tiny    =  1.0D-5     ! ultimately this is determined by to how many decimals atomic basis in poscar is specified to 
     real(dp)   , parameter :: halfpi  =  1.570796326794897
+    real(dp)   , parameter :: sqrtpi  =  1.772453850905516
     real(dp)   , parameter :: pi      =  3.141592653589793
     real(dp)   , parameter :: twopi   =  6.283185307179586
     real(dp)   , parameter :: fourpi  = 12.566370614359172
