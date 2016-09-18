@@ -101,11 +101,13 @@ with expansion coefficients $c_{i\alpha}$. $\lowdin$ are L\"{o}wdin orbitals, or
 %
 $\bondvec = \vec{r}_i - \vec{r}_j$ represents the bond connecting atom pair $i$ and $j$. The tight-binding parameters $\braket{\vec{r},i\alpha | \ham | \vec{r},j\beta}$ are called on-site energies when $i=j$ and hopping terms otherwise. Together, they completely specify the electronic band dispersion in the crystal.  
 
-Having established a general protocol for constructing momentum-dependent Hamiltonians and computing band dispersion relations from tight-binding parameters, we now describe transformation properties and symmetry relations for determining an irreducible set of symmetry-adapted matrix elements. The action of point symmetries\footnote{Point symmetry operations are rotations and reflections which restore the lattice onto itself.} $R$ on cartesian vectors are realized as
+Having established a general protocol for constructing momentum-dependent Hamiltonians and computing band dispersion relations from tight-binding parameters, we now describe transformation properties and symmetry relations for establishing irreducible symmetry-adapted matrix elements. 
+
+Symmetries $\hat{R}$ are abstract operations which acquire a concrete representation depending on the space the object being operated on resides. The action of point symmetries\footnote{Point symmetry operations are rotations and reflections which restore the lattice onto itself.} $R$ on cartesian vectors are realized as
 \begin{equation}
 R \vec{r} \rightarrow \vec{r} '.
 \end{equation}
-Analogously, the action of $R$ on atomic-like orbitals which transform like spherical harmonics is
+Analogously, the action of $R$ on atomic-like orbitals is
 \begin{equation}
 \wignerDl(R)\ket{i\alpha} \rightarrow \ket{i\beta}.
 \end{equation}
@@ -192,8 +194,8 @@ The B1 NaCl-structure VN primitive lattice is defined by basis vectors $a_1 = a_
 \label{eq:hilbert}
 \ket{\psi} =
 [ d_{x^2-y^2},
-  d_{z^2}, 
   d_{xz},
+  d_{z^2}, 
   d_{yz},
   d_{xy},
   p_{y},
@@ -575,8 +577,8 @@ in which angular momentum operators:
 % Shankar p 327-328, Eq. 12.5.21a-b
 % Wolfram p 85-87
 \hat{L}_x & = \hbar (\hat{L}_{+}-\hat{L}_{-})/2i \\
-\hat{L}_y & = \hbar m \delta_{l,l'}\delta_{m,m'} \\
-\hat{L}_z & = \hbar (\hat{L}_{+}+\hat{L}_{-})/2
+\hat{L}_y & = \hbar (\hat{L}_{+}+\hat{L}_{-})/2  \\
+\hat{L}_z & = \hbar m \delta_{l,l'}\delta_{m,m'}
 \end{align}
 $\hat{L}_+$ and $\hat{L}_-$ are raising and lowering operators, with matrix elements:
 \begin{equation}
@@ -598,9 +600,9 @@ The conversion from spherical to cubic harmonics, $\ket{lm} \rightarrow \ket{\al
 \label{eq:cubic_harmonics}
 Y_{lm} = 
 \begin{cases}
+  [(-1)^{m}\delta_{ mm'}+\delta_{-mm'}]/\sqrt{2} & \text{if } m < 0 \\
 \delta_{mm}                                      & \text{if } m = 0 \\
- i[(-1)^{m}\delta_{-mm'}-\delta_{ mm'}]/\sqrt{2} & \text{if } m > 0 \\
-  [(-1)^{m}\delta_{ mm'}+\delta_{-mm'}]/\sqrt{2} & \text{if } m < 0
+ i[(-1)^{m}\delta_{-mm'}-\delta_{ mm'}]/\sqrt{2} & \text{if } m > 0
 \end{cases}
 \end{equation}
 

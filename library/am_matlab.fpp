@@ -777,7 +777,6 @@ module am_matlab
         !
         if (abs(x).le.36.0_dp) then
             y = 1.0_dp/(2.0_dp+exp(-x)+exp(+x))
-            ! in order to avoid problems for large values of x in the e
         else
             y = 0.0_dp
         endif
@@ -833,7 +832,7 @@ module am_matlab
         real(dp) :: y
         !
         if (abs(x).le.7.0_dp) then
-            y = exp(-x**2)/sqrtpi
+            y = exp(-x**2.0_dp)/sqrtpi
             ! in order to avoid problems for large values of x in the e
         else
             y = 0.0_dp
@@ -848,7 +847,7 @@ module am_matlab
         real(dp), intent(in) :: x
         real(dp) :: y
         !
-        y = 1/( pi * ( x**2 + 1 ) )
+        y = 1.0_dp/( pi * ( x**2 + 1 ) )
         !
     end function  lorentz
 

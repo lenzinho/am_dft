@@ -406,9 +406,9 @@ contains
             ! create array in column-major order, essential because sub2ind is used later on
             allocate(kpt(3,product(n)))
             j=0
-            do i3=1,n(3) ! z first
-            do i2=1,n(2) ! y second
-            do i1=1,n(1) ! x last
+            do i1=1,n(1) ! x last - runs slowest
+            do i2=1,n(2) ! y middle
+            do i3=1,n(3) ! z first - runs fastest
                 j=j+1
                 kpt(1:3,j) = [i1,i2,i3]-1
             enddo

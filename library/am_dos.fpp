@@ -146,9 +146,9 @@ contains
         ! flags = fermi, mp, mv, gauss, lorentz
         implicit none
         !
-        real(dp), intent(in) :: Ep(:)    ! probing energies
-        real(dp), intent(in) :: E(:,:)   ! E(nbands,nkpts) band energies
-        real(dp), intent(in) :: kptw(:)  ! kptw(nkpts) normalized kpoint weights
+        real(dp), intent(in) :: Ep(:)       ! probing energies
+        real(dp), intent(in) :: E(:,:)      ! E(nbands,nkpts) band energies
+        real(dp), intent(in) :: kptw(:)     ! kptw(nkpts) normalized kpoint weights
         real(dp), intent(in) :: degauss
         character(*), intent(in) :: flags
         real(dp), allocatable :: D(:)
@@ -196,6 +196,71 @@ contains
         !$OMP END PARALLEL
         D = D / degauss
     end function   get_dos_quick
+
+    function       get_pdos_quick(Ep,E,kptw,degauss,W,flags) result(pD)
+        ! flags = fermi, mp, mv, gauss, lorentz
+        implicit none
+        !
+        real(dp), intent(in) :: Ep(:)    ! probing energies
+        real(dp), intent(in) :: E(:,:)   ! E(nbands,nkpts) band energies
+        real(dp), intent(in) :: W(:,:,:) ! W(nprojections,nbands,nkpts) band weights
+        real(dp), intent(in) :: kptw(:)  ! kptw(nkpts) normalized kpoint weights
+        real(dp), intent(in) :: degauss
+        character(*), intent(in) :: flags
+        real(dp), allocatable :: pD(:,:)
+        integer  :: nEs
+        integer  :: nbands
+        integer  :: nkpts
+        integer  :: nprojections
+        integer  :: i,j,k,l
+        real(dp) :: xp,yp
+        ! get number of probing energies
+        nEs = size(Ep)
+        ! get n of band
+        nbands = size(E,1)
+        ! get n of kpoints
+        nkpts = size(kptw)
+        ! numbe of projections
+        nprojections = size(W,1)
+        ! allocate space for dos
+        allocate(pD(nprojections,nEs))
+        ! initialize
+        pD = 0.0_dp
+        !$OMP PARALLEL PRIVATE(i,j,k,l) SHARED(pD,E,Ep,nEs,kptw)
+        !$OMP DO
+        do i = 1, nEs
+            ! print progress
+            call show_progress(iteration=i,maximum=nEs)
+            do j = 1, nbands
+            do k = 1, nkpts
+                xp = ( E(j,k)-Ep(i) )/degauss
+                ! get contribution from this band
+                if     (index(flags,'fermi').ne.0) then
+                    yp = fermi_dirac_dydx(x=xp)
+                elseif (index(flags,'mp').ne.0) then
+                    yp = methfessel_paxton_dydx(x=xp,n=1)
+                elseif (index(flags,'mv').ne.0) then
+                    yp = marzari_vanderbilt_dydx(x=xp)
+                elseif (index(flags,'gauss').ne.0) then
+                    yp = gauss(x=xp)
+                elseif (index(flags,'lorentz').ne.0) then
+                    yp = lorentz(x=xp)
+                else
+                    stop 'ERROR [get_dos_quick]: flag not recognized'
+                endif
+                ! multiply by kpoint weight
+                yp = yp * kptw(k)
+                ! multiply by band weights
+                do l = 1, nprojections
+                    pD(l,i) = pD(l,i) + yp * W(l,j,k)
+                enddo
+            enddo
+            enddo
+        enddo
+        !$OMP END DO
+        !$OMP END PARALLEL
+        pD = pD / degauss
+    end function   get_pdos_quick
 
     ! DOS properties
 

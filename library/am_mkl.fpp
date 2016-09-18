@@ -115,6 +115,43 @@ contains
         !
     end function   dt_rand
 
+    ! FFT
+
+    ! function       fft_2d(x,l) result(y)
+    !     !
+    !     use mkl_dfti
+    !     !
+    !     implicit none
+    !     !
+    !     real(dp), intent(in) :: x(:) ! flattened 2d matrix
+    !     integer , intent(in) :: l(:) ! lengths along 1st and 2d dimension of unflattened matrix
+    !     integer :: status
+    !     integer :: strides_in(3)
+    !     integer :: strides_out(3)
+    !     type(dfti_descriptor), pointer :: my_desc_handle
+    !     ! ...put input data into x_2d(j,k), 1<=j=32,1<=k<=100
+    !     ! ...set l(1) = 32, l(2) = 100
+    !     ! ...set strides_in(1) = 0, strides_in(2) = 1, strides_in(3) = 34
+    !     strides_in(1) = 0   !
+    !     strides_in(2) = 1   !
+    !     strides_in(3) = 34  !
+    !     ! ...set strides_out(1) = 0, strides_out(2) = 1, strides_out(3) = 17
+    !     strides_out(1) = 0  !
+    !     strides_out(2) = 1  !
+    !     strides_out(3) = 17 !
+    !     ! ...the transform is a 32-by-100
+    !     ! perform a real to complex conjugate-even transform
+    !     status = dfticreatedescriptor(my_desc_handle, dfti_single, dfti_real, 2, l )
+    !     status = dftisetvalue(my_desc_handle, dfti_conjugate_even_storage, dfti_complex_complex)
+    !     status = dftisetvalue(my_desc_handle, dfti_input_strides, strides_in)
+    !     status = dftisetvalue(my_desc_handle, dfti_output_strides, strides_out)
+    !     status = dfticommitdescriptor( my_desc_handle)
+    !     status = dfticomputeforward( my_desc_handle, x )
+    !     status = dftifreedescriptor(my_desc_handle)
+    !     ! result is given by the complex value z(j,k) 1<=j<=17; 1<=k<=100 and
+    !     ! is stored in real matrix x_2d in cce format.
+    ! end function   fft_2d
+
     ! eucledian norm of vector
 
     function       am_dnrm2(V) result(n)
@@ -1311,7 +1348,7 @@ contains
 
     ! multiply A and B and get a symmetric matrix C (only supported in ifort v 16)
 
-!     function       am_dgemmt(A,B,flags) result(C)
+!     function       am_dgemm_dgemmt(A,B,flags) result(C)
 !         !
 !         implicit none
 !         !

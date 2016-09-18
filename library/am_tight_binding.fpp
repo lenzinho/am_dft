@@ -21,7 +21,7 @@ module am_tight_binding
     private
 
     type :: am_class_tightbinding_fitter
-        integer  :: maxiter  ! maximum number of iterations  
+        integer  :: maxiter  ! maximum number of iterations
         integer  :: nbands   ! number of bands
         integer  :: nkpts    ! numnbr of kpoints
         integer  :: nxs      ! number of parameters to fit
@@ -386,40 +386,34 @@ contains
         tb%dos%pD = get_pdos_vs_Ep(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw, weight=C)
     end subroutine get_dos
 
-    subroutine     get_df(tb,ibz,E,opts)
+    subroutine     get_df(tb,pc,ibz,E,opts)
         !
         implicit none
         !
         class(am_class_tightbinding), intent(inout) :: tb
+        type(am_class_prim_cell)    , intent(in)  :: pc
         type(am_class_ibz)          , intent(in)  :: ibz
         real(dp), optional          , intent(in)  :: E(:)
         type(am_class_options)      , intent(in)  :: opts
         real(dp), allocatable :: Ecv(:,:)   ! Ecv(ninterbands,nkpts)
-        real(dp), allocatable :: Fcv(:,:,:) ! FermiDirac occupation weights to select conduction and valence states
+        real(dp), allocatable :: Wcv(:,:,:) ! FermiDirac occupation weights to select conduction and valence states
         real(dp), allocatable :: Pcv(:,:,:) ! abs(momentum matrix element) squared, weights(nprojections,nbands,nkpts)
-        real(dp) :: try
-        real(dp) :: m_e  ! electron mass
-        real(dp) :: c    ! c = pi * hbar^2 * e^2 / (2 * permitivty * m_e * hw ) df coefficient for correct units
+        real(dp) :: vol
         real(dp) :: Emax ! maximum band energy
         real(dp) :: Emin ! minimum band energy
         real(dp) :: dE   ! energy increment
         integer  :: ninterbands
-        integer  :: i,f,k,n
+        integer  :: i,j,f,k,n
         real(dp) :: kT
-        real(dp), allocatable :: y(:)
         !
         if (opts%verbosity.ge.1) call print_title('Dielectric Function')
+        ! p.c. volume
+        vol = abs(det(pc%bas))
         ! used for fermi-distribution
         kT = 0.025_dp
-        ! electron mass
-        m_e = 1.0_dp
-        write(*,*) 'ELECTRON MASS IS NOT SET, DF UNITS ARE WRONG!'
-        ! c = pi * hbar^2 * e^2 / (2 * permitivty * m_e * hw )
-        c = 1.0_dp
-        write(*,*) 'DF COEFFICIENT IS NOT SET, UNITS ARE WRONG!'
         ! these have no meaning here
         tb%df%nelecs = 0.0_dp ! number of electrons
-        tb%df%Ef = 0.0_dp ! fermi energy
+        tb%df%Ef     = 0.0_dp ! fermi energy
         ! region over which there are bands
         Emin = minval(tb%dr%E(:,:))
         Emax = maxval(tb%dr%E(:,:))
@@ -457,7 +451,7 @@ contains
         ! allocate space for moment matrix elements
         allocate(Pcv(tb%df%nprojections,ninterbands,ibz%nkpts))
         ! allocate space for Fermi Dirac weights
-        allocate(Fcv(tb%df%nprojections,ninterbands,ibz%nkpts))
+        allocate(Wcv(tb%df%nprojections,ninterbands,ibz%nkpts))
         ! calculate momentum matrix element from Pcv =  [ < f | grad_k H | i > ]^ 2
         do k = 1, ibz%nkpts
             n = 0
@@ -466,68 +460,72 @@ contains
                 n = n+1
                 ! set energy difference between intial and final state 
                 Ecv(n,k) = tb%dr%E(f,k)-tb%dr%E(i,k)
-                ! matrix element between initial and final state
+                ! momentum matrix element between initial and final state; should have units of momentum (m_e * grad_k H) * (m_e / hbar) = [kg-m/s]
                 Pcv(n,n,k) = abs( dot_product(conjg(tb%dr%C(:,f,k)), matmul(tb%dr%Hk(:,:,k),tb%dr%C(:,i,k))) )**2
                 ! Fermi-Dirac weights for JDOS
-                Fcv(n,n,k) = fermi_dirac( tb%dr%E(f,k)/kT ) - fermi_dirac( tb%dr%E(i,k)/kT )
-                ! this is essentially equivalent to the Fcv version above
+                Wcv(n,n,k) = fermi_dirac( tb%dr%E(f,k)/kT ) - fermi_dirac( tb%dr%E(i,k)/kT )
+                ! this is essentially equivalent to the Wcv version above
                     ! if ((tb%dr%E(f,k).gt.0.0_dp).and.(tb%dr%E(i,k).lt.0.0_dp)) then
-                    !     Fcv(n,n,k) = 1.0_dp
+                    !     Wcv(n,n,k) = 1.0_dp
                     ! else
-                    !     Fcv(n,n,k) = 0.0_dp
+                    !     Wcv(n,n,k) = 0.0_dp
                     ! endif
-                
             enddo
             enddo
         enddo
-        ! get interband-projected jDOS
+        ! integrate to get jDOS [states/eV/prim-cell]
         if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'computing interband-projected JDOS ...'
-        tb%df%pD = get_pdos_vs_Ep(Ep=tb%df%E, E=Ecv, tet=ibz%tet, tetw=ibz%tetw, weight=Fcv)
-        ! get total jDOS
-        if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'computing total JDOS ...'
+        if     (index(opts%flags,'tetra')  .ne.0) then
+            tb%df%pD = get_pdos_vs_Ep(Ep=tb%df%E, E=Ecv,tet=ibz%tet, tetw=ibz%tetw, weight=Wcv)
+        elseif (index(opts%flags,'mp'   )  .ne.0) then
+            tb%df%pD = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv,flags='mp')
+        elseif (index(opts%flags,'fermi')  .ne.0) then
+            tb%df%pD = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv,flags='fermi')
+        elseif (index(opts%flags,'gauss')  .ne.0) then
+            tb%df%pD = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv,flags='gauss')
+        elseif (index(opts%flags,'lorentz').ne.0) then
+            tb%df%pD = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv,flags='lorentz')
+        endif
+        ! sum over projections to get total jDOS [states/eV/prim-cell]
         allocate(tb%df%D,source=sum(tb%df%pD,1))
-        ! get dielectic function
-!         if (opts%verbosity.ge.1) write(*,*) flare, 'computing interband-projected transition strengths ...'
-!         tb%df%e2 = get_pdos_vs_Ep(Ep=tb%df%E, E=Ecv, tet=ibz%tet, tetw=ibz%tetw, weight=Fcv*Pcv)
-
-
-        ! get interband-projected jDOS
-        ! tb%df%pjDOS = get_pdos_vs_Ep(Ep=tb%df%E, E=Ecv, tet=ibz%tet, tetw=ibz%tetw, weight=Fcv)
-
-        ! tb%df%D  =  get_dos_vs_Ep(Ep=tb%df%E, E=Ecv, tet=ibz%tet, tetw=ibz%tetw)
-
-        ! get quick jDOS
-        write(*,*) flare, 'joint density of states'
+        ! integrate momentum matrix elements (MME) to get Pcv [grad_k H = eV/nm^-1 = eV-nm]: Mei.2016.JMC.VNx.optical Eq. 1-2
+        if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'computing oscilator stregnth Fcv(E) ...'
+        if     (index(opts%flags,'tetra')  .ne.0) then
+            tb%df%Fcv = get_pdos_vs_Ep(Ep=tb%df%E, E=Ecv,tet=ibz%tet, tetw=ibz%tetw, weight=Wcv*Pcv)
+        elseif (index(opts%flags,'mp'   )  .ne.0) then
+            tb%df%Fcv = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv*Pcv,flags='mp')
+        elseif (index(opts%flags,'fermi')  .ne.0) then
+            tb%df%Fcv = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv*Pcv,flags='fermi')
+        elseif (index(opts%flags,'gauss')  .ne.0) then
+            tb%df%Fcv = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv*Pcv,flags='gauss')
+        elseif (index(opts%flags,'lorentz').ne.0) then
+            tb%df%Fcv = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv*Pcv,flags='lorentz')
+        endif
+        ! convert Fcv to unitless: Mei.2016.JMC.VNx.optical Eq. 1-2
+        ! I think that Fcv here is actually J * <Fcv>, so it will have units of DOS
+        do i = 1, tb%df%nEs
+            do j = 1, ninterbands
+                ! coefficient = 2 * ( (electron mass/hbar) * eV nm)^2 / (m_e * eV)
+                tb%df%Fcv(j,i) = 26.24685_dp * tb%df%Fcv(j,i) / tb%df%E(i)
+            enddo
+        enddo
+        ! get imaginary dielectric function 
+        if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'computing imaginary dielectric function e2(E) ...'
+        ! evaluate e2 = c * <Fcv> * JDOS, coefficient = (electron charge)^2 * hbar^2 / (permitivity * electron mass * eV)
+        tb%df%e2 = (1.378842_dp/vol) * sum(tb%df%Fcv,1) / tb%df%E
+        ! stdout dielectric function
+        write(*,'(a,a)') flare, 'dielectric function'
         call disp_indent()
         call disp(title='E'          ,style='underline',X=tb%df%E                ,fmt='f10.5',advance='no')
-        call disp(title='[tetra]'    ,style='underline',X=sum(tb%df%pD,1)        ,fmt='f10.5',advance='no')
-        y = get_dos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,flags='gauss')
-        call disp(title='[gauss]'    ,style='underline',X=y                      ,fmt='f10.5',advance='yes')
+        ! call disp(title='Fcv'        ,style='underline',X=sum(tb%df%Fcv,1)       ,fmt='f10.5',advance='no')
+        call disp(title='J'          ,style='underline',X=tb%df%D                ,fmt='f10.5',advance='no')
+        call disp(title='e2'         ,style='underline',X=tb%df%e2               ,fmt='f20.10',advance='yes')
 
 
 
-        ! WHY DOES interband-projected jDOS NOT MATCH WIEN2k RESULTS?
-        ! WHY DOES interband-projected jDOS NOT MATCH WIEN2k RESULTS?
-        ! WHY DOES interband-projected jDOS NOT MATCH WIEN2k RESULTS?
-
-
-        ! ! ! get imaginary dielectric function: Mei.2016.JMC.VNx.optical Eq. 1
-        ! tb%df%Fcv = 2.0_dp * get_pdos_vs_Ep(Ep=tb%df%E, E=Ecv, tet=ibz%tet, tetw=ibz%tetw, weight=Pcv) / ( m_e * tb%df%E )
-        ! ! ! get imaginary dielectric function: Mei.2016.JMC.VNx.optical Eq. 1
-        ! allocate(tb%df%e2,source=c*sum(tb%df%Fcv*tb%df%pD,1)/tb%df%E)
-
-
+        stop 'STOPPING [get_df]: NOT FULLY IMPLEMENTED YET'
 
         ! kramer kronig to obtain e1
-
-
-
-
-        ! open(unit=1,file='jdos.test',status='replace',action='write')
-        ! call disp(unit=1,X=tb%df%pD)
-        ! close(unit=1)
-
-
 
     end subroutine get_df
 
@@ -798,17 +796,20 @@ contains
         end function   get_hamiltonian_matrix
     end subroutine get_hamiltonian
 
-    subroutine     get_hamiltonian_kgradient(tb,fbz)
+    subroutine     get_hamiltonian_kgradient(tb,pc,fbz)
         ! get momentum-derivative of hamiltonian matrix element by neglecting intra-atomic contribution
         implicit none
         !
-        class(am_class_tightbinding), intent(inout) :: tb ! properties here are usually dEcvned on ibz
+        class(am_class_tightbinding), intent(inout) :: tb ! properties here are usually defined on ibz ! defined
+        type(am_class_prim_cell)    , intent(inout) :: pc ! properties here are usually defined on ibz
         type(am_class_fbz)          , intent(in) :: fbz ! must be the full monkhorst-pack brillouin zone with ibz_id indices corresponding to ibz points
-        complex(dp), allocatable :: wrk(:,:,:) ! wrkspace
-        real(dp), allocatable :: R(:,:)
+        complex(dp), allocatable :: HR(:,:,:) ! wrkspace
+        complex(dp) :: wrk2 ! wrkspace
+        real(dp), allocatable :: R_frac(:,:)
         logical , allocatable :: mask(:)
         integer :: nRs
-        integer :: i,j,ii
+        integer :: i,j,ii,i1,i2
+        real(dp), allocatable :: k_list(:,:)
         ! tight binding coefficients
         if (.not.allocated(tb%dr%C)) stop 'ERROR [get_optical_matrix_element]: eigenvectors are required'
         ! eigenvalues
@@ -817,56 +818,150 @@ contains
         if (.not.allocated(tb%dr%H)) stop 'ERROR [get_optical_matrix_element]: Hamiltonians are required'
         ! k-space derivative of hamiltonian
         if (.not.allocated(tb%dr%Hk)) allocate(tb%dr%Hk,mold=tb%dr%H)
-        ! initialize
-        tb%dr%Hk = 0.0_dp
-        ! k kpont mesh is dEcvned on N divisions between [0,1); dEcvne real-space Fourier lattice-point integer mesh as:
-        R = meshgrid( v1=real([0:fbz%n(1)]-floor(fbz%n(1)/2.0_dp),dp), &
-                    & v2=real([0:fbz%n(2)]-floor(fbz%n(2)/2.0_dp),dp), &
-                    & v3=real([0:fbz%n(3)]-floor(fbz%n(3)/2.0_dp),dp))
+        ! k-point mesh is defined on N divisions between [0,1); define real-space Fourier lattice-point integer mesh as:
+        R_frac = meshgrid( v1=real([1:fbz%n(1)]-1-floor(fbz%n(1)/2.0_dp),dp), &
+                         & v2=real([1:fbz%n(2)]-1-floor(fbz%n(2)/2.0_dp),dp), &
+                         & v3=real([1:fbz%n(3)]-1-floor(fbz%n(3)/2.0_dp),dp))
         ! get number of real points
-        nRs = size(R,2)
+        nRs = size(R_frac,2)
         ! allocate workspace
-        allocate(wrk(tb%dr%nbands,tb%dr%nbands,nRs))
+        allocate(HR(tb%dr%nbands,tb%dr%nbands,nRs))
         ! initialize
-        wrk = 0.0_dp
+        HR = 0.0_dp
+        ! Fourier transform Hamiltonian to real space and multiply by R_frac to differentiate
+        !$OMP PARALLEL PRIVATE(i,ii,j) SHARED(nRs,fbz,HR,R_frac,tb)
+        !$OMP DO
+        do j = 1, nRs
+            ! construct real-space hamiltonian (i.e. Fourier transform H)
+            do i = 1, fbz%nkpts
+                HR(:,:,j) = HR(:,:,j) + tb%dr%H(:,:, fbz%ibz_id(i) ) * exp(-itwopi*dot_product(fbz%kpt_recp(:,i),R_frac(:,j)))
+            enddo ! k
+            ! multiply by R_frac
+            ! HR(:,:,j) = sum(matmul(pc%bas,R_frac(:,j))) * HR(:,:,j)
+        enddo ! R_frac
+        !$OMP END DO
+        !$OMP END PARALLEL
+        ! Fourier transform back to reciprocal space (only do ibz points this time)
         ! ibz mask; size(tb%dr%H,3) = number of ibz kpoints
         allocate(mask( size(tb%dr%H,3) ))
         ! initialize
         mask = .true.
-        ! Fourier transform Hamiltonian to real space and multiply by R to differentiate
-        !$OMP PARALLEL PRIVATE(i,ii,j) SHARED(nRs,fbz,wrk,R,tb)
-        !$OMP DO
-        do j = 1, nRs
-            do ii = 1, fbz%nkpts
-                ! select ibz kpoint rather than fbz point
-                i = fbz%ibz_id(ii) 
-                ! construct real-space hamiltonian (i.e. fourier transform H)
-                wrk(:,:,j) = wrk(:,:,j) + tb%dr%H(:,:,i) * exp(-itwopi*dot_product(fbz%kpt_recp(:,i),R(:,j)))
-            enddo ! k
-            ! multiply by R
-            wrk(:,:,j) = norm2(R(:,j)) * wrk(:,:,j)
-        enddo ! R
-        !$OMP END DO
-        !$OMP END PARALLEL
-        ! fourier transform back to reciprocal space (only do ibz points this time)
-        !$OMP PARALLEL PRIVATE(i,ii,j) SHARED(nRs,mask,fbz,wrk,R,tb)
+        !$OMP PARALLEL PRIVATE(i,ii,j) SHARED(nRs,mask,fbz,HR,R_frac,tb)
         !$OMP DO
         do ii = 1, fbz%nkpts
-            ! select ibz kpoint rather than fbz point
+            ! select ibz kpoint rather than fbz point to go faster
             i = fbz%ibz_id(ii)
             ! if statement to select only ibz point
             if (mask(i)) then
-                do j = 1, nRs
-                    ! construct real-space hamiltonian (i.e. fourier transform H)
-                    tb%dr%Hk(:,:,i) = tb%dr%Hk(:,:,i) + wrk(:,:,j) * exp(itwopi*dot_product(fbz%kpt_recp(:,i),R(:,j)))
-                enddo ! R
-                ! mark this ibz point as done
+                ! mark this ibz point as done (goes faster)
                 mask(i) = .false.
+                ! loop over hamiltonian elements
+                do i1 = 1, tb%dr%nbands
+                do i2 = 1, tb%dr%nbands
+                    ! initialize complex variable
+                    wrk2 = 0.0_dp
+                    ! perform fourier transform
+                    do j = 1, nRs
+                        ! construct real-space hamiltonian (i.e. fourier transform H)
+                        wrk2 = wrk2 + HR(i1,i2,j) * exp(-itwopi*dot_product(fbz%kpt_recp(:,ii),R_frac(:,j)))
+                    enddo ! R_frac
+                    ! get real valued function
+                    tb%dr%Hk(i1,i2,i) = real(wrk2,dp)
+                enddo
+                enddo
             endif
         enddo ! k
         !$OMP END DO
         !$OMP END PARALLEL
+        tb%dr%Hk = tb%dr%Hk/fbz%nkpts
     end subroutine get_hamiltonian_kgradient
+
+    ! fourier test
+
+!     subroutine     test_fourier(tb,pc,fbz)
+!         ! get momentum-derivative of hamiltonian matrix element by neglecting intra-atomic contribution
+!         implicit none
+!         !
+!         class(am_class_tightbinding), intent(inout) :: tb ! properties here are usually defined on ibz ! defined
+!         type(am_class_prim_cell)    , intent(inout) :: pc ! properties here are usually defined on ibz
+!         type(am_class_fbz)          , intent(in) :: fbz ! must be the full monkhorst-pack brillouin zone with ibz_id indices corresponding to ibz points
+!         complex(dp), allocatable :: wrk(:,:,:) ! wrkspace
+!         complex(dp), allocatable :: wrk2(:,:) ! wrkspace
+!         real(dp), allocatable :: R_frac(:,:)
+!         logical , allocatable :: mask(:)
+!         real(dp), allocatable :: y(:)
+!         real(dp), allocatable :: yfft(:)
+!         integer :: nRs
+!         integer :: i,j,ii
+!         ! test case
+!         allocate(y,source=cos(2.0_dp*pi*fbz%kpt_rec(1,:)))
+!         allocate(yfft,mold=y)
+!         ! tight binding coefficients
+!         if (.not.allocated(tb%dr%C)) stop 'ERROR [get_optical_matrix_element]: eigenvectors are required'
+!         ! eigenvalues
+!         if (.not.allocated(tb%dr%E)) stop 'ERROR [get_optical_matrix_element]: band energies are required'
+!         ! hamiltonian space
+!         if (.not.allocated(tb%dr%H)) stop 'ERROR [get_optical_matrix_element]: Hamiltonians are required'
+!         ! k-space derivative of hamiltonian
+!         if (.not.allocated(tb%dr%Hk)) allocate(tb%dr%Hk,mold=tb%dr%H)
+!         ! k-point mesh is defined on N divisions between [0,1); define real-space Fourier lattice-point integer mesh as:
+!         R_frac = meshgrid( v1=real([0:fbz%n(1)]-floor(fbz%n(1)/2.0_dp),dp), &
+!                          & v2=real([0:fbz%n(2)]-floor(fbz%n(2)/2.0_dp),dp), &
+!                          & v3=real([0:fbz%n(3)]-floor(fbz%n(3)/2.0_dp),dp))
+!         ! get number of real points
+!         nRs = size(R_frac,2)
+!         ! allocate workspace
+!         allocate(wrk(tb%dr%nbands,tb%dr%nbands,nRs))
+!         ! initialize
+!         yfft = 0.0_dp
+!         ! Fourier transform Hamiltonian to real space and multiply by R_frac to differentiate
+!         !$OMP PARALLEL PRIVATE(i,ii,j) SHARED(nRs,fbz,wrk,R_frac,tb)
+!         !$OMP DO
+!         do j = 1, nRs
+!             do ii = 1, fbz%nkpts
+!                 ! select ibz kpoint rather than fbz point
+!                 i = fbz%ibz_id(ii)
+!                 ! construct real-space hamiltonian (i.e. Fourier transform H)
+!                 yfft(j) = yfft(j) + y(i) * exp(-itwopi*dot_product(fbz%kpt_recp(:,ii),R_frac(:,j)))
+!             enddo ! k
+!             ! multiply by R_frac to get derivative
+!             ! wrk(:,:,j) = sum(matmul(pc%bas,R_frac(:,j))) * wrk(:,:,j)
+!         enddo ! R_frac
+!         !$OMP END DO
+!         !$OMP END PARALLEL
+!         ! Fourier transform back to reciprocal space (only do ibz points this time)
+!         ! workspace
+!         allocate(wrk2,mold=tb%dr%H(:,:,1))
+!         ! ibz mask; size(tb%dr%H,3) = number of ibz kpoints
+!         allocate(mask( size(tb%dr%H,3) ))
+!         ! initialize
+!         mask = .true.
+!         !$OMP PARALLEL PRIVATE(i,ii,j) SHARED(nRs,mask,fbz,wrk,R_frac,tb)
+!         !$OMP DO
+!         do ii = 1, fbz%nkpts
+!             ! select ibz kpoint rather than fbz point
+!             i = fbz%ibz_id(ii)
+!             ! if statement to select only ibz point
+!             if (mask(i)) then
+!                 ! initialize
+!                 tb%dr%Hk(:,:,i) = 0.0_dp
+!                 ! initialize
+!                 wrk2 = 0.0_dp
+!                 ! perform fourier transform
+!                 do j = 1, nRs
+!                     ! construct real-space hamiltonian (i.e. fourier transform H)
+!                     wrk2 = wrk2 + wrk(:,:,j) * exp(itwopi*dot_product(fbz%kpt_recp(:,i),R_frac(:,j)))
+!                 enddo ! R_frac
+!                 ! mark this ibz point as done
+!                 mask(i) = .false.
+!                 ! get real valued function
+!                 tb%dr%Hk(:,:,i) = real(wrk2,dp)
+!             endif
+!         enddo ! k
+!         !$OMP END DO
+!         !$OMP END PARALLEL
+!         tb%dr%Hk = tb%dr%Hk/fbz%nkpts
+!     end subroutine test_fourier
     
     ! matrix element stuff
 
@@ -1381,7 +1476,7 @@ contains
         implicit none
         !
         ! QUESTIONS:
-        ! 1) DFT psi is dEcvned on a real space grid. One wave function per k-point per band
+        ! 1) DFT psi is defined on a real space grid. One wave function per k-point per band
         !    TB orbital is per band (should be all the same for kpoints?) How to project...?
         !    Probably need one DFT-TB map per k-point. Rotate the DFT Hamiltonian onto the TB
         !    basis at every k and use the TB Hamiltonian to get matrix elements.
