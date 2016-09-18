@@ -335,9 +335,9 @@ contains
         fbz%n = n
         fbz%s = s
         ! get regular integer monkhorst pack mesh
-        kpt_int = generate_integer_monkhorst_pack_mesh(n=fbz%n,s=fbz%s)
+        kpt_int = meshgrid(v1=[1:fbz%n(1)]-1,v2=[1:fbz%n(2)]-1,v3=[1:fbz%n(3)]-1)
         ! nkpts
-        nkpts = size(kpt_int,2)
+        nkpts = product(fbz%n)
         ! allocate space for frac
         allocate(kpt_recp(3,nkpts))
         ! convert integer mesh to fractional coordinates
@@ -391,31 +391,6 @@ contains
             ! call disp(title='#'                ,style='underline',X=[1:fbz%ntets]     ,fmt='i5' ,advance='no')
             ! call disp(title='connectivity list',style='underline',X=transpose(fbz%tet),fmt='i10',advance='yes')
         endif
-        !
-        contains
-        pure function  generate_integer_monkhorst_pack_mesh(n,s) result(kpt)
-            !> returns kpoints in fractional coordinates for monkhorst pack mesh dimensions
-            !> n(1:3)=[n1,n2,n3] and shift s(1:3)=[s1,s2,s3]
-            !> according to http://cms.mpi.univie.ac.at/vasp/vasp/Automatic_k_mesh_generation.html
-            implicit none
-            !
-            integer,  intent(in) :: n(3) !> monkhorst pack mesh dimensions
-            real(dp), intent(in) :: s(3) !> monkhorst pack mesh shift
-            integer, allocatable :: kpt(:,:) !> kpt in fractional
-            integer :: i1,i2,i3,j
-            ! create array in column-major order, essential because sub2ind is used later on
-            allocate(kpt(3,product(n)))
-            j=0
-            do i1=1,n(1) ! x last - runs slowest
-            do i2=1,n(2) ! y middle
-            do i3=1,n(3) ! z first - runs fastest
-                j=j+1
-                kpt(1:3,j) = [i1,i2,i3]-1
-            enddo
-            enddo
-            enddo
-            !
-        end function   generate_integer_monkhorst_pack_mesh
     end subroutine get_fbz
 
     subroutine     get_irreducible(ibz,fbz,pg,opts)

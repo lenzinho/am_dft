@@ -30,7 +30,7 @@ module am_dispersion
         complex(dp), allocatable :: H(:,:,:)    ! H(:,:,nkpts) tight binding Hamiltonian
         complex(dp), allocatable :: C(:,:,:)    ! C(:,:,nkpts) tight binding coefficients (eigenvectors)
         real(dp)   , allocatable :: weight(:,:) ! weights(nbands,nkpts) whatever weights may be interesting to save
-        complex(dp), allocatable :: Hk(:,:,:)   ! Hk(:,:,nkpts) momentum-derivitive of Hamiltonian, i.e. grad_k H
+        complex(dp), allocatable :: Hk(:,:,:)   ! Hk(:,:,nkpts) wave-vector derivitive of Hamiltonian, i.e. grad_k H
     end type am_class_tightbinding_dispersion
 
 contains
@@ -152,6 +152,68 @@ contains
         close(fid)
         !
     end subroutine  load_dr
+
+    ! fourier interpolation
+
+    pure function   interpolate_via_fft(V,kpt_recp,rpt_frac,kpt_recp_i) result(Vi)
+        ! V(nkpts) - value to be interpolated, defined on full brillouin zone mesh 
+        ! kpt_recp(3,nkpts) - full bz [0,1) reciprocal fractional coordinates 
+        ! rpt_frac(r,nkpts) - real space integer fft mesh
+        ! kpt_recp_i - points to interpolate V on
+        implicit none
+        !
+        real(dp), intent(in) :: V(:) ! values on fbz
+        real(dp), intent(in) :: kpt_recp(:,:)   ! kpt_recp(3,nkpts) fbz kpoint coordinates [0,1)
+        real(dp), intent(in) :: rpt_frac(:,:)   ! rpt_frac(3,nkpts) fft mesh of fbz (primitive real-space lattice)
+        real(dp), intent(in) :: kpt_recp_i(:,:) ! kpt_recp_i(3,nkpts_i) points to interpolate on [0,1)
+        real(dp),allocatable :: Vi(:) ! interpolated values
+        real(dp),allocatable :: Vr(:) ! fourier values
+        complex(dp) :: wrk
+        integer :: nkpts   ! number of kpoints on fbz
+        integer :: nrpts   ! number of kpoints on real mesh (primitive lattice points)
+        integer :: nkpts_i ! number of kpoints to interpolate
+        integer :: i, j
+        ! get number of real points
+        nrpts = size(rpt_frac,2)
+        ! get kpoints
+        nkpts = size(kpt_recp)
+        ! get interpolation points
+        nkpts_i = size(kpt_recp_i)
+        ! allocate real space
+        allocate(Vr(nrpts))
+        ! allocate interpolated space
+        allocate(Vi(nkpts_i))
+        ! Fourier transform Hamiltonian to real space
+        !$OMP PARALLEL PRIVATE(i,j) SHARED(nrpts,nkpts,Vr,kpt_recp,rpt_frac)
+        !$OMP DO
+        do j = 1, nrpts
+            ! initialize
+            Vr(j) = 0.0_dp
+            ! construct real-space hamiltonian (i.e. Fourier transform H)
+            do i = 1, nkpts
+                Vr(j) = Vr(j) + V(i) * exp(-itwopi*dot_product(kpt_recp(:,i),rpt_frac(:,j)))
+            enddo
+        enddo
+        !$OMP END DO
+        !$OMP END PARALLEL
+        ! Fourier transform back to reciprocal space (only do point of interest this time)
+        !$OMP PARALLEL PRIVATE(i,j,wrk) SHARED(nkpts_i,nrpts,Vr,kpt_recp_i,rpt_frac)
+        !$OMP DO
+        do i = 1, nkpts_i
+            ! initialize complex variable
+            wrk = 0.0_dp
+            ! perform transform
+            do j = 1, nrpts
+                wrk = wrk + Vr(j) * exp(-itwopi*dot_product(kpt_recp_i(:,i),rpt_frac(:,j)))
+            enddo
+            ! get real valued function
+            Vi(i) = real(wrk,dp)
+        enddo ! ki
+        !$OMP END DO
+        !$OMP END PARALLEL
+        ! normalize
+        Vi = Vi/nkpts
+    end function    interpolate_via_fft
 
 end module am_dispersion
 
