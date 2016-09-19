@@ -16,7 +16,7 @@ module am_dispersion
 
     type, public :: am_class_dispersion
         integer :: nbands
-        real(dp), allocatable :: E(:,:)   ! E(nbands,nkpts) energies
+        real(dp), allocatable :: E(:,:)   ! E(nbands,nKs) energies
         contains
         procedure :: save => save_dr
         procedure :: load => load_dr
@@ -27,11 +27,15 @@ module am_dispersion
     end type am_class_dispersion
 
     type, public, extends(am_class_dispersion) :: am_class_tightbinding_dispersion
-        complex(dp), allocatable :: H(:,:,:)    ! H(:,:,nkpts) tight binding Hamiltonian
-        complex(dp), allocatable :: C(:,:,:)    ! C(:,:,nkpts) tight binding coefficients (eigenvectors)
-        real(dp)   , allocatable :: weight(:,:) ! weights(nbands,nkpts) whatever weights may be interesting to save
-        complex(dp), allocatable :: Hk(:,:,:)   ! Hk(:,:,nkpts) wave-vector derivitive of Hamiltonian, i.e. grad_k H
+        complex(dp), allocatable :: H(:,:,:)    ! H(:,:,nKs) tight binding Hamiltonian
+        complex(dp), allocatable :: C(:,:,:)    ! C(:,:,nKs) tight binding coefficients (eigenvectors)
+        real(dp)   , allocatable :: weight(:,:) ! weights(nbands,nKs) whatever weights may be interesting to save
+        complex(dp), allocatable :: Hk(:,:,:)   ! Hk(:,:,nKs) wave-vector derivitive of Hamiltonian, i.e. grad_k H
     end type am_class_tightbinding_dispersion
+
+    interface interpolate_via_fft
+        module procedure :: c_interpolate_via_fft, r_interpolate_via_fft
+    end interface ! interpolate_via_fft
 
 contains
 
@@ -155,65 +159,137 @@ contains
 
     ! fourier interpolation
 
-    pure function   interpolate_via_fft(V,kpt_recp,rpt_frac,kpt_recp_i) result(Vi)
-        ! V(nkpts) - value to be interpolated, defined on full brillouin zone mesh 
-        ! kpt_recp(3,nkpts) - full bz [0,1) reciprocal fractional coordinates 
-        ! rpt_frac(r,nkpts) - real space integer fft mesh
-        ! kpt_recp_i - points to interpolate V on
+    pure function   c_interpolate_via_fft(V,K,R,Kq,A) result(Vq)
+        !
         implicit none
         !
-        real(dp), intent(in) :: V(:) ! values on fbz
-        real(dp), intent(in) :: kpt_recp(:,:)   ! kpt_recp(3,nkpts) fbz kpoint coordinates [0,1)
-        real(dp), intent(in) :: rpt_frac(:,:)   ! rpt_frac(3,nkpts) fft mesh of fbz (primitive real-space lattice)
-        real(dp), intent(in) :: kpt_recp_i(:,:) ! kpt_recp_i(3,nkpts_i) points to interpolate on [0,1)
-        real(dp),allocatable :: Vi(:) ! interpolated values
-        real(dp),allocatable :: Vr(:) ! fourier values
-        complex(dp) :: wrk
-        integer :: nkpts   ! number of kpoints on fbz
-        integer :: nrpts   ! number of kpoints on real mesh (primitive lattice points)
-        integer :: nkpts_i ! number of kpoints to interpolate
+        complex(dp), intent(in) :: V(:)    ! values on fbz
+        real(dp)   , intent(in) :: K(:,:)  ! K(3,nKs) fbz kpoint coordinates [0,1)
+        real(dp)   , intent(in) :: R(:,:)  ! R(3,nKs) fft mesh of fbz (primitive real-space lattice)
+        real(dp)   , intent(in) :: Kq(:,:) ! Kq(3,nKqs) points to interpolate on [0,1)
+        complex(dp), intent(in), optional :: A(:)    ! Augment transform with kernel A: for differentiation use A = sum(R(:,j)) * cmplx_i
+        complex(dp),allocatable :: Vq(:)   ! interpolated values
+        complex(dp),allocatable :: Vr(:)   ! fourier values
+        integer :: nKs  ! number of kpoints on fbz
+        integer :: nRs  ! number of kpoints on real mesh (primitive lattice points)
+        integer :: nKqs ! number of kpoints to interpolate
         integer :: i, j
+        complex(dp) :: wrk
+        ! R (FFT MESH) is passed as input and can be generated like so:
+        ! R = meshgrid( v1=real([1:fbz%n(1)]-1-floor(fbz%n(1)/2.0_dp),dp), &
+        !             & v2=real([1:fbz%n(2)]-1-floor(fbz%n(2)/2.0_dp),dp), &
+        !             & v3=real([1:fbz%n(3)]-1-floor(fbz%n(3)/2.0_dp),dp))
         ! get number of real points
-        nrpts = size(rpt_frac,2)
+        nRs = size(R,2)
         ! get kpoints
-        nkpts = size(kpt_recp)
+        nKs = size(K,2)
         ! get interpolation points
-        nkpts_i = size(kpt_recp_i)
+        nKqs = size(Kq,2)
         ! allocate real space
-        allocate(Vr(nrpts))
+        allocate(Vr(nRs))
         ! allocate interpolated space
-        allocate(Vi(nkpts_i))
+        allocate(Vq(nKqs))
         ! Fourier transform Hamiltonian to real space
-        !$OMP PARALLEL PRIVATE(i,j) SHARED(nrpts,nkpts,Vr,kpt_recp,rpt_frac)
+        !$OMP PARALLEL PRIVATE(i,j) SHARED(nRs,nKs,Vr,K,R)
         !$OMP DO
-        do j = 1, nrpts
+        do j = 1, nRs
             ! initialize
             Vr(j) = 0.0_dp
             ! construct real-space hamiltonian (i.e. Fourier transform H)
-            do i = 1, nkpts
-                Vr(j) = Vr(j) + V(i) * exp(-itwopi*dot_product(kpt_recp(:,i),rpt_frac(:,j)))
+            do i = 1, nKs
+                Vr(j) = Vr(j) + V(i) * exp(-itwopi*dot_product(K(:,i),R(:,j)))
             enddo
         enddo
         !$OMP END DO
         !$OMP END PARALLEL
-        ! Fourier transform back to reciprocal space (only do point of interest this time)
-        !$OMP PARALLEL PRIVATE(i,j,wrk) SHARED(nkpts_i,nrpts,Vr,kpt_recp_i,rpt_frac)
+        ! apply kernel
+        if (present(A)) then
+            Vr = A * Vr
+        endif
+        ! Fourier transform back to reciprocal space
+        !$OMP PARALLEL PRIVATE(i,j,wrk) SHARED(nKqs,nRs,Vr,Kq,R,Vq)
         !$OMP DO
-        do i = 1, nkpts_i
+        do i = 1, nKqs
             ! initialize complex variable
             wrk = 0.0_dp
             ! perform transform
-            do j = 1, nrpts
-                wrk = wrk + Vr(j) * exp(-itwopi*dot_product(kpt_recp_i(:,i),rpt_frac(:,j)))
+            do j = 1, nRs
+                wrk = wrk + Vr(j) * exp(-itwopi*dot_product(Kq(:,i),R(:,j)))
             enddo
             ! get real valued function
-            Vi(i) = real(wrk,dp)
+            Vq(i) = wrk
         enddo ! ki
         !$OMP END DO
         !$OMP END PARALLEL
         ! normalize
-        Vi = Vi/nkpts
-    end function    interpolate_via_fft
+        Vq = Vq/nKs
+    end function    c_interpolate_via_fft
+
+    pure function   r_interpolate_via_fft(V,K,R,Kq,A) result(Vq)
+        !
+        implicit none
+        !
+        real(dp)   , intent(in) :: V(:)    ! values on fbz
+        real(dp)   , intent(in) :: K(:,:)  ! K(3,nKs) fbz kpoint coordinates [0,1)
+        real(dp)   , intent(in) :: R(:,:)  ! R(3,nKs) fft mesh of fbz (primitive real-space lattice)
+        real(dp)   , intent(in) :: Kq(:,:) ! Kq(3,nKqs) points to interpolate on [0,1)
+        complex(dp), intent(in), optional :: A(:)    ! Augment transform with kernel A: for differentiation use A = sum(R(:,j)) * cmplx_i
+        real(dp)   ,allocatable :: Vq(:)   ! interpolated values
+        complex(dp),allocatable :: Vr(:)   ! fourier values
+        integer :: nKs  ! number of kpoints on fbz
+        integer :: nRs  ! number of kpoints on real mesh (primitive lattice points)
+        integer :: nKqs ! number of kpoints to interpolate
+        integer :: i, j
+        complex(dp) :: wrk
+        ! R (FFT MESH) is passed as input and can be generated like so:
+        ! R = meshgrid( v1=real([1:fbz%n(1)]-1-floor(fbz%n(1)/2.0_dp),dp), &
+        !             & v2=real([1:fbz%n(2)]-1-floor(fbz%n(2)/2.0_dp),dp), &
+        !             & v3=real([1:fbz%n(3)]-1-floor(fbz%n(3)/2.0_dp),dp))
+        ! get number of real points
+        nRs = size(R,2)
+        ! get kpoints
+        nKs = size(K,2)
+        ! get interpolation points
+        nKqs = size(Kq,2)
+        ! allocate real space
+        allocate(Vr(nRs))
+        ! allocate interpolated space
+        allocate(Vq(nKqs))
+        ! Fourier transform Hamiltonian to real space
+        !$OMP PARALLEL PRIVATE(i,j) SHARED(nRs,nKs,Vr,K,R)
+        !$OMP DO
+        do j = 1, nRs
+            ! initialize
+            Vr(j) = 0.0_dp
+            ! construct real-space hamiltonian (i.e. Fourier transform H)
+            do i = 1, nKs
+                Vr(j) = Vr(j) + V(i) * exp(-itwopi*dot_product(K(:,i),R(:,j)))
+            enddo
+        enddo
+        !$OMP END DO
+        !$OMP END PARALLEL
+        ! apply kernel
+        if (present(A)) then
+            Vr = A * Vr
+        endif
+        ! Fourier transform back to reciprocal space
+        !$OMP PARALLEL PRIVATE(i,j,wrk) SHARED(nKqs,nRs,Vr,Kq,R,Vq)
+        !$OMP DO
+        do i = 1, nKqs
+            ! initialize complex variable
+            wrk = 0.0_dp
+            ! perform transform
+            do j = 1, nRs
+                wrk = wrk + Vr(j) * exp(-itwopi*dot_product(Kq(:,i),R(:,j)))
+            enddo
+            ! get real valued function
+            Vq(i) = real(wrk,dp)
+        enddo ! ki
+        !$OMP END DO
+        !$OMP END PARALLEL
+        ! normalize
+        Vq = Vq/nKs
+    end function    r_interpolate_via_fft
 
 end module am_dispersion
 

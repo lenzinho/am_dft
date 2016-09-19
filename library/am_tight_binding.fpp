@@ -407,6 +407,10 @@ contains
         real(dp) :: kT
         !
         if (opts%verbosity.ge.1) call print_title('Dielectric Function')
+        ! tight binding coefficients
+        if (.not.allocated(tb%dr%C)) stop 'ERROR [get_optical_matrix_element]: eigenvectors are required'
+        ! eigenvalues
+        if (.not.allocated(tb%dr%E)) stop 'ERROR [get_optical_matrix_element]: band energies are required'
         ! p.c. volume
         vol = abs(det(pc%bas))
         ! used for fermi-distribution
@@ -796,172 +800,63 @@ contains
         end function   get_hamiltonian_matrix
     end subroutine get_hamiltonian
 
-    subroutine     get_hamiltonian_kgradient(tb,pc,fbz)
+    subroutine     get_hamiltonian_kgradient(tb,pc,fbz,opts)
         ! get momentum-derivative of hamiltonian matrix element by neglecting intra-atomic contribution
         implicit none
         !
-        class(am_class_tightbinding), intent(inout) :: tb ! properties here are usually defined on ibz ! defined
-        type(am_class_prim_cell)    , intent(inout) :: pc ! properties here are usually defined on ibz
-        type(am_class_fbz)          , intent(in) :: fbz ! must be the full monkhorst-pack brillouin zone with ibz_id indices corresponding to ibz points
-        complex(dp), allocatable :: HR(:,:,:) ! wrkspace
-        complex(dp) :: wrk2 ! wrkspace
-        real(dp), allocatable :: R_frac(:,:)
-        logical , allocatable :: mask(:)
+        class(am_class_tightbinding), intent(inout) :: tb  ! properties here are usually defined on ibz ! defined
+        type(am_class_prim_cell)    , intent(inout) :: pc  ! properties here are usually defined on ibz
+        type(am_class_fbz)          , intent(in)    :: fbz ! must be the full monkhorst-pack brillouin zone with ibz_id indices corresponding to ibz points
+        type(am_class_options)      , intent(in)    :: opts
+        real(dp)   , allocatable :: ibz_kpt_recp(:,:)
+        real(dp)   , allocatable :: R_frac(:,:)
+        complex(dp), allocatable :: A(:)
         integer :: nRs
-        integer :: i,j,ii,i1,i2
-        real(dp), allocatable :: k_list(:,:)
-        ! tight binding coefficients
-        if (.not.allocated(tb%dr%C)) stop 'ERROR [get_optical_matrix_element]: eigenvectors are required'
-        ! eigenvalues
-        if (.not.allocated(tb%dr%E)) stop 'ERROR [get_optical_matrix_element]: band energies are required'
-        ! hamiltonian space
+        integer :: ibz_nkpts
+        integer :: i,j
+        ! 
+        if (opts%verbosity.ge.1) call print_title('Hamiltonian Gradient')
+        ! hamiltonian
         if (.not.allocated(tb%dr%H)) stop 'ERROR [get_optical_matrix_element]: Hamiltonians are required'
-        ! k-space derivative of hamiltonian
-        if (.not.allocated(tb%dr%Hk)) allocate(tb%dr%Hk,mold=tb%dr%H)
         ! k-point mesh is defined on N divisions between [0,1); define real-space Fourier lattice-point integer mesh as:
         R_frac = meshgrid( v1=real([1:fbz%n(1)]-1-floor(fbz%n(1)/2.0_dp),dp), &
                          & v2=real([1:fbz%n(2)]-1-floor(fbz%n(2)/2.0_dp),dp), &
                          & v3=real([1:fbz%n(3)]-1-floor(fbz%n(3)/2.0_dp),dp))
-        ! get number of real points
+        ! get size of real space
         nRs = size(R_frac,2)
-        ! allocate workspace
-        allocate(HR(tb%dr%nbands,tb%dr%nbands,nRs))
-        ! initialize
-        HR = 0.0_dp
-        ! Fourier transform Hamiltonian to real space and multiply by R_frac to differentiate
-        !$OMP PARALLEL PRIVATE(i,ii,j) SHARED(nRs,fbz,HR,R_frac,tb)
-        !$OMP DO
-        do j = 1, nRs
-            ! construct real-space hamiltonian (i.e. Fourier transform H)
-            do i = 1, fbz%nkpts
-                HR(:,:,j) = HR(:,:,j) + tb%dr%H(:,:, fbz%ibz_id(i) ) * exp(-itwopi*dot_product(fbz%kpt_recp(:,i),R_frac(:,j)))
-            enddo ! k
-            ! multiply by R_frac
-            ! HR(:,:,j) = sum(matmul(pc%bas,R_frac(:,j))) * HR(:,:,j)
-        enddo ! R_frac
-        !$OMP END DO
-        !$OMP END PARALLEL
-        ! Fourier transform back to reciprocal space (only do ibz points this time)
-        ! ibz mask; size(tb%dr%H,3) = number of ibz kpoints
-        allocate(mask( size(tb%dr%H,3) ))
-        ! initialize
-        mask = .true.
-        !$OMP PARALLEL PRIVATE(i,ii,j) SHARED(nRs,mask,fbz,HR,R_frac,tb)
-        !$OMP DO
-        do ii = 1, fbz%nkpts
-            ! select ibz kpoint rather than fbz point to go faster
-            i = fbz%ibz_id(ii)
-            ! if statement to select only ibz point
-            if (mask(i)) then
-                ! mark this ibz point as done (goes faster)
-                mask(i) = .false.
-                ! loop over hamiltonian elements
-                do i1 = 1, tb%dr%nbands
-                do i2 = 1, tb%dr%nbands
-                    ! initialize complex variable
-                    wrk2 = 0.0_dp
-                    ! perform fourier transform
-                    do j = 1, nRs
-                        ! construct real-space hamiltonian (i.e. fourier transform H)
-                        wrk2 = wrk2 + HR(i1,i2,j) * exp(-itwopi*dot_product(fbz%kpt_recp(:,ii),R_frac(:,j)))
-                    enddo ! R_frac
-                    ! get real valued function
-                    tb%dr%Hk(i1,i2,i) = real(wrk2,dp)
-                enddo
-                enddo
-            endif
-        enddo ! k
-        !$OMP END DO
-        !$OMP END PARALLEL
-        tb%dr%Hk = tb%dr%Hk/fbz%nkpts
+        ! allocate space for differentiation kernel
+        allocate(A(nRs))
+        ! get differentiation kernel
+        do i = 1, nRs
+            ! cartesian is probably correct here...
+            A(i) = sum(matmul(pc%bas,R_frac(:,i))) * cmplx_i
+            ! A(i) = sum(R_frac(:,i)) * cmplx_i
+        enddo
+        ! get irreducible kpoints
+        ibz_nkpts = size(tb%dr%H,3)
+        ! get number of ibz kpoints
+        allocate(ibz_kpt_recp(3,ibz_nkpts))
+        ! get ibz kpoints
+        do i = 1, fbz%nkpts
+            ibz_kpt_recp(:,fbz%ibz_id(i)) = fbz%kpt_recp(:,i)
+        enddo
+        ! allocate space for Hamiltonian k-space derivative
+        allocate(tb%dr%Hk,mold=tb%dr%H)
+        ! loop over hamiltonian elements
+        do i = 1,tb%dr%nbands
+        do j = 1,tb%dr%nbands
+            ! either one (fractional or cartesian) is fine... same result
+            ! tb%dr%Hk(i,j,:) = interpolate_via_fft(V=tb%dr%H(i,j,fbz%ibz_id), K=matmul(pc%recbas,fbz%kpt_recp), R=matmul(pc%bas,R_frac), Kq=matmul(pc%recbas,ibz_kpt_recp), A=A)
+            tb%dr%Hk(i,j,:) = interpolate_via_fft(V=tb%dr%H(i,j,fbz%ibz_id), K=fbz%kpt_recp, R=R_frac, Kq=ibz_kpt_recp, A=A)
+        enddo
+        enddo
+        tb%dr%Hk = tb%dr%Hk + 1.0_dp
+        ! DEBUG
+        ! call disp( tb%dr%H (1,1,:) ,advance='no')
+        ! call disp( interpolate_via_fft(V=real(tb%dr%H(1,1,fbz%ibz_id),dp), K=fbz%kpt_recp, R=R_frac, Kq=ibz_kpt_recp) ,advance='no')
+        ! call disp( tb%dr%Hk(1,1,:),advance='yes')
+        ! stop
     end subroutine get_hamiltonian_kgradient
-
-    ! fourier test
-
-!     subroutine     test_fourier(tb,pc,fbz)
-!         ! get momentum-derivative of hamiltonian matrix element by neglecting intra-atomic contribution
-!         implicit none
-!         !
-!         class(am_class_tightbinding), intent(inout) :: tb ! properties here are usually defined on ibz ! defined
-!         type(am_class_prim_cell)    , intent(inout) :: pc ! properties here are usually defined on ibz
-!         type(am_class_fbz)          , intent(in) :: fbz ! must be the full monkhorst-pack brillouin zone with ibz_id indices corresponding to ibz points
-!         complex(dp), allocatable :: wrk(:,:,:) ! wrkspace
-!         complex(dp), allocatable :: wrk2(:,:) ! wrkspace
-!         real(dp), allocatable :: R_frac(:,:)
-!         logical , allocatable :: mask(:)
-!         real(dp), allocatable :: y(:)
-!         real(dp), allocatable :: yfft(:)
-!         integer :: nRs
-!         integer :: i,j,ii
-!         ! test case
-!         allocate(y,source=cos(2.0_dp*pi*fbz%kpt_rec(1,:)))
-!         allocate(yfft,mold=y)
-!         ! tight binding coefficients
-!         if (.not.allocated(tb%dr%C)) stop 'ERROR [get_optical_matrix_element]: eigenvectors are required'
-!         ! eigenvalues
-!         if (.not.allocated(tb%dr%E)) stop 'ERROR [get_optical_matrix_element]: band energies are required'
-!         ! hamiltonian space
-!         if (.not.allocated(tb%dr%H)) stop 'ERROR [get_optical_matrix_element]: Hamiltonians are required'
-!         ! k-space derivative of hamiltonian
-!         if (.not.allocated(tb%dr%Hk)) allocate(tb%dr%Hk,mold=tb%dr%H)
-!         ! k-point mesh is defined on N divisions between [0,1); define real-space Fourier lattice-point integer mesh as:
-!         R_frac = meshgrid( v1=real([0:fbz%n(1)]-floor(fbz%n(1)/2.0_dp),dp), &
-!                          & v2=real([0:fbz%n(2)]-floor(fbz%n(2)/2.0_dp),dp), &
-!                          & v3=real([0:fbz%n(3)]-floor(fbz%n(3)/2.0_dp),dp))
-!         ! get number of real points
-!         nRs = size(R_frac,2)
-!         ! allocate workspace
-!         allocate(wrk(tb%dr%nbands,tb%dr%nbands,nRs))
-!         ! initialize
-!         yfft = 0.0_dp
-!         ! Fourier transform Hamiltonian to real space and multiply by R_frac to differentiate
-!         !$OMP PARALLEL PRIVATE(i,ii,j) SHARED(nRs,fbz,wrk,R_frac,tb)
-!         !$OMP DO
-!         do j = 1, nRs
-!             do ii = 1, fbz%nkpts
-!                 ! select ibz kpoint rather than fbz point
-!                 i = fbz%ibz_id(ii)
-!                 ! construct real-space hamiltonian (i.e. Fourier transform H)
-!                 yfft(j) = yfft(j) + y(i) * exp(-itwopi*dot_product(fbz%kpt_recp(:,ii),R_frac(:,j)))
-!             enddo ! k
-!             ! multiply by R_frac to get derivative
-!             ! wrk(:,:,j) = sum(matmul(pc%bas,R_frac(:,j))) * wrk(:,:,j)
-!         enddo ! R_frac
-!         !$OMP END DO
-!         !$OMP END PARALLEL
-!         ! Fourier transform back to reciprocal space (only do ibz points this time)
-!         ! workspace
-!         allocate(wrk2,mold=tb%dr%H(:,:,1))
-!         ! ibz mask; size(tb%dr%H,3) = number of ibz kpoints
-!         allocate(mask( size(tb%dr%H,3) ))
-!         ! initialize
-!         mask = .true.
-!         !$OMP PARALLEL PRIVATE(i,ii,j) SHARED(nRs,mask,fbz,wrk,R_frac,tb)
-!         !$OMP DO
-!         do ii = 1, fbz%nkpts
-!             ! select ibz kpoint rather than fbz point
-!             i = fbz%ibz_id(ii)
-!             ! if statement to select only ibz point
-!             if (mask(i)) then
-!                 ! initialize
-!                 tb%dr%Hk(:,:,i) = 0.0_dp
-!                 ! initialize
-!                 wrk2 = 0.0_dp
-!                 ! perform fourier transform
-!                 do j = 1, nRs
-!                     ! construct real-space hamiltonian (i.e. fourier transform H)
-!                     wrk2 = wrk2 + wrk(:,:,j) * exp(itwopi*dot_product(fbz%kpt_recp(:,i),R_frac(:,j)))
-!                 enddo ! R_frac
-!                 ! mark this ibz point as done
-!                 mask(i) = .false.
-!                 ! get real valued function
-!                 tb%dr%Hk(:,:,i) = real(wrk2,dp)
-!             endif
-!         enddo ! k
-!         !$OMP END DO
-!         !$OMP END PARALLEL
-!         tb%dr%Hk = tb%dr%Hk/fbz%nkpts
-!     end subroutine test_fourier
     
     ! matrix element stuff
 
