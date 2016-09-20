@@ -436,6 +436,7 @@ contains
         ninterbands = tb%dr%nbands**2 - sum([1:tb%dr%nbands])
         ! preliminary stuff to stdout
         if (opts%verbosity.ge.1) then 
+            write(*,'(a,a)') flare, 'vol = '//tostring(vol)
             write(*,'(a,a)') flare, 'bands = '//tostring(tb%dr%nbands)
             write(*,'(a,a)') flare, 'interband pairs = '//tostring(ninterbands)
             write(*,'(a,a)') flare, 'tetrahedra = '//tostring(ibz%ntets)
@@ -505,18 +506,24 @@ contains
         elseif (index(opts%flags,'lorentz').ne.0) then
             tb%df%Fcv = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv*Pcv,flags='lorentz')
         endif
-        ! convert Fcv to unitless: Mei.2016.JMC.VNx.optical Eq. 1-2
-        ! I think that Fcv here is actually J * <Fcv>, so it will have units of DOS
+        ! get imaginary dielectric function 
+        if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'computing imaginary dielectric function e2(E) ...'
+        ! space
+        allocate(tb%df%e2(tb%df%nEs))
+        ! I think that Fcv here is actually J * <Fcv>, so it will have units of DOS rather than be unitless
         do i = 1, tb%df%nEs
+            ! initialize
+            tb%df%e2(i) = 0.0_dp
+            ! interbands
             do j = 1, ninterbands
                 ! coefficient = 2 * ( (electron mass/hbar) * eV nm)^2 / (m_e * eV)
                 tb%df%Fcv(j,i) = 26.24685_dp * tb%df%Fcv(j,i) / tb%df%E(i)
+                ! sum over interbands
+                tb%df%e2(i) = tb%df%e2(i) + tb%df%Fcv(j,i)
             enddo
+            ! evaluate e2 = c * <Fcv> * JDOS; constant = (electron charge)^2 * hbar^2 / (permitivity * electron mass * eV) * (1/(eV * nm^3))
+            tb%df%e2(i) = (1.378842_dp/vol) * tb%df%e2(i) / tb%df%E(i)
         enddo
-        ! get imaginary dielectric function 
-        if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'computing imaginary dielectric function e2(E) ...'
-        ! evaluate e2 = c * <Fcv> * JDOS, coefficient = (electron charge)^2 * hbar^2 / (permitivity * electron mass * eV)
-        tb%df%e2 = (1.378842_dp/vol) * sum(tb%df%Fcv,1) / tb%df%E
         ! stdout dielectric function
         write(*,'(a,a)') flare, 'dielectric function'
         call disp_indent()
@@ -842,15 +849,8 @@ contains
         enddo
         ! allocate space for Hamiltonian k-space derivative
         allocate(tb%dr%Hk,mold=tb%dr%H)
-        ! loop over hamiltonian elements
-        do i = 1,tb%dr%nbands
-        do j = 1,tb%dr%nbands
-            ! either one (fractional or cartesian) is fine... same result
-            ! tb%dr%Hk(i,j,:) = interpolate_via_fft(V=tb%dr%H(i,j,fbz%ibz_id), K=matmul(pc%recbas,fbz%kpt_recp), R=matmul(pc%bas,R_frac), Kq=matmul(pc%recbas,ibz_kpt_recp), A=A)
-            tb%dr%Hk(i,j,:) = interpolate_via_fft(V=tb%dr%H(i,j,fbz%ibz_id), K=fbz%kpt_recp, R=R_frac, Kq=ibz_kpt_recp, A=A)
-        enddo
-        enddo
-        tb%dr%Hk = tb%dr%Hk + 1.0_dp
+        ! loop over Hamiltonian elements
+        tb%dr%Hk = interpolate_via_fft(V=tb%dr%H(:,:,fbz%ibz_id), K=fbz%kpt_recp, R=R_frac, Kq=ibz_kpt_recp, A=A)
         ! DEBUG
         ! call disp( tb%dr%H (1,1,:) ,advance='no')
         ! call disp( interpolate_via_fft(V=real(tb%dr%H(1,1,fbz%ibz_id),dp), K=fbz%kpt_recp, R=R_frac, Kq=ibz_kpt_recp) ,advance='no')
