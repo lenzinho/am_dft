@@ -14,6 +14,7 @@ OBJS  = mkl_rci.o 						\
 		dispmodule.o 					\
 		am_constants.o              	\
 		am_mkl.o                    	\
+		am_clock.o  					\
 		am_matlab.o                 	\
 		am_stdout.o                 	\
 		am_histogram.o              	\

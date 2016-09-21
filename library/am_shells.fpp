@@ -140,11 +140,15 @@ contains
         integer :: iostat
         ! fid
         fid = 1
+        ! clock in
+        call start_clock('load')
         ! save space group
         open(unit=fid, file=trim(fname), status='old', action='read', iostat=iostat)
             if (iostat/=0) stop 'ERROR [shell:load]: opening file'
             read(fid,*) shell
         close(fid)
+        ! clock out
+        call stop_clock('load')
         !
     end subroutine  load_shell
 

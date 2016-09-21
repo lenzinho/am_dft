@@ -189,11 +189,15 @@ contains
         integer :: iostat
         ! fid
         fid = 1
+        ! clock in
+        call start_clock('load')
         ! save space group
         open(unit=fid, file=trim(fname), status='old', action='read', iostat=iostat)
             if (iostat/=0) stop 'ERROR [tb:load]: opening file'
             read(fid,*) tb
         close(fid)
+        ! clock out
+        call stop_clock('load')
         !
     end subroutine  load_tb
 
@@ -343,6 +347,8 @@ contains
         integer  :: i,j
         !
         if (opts%verbosity.ge.1) call print_title('Density of states')
+        ! clock in
+        call start_clock('DOS')
         ! region over which there are bands
         Emin = minval(tb%dr%E(:,:))
         Emax = maxval(tb%dr%E(:,:))
@@ -384,6 +390,8 @@ contains
         endif
         ! get partial DOS
         tb%dos%pD = get_pdos_vs_Ep(Ep=tb%dos%E, E=tb%dr%E, tet=ibz%tet, tetw=ibz%tetw, weight=C)
+        ! clock out
+        call stop_clock('DOS')
     end subroutine get_dos
 
     subroutine     get_df(tb,pc,ibz,E,opts)
@@ -407,6 +415,8 @@ contains
         real(dp) :: kT
         !
         if (opts%verbosity.ge.1) call print_title('Dielectric Function')
+        ! clock in
+        call start_clock('get DF')
         ! tight binding coefficients
         if (.not.allocated(tb%dr%C)) stop 'ERROR [get_optical_matrix_element]: eigenvectors are required'
         ! eigenvalues
@@ -469,7 +479,7 @@ contains
                 Pcv(n,n,k) = abs( dot_product(conjg(tb%dr%C(:,f,k)), matmul(tb%dr%Hk(:,:,k),tb%dr%C(:,i,k))) )**2
                 ! Fermi-Dirac weights for JDOS
                 Wcv(n,n,k) = fermi_dirac( tb%dr%E(f,k)/kT ) - fermi_dirac( tb%dr%E(i,k)/kT )
-                ! this is essentially equivalent to the Wcv version above
+                ! this is essentially equivalent to the Wcv version above 
                     ! if ((tb%dr%E(f,k).gt.0.0_dp).and.(tb%dr%E(i,k).lt.0.0_dp)) then
                     !     Wcv(n,n,k) = 1.0_dp
                     ! else
@@ -534,10 +544,12 @@ contains
 
 
 
-        stop 'STOPPING [get_df]: NOT FULLY IMPLEMENTED YET'
+        ! stop 'STOPPING [get_df]: NOT FULLY IMPLEMENTED YET'
 
         ! kramer kronig to obtain e1
 
+        ! clock out
+        call stop_clock('get DF')
     end subroutine get_df
 
     subroutine     get_fermi_energy(tb,ibz,nelecs)
@@ -568,6 +580,8 @@ contains
         real(dp)   , allocatable :: D(:)
         integer :: nkpts
         integer :: i
+        ! clock in
+        call start_clock('diag H(k)')
         ! get number of kpoints
         nkpts = size(tb%dr%H,3)
         ! selector
@@ -594,6 +608,8 @@ contains
         enddo
         ! save number of bands
         tb%dr%nbands = size(tb%dr%E,1) ! E(nbands,nkpts)
+        ! clock out
+        call stop_clock('diag H(k)')
     end subroutine get_dispersion
 
     ! export to matlab
@@ -711,6 +727,8 @@ contains
         class(am_class_bz)          , intent(in) :: bz
         integer    , allocatable :: selector_kpoint(:)
         integer :: i
+        ! clock in
+        call start_clock('build H(k)')
         ! selector
         if (allocated(tb%ft%selector_kpoint)) then
             allocate(selector_kpoint, source=tb%ft%selector_kpoint)
@@ -732,6 +750,8 @@ contains
         enddo
         ! save number of bands
         tb%dr%nbands = size(tb%dr%E,1) ! E(nbands,nkpts)
+        ! clock out
+        call stop_clock('build H(k)')
         contains
         function       get_hamiltonian_matrix(tb,pp,kpt) result(H)
             ! 
@@ -817,24 +837,20 @@ contains
         type(am_class_options)      , intent(in)    :: opts
         real(dp)   , allocatable :: ibz_kpt_recp(:,:)
         real(dp)   , allocatable :: R_frac(:,:)
-        real(dp)   , allocatable :: R_cart(:,:)
-        real(dp)   , allocatable :: ibz_kpt_cart(:,:)
         complex(dp), allocatable :: A(:)
         integer :: nRs
         integer :: ibz_nkpts
-        integer :: i,j
+        integer :: i
         ! 
         if (opts%verbosity.ge.1) call print_title('Hamiltonian Gradient')
+        ! clock-in
+        call start_clock('grad_k H(k)')
         ! hamiltonian
         if (.not.allocated(tb%dr%H)) stop 'ERROR [get_optical_matrix_element]: Hamiltonians are required'
         ! k-point mesh is defined on N divisions between [0,1); define real-space Fourier lattice-point integer mesh as:
         R_frac = meshgrid( v1=real([1:fbz%n(1)]-1-floor(fbz%n(1)/2.0_dp),dp), &
                          & v2=real([1:fbz%n(2)]-1-floor(fbz%n(2)/2.0_dp),dp), &
                          & v3=real([1:fbz%n(3)]-1-floor(fbz%n(3)/2.0_dp),dp))
-        R_cart = meshgrid( v1=real([1:fbz%n(1)]-1-floor(fbz%n(1)/2.0_dp),dp), &
-                         & v2=real([1:fbz%n(2)]-1-floor(fbz%n(2)/2.0_dp),dp), &
-                         & v3=real([1:fbz%n(3)]-1-floor(fbz%n(3)/2.0_dp),dp))
-        R_cart = matmul(pc%bas,R_cart)
         ! get size of real space
         nRs = size(R_frac,2)
         ! allocate space for differentiation kernel
@@ -842,28 +858,28 @@ contains
         ! get differentiation kernel
         do i = 1, nRs
             ! cartesian is probably correct here...
-            A(i) = 1.0_dp ! sum(matmul(pc%bas,R_frac(:,i))) * cmplx_i
+            A(i) = - itwopi * sum(matmul(pc%bas,R_frac(:,i)))
             ! A(i) = sum(R_frac(:,i)) * cmplx_i
         enddo
         ! get irreducible kpoints
         ibz_nkpts = size(tb%dr%H,3)
         ! get number of ibz kpoints
         allocate(ibz_kpt_recp(3,ibz_nkpts))
-        allocate(ibz_kpt_cart,mold=ibz_kpt_recp)
         ! get ibz kpoints
         do i = 1, fbz%nkpts
             ibz_kpt_recp(:,fbz%ibz_id(i)) = fbz%kpt_recp(:,i)
-            ibz_kpt_cart(:,fbz%ibz_id(i)) = fbz%kpt_cart(:,i)
         enddo
         ! allocate space for Hamiltonian k-space derivative
         allocate(tb%dr%Hk,mold=tb%dr%H)
-        ! loop over Hamiltonian elements
-        tb%dr%Hk = interpolate_via_fft(V=tb%dr%H(:,:,fbz%ibz_id), K=fbz%kpt_cart, R=R_cart, Kq=ibz_kpt_cart, A=A)
+        ! apply diffentiation
+        tb%dr%Hk = interpolate_via_fft(V=tb%dr%H(:,:,fbz%ibz_id), K=fbz%kpt_recp, R=R_frac, Kq=ibz_kpt_recp, A=A)
         ! DEBUG
-        call disp( tb%dr%H (1,1,:) ,advance='no')
-        call disp( interpolate_via_fft(V=real(tb%dr%H(1,1,fbz%ibz_id),dp), K=fbz%kpt_recp, R=R_frac, Kq=ibz_kpt_recp) ,advance='no')
-        call disp( tb%dr%Hk(1,1,:),advance='yes')
-        stop
+!         call disp( tb%dr%H (1,1,:) ,advance='no')
+!         call disp( real(tb%dr%Hk(1,1,:),dp),advance='yes')
+!         stop
+        ! clock out
+        call stop_clock('grad_k H(k)')
+        !
     end subroutine get_hamiltonian_kgradient
     
     ! matrix element stuff
