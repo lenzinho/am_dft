@@ -56,6 +56,8 @@ module am_brillouin_zone
     ! IBZ (irreducible wedge)
 
     type, public, extends(am_class_fbz) :: am_class_ibz
+        complex(dp), allocatable :: expfac(:) ! fourier factor
+        complex(dp), allocatable :: diffac(:) ! differential fourier factor
         contains
         procedure :: get_irreducible ! requires fbz monkhorst-pack mesh
     end type am_class_ibz
@@ -283,7 +285,7 @@ contains
         bz%kpt_recp = modulo(bz%kpt_recp+prec,1.0_dp)-prec
         !
         contains
-        function       reduce_kpoint_to_fbz(kpoint_cart,grid_points) result(kpoint_fbz_cart)
+        pure function  reduce_kpoint_to_fbz(kpoint_cart,grid_points) result(kpoint_fbz_cart)
             !> reduces kpoint (in fractional) to the first Brillouin zone (Wigner-Seitz cell, defined in cartesian coordinates)
             !> cartesian kpoint is returned! 
             implicit none

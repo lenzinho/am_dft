@@ -817,6 +817,8 @@ contains
         type(am_class_options)      , intent(in)    :: opts
         real(dp)   , allocatable :: ibz_kpt_recp(:,:)
         real(dp)   , allocatable :: R_frac(:,:)
+        real(dp)   , allocatable :: R_cart(:,:)
+        real(dp)   , allocatable :: ibz_kpt_cart(:,:)
         complex(dp), allocatable :: A(:)
         integer :: nRs
         integer :: ibz_nkpts
@@ -829,6 +831,10 @@ contains
         R_frac = meshgrid( v1=real([1:fbz%n(1)]-1-floor(fbz%n(1)/2.0_dp),dp), &
                          & v2=real([1:fbz%n(2)]-1-floor(fbz%n(2)/2.0_dp),dp), &
                          & v3=real([1:fbz%n(3)]-1-floor(fbz%n(3)/2.0_dp),dp))
+        R_cart = meshgrid( v1=real([1:fbz%n(1)]-1-floor(fbz%n(1)/2.0_dp),dp), &
+                         & v2=real([1:fbz%n(2)]-1-floor(fbz%n(2)/2.0_dp),dp), &
+                         & v3=real([1:fbz%n(3)]-1-floor(fbz%n(3)/2.0_dp),dp))
+        R_cart = matmul(pc%bas,R_cart)
         ! get size of real space
         nRs = size(R_frac,2)
         ! allocate space for differentiation kernel
@@ -836,26 +842,28 @@ contains
         ! get differentiation kernel
         do i = 1, nRs
             ! cartesian is probably correct here...
-            A(i) = sum(matmul(pc%bas,R_frac(:,i))) * cmplx_i
+            A(i) = 1.0_dp ! sum(matmul(pc%bas,R_frac(:,i))) * cmplx_i
             ! A(i) = sum(R_frac(:,i)) * cmplx_i
         enddo
         ! get irreducible kpoints
         ibz_nkpts = size(tb%dr%H,3)
         ! get number of ibz kpoints
         allocate(ibz_kpt_recp(3,ibz_nkpts))
+        allocate(ibz_kpt_cart,mold=ibz_kpt_recp)
         ! get ibz kpoints
         do i = 1, fbz%nkpts
             ibz_kpt_recp(:,fbz%ibz_id(i)) = fbz%kpt_recp(:,i)
+            ibz_kpt_cart(:,fbz%ibz_id(i)) = fbz%kpt_cart(:,i)
         enddo
         ! allocate space for Hamiltonian k-space derivative
         allocate(tb%dr%Hk,mold=tb%dr%H)
         ! loop over Hamiltonian elements
-        tb%dr%Hk = interpolate_via_fft(V=tb%dr%H(:,:,fbz%ibz_id), K=fbz%kpt_recp, R=R_frac, Kq=ibz_kpt_recp, A=A)
+        tb%dr%Hk = interpolate_via_fft(V=tb%dr%H(:,:,fbz%ibz_id), K=fbz%kpt_cart, R=R_cart, Kq=ibz_kpt_cart, A=A)
         ! DEBUG
-        ! call disp( tb%dr%H (1,1,:) ,advance='no')
-        ! call disp( interpolate_via_fft(V=real(tb%dr%H(1,1,fbz%ibz_id),dp), K=fbz%kpt_recp, R=R_frac, Kq=ibz_kpt_recp) ,advance='no')
-        ! call disp( tb%dr%Hk(1,1,:),advance='yes')
-        ! stop
+        call disp( tb%dr%H (1,1,:) ,advance='no')
+        call disp( interpolate_via_fft(V=real(tb%dr%H(1,1,fbz%ibz_id),dp), K=fbz%kpt_recp, R=R_frac, Kq=ibz_kpt_recp) ,advance='no')
+        call disp( tb%dr%Hk(1,1,:),advance='yes')
+        stop
     end subroutine get_hamiltonian_kgradient
     
     ! matrix element stuff
