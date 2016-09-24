@@ -488,21 +488,24 @@ contains
             enddo
             enddo
         enddo
-        ! integrate to get jDOS [states/eV/prim-cell]
-        if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'computing interband-projected JDOS ...'
-        if     (index(opts%flags,'tetra')  .ne.0) then
-            tb%df%pD = get_pdos_vs_Ep(Ep=tb%df%E, E=Ecv,tet=ibz%tet, tetw=ibz%tetw, weight=Wcv)
-        elseif (index(opts%flags,'mp'   )  .ne.0) then
-            tb%df%pD = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv,flags='mp')
-        elseif (index(opts%flags,'fermi')  .ne.0) then
-            tb%df%pD = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv,flags='fermi')
-        elseif (index(opts%flags,'gauss')  .ne.0) then
-            tb%df%pD = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv,flags='gauss')
-        elseif (index(opts%flags,'lorentz').ne.0) then
-            tb%df%pD = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv,flags='lorentz')
+        ! compute JDOS?
+        if (index(opts%flags,'JDOS').ne.0) then
+            ! integrate to get jDOS [states/eV/prim-cell]
+            if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'computing interband-projected JDOS ...'
+            if     (index(opts%flags,'tetra')  .ne.0) then
+                tb%df%pD = get_pdos_vs_Ep(Ep=tb%df%E, E=Ecv,tet=ibz%tet, tetw=ibz%tetw, weight=Wcv)
+            elseif (index(opts%flags,'mp'   )  .ne.0) then
+                tb%df%pD = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv,flags='mp')
+            elseif (index(opts%flags,'fermi')  .ne.0) then
+                tb%df%pD = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv,flags='fermi')
+            elseif (index(opts%flags,'gauss')  .ne.0) then
+                tb%df%pD = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv,flags='gauss')
+            elseif (index(opts%flags,'lorentz').ne.0) then
+                tb%df%pD = get_pdos_quick(Ep=tb%df%E,E=Ecv,kptw=ibz%w,degauss=opts%degauss,W=Wcv,flags='lorentz')
+            endif
+            ! sum over projections to get total jDOS [states/eV/prim-cell]
+            allocate(tb%df%D,source=sum(tb%df%pD,1))
         endif
-        ! sum over projections to get total jDOS [states/eV/prim-cell]
-        allocate(tb%df%D,source=sum(tb%df%pD,1))
         ! integrate momentum matrix elements (MME) to get Pcv [grad_k H = eV/nm^-1 = eV-nm]: Mei.2016.JMC.VNx.optical Eq. 1-2
         if (opts%verbosity.ge.1) write(*,'(a,a)') flare, 'computing oscilator stregnth Fcv(E) ...'
         if     (index(opts%flags,'tetra')  .ne.0) then
@@ -539,10 +542,15 @@ contains
         call disp_indent()
         call disp(title='E'          ,style='underline',X=tb%df%E                ,fmt='f10.5',advance='no')
         ! call disp(title='Fcv'        ,style='underline',X=sum(tb%df%Fcv,1)       ,fmt='f10.5',advance='no')
+        if (index(opts%flags,'JDOS').ne.0) then
         call disp(title='J'          ,style='underline',X=tb%df%D                ,fmt='f10.5',advance='no')
+        endif
         call disp(title='e2'         ,style='underline',X=tb%df%e2               ,fmt='f20.10',advance='yes')
 
 
+        ! hmm.. something is wrong, I think it is related to grad_k H... e2 doesn't decrase with energy like it should e2/hw looks better.
+        ! hmm.. something is wrong, I think it is related to grad_k H... e2 doesn't decrase with energy like it should e2/hw looks better.
+        ! hmm.. something is wrong, I think it is related to grad_k H... e2 doesn't decrase with energy like it should e2/hw looks better.
 
         ! stop 'STOPPING [get_df]: NOT FULLY IMPLEMENTED YET'
 
@@ -858,8 +866,9 @@ contains
         ! get differentiation kernel
         do i = 1, nRs
             ! cartesian is probably correct here...
-            A(i) = - itwopi * sum(matmul(pc%bas,R_frac(:,i)))
-            ! A(i) = sum(R_frac(:,i)) * cmplx_i
+            ! cmplx_i is correct as well (no 2pi factor here)
+            ! A(i) = - cmplx_i * sum(matmul(pc%bas,R_frac(:,i)))
+            A(i) = - cmplx_i * sum(matmul(pc%bas,R_frac(:,i)))
         enddo
         ! get irreducible kpoints
         ibz_nkpts = size(tb%dr%H,3)
@@ -872,11 +881,12 @@ contains
         ! allocate space for Hamiltonian k-space derivative
         allocate(tb%dr%Hk,mold=tb%dr%H)
         ! apply diffentiation
-        tb%dr%Hk = interpolate_via_fft(V=tb%dr%H(:,:,fbz%ibz_id), K=fbz%kpt_recp, R=R_frac, Kq=ibz_kpt_recp, A=A)
+        tb%dr%Hk = fourier_interpolation(V=tb%dr%H(:,:,fbz%ibz_id), K=fbz%kpt_recp, R=R_frac, Kq=ibz_kpt_recp, A=A)
         ! DEBUG
-!         call disp( tb%dr%H (1,1,:) ,advance='no')
-!         call disp( real(tb%dr%Hk(1,1,:),dp),advance='yes')
-!         stop
+        ! call disp( tb%dr%H (1,1,:) ,advance='no')
+        ! call disp( real(tb%dr%Hk(1,1,:),dp),advance='no')
+        ! call disp( pack(cosine_interpolation(V=real(tb%dr%Hk(1:1,1:1,fbz%ibz_id),dp), K=fbz%kpt_recp, R=R_frac, Kq=ibz_kpt_recp),.true.) ,advance='yes')
+        ! stop
         ! clock out
         call stop_clock('grad_k H(k)')
         !

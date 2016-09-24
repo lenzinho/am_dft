@@ -708,6 +708,9 @@ contains
                     write(*,'(5x,a)') '-prec <dbl>'
                     write(*,'(5x,a)') '     Numerical precision.'
                     write(*,'(5x,a)') ''
+                    write(*,'(5x,a)') '-jdos'
+                    write(*,'(5x,a)') '     Compute joint density of states.'
+                    write(*,'(5x,a)') ''
                     write(*,'(5x,a)') '-integration <str>'
                     write(*,'(5x,a)') '     Integration type: Blochl linear tetrahedron (tetra), methfextel-paxton (mp), fermi-dirac (fermi),'
                     write(*,'(5x,a)') '     gaussian (gauss), lorentzian (lorentz). Default is tetra.'
@@ -733,6 +736,8 @@ contains
                     call get_command_argument(i,argument)
                     read(argument,*,iostat=iostat) opts%prec
                     if (iostat.ne.0) stop 'ERROR [parse_command_line_tbdos]: iostat /= 0'
+                case('-jdos')
+                    opts%flags = trim(opts%flags)//'jdos'
                 case('-integration')
                     i=i+1
                     call get_command_argument(i,argument)

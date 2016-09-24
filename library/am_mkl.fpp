@@ -749,9 +749,6 @@ contains
         !
     end subroutine am_zgeev
 
-    ! diagonalize complex general square matrix using relatively robust representation (prefered algorithm)
-    ! ***  need to implement  ***
-    
     ! diagonalize complex hermitian matrix
 
     subroutine     am_zheev(A,V,D)

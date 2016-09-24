@@ -159,7 +159,7 @@ contains
 
     ! fourier interpolation
 
-    function        interpolate_via_fft(V,K,R,Kq,A) result(Vq)
+    pure function   fourier_interpolation(V,K,R,Kq,A) result(Vq)
         !
         implicit none
         !
@@ -189,8 +189,6 @@ contains
         ! allocate interpolated space
         allocate(Vq(n,m,nKqs))
         ! Fourier transform Hamiltonian to real space
-        !$OMP PARALLEL PRIVATE(i,j,ffac) SHARED(nRs,nKs,Vr,K,R)
-        !$OMP DO
         do j = 1, nRs
             ! initialize
             Vr(:,:,j) = 0.0_dp
@@ -200,8 +198,6 @@ contains
                 Vr(:,:,j) = Vr(:,:,j) + V(:,:,i) * ffac
             enddo
         enddo
-        !$OMP END DO
-        !$OMP END PARALLEL
         ! apply kernel
         if (present(A)) then
             do i = 1, nRs
@@ -209,8 +205,6 @@ contains
             enddo
         endif
         ! Fourier transform back to reciprocal space
-        !$OMP PARALLEL PRIVATE(i,j,ffac) SHARED(nKqs,nRs,Vr,Kq,R,Vq)
-        !$OMP DO
         do i = 1, nKqs
             ! initialize complex variable
             Vq(:,:,i) = 0.0_dp
@@ -220,11 +214,63 @@ contains
                 Vq(:,:,i) = Vq(:,:,i) + Vr(:,:,j) * ffac
             enddo
         enddo ! ki
-        !$OMP END DO
-        !$OMP END PARALLEL
         ! normalize
         Vq = Vq/nKs
-    end function    interpolate_via_fft
+    end function    fourier_interpolation
+
+    pure function   cosine_interpolation(V,K,R,Kq) result(Vq)
+        !
+        ! Requires inversion symmetry at Gamma. Okay in reciprocal space if system has time-reversal symmetry -- even if crystal is noncentrosymmetric.
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: V(:,:,:)  ! values on fbz
+        real(dp), intent(in) :: K(:,:)    ! K(3,nKs) fbz kpoint coordinates [0,1)
+        real(dp), intent(in) :: R(:,:)    ! R(3,nKs) fft mesh of fbz (primitive real-space lattice)
+        real(dp), intent(in) :: Kq(:,:)   ! Kq(3,nKqs) points to interpolate on [0,1)
+        real(dp),allocatable :: Vq(:,:,:) ! interpolated values
+        real(dp),allocatable :: Vr(:,:,:) ! fourier values
+        integer :: nKs                    ! number of kpoints on fbz
+        integer :: nRs                    ! number of kpoints on real mesh (primitive lattice points)
+        integer :: nKqs                   ! number of kpoints to interpolate
+        integer :: i, j, n, m
+        complex(dp) :: ffac
+        ! nbands
+        n = size(V,1)
+        m = size(V,2)
+        ! get number of real points
+        nRs = size(R,2)
+        ! get kpoints
+        nKs = size(K,2)
+        ! get interpolation points
+        nKqs = size(Kq,2)
+        ! allocate real space
+        allocate(Vr(n,m,nRs))
+        ! allocate interpolated space
+        allocate(Vq(n,m,nKqs))
+        ! Fourier transform Hamiltonian to real space
+        do j = 1, nRs
+            ! initialize
+            Vr(:,:,j) = 0.0_dp
+            ! construct real-space hamiltonian (i.e. Fourier transform H)
+            do i = 1, nKs
+                ffac = cos(twopi*dot_product(K(:,i),R(:,j)))
+                Vr(:,:,j) = Vr(:,:,j) + V(:,:,i) * ffac
+            enddo
+        enddo
+        ! Fourier transform back to reciprocal space
+        do i = 1, nKqs
+            ! initialize complex variable
+            Vq(:,:,i) = 0.0_dp
+            ! perform transform
+            do j = 1, nRs
+                ffac = cos(twopi*dot_product(Kq(:,i),R(:,j)))
+                Vq(:,:,i) = Vq(:,:,i) + Vr(:,:,j) * ffac
+            enddo
+        enddo ! ki
+        ! normalize
+        Vq = Vq/nKs
+    end function    cosine_interpolation
 
 end module am_dispersion
 

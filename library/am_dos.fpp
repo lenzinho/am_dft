@@ -522,7 +522,7 @@ contains
         !
     end function   get_theta_wc
 
-    function       get_delta_wc(Ep,Ec) result(wc)
+    pure function  get_delta_wc(Ep,Ec) result(wc)
         ! get linear tetrahedron corner weights for delta function with Blochl corrections
         implicit none
         !

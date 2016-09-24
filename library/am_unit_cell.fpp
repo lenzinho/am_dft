@@ -42,7 +42,7 @@ module am_unit_cell
 
     type, public, extends(am_class_unit_cell) :: am_class_conv_cell
         real(dp) :: centering(3,3) ! centering matrix
-    contains
+        contains
         ! procedure :: get_conventional => get_conventional_cell
     end type am_class_conv_cell
 
