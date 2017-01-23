@@ -1,0 +1,647 @@
+%\documentclass[preprint,showpacs,preprintnumbers,superscriptaddress,prb,floatfix,aps]{revtex4-1}
+\documentclass[twocolumn,showpacs,preprintnumbers,superscriptaddress,prb,floatfix,aps,10pt]{revtex4-1}
+
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx,textcomp}
+\usepackage{physics} % bra-ket
+\usepackage{braket}  % over-write bra-ket
+\usepackage{epstopdf}
+\usepackage{subfigure}
+\usepackage{xfrac} % nice frac
+\usepackage{multirow} % multirow table
+
+\usepackage[version=3]{mhchem}
+\usepackage{siunitx}
+\sisetup{
+  separate-uncertainty,
+  output-open-uncertainty=[
+}
+
+
+\usepackage{xcolor}
+\definecolor{abm}{RGB}{190,220,170}
+\usepackage{todonotes}
+\presetkeys%
+    {todonotes}%
+    {inline,backgroundcolor=abm}{}
+%
+\newcommand{\abmei}[1]{\textcolor{orange}{ \bf [Antonio: #1] }}
+\renewcommand{\vec}[1]{\ensuremath{\mathbf{#1}}}
+\newcommand*{\ham}{\hat{H}}
+\newcommand*{\class}{\mathcal{C}}
+\newcommand*{\wignerD}{\mathbb{D}}%(R)
+\newcommand*{\wignerDl}{D^{l}}%(R)
+\newcommand*{\id}{\mathcal{E}}
+\newcommand*{\zeromat}{0}
+\newcommand*{\bloch}{\ket{\vec{k}, i\alpha}}
+\newcommand*{\lowdin}{\ket{\vec{r}, i\alpha}}
+\newcommand*{\x}{\times}
+\newcommand*{\bondvec}{\vec{r}_{ij}}
+\newcommand{\seitz}[2]{\{#1|#2\}}
+
+\begin{document}
+\pagenumbering{arabic}
+
+\title{VN ARPES}
+
+\author{A. B. Mei}
+\affiliation{Department of Materials Science and the Materials Research Laboratory
+University of Illinois, 104 South Goodwin, Urbana, IL 61801}
+
+\author{L. Hultman}
+\affiliation{Department of Physics, Chemistry and Biology (IFM), Link\"oping University, SE-581 83, Link\"oping, Sweden.}
+
+\author{I. Petrov}
+\affiliation{Department of Materials Science and the Materials Research Laboratory
+University of Illinois, 104 South Goodwin, Urbana, IL 61801}
+\affiliation{Department of Physics, Chemistry and Biology (IFM), Link\"oping University, SE-581 83, Link\"oping, Sweden.}
+
+\author{J. E. Greene}
+\affiliation{Department of Materials Science and the Materials Research Laboratory
+University of Illinois, 104 South Goodwin, Urbana, IL 61801}
+\affiliation{Department of Physics, Chemistry and Biology (IFM), Link\"oping University, SE-581 83, Link\"oping, Sweden.}
+
+\begin{abstract}
+
+This highly-efficient basis is able to accurately reproduce both electronic band dispersion determined by ARPES and \emph{ab initio} density functional theory simulations with a minimal set of fourteen empirical fitting parameters.
+\end{abstract}
+
+\maketitle
+
+The electronic band dispersion and Fermi surface of VN is modeled using an empirical minimal-basis orthogonal tight-binding model. Energy-momentum dispersion relations $E(\vec{k})$ are obtained by solving the secular equation
+% CARDONA p 88 + HESS p 36
+\begin{equation}
+\label{eq:secular}
+\left| \ham^{\alpha\beta}_{ij}(\vec{k}) - E(\vec{k})\delta_{\alpha\beta}\delta_{ij} \right| = 0
+\end{equation}
+%
+associated with the time-independent Schrodinger equation $\hat{H} \ket{\psi} = E \ket{\psi}$. $\delta$ are Kronecker deltas and $|\cdot |$ denotes matrix determinant. The Hamiltonian eigenfunctions
+% CARDONA p 88
+\begin{align}
+\label{eq:statevec}
+\ket{\psi}  &= \sum_{i\alpha} c_{i\alpha} \bloch
+\end{align}
+%
+are linear combinations of periodic Bloch states 
+% KITTEL p 246
+\begin{equation}
+\label{eq:bloch}
+\bloch = \frac{1}{\sqrt{N}} \sum_i e^{i\vec{r}_i\cdot\vec{k}} \lowdin, 
+\quad
+\alpha \equiv (l_\alpha,m_\alpha),
+\end{equation}
+%
+with expansion coefficients $c_{i\alpha}$. $\lowdin$ are orthogonal atomic-like orbitals centered on atom $i$ and characterized by azimuthal and magnetic quantum numbers $l_\alpha$ and $m_\alpha$. $\vec{k}$ denotes wave-vectors. N is the number of atoms in the crystal. Momentum-dependent Hamiltonian matrix elements
+% KITTEL p 247
+\begin{align}
+\label{eq:matrix_element}
+\ham^{\alpha\beta}_{ij}(\vec{k}) = \sum_j \braket{\vec{r},i\alpha | \ham | \vec{r},j\beta} e^{-i \vec{k}\cdot\vec{r}_{ij}} .
+\end{align}
+%
+$\bondvec = \vec{r}_i - \vec{r}_j$ represents the bond vector between primitive atom $i$ and its $j^{\textrm{th}}$ neighbor. The tight-binding parameters $\braket{\vec{r},i\alpha | \ham | \vec{r},j\beta}$ are called on-site energies when $i=j$ and hopping terms otherwise. Together, they completely specify the electronic band dispersion.  
+
+Having established a general protocol for constructing momentum-dependent Hamiltonians and computing band dispersion relations from tight-binding parameters, we now describe transformation properties and symmetry relations for identifying an irreducible set of symmetry-adapted Hamiltonian matrix elements. 
+
+Abstract symmetry operations $\hat{R}$ materialize as concrete representations that depend on the object being described. Rotation of cartesian vectors (or, equivalently, atomic bonds) by proper symmetries may be represented as $ R \vec{r} \rightarrow \vec{r} '$, in which $R$ are $3\times3$ rotation matrix. Analogously, the action of $\hat{R}$ on atomic-like orbitals may be represented as $\wignerDl(R)\ket{i\alpha} \rightarrow \ket{i\beta}$, in which 
+% LAX p 43 Eq 2.5.18
+\begin{equation}
+\wignerDl(R) = e^{- \theta \hat{n} \cdot \hat{L} /\hbar}
+\end{equation}
+are Wigner functions \footnote{Wigner functions couple states with different magnetic but equal azimuthal quantum numbers and, as a result, cannot alter orbital characters, i.e. transform $p$ states into $d$ states.}, ($2l$+$1$)-dimensional unitary square matrices which parameterize proper rotations through the angular momentum operator $\hat{L}$, angle $\theta$, and axis $\hat{n}$. $\hbar$ is Planck's reduced constant. Improper transformations are realized by premultiplying proper representations with $(-1)^l$, the scalar inversion operator.\cite{sharma_general_1979,el-batanouny_symmetry_2008} % WOOOTEN p 604 after Eq. 14.164
+
+In transforming Hilbert-space state vectors (Eq. \ref{eq:statevec}), $\hat{R}$ materializes as $\wignerD(R)$: $\wignerD(R) \ket{\psi} \rightarrow \ket{\psi'}.$ $\wignerD(R)$ combines the effects of permutations resulting from the rotation of atoms onto their equivalents and of magnetic-number coupling arising from the transformational properties of spherical harmonics, i.e. atomic-like orbitals. In the absence of the former, $\wignerD(R)$ simplifies to a direct sum over Wigner functions $\wignerDl$ in the primitive unit cell: $\wignerD(R) = \bigoplus_l \wignerDl(R)$.
+
+Hamiltonian matrix elements (Eq. \ref{eq:matrix_element}) transform as the outer product of state vectors: $\ham( R\vec{r}) = \mathbb{D}^\dag(R) \ham(\vec{r}) \wignerD \rightarrow \ham(\vec{r}')$.\cite{el-batanouny_symmetry_2008} % WOOTEN p 78, Eq. 13.9
+
+
+
+%Point symmetry operations $R$ either stabilize bond $\bondvec$ or rotate them onto symmetric equivalents. The collection of bonds which are related by symmetry operations $R$ form a neighbor shell $s$. 
+%
+%
+%
+%
+%The summation, which over runs over all atoms in the crystal, can be factored into sums over over neighbor shells $s$ and symmetries $R$ connecting atoms in shell $s$: \footnote{Shells are collection of atoms related by  }
+%%
+%\abmei{need to figure this equation out below. goal: write it using Wigner matrices}
+%\begin{align}
+%\label{eq:matrix_element_shell}
+%\ham^{\alpha\beta}_{ij}(\vec{k}) 
+%&= \sum_s \sum_{R} \braket{\vec{r},i\alpha | \wignerD(R) \ham \wignerD^\dag(R) | \vec{r},j\beta} e^{-i \vec{k} \cdot R\vec{r}_{ij} }
+%\end{align}
+%%
+
+
+The outer product of state vectors defines the transformation properties of matrix elements. From Eq. \ref{eq:transformation}, $ \mathbb{D}(R)\ket{\psi}\bra{\psi}\mathbb{D}^\dag(R) \rightarrow \ket{\psi'}\bra{\psi'}$. For matrix elements, \cite{el-batanouny_symmetry_2008}
+% WOOTEN p 78, Eq. 13.9
+\begin{equation}
+\label{eq:transformation_matrix}
+\ham( R\vec{r}) = \mathbb{D}^\dag(R) \ham(\vec{r}) \wignerD \rightarrow \ham(\vec{r}')
+\end{equation}
+%
+Since symmetries restore the lattice, state vectors, and matrix elements to an indistinguishable state, the symmetry representation must commute with the Hamiltonian, i.e. $[\ham(\vec{r}),\wignerD] = 0$. As a result, the symmetry relations are required:
+% NYE p 11, Eq. 22
+\begin{equation}
+\label{eq:stab}
+\ham^{\alpha\beta}_{ij}(\vec{r}) = \sum_{\mu\nu} \ham^{\mu\nu}_{ij}(\vec{r}) \mathbb{D}_{\mu\alpha}(R) \mathbb{D}_{\nu\beta}(R).
+\end{equation}
+%
+In addition to point symmetries, another symmetry which is important is that due to the interchanging of orbitals positions:
+%
+\begin{equation}
+\label{eq:intrinsic}
+\ham^{\alpha\beta}_{ij}(\vec{r}) = (-1)^{l_\alpha+l_\beta} \ham^{\beta\alpha}_{ji}(\vec{r}),
+\end{equation}
+%
+in which the prefactor arrises from orbital parity. Together Eqs. \ref{eq:stab} and \ref{eq:intrinsic} specify all relevant symmetries relations between matrix elements.
+
+
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+Having established a general protocol for constructing momentum-dependent Hamiltonians and computing band dispersion relations from tight-binding parameters, we now develop explicit closed-form expressions for modeling NaCl-structure VN with a cation-centered $d$ and anion-centered $p$ basis. 
+
+The B1 NaCl-structure VN primitive lattice is defined by basis vectors $a_1 = a_o/2 (\hat{y} + \hat{z})$, $a_2 = a_o/2 (\hat{z} + \hat{x})$, and $a_3 = a_o/2 (\hat{x} + \hat{y})$, in which the relaxed-lattice parameter $a_o = 0.4134$ nm, and contains one cation-anion pair at $r_V = a_o[000]$ and $r_N = a_o[\frac{1}{2}\frac{1}{2}\frac{1}{2}]$. In a minimal basis approach, valence states on each atom are modeled with by orbitals belonging to a single azimuthal quantum number. The five-dimensional $d$ and three-dimensional $p$ orbitals engender the eight-dimensional non-spin-polarized tight-binding Hilbert space:
+\begin{equation}
+\label{eq:hilbert}
+\ket{\psi} =
+[ d_{x^2-y^2},
+  d_{xz},
+  d_{z^2}, 
+  d_{yz},
+  d_{xy},
+  p_{y},
+  p_{z},
+  p_{x}] .
+\end{equation}
+
+Beyond the primitive cell, the NaCl-structure lattice can be represented as two interpenetrating V cation and N anion face-centered cubic sublattices displaced by half a primitive cell. Each cation (anion) has six equivalent first neighbor anions (cations) at $\bondvec = a_o [0 0 \frac{1}{2}]$ and twelve second neighbor cations (anions) at $\bondvec = a_o[0 \frac{1}{2} \frac{1}{2}]$. Describing up to second-neighbor interactions yields the tight-binding Hamiltonian:
+%
+\begin{equation}
+\label{eq:ham_explicit}
+\ham(\vec{k}) = 
+\begin{bmatrix}
+\ham_{\textrm{V}0}^{dd}(\vec{k}) + \ham_{\textrm{V}2}^{dd}(\vec{k}) &\ham_{\textrm{V}1}^{dp}(\vec{k}) \\
+\ham_{\textrm{V}1}^{dp}(\vec{k})^{\dagger} & \ham_{\textrm{N}0}^{pp}(\vec{k}) + \ham_{\textrm{N}2}^{pp}(\vec{k}) \\
+\end{bmatrix} .
+\end{equation}
+%
+$\ham_{ij}^{l_\alpha l_\beta}$ are $(2l_\alpha+1)\times(2l_\beta+1)$ dimensional block matrices coupling orbitals with azimuthal quantum number $l_\alpha$ on atom $i$ to $l_\beta$ on $j$. Closed-form expressions for the block Hamiltonian matrices are presented below.
+
+Crystallographic point symmetries are analyzed using character representation theory to identify the symmetry-adapted matrix-elements which describe on-site orbital energies and fully determine $\ham_{\textrm{V}0}^{dd}(\vec{k}) $ and $\ham_{\textrm{N}0}^{pp}(\vec{k})$. The point group of the NaCl-structure lattice is $O_h$(m$\bar{3}$m). $O_h$(m$\bar{3}$m) contains forty-eight symmetry operations. Twenty-four are proper rotations belonging to the chiral octahedral subgroup $O$(432) and may be further subdivided among five conjugacy classes\footnote{Classes $\class_i$ are mutually distinct sets containing symmetries $R_i$ and $R_j$ related by conjugation with $R_k$ an arbitrary group element: $R_kR_iR_k^{-1}=R_j$} --  $\id$, $3c_4^2$, $6c_2$, $8c_3$, and $6c_4$ -- which correspond to the identity, two-fold rotations about $\left<001\right>$, two-fold rotations around $\left<011\right>$, three-fold rotations about $\left<111\right>$, and four-fold rotations around $\left<001\right>$. The additional twenty-four symmetries are improper rotations formed by compounding $O$ symmetries with the inversion operator $i$. This complementary set also displays a similar structure consisting of five conjugacy classes. $i$, $3\sigma_2$, $6\sigma_2$, $8\sigma_6$, and $6\sigma_4$ are associated with inversion, reflection across $\{001\}$, reflection across $\{011\}$, three-fold roto-inversions around $\left<111\right>$, and four-fold roto-inversions about $\left<001\right>$. The $O_h$ group has two generators, \footnote{The generating basis of a group is a minimal set of elements which is capable of producing all elements in the group when multiplied together.} $c_4$ and $\sigma_6$.
+
+%Irreducible characters belonging to $O_h$(m$\bar{3}$m) and $C_{4v}$, $C_{2v}$, and $C_{3v}$ subgroups are determined using the Burnside algorithm (see Appendix \ref{appendix:chartab}) and the results are summarized in Table \ref{table:chartab}. Also shown in Table \ref{table:chartab} are the irreducible characters of $p$ and $d$ tesseral harmonics, the direct sum $p \oplus d$, and of the outer products $p \otimes p$, $p \otimes d$, and $d \otimes d$. Tesseral harmonics are irreducible representations of the three-dimensional orthogonal group $O(3)$, which describe the combination of all possible unitary rotations and reflections in three dimensions. From the irreducible characters in Table \ref{table:chartab}, the subduced representations of $O_h$ onto its subgroups are determined via the procedure described in Appendix \abmei{XX}; the results are presented in Table \ref{table:subduction}.
+%%
+%\begin{table}
+%\caption{\label{table:chartab} $O_h$ representation characters}
+%\begin{ruledtabular}
+%\begin{tabular*}{10cm}{llrrrrrrrrrr}
+%\multicolumn{2}{c}{$O_h$}         &$\id$&3$c_4^2$& 6$c_2$ & 8$c_3$ & 6$c_4$ &  $i$ & 3$\sigma_2$ & 6$\sigma_2$ & 8$\sigma_6$ & 6$\sigma_4$ \\  
+%\hline
+%$A_{1g}$        & $\Gamma_{1}  $  &  1  &     1  &     1  &     1  &     1  &   1  &          1  &          1  &          1  &          1  \\         %  irrep =  1 
+%$A_{2g}$        & $\Gamma_{2}  $  &  1  &     1  &    -1  &     1  &    -1  &   1  &          1  &         -1  &          1  &         -1  \\         %  irrep =  2 
+%$E_g   $        & $\Gamma_{12} $  &  2  &     2  &     0  &    -1  &     0  &   2  &          2  &          0  &         -1  &          0  \\         %  irrep =  3 
+%$T_{1g}$        & $\Gamma_{15} $  &  3  &    -1  &    -1  &     0  &     1  &   3  &         -1  &         -1  &          0  &          1  \\         %  irrep =  5 
+%$T_{2g}$        & $\Gamma_{25} $  &  3  &    -1  &     1  &     0  &    -1  &   3  &         -1  &          1  &          0  &         -1  \\         %  irrep =  4 
+%$A_{1u}$        & $\Gamma_{1} '$  &  1  &     1  &     1  &     1  &     1  &  -1  &         -1  &         -1  &         -1  &         -1  \\         %  irrep =  7 
+%$A_{2u}$        & $\Gamma_{2} '$  &  1  &     1  &    -1  &     1  &    -1  &  -1  &         -1  &          1  &         -1  &          1  \\         %  irrep =  6 
+%$E_u   $        & $\Gamma_{12}'$  &  2  &     2  &     0  &    -1  &     0  &  -2  &         -2  &          0  &          1  &          0  \\         %  irrep =  8 
+%$T_{1u}$        & $\Gamma_{15}'$  &  3  &    -1  &    -1  &     0  &     1  &  -3  &          1  &          1  &          0  &         -1  \\         %  irrep =  9 
+%$T_{2u}$        & $\Gamma_{25}'$  &  3  &    -1  &     1  &     0  &    -1  &  -3  &          1  &         -1  &          0  &          1  \\ \hline \hline %  irrep = 10 
+%\multicolumn{2}{c}{$C_{4v}$}      &$\id$& $c_4^2$&        &        & 2$c_4$ &      & 2$\sigma_v$ &  $\sigma_d$ &             &             \\ 
+%\hline
+%$A_1$           & $\Delta_{1}  $  &  1  &     1  &     .  &     .  &     1  &   .  &          1  &          1  &          .  &          .  \\         %  irrep =  1
+%$A_2$           & $\Delta_{1}' $  &  1  &     1  &     .  &     .  &     1  &   .  &         -1  &         -1  &          .  &          .  \\         %  irrep =  4
+%$B_1$           & $\Delta_{2}  $  &  1  &     1  &     .  &     .  &    -1  &   .  &          1  &         -1  &          .  &          .  \\         %  irrep =  3
+%$B_2$           & $\Delta_{2}' $  &  1  &     1  &     .  &     .  &    -1  &   .  &         -1  &          1  &          .  &          .  \\         %  irrep =  2
+%$E$             & $\Delta_{5}  $  &  2  &    -2  &     .  &     .  &     0  &   .  &          0  &          0  &          .  &          .  \\ \hline \hline %  irrep =  5
+%\multicolumn{2}{c}{$C_{2v}$}      &$\id$&        &  $c_2$ &        &        &      &  $\sigma_v$ & $\sigma_d$  &             &             \\
+%\hline
+%$A_{1}$         & $\Sigma_{1}  $  &  1  &     .  &     1  &     .  &     .  &   .  &          1  &          1  &          .  &          .  \\
+%$A_{2}$         & $\Sigma_{2}  $  &  1  &     .  &     1  &     .  &     .  &   .  &         -1  &         -1  &          .  &          .  \\
+%$B_{1}$         & $\Sigma_{3}  $  &  1  &     .  &    -1  &     .  &     .  &   .  &         -1  &          1  &          .  &          .  \\
+%$B_{2}$         & $\Sigma_{4}  $  &  1  &     .  &    -1  &     .  &     .  &   .  &          1  &         -1  &          .  &          .  \\ \hline \hline
+%\multicolumn{2}{c}{$C_{3v}$}      &$\id$&        &        & 2$c_3$ &        &      &             & 3$\sigma_v$ &             &             \\
+%\hline
+%$A_{1}$         & $\Lambda_{1} $  &  1  &     .  &     .  &     1  &     .  &   .  &          .  &          1  &          .  &          .  \\
+%$A_{2}$         & $\Lambda_{2} $  &  1  &     .  &     .  &     1  &     .  &   .  &          .  &         -1  &          .  &          .  \\
+%$E$             & $\Lambda_{3} $  &  2  &     .  &     .  &    -1  &     .  &   .  &          .  &          0  &          .  &          .  \\ \hline \hline
+%\multicolumn{2}{c}{$p$          } &  3  &     -1 &    -1  &     0  &     1  &  -3  &          1  &          1  &          0  &         -1  \\
+%\hline
+%\multicolumn{2}{c}{$d$          } &  5  &      1 &     1  &    -1  &    -1  &   5  &          1  &          1  &         -1  &         -1  \\
+%\multicolumn{2}{c}{$p \oplus  d$} &  8  &      0 &     0  &    -1  &     0  &   2  &          2  &          2  &         -1  &         -2  \\
+%\multicolumn{2}{c}{$p \otimes p$} &  9  &      1 &     1  &     0  &     1  &   9  &          1  &          1  &          0  &          1  \\
+%\multicolumn{2}{c}{$p \otimes d$} & 15  &     -1 &    -1  &     0  &    -1  & -15  &          1  &          1  &          0  &          1  \\
+%\multicolumn{2}{c}{$d \otimes d$} & 25  &      1 &     1  &     1  &     1  &  25  &          1  &          1  &          1  &          1  \\
+%\end{tabular*}
+%\end{ruledtabular}
+%\end{table}
+%%
+%\begin{table}
+%\caption{\label{table:subduction} $O_h$ subductions}
+%\begin{ruledtabular}
+%\begin{tabular*}{10cm}{llll}
+%$O_h$    & $C_{4v}$         & $C_{2v}$                              &   $C_{3v}$            \\ \hline
+%$A_{1g}$ & $A_1$            & $A_{1}$                               &   $A_1$               \\ 
+%$A_{2g}$ & $B_1$            & $B_{1}$                               &   $A_2$               \\ 
+%$E_g   $ & $A_1 \oplus B_1$ & $A_{1} \oplus B_{1}$                  &   $E$                 \\ 
+%$T_{1g}$ & $A_2 \oplus E$   & $A_{2} \oplus B_{1} \oplus B_{2}$     &   $A_2 \oplus E$      \\ 
+%$T_{2g}$ & $B_2 \oplus E$   & $A_{1} \oplus A_{2} \oplus B_{2}$     &   $A_1 \oplus E$      \\ 
+%$A_{1u}$ & $A_2$            & $A_{2}$                               &   $A_2$               \\ 
+%$A_{2u}$ & $B_2$            & $B_{2}$                               &   $A_1$               \\ 
+%$E_u   $ & $A_2 \oplus B_2$ & $A_{2} \oplus B_{2}$                  &   $E$                 \\ 
+%$T_{1u}$ & $A_1 \oplus E$   & $A_{1} \oplus B_{1} \oplus B_{2}$     &   $A_1 \oplus E$      \\ 
+%$T_{2u}$ & $B_1 \oplus E$   & $A_{1} \oplus A_{2} \oplus B_{1}$     &   $A_2 \oplus E$      \\ 
+%\end{tabular*}
+%\end{ruledtabular}
+%\end{table}
+
+On-site tight-binding matrix elements are subject to the full point group symmetry of the NaCl lattice. Descending from the three-dimensional orthogonal group $O(3)$ to the crystallographic point group $O_h$, the three-fold degeneracy of $p$ orbitals is preserved as $T_{1u}$ a triply-degenerate irreducible representation. Elements between $p$ states thus transform as the outer product $T_{1u} \otimes T_{1u} = [A_{1g} \oplus E_g \oplus T_{2g}] \oplus \{T_{1g}\}$. \footnote{ In the $p$ basis, $T_{1g}$ and $T_{2g}$ are three-dimensional matrices with nonzero elements at off-diagonal positions; $E_g$ is a traceless matrix with nonzero elements at diagonal positions; and $A_{1g}$ is the identity matrix. Basis functions for $T_{1g}$, $T_{2g}$, $E_g$, and $A_{1g}$ include $\ket{x}\bra{y} - \ket{y}\bra{x}$, $\ket{x}\bra{y} + \ket{y}\bra{x}$, $\ket{x}\bra{x} + e^{i2\pi/3}\ket{y}\bra{y} + e^{-i2\pi/3}\ket{z}\bra{z}$, and $\ket{x}\bra{x} + \ket{y}\bra{y} + \ket{z}\bra{z}$, respectively.} The terms in square and curly brackets correspond to symmetric and antisymmetric components. The \emph{single} occurrence of $A_{1g}$ in the decomposition of $T_{1u} \otimes T_{1u}$ signifies the existence a \emph{single} symmetry-adapted tight-binding matrix element, which is identified as the energy of the three-fold-degenerate $p$ states
+%
+\begin{equation}
+\epsilon_{p}
+= \braket{p_x | \ham | p_x} 
+= \braket{p_y | \ham | p_y} 
+= \braket{p_z | \ham | p_z} .
+\end{equation}
+%
+The block Hamiltonian describing on-site $p$ interactions in Eq. \ref{eq:ham_explicit} is thus:
+%
+\begin{equation}
+\label{eq:0pp}
+\ham_{\textrm{N0}}^{pp}(\vec{k}) =
+\begin{bmatrix}
+\epsilon_{p} & 0 & 0 \\
+  & \epsilon_{p} & 0 \\
+  &   & \epsilon_{p} \\
+\end{bmatrix}
+\end{equation}
+
+$O_h$ lifts the five-fold degeneracy of V 3$d$ producing instead a two-dimensional $E_g$ and a three-dimensional $T_{2g}$ irreducible representation. The outer product $E_g \otimes E_g$ decomposes into $[A_{1g} \oplus E_g] \oplus \{A_{2g}\}$; $T_{2g} \otimes T_{2g}$ factors as $[A_{1g} \oplus E_{g} \oplus T_{2g}] \oplus \{T_{1g}\}$; and $T_{2g} \otimes E_g$ reduces to $T_{1g} \oplus T_{2g}$. One identity representations in each of both self-product indicates the existence of two independent matrix elements, corresponding to 
+\begin{align}
+\epsilon_{E_g} &
+= \braket{d_{z^2}      | \ham | d_{z^2}} 
+= \braket{d_{x^2-y^2}  | \ham | d_{x^2-y^2}  } \\
+\epsilon_{T_{2g}} &
+= \braket{d_{xy} | \ham | d_{xy} } 
+= \braket{d_{yz} | \ham | d_{yz} }
+= \braket{d_{zx} | \ham | d_{zx} }
+\end{align}
+the energies of V 3$d$ $E_g$ and $T_{2g}$ states; the difference $\Delta = \epsilon_{E_g} - \epsilon_{T_{2g}}$ is the crystal field splitting. As a result, the block Hamiltonian  parametrizing on-site V $d$ interactions is:
+%
+\begin{equation}
+\label{eq:0dd}
+\ham_{\textrm{V0}}^{dd}(\vec{k}) =
+\begin{bmatrix}
+ \epsilon_{E_g} & 0 & 0 & 0 & 0 \\
+   & \epsilon_{T_{2g}} & 0 & 0 & 0 \\
+   &   & \epsilon_{E_g} & 0 & 0 \\
+   &   &   & \epsilon_{T_{2g}} & 0 \\
+   &   &   &   & \epsilon_{T_{2g}} \\
+\end{bmatrix}
+\end{equation}
+
+On-site interactions yield dispersionless energy integrals, as demonstrated by Eqs. \ref{eq:0pp} and \ref{eq:0dd}. The inclusion of neighbor interactions associated with finite bond vectors (i.e., $\vec{r}_{ij} \neq 0$) introduces nontrivial Fourier components and contribute hopping elements that modulate band energies throughout the Brillouin zone. In order to determine irreducible off-site parameters and subsequently $\ham_{\textrm{V}1}^{dp}(\vec{k})$, $\ham_{\textrm{N}2}^{pp}(\vec{k})$, and $\ham_{\textrm{V}2}^{dd}(\vec{k})$ (Eq. \ref{eq:ham_explicit}), explicit relations are developed between hopping parameters using crystallographic point symmetries and orbital translational properties. 
+
+
+
+
+
+
+
+
+
+
+
+First neighbor bonds $\bondvec = a_o[00\frac{1}{2}]$ are stabilized by symmetries belonging to $C_{4v}$ (4mm), a subgroup of $O_h$. These include the identity $\id \seitz{1}{0}$ as well as a two-fold $c_{4}^2$ and two four-fold $c_{4}$ rotations around $\bondvec$: $\seitz{2_{001}}{0}$, $\seitz{2_{001}}{0}$, $\seitz{4^-_{001}}{0}$, and $\seitz{4^+_{001}}{0}$. In addition, there are four mirror planes, of which two are vertical-reflection planes $\sigma_v$, $\seitz{m_{010}}{0}$ and $\seitz{m_{100}}{0}$, and two are diagonal reflection planes $\sigma_d$, $\seitz{m_{\frac{1}{2}\bar{\frac{1}{2}}0}}{0}$ and $\seitz{m_{\frac{1}{2}\frac{1}{2}0}}{0}$. $\bondvec$ resides at the intersection of mirror plans. The generators of the group are $c_4$ and $\sigma_v$. 
+
+$O_h$ representations are subduced onto those of $C_{4v}$ as described in Appendix \abmei{XX}; the results are presented in Table \ref{table:subduction}. 
+
+
+
+$d$ states factor as $E_g \rightarrow A_1 \oplus B_1$ and $T_{2g} \rightarrow B_2 \oplus E$, $p$ states reduce as $T_{1u} \rightarrow A_1 \oplus E$. Since nonvanishing hopping parameters occur only twice for the identity-containing products $A_1 \otimes A_1 = A_1$ and $E \otimes E = [ A_1 \oplus B_1 \oplus B_2 ] \oplus \{ A_2 \}$, two matrix elements are independent. Two are found to be dependent and the remaining eleven are identified as nil. The nonzero parameters are determined from symmetry relations enforced by Eq.\ref{eq:commutator}:
+%
+\begin{align}
+v_{yz} &
+\equiv \braket{d_{yz} | \ham | p_z} 
+= \braket{d_{xy} | \ham | p_y} \\
+v_{x} &
+\equiv \braket{d_{xz} | \ham | p_x} 
+= \braket{d_{x^2-y^2} | \ham | p_x} / \sqrt{3}
+\end{align}
+%
+Summing over equivalent first neighbors yields the sub-Hamiltonian matrix:
+%
+\begin{equation}
+\ham_{\textrm{V1}}^{dp}(\vec{k}) = 2i
+\begin{bmatrix}
+-\sqrt{3} s_1 v_{xz/x} & 0              & \sqrt{3} s_3 v_{xz/x}  \\
+ s_2 v_{yz/z}          &  s_1 v_{yz/z}  &      0                 \\
+ s_1 v_{xz/x}          &-2 s_2 v_{xz/x} &  s_3 v_{xz/x}          \\
+      0                &  s_3 v_{yz/z}  &  s_2 v_{yz/z}          \\
+ s_3 v_{yz/z}          & 0              &  s_1 v_{yz/z}          \\
+\end{bmatrix}
+\end{equation}
+%
+For concision, trigonometric abbreviations are employed: $c_i = \cos(\pi a k_i)$, $s_i = \sin(\pi a k_i)$, $s_{ij} = s_i s_j$ and $c_{ij} = c_i c_j$, in which $k_i = \vec{k}\cdot\hat{i}$ and $a = 0.4134$ nm is the relaxed VN lattice parameter. 
+
+% The $O_h$ point group has twelve $C_{2v}$ subgroups. Six belong to the intermediate subgroup of $C_{4v}$ and six are maximal subgroups of $O_h$.\cite{wadhawan_introduction_2000} The proper choice of subgroup affects the the subduction of $O_h$ irreducible representations onto the .
+
+Second-neighbor bonds $\bondvec = a_o[0\frac{1}{2}\frac{1}{2}]$ are stabilized by subgroup $C_{2v}$ (2mm), which consists of four symmetries: identity $\id \seitz{1}{0}$, two-fold rotation $c_2 \seitz{ 2_{0\frac{1}{2}\frac{1}{2}} }{0}$, vertical-mirror plane $\sigma_v \seitz{m_{001}}{0}$, and diagonal mirror plane $\sigma_d \seitz{m_{0\frac{1}{2}\bar{\frac{1}{2}}}}{0}$. The latter two elements are generators.
+
+\abmei{N-N}
+\begin{align}
+\epsilon_{XX} &
+= \braket{p_{y} | \ham | p_y } \\
+\epsilon_{XX} &
+= \braket{p_{z} | \ham | p_x }
+= \braket{p_{x} | \ham | p_z } \\
+\epsilon_{XX} &
+= \braket{p_{x} | \ham | p_x }
+= \braket{p_{z} | \ham | p_z } \\
+\end{align}
+
+
+
+\begin{equation}
+\ham_{\textrm{N2}}^{dd}(\vec{k}) = 4
+\begin{bmatrix}
+              c_{yz} v_{12} & \multirow{2}{*}{$-s_{xy} v_{13}$} & \multirow{2}{*}{$-s_{zx} v_{13}$}  \\
++c_{x} (c_{y}+c_{z}) v_{14} &                                   &                                    \\
+\multirow{2}{*}{ }          &               c_{zx} v_{12}       & \multirow{2}{*}{$-s_{yz} v_{13}$}  \\
+                            & +c_{y} (c_{z}+c_{x}) v_{14}       &                                    \\
+\multirow{2}{*}{ }          & \multirow{2}{*}{ }                &          c_{xy} v_{12}             \\ 
+                            &                                   &        +c_{z} (c_{x}+c_{y}) v_{14} \\
+\end{bmatrix}
+\end{equation}
+
+
+
+\abmei{V-V}
+
+
+
+\begin{widetext}
+\begin{equation}
+H_2^{dd} = 4
+\begin{bmatrix}
+ \tfrac{1}{\sqrt{3}} [c_{x} (c_{z}-2 c_{y})-2 c_{yz}] v_{6} & \multirow{2}{*}{$-\sqrt{3} s_{xy} v_{8}$} & \multirow{2}{*}{$c_{y} (c_{z}-c_{x}) v_{6}$}    & \multirow{2}{*}{$\sqrt{3} s_{yz} v_{8}$} & \multirow{2}{*}{$0$}               \\
+             +\left[c_{yz}+c_{x} (c_{y}+c_{z})\right] v_{7} &                                           &                                                 &                                          &                                    \\
+\multirow{2}{*}{ }                                          &      (c_{x}+c_{y}) c_{z} v_{11}           & \multirow{2}{*}{$-s_{xy} v_{8}$}                & \multirow{2}{*}{$-s_{zx} v_{10}$}        & \multirow{2}{*}{$ s_{yz} v_{10}$}  \\    
+                                                            &                  +c_{xy} v_{9}            &                                                 &                                          &                                    \\
+\multirow{2}{*}{ }                                          & \multirow{2}{*}{ }                        &     [c_{yz}+c_{x} (c_{y}+c_{z})] v_{7}          & \multirow{2}{*}{$-s_{yz} v_{8}$}         & \multirow{2}{*}{$2 s_{zx} v_{8}$}  \\ 
+                                                            &                                           &                 -\sqrt{3} c_{zx} v_{6}          &                                          &                                    \\
+\multirow{2}{*}{ }                                          & \multirow{2}{*}{ }                        & \multirow{2}{*}{ }                              &      c_{x} (c_{y}+c_{z}) v_{11}          & \multirow{2}{*}{$-s_{xy} v_{10}$}  \\
+                                                            &                                           &                                                 &                  +c_{yz} v_{9}           &                                    \\
+\multirow{2}{*}{ }                                          & \multirow{2}{*}{ }                        & \multirow{2}{*}{ }                              & \multirow{2}{*}{ }                       &      c_{y} (c_{x}+c_{z}) v_{11}    \\
+                                                            &                                           &                                                 &                                          &                  +c_{zx} v_{9}     \\
+\end{bmatrix}
+\end{equation}
+\end{widetext}
+
+
+
+
+
+
+
+
+
+
+
+
+\begin{align}
+%$v^{-2, 0}_{ij}$
+\epsilon_{XX} &
+= \braket{d_{x^2-y^2} | \ham | d_{xz}}
+= \braket{d_{xz} | \ham | d_{x^2-y^2}} \\
+%$v^{ 0, 0}_{ij}$
+\epsilon_{XX} &
+= \braket{d_{xz} | \ham | d_{xz}} \\
+%$v^{ 0, 1}_{ij}$
+\epsilon_{XX} &
+= \braket{d_{xz} | \ham | d_{yz}}
+= \braket{d_{yz} | \ham | d_{xz}} \\
+&
+=-\braket{d_{yz} | \ham | d_{x^2-y^2}}/\sqrt{3} \\
+&
+=-\braket{d_{x^2-y^2} | \ham | d_{yz}}/\sqrt{3} \\
+%$v^{ 1, 1}_{ij}$
+\epsilon_{XX} &
+= \braket{d_{yz} | \ham | d_{yz}} \\
+%$v^{-1, 2}_{ij}$
+\epsilon_{XX} &
+= \braket{d_{z^2}| \ham | d_{xy}}
+= \braket{d_{xy} | \ham | d_{z^2}} \\
+%$v^{ 2, 2}_{ij}$
+\epsilon_{XX} &
+= \braket{d_{xy}  | \ham | d_{xy}}
+= \braket{d_{z^2} | \ham | d_{z^2}} \\
+% $v^{-2,-2}_{ij}$ =  -1.1547*$v^{-2, 0}_{ij}$ + $v^{ 0, 0}_{ij}$
+\epsilon_{XX} &
+= \braket{d_{x^2-y^2} | \ham | d_{x^2-y^2}} \\
+&
+= \sqrt{3} \braket{d_{x^2-y^2} | \ham | d_{xz}} 
+         + \braket{d_{xz}      | \ham | d_{xz}} \\
+\end{align}
+
+
+
+
+
+% [should already have introduced representations and irreps]
+% CAPTION TO FIGURE?
+$O_h$ exhibits ten irreducible representations $\Gamma^{(\mu)}$. These are labeled according to both Mulliken\footnote{In Mulliken notation, letters A,E,G, and H denote irreducible representations of dimensions one, two, three, and four. B is used in lieu of A for symmetries which are antisymmetric with respect to the principal axis (the axis of highest cyclical symmetry). Subscripts pairs $g$ and $u$, $1$ and $2$ as well as single and double primes are used to denote representations displaying even and odd parities with respect to inversion, horizontal two-fold rotations $c_2$, and horizontal reflections $\sigma_h$.} and BSW.
+
+
+The group is non-Abelian with . The two group generators, $\sigma_6$ and $c_4$, fully define symmetry relations.
+matrix element 
+
+
+The three dimensional representations arise from non-commuting three-fold and six-fold symmetry elements. 
+
+
+
+
+As required by translational symmetry, the crystallographic point groups exhibit integer characters.
+
+
+
+
+
+
+
+$O_h$
+
+
+
+All ten $O_h$ conjugacy classes produced by the outer product $O \otimes C_i$ are presented in the first row of Table \ref{table:chartab}.
+
+
+
+
+
+
+
+\section{Acknowledgements}
+
+\bibliography{library}
+
+\clearpage
+
+VN pd tb parameters
+
+    1.2783
+   -0.4859
+   -3.9389
+    1.0091
+    1.0350
+   -0.1245
+   -0.2168
+   -0.0825
+   -0.5461
+    0.0509
+    0.1387
+   -0.1257
+    0.4381
+    0.2954
+
+
+
+
+\appendix
+
+%
+% WIGNER D MATRIX
+%
+\section{wigner D matrix} 
+\label{appendix:wigner}
+
+In terms of Tait-Bryan angles:
+%
+\footnote{
+Conversion of $3\x3$ transformation matrices $R = R_x(\theta)R_y(\phi)R_z(\gamma)$ to Tait-Bryan angles $\theta$, $\phi$, and $\gamma$ representing rotations about $\hat{z}$, $\hat{y}$, and $\hat{x}$ axes is achieved via:
+\begin{equation}
+\theta = {\rm atan2}(R_{23},R_{33})
+\end{equation}
+\begin{equation}
+\phi   =-{\rm atan2}(-R_{13},\sqrt{R_{11}^2+R_{12}^2})
+\end{equation}
+\begin{equation}
+\begin{split}
+\gamma =-{\rm atan2}(R_{31}\sin{\theta}-R_{21}\cos{\theta}, \\ 
+       \quad         R_{22}\cos{\theta}-R_{32}\sin{\theta})
+\end{split}
+\end{equation}
+${\rm atan2}$ is the four-quadrant arctangent function and $R_{ij}$ are the elements $ij$ of $R$. This formulation avoids gimbal lock.} 
+%
+\begin{equation}
+\wignerDl = e^{-i\theta\hat{L}_x/\hbar} e^{-i\phi\hat{L}_y/\hbar} e^{-i\psi\hat{L}_z/\hbar}
+\end{equation}
+%
+in which angular momentum operators:
+%
+\footnote{For numerical stability, the exponentiated operators are evaluated using the property: \abmei{XX} } \cite{shankar_fundamentals_2014}
+%
+\begin{align}
+\label{eq:angular_momenta}
+% x y z <- z x y
+% Shankar p 327-328, Eq. 12.5.21a-b
+% Wolfram p 85-87
+\hat{L}_x & = \hbar (\hat{L}_{+}-\hat{L}_{-})/2i \\
+\hat{L}_y & = \hbar (\hat{L}_{+}+\hat{L}_{-})/2  \\
+\hat{L}_z & = \hbar m \delta_{l,l'}\delta_{m,m'}
+\end{align}
+$\hat{L}_+$ and $\hat{L}_-$ are raising and lowering operators, with matrix elements:
+\begin{equation}
+\label{eq:raising_lowering_operator}
+% Shankar p 327, Eq. 12.5.20
+\hat{L}_{\pm} = \delta_{l,l'}\delta_{m\pm1,m'} \sqrt{(l\mp m)(l\pm m+1)},
+\end{equation}
+
+
+
+
+
+
+
+
+
+The conversion from spherical to cubic harmonics, $\ket{lm} \rightarrow \ket{\alpha}$, is achieved by conjugating $\wignerDl$ with:
+\begin{equation}
+\label{eq:cubic_harmonics}
+Y_{lm} = 
+\begin{cases}
+  [(-1)^{m}\delta_{ mm'}+\delta_{-mm'}]/\sqrt{2} & \text{if } m < 0 \\
+\delta_{mm}                                      & \text{if } m = 0 \\
+ i[(-1)^{m}\delta_{-mm'}-\delta_{ mm'}]/\sqrt{2} & \text{if } m > 0
+\end{cases}
+\end{equation}
+
+
+
+
+
+
+
+
+%\section{Film growth and characterization}
+
+\section{$O_h$}
+\label{appendix:pg}
+\section{Calculation of irreducible characters}
+\label{appendix:chartab}
+Characters $\chi_{i\mu}$ corresponding to irreducible representation $\Gamma_\mu$ and class $\class_i$ are determined using the Burnside algorithm.\cite{burnside_theory_2010,mckay_construction_1970,unger_computing_2006,schneider_dixons_1990,dixon_high_1967} In this approach, class products are decomposed into class sums:
+\begin{equation}
+\label{eq:class_coefficients}
+\class_i \class_j = \sum_k h_{jk}^{(i)} \class_k
+\end{equation}
+with $h_{jk}^{(i)}$ being the frequency at which $\class_k$ appears in the multiplication of classes $\class_i$ and $\class_j$. The collection of class coefficient matrices $h^{(i)}$ are then simultaneously diagonalized using a matrix pencil approach, producing eigenvalues $\lambda_{i\mu}$ from which the dimensions of irreducible representations
+\begin{equation}
+\label{eq:irrep_dimension}
+d_\mu = \sqrt{ \frac{|g|}{\sum_i \lambda_{i\mu} \lambda^{\dag}_{i\mu} / n_i }  }
+\end{equation}
+and their characters
+\begin{equation}
+\label{eq:irrep_characters}
+\chi_{i\mu} = \frac{d_\mu \lambda_{i\mu}}{n_i}
+\end{equation}
+are computed. $n_i$ and $|g|$ are the number of elements in the class $i$ and the group. Elements in the same class have the same character.
+
+Reduction coefficients $n_\mu$, defined as the number of times an irreducible representation $\Gamma^\mu$ appears in a reducible representation $\Gamma$:
+\begin{equation}
+\label{eq:irrep_decomposition}
+\Gamma = \bigoplus_\alpha n_\alpha \Gamma_{i\alpha}
+\end{equation}
+are obtained from:
+\begin{equation}
+\label{eq:irrep_decomposition_coefficients}
+% Wolfram p 20
+n_\alpha = \frac{1}{|g|} \sum_i \chi\left(\Gamma_{i\alpha}\right)^\dag \chi\left(\Gamma_i\right)
+\end{equation}
+The sum is over classes $i$, with number of elements $h_i$, and characters corresponding to the $\alpha$ irreducible representation $\chi(\Gamma_i^\alpha)$.
+
+
+
+
+
+%
+%
+%
+
+
+
+
+\end{document}
+
