@@ -1,8 +1,0 @@
-DEBUG ON
-real	0m12.925s
-user	0m11.877s
-sys	0m0.268s
-DEBUG OFF -O5
-real	0m0.885s
-user	0m0.784s
-sys	0m0.047s
