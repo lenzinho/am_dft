@@ -158,9 +158,9 @@ module am_symmetry_tensor
         class(am_class_point_group), intent(in) :: pg
         type(am_class_options),      intent(in) :: opts
         character(*),                intent(in) :: property
-        type(am_class_prim_cell)   , optional, intent(in) :: pc   ! primitive cell
-        type(am_class_irre_cell)   , optional, intent(in) :: ic    ! required for tight binding input
-        type(am_shell_cell)        , optional, intent(in) :: shell ! required for tight binding input
+        type(am_class_prim_cell), optional, intent(in) :: pc    ! primitive cell
+        type(am_class_irre_cell), optional, intent(in) :: ic    ! required for tight binding input
+        type(am_shell_cell), optional, intent(in) :: shell ! required for tight binding input
         type(am_class_flat_group) :: flat_ig
         type(am_class_flat_group) :: flat_pg
         character(:), allocatable :: str
@@ -347,7 +347,7 @@ module am_symmetry_tensor
     ! creates flattened representation
 
     subroutine      get_flat_intrinsic_group(flat_ig,tens,atom_m,atom_n)
-        !
+        !                                                 |-----------| tight binding input
         implicit none
         !
         class(am_class_flat_group), intent(out) :: flat_ig ! intrinsic symmetry group
@@ -586,14 +586,14 @@ module am_symmetry_tensor
         ! For example: 
         !        p-1 p 0 p+1 
         !                    d-2 d-1 d 0 d+1 d+2
-        !  p-1  [  1,  2,  3, -4, -5, -6, -7, -8]                               [  1,  2,  3, -4, -5, -6, -7, -8]
-        !  p 0  [  9, 10, 11,-12,-13,-14,-15,-16]             ---->             [  9, 10, 11,-12,-13,-14,-15,-16]
-        !  p+1  [ 17, 18, 19,-20,-21,-22,-23,-24]         transposition         [ 17, 18, 19,-20,-21,-22,-23,-24]
-        !  d-2  [-25,-26,-27, 28, 29, 30, 31, 32]         and sign flip         [-25,-26,-27, 28, 29, 30, 31, 32]
-        !  d-1  [-33,-34,-35, 36, 37, 38, 39, 40]                               [-33,-34,-35, 36, 37, 38, 39, 40]
-        !  d 0  [-41,-42,-43, 44, 45, 46, 47, 48]   (l,l',m) =                  [-41,-42,-43, 44, 45, 46, 47, 48]
-        !  d+1  [-49,-50,-51, 52, 53, 54, 55, 56]      (-1)^(l+l') * (l',l,m)   [-49,-50,-51, 52, 53, 54, 55, 56]
-        !  d+2  [-57,-58,-59, 60, 61, 62, 63, 64]                               [-57,-58,-59, 60, 61, 62, 63, 64]
+        !  p-1  [  1,  9, 17, 25, 33, 41, 49, 57]                               [  1,  2,  3, -4, -5, -6, -7, -8]
+        !  p 0  [  2, 10, 18, 26, 34, 42, 50, 58]             ---->             [  9, 10, 11,-12,-13,-14,-15,-16]
+        !  p+1  [  3, 11, 19, 27, 35, 43, 51, 59]         transposition         [ 17, 18, 19,-20,-21,-22,-23,-24]
+        !  d-2  [  4, 12, 20, 28, 36, 44, 52, 60]         and sign flip         [-25,-26,-27, 28, 29, 30, 31, 32]
+        !  d-1  [  5, 13, 21, 29, 37, 45, 53, 61]                               [-33,-34,-35, 36, 37, 38, 39, 40]
+        !  d 0  [  6, 14, 22, 30, 38, 46, 54, 62]   (l,l',m) =                  [-41,-42,-43, 44, 45, 46, 47, 48]
+        !  d+1  [  7, 15, 23, 31, 39, 47, 55, 63]      (-1)^(l+l') * (l',l,m)   [-49,-50,-51, 52, 53, 54, 55, 56]
+        !  d+2  [  8, 16, 24, 32, 40, 48, 56, 64]                               [-57,-58,-59, 60, 61, 62, 63, 64]
         !
         implicit none
         !

@@ -17,7 +17,7 @@ module am_constants
     complex(dp), parameter :: itwopi  = cmplx_i*twopi
     ! magic numbers
     integer    , parameter :: default_ps_id_value = 100 ! must be equal to or larger than 11
-    integer    , parameter :: column_width = 100
+    integer    , parameter :: column_width = 150
     integer    , parameter :: string_length_schoenflies = 6
     integer    , parameter :: max_argument_length = 500
     integer    , parameter :: maximum_buffer_size = 500

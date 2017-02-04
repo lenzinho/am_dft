@@ -10,7 +10,6 @@ module am_brillouin_zone
     use am_mkl
     use am_options
     use dispmodule
-    use am_tet_mesh
     use am_rank_and_sort
 
     implicit none

@@ -2283,10 +2283,7 @@ contains
         real(dp), intent(in) :: prec
         character(*), intent(in) :: flags
         integer, allocatable :: PM(:,:)
-        real(dp),allocatable :: d(:,:) ! reduces search space, speeding things up
-        real(dp) :: tau_rot(3)         ! reduces search space, speeding things up
-        real(dp) :: drot(2)            ! reduces search space, speeding things up
-        real(dp) :: ref(3,2)           ! reduces search space, speeding things up
+        real(dp) :: tau_rot(3)
         integer :: i,j,k
         logical :: found
         integer :: ntaus ! number of tau points tau(1:3,ntaus)
@@ -2295,17 +2292,9 @@ contains
         nsyms = size(seitz,3)
         !
         ntaus = size(tau,2)
-        ! set arbitrary refrence points
-        ref(1:3,1) = real([0,0,0],dp)
-        ref(1:3,2) = real([0,0,1],dp)
-        ! get distances from reference points
-        allocate(d(ntaus,2))
-        do k = 1, ntaus
-            d(k,1) = norm2(tau(:,k)-ref(:,1))
-            d(k,2) = norm2(tau(:,k)-ref(:,2))
-        enddo
         ! initialize permutation map
         allocate(PM(ntaus,nsyms))
+        PM = -1
         ! determine the permutations of atomic indicies which results from each space symmetry operation
         !$OMP PARALLEL PRIVATE(i,j,k,found,tau_rot) SHARED(ntaus,nsyms,seitz,tau,prec,PM)
         !$OMP DO
@@ -2315,22 +2304,12 @@ contains
                 PM(j,i) = 0.0_dp
                 ! set found
                 found = .false.
-                ! apply rotational component
-                tau_rot = matmul(seitz(1:3,1:3,i),tau(:,j))
-                ! apply translational component
-                tau_rot = tau_rot + seitz(1:3,4,i)
+                ! apply rotational and translational components
+                tau_rot = matmul(seitz(1:3,1:3,i),tau(:,j)) + seitz(1:3,4,i)
                 ! reduce rotated+translated point to unit cell if relax_pbc is not present
-                if (index(flags,'relax_pbc').eq.0) then
-                    tau_rot = modulo(tau_rot+prec,1.0_dp)-prec
-                endif
-                ! get absolute distance
-                drot(1) = norm2(tau_rot-ref(:,1))
-                drot(2) = norm2(tau_rot-ref(:,2))
+                if (index(flags,'relax_pbc').eq.0) tau_rot = modulo(tau_rot+prec,1.0_dp)-prec
                 ! find matching atom
                 search : do k = 1, ntaus
-                    ! first check if absolute distance matches
-                    if (abs(d(k,1)-drot(1)).gt.tiny) cycle search
-                    if (abs(d(k,2)-drot(2)).gt.tiny) cycle search
                     ! then check x,y,z components, one at a time
                     if (isequal(tau_rot,tau(:,k),prec)) then
                         PM(j,i) = k

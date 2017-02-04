@@ -286,7 +286,7 @@ contains
             ! determine rotation in the hamiltonian basis
             ! Nye, J.F. "Physical properties of crystals: their representation by tensors and matrices". p 133 Eq 7
             do i = 1, pg%nsyms
-                ! convert rotation R to symmetry representation in tight-binding basis (direct sum of wigner matrices)
+                ! convert rotation R to symmetry representation in tight-binding basis ("direct sum" of wigner matrices)
                 tb_pg%sym(:,:,i) = ps2D(S=tb_pg%S, E=tb_pg%E, R_cart=pg%seitz_cart(1:3,1:3,i), pc=pc, ic=ic)
             enddo
             ! check that identity is first
@@ -682,7 +682,7 @@ contains
         call execute_command_line( 'mkdir -p ./matlab')
         ! export file
         open(unit=fid,file='./matlab/'//trim(H_fnc_name)//'.m',status='replace',action='write')
-            write(fid,'(a,a,a)') 'function [H] = ', trim(H_fnc_name), '(pg,v,kpt,shell)'
+            write(fid,'(a,a,a)') 'function [H] = ', trim(H_fnc_name), '(sym,v,kpt,shell)'
             write(fid,'(a)') 'i2pi = 2*sqrt(-1)*pi;'
             write(fid,'(a)') 'H(1:'//tostring(E(end))//',1:'//tostring(E(end))//') = 0;'
             if (index(flags,'symb').ne.0) write(fid,'(a)') 'H = sym(H);'
@@ -696,9 +696,9 @@ contains
                             ! determine how to write stuff
                             m = pp%shell(k)%m
                             n = pp%shell(k)%n
-                            str_H  =      'H('//tostring(S(m))//':'//tostring(E(m))//','//tostring(S(n))//':'//tostring(E(n))//')'
-                            str_Dm = 'pg.sym('//tostring(S(m))//':'//tostring(E(m))//','//tostring(S(m))//':'//tostring(E(m))//','//tostring(pp%shell(k)%pg_id(p))//')'
-                            str_Dn = 'pg.sym('//tostring(S(n))//':'//tostring(E(n))//','//tostring(S(n))//':'//tostring(E(n))//','//tostring(pp%shell(k)%pg_id(p))//')'
+                            str_H  =   'H('//tostring(S(m))//':'//tostring(E(m))//','//tostring(S(n))//':'//tostring(E(n))//')'
+                            str_Dm = 'sym('//tostring(S(m))//':'//tostring(E(m))//','//tostring(S(m))//':'//tostring(E(m))//','//tostring(pp%shell(k)%pg_id(p))//')'
+                            str_Dn = 'sym('//tostring(S(n))//':'//tostring(E(n))//','//tostring(S(n))//':'//tostring(E(n))//','//tostring(pp%shell(k)%pg_id(p))//')'
                             if     (index(flags,'cart').ne.0) then
                                 str_tau= '['//tostring(pp%shell(k)%tau_cart(1:3,p),fmt='SP,f10.5')//']'
                             elseif (index(flags,'frac').ne.0) then

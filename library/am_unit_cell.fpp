@@ -314,9 +314,9 @@ contains
         !
         sc%tau_frac = 1.0D5
         m=0
-        map : do i1 = 0, nint(sum(abs(bscfp(:,1)))) ! sc%natoms
-              do i2 = 0, nint(sum(abs(bscfp(:,2)))) ! sc%natoms
-              do i3 = 0, nint(sum(abs(bscfp(:,3)))) ! sc%natoms
+        map : do i1 = 0, nint(sum(abs(bscfp(:,1)))) ! sc%natoms ! shouldn't this be column vectors here?
+              do i2 = 0, nint(sum(abs(bscfp(:,2)))) ! sc%natoms ! shouldn't this be column vectors here?
+              do i3 = 0, nint(sum(abs(bscfp(:,3)))) ! sc%natoms ! shouldn't this be column vectors here?
                   do j = 1, uc%natoms
                       !
                       tau_frac_wrk = uc%tau_frac(1:3,j)

@@ -34,7 +34,6 @@ module am_dos
         real(dp), allocatable :: e1(:)     ! dielectric function e = e1 + i e2
         real(dp), allocatable :: e2(:)     ! dielectric function e = e1 + i e2
         real(dp), allocatable :: Fcv(:,:)  ! Fcv(nprojections,nEs) interband-projected oscilator strength
-        ! NEED TO ADD TO WRITE DOS STUFF
     end type am_class_df
 
     public :: get_Ef
