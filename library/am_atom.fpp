@@ -19,86 +19,9 @@ module am_atom
         !
 	    contains
     	procedure :: gen_orbitals
-        procedure, private :: write_atom
-        procedure, private :: read_atom
-        generic :: write(formatted) => write_atom
-        generic :: read(formatted) => read_atom
 	end type am_class_atom
 
     contains
-
-    subroutine      write_atom(dtv, unit, iotype, v_list, iostat, iomsg)
-        !
-        implicit none
-        !
-        class(am_class_atom), intent(in) :: dtv
-        integer     , intent(in)    :: unit
-        character(*), intent(in)    :: iotype
-        integer     , intent(in)    :: v_list(:)
-        integer     , intent(out)   :: iostat
-        character(*), intent(inout) :: iomsg
-        integer :: i
-        !
-        iostat = 0
-        !
-        if (iotype.eq.'LISTDIRECTED') then
-            write(unit,'(a/)') '<atom>'
-                ! non-allocatable
-                #:for ATTRIBUTE in ['norbitals','nazimuthals']
-                    $:write_xml_attribute_nonallocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable        
-                #:for ATTRIBUTE in ['orbital','azimuthal']
-                    $:write_xml_attribute_allocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable string
-                #:for ATTRIBUTE in ['orbname']
-                    $:write_xml_attribute_allocatable_string(ATTRIBUTE)
-                #:endfor
-            write(unit,'(a/)') '</atom>'
-        else
-            stop 'ERROR [write_atom]: iotype /= LISTDIRECTED'
-        endif
-    end subroutine  write_atom
-
-    subroutine      read_atom(dtv, unit, iotype, v_list, iostat, iomsg)
-        !
-        implicit none
-        !
-        class(am_class_atom), intent(inout) :: dtv
-        integer     , intent(in)    :: unit
-        character(*), intent(in)    :: iotype
-        integer     , intent(in)    :: v_list(:)
-        integer     , intent(out)   :: iostat
-        character(*), intent(inout) :: iomsg
-        logical :: isallocated
-        integer :: dims_rank
-        integer :: dims(10) ! read tensor up to rank 5
-        integer :: str_length
-        !   
-        if (iotype.eq.'LISTDIRECTED') then
-            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-                ! non-allocatable
-                #:for ATTRIBUTE in ['norbitals','nazimuthals']
-                    $:read_xml_attribute_nonallocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable        
-                #:for ATTRIBUTE in ['orbital','azimuthal']
-                    $:read_xml_attribute_allocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable string
-                #:for ATTRIBUTE in ['orbname']
-                    $:read_xml_attribute_allocatable_string(ATTRIBUTE)
-                #:endfor
-            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-            ! without the iostat=-1 here the following error is produced at compile time:
-            ! tb(67203,0x7fff7e4dd300) malloc: *** error for object 0x10c898cec: pointer being freed was not allocated
-            ! *** set a breakpoint in malloc_error_break to debug
-            iostat=-1
-        else
-            stop 'ERROR [read_atom]: iotype /= LISTDIRECTED'
-        endif
-    end subroutine  read_atom
 
 	pure function   atm_symb(Z) result(symb)
 		!

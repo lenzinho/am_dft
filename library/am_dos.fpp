@@ -21,13 +21,6 @@ module am_dos
         real(dp), allocatable :: D(:)    ! dos(nEs)
         real(dp), allocatable :: iD(:)   ! integrated dos(nEs)
         real(dp), allocatable :: pD(:,:) ! projected dos pD(nprojections,nEs)
-        contains
-        procedure :: save => save_dos
-        procedure :: load => load_dos
-        procedure, private :: write_dos
-        procedure, private :: read_dos
-        generic :: write(formatted) => write_dos
-        generic :: read(formatted)  => read_dos
     end type am_class_dos
 
     type, public, extends(am_class_dos) :: am_class_df
@@ -39,105 +32,6 @@ module am_dos
     public :: get_Ef
 
 contains
-
-    ! i/o
-
-    subroutine     write_dos(dtv, unit, iotype, v_list, iostat, iomsg)
-        !
-        implicit none
-        !
-        class(am_class_dos), intent(in) :: dtv
-        integer     , intent(in)    :: unit
-        character(*), intent(in)    :: iotype
-        integer     , intent(in)    :: v_list(:)
-        integer     , intent(out)   :: iostat
-        character(*), intent(inout) :: iomsg
-        !
-        iostat = 0
-        !
-        if (iotype.eq.'LISTDIRECTED') then
-            write(unit,'(a/)') '<dos>'
-                ! non-allocatable
-                #:for ATTRIBUTE in ['nelecs','Ef','nEs','nprojections']
-                    $:write_xml_attribute_nonallocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable        
-                #:for ATTRIBUTE in ['E','D','iD','pD']
-                    $:write_xml_attribute_allocatable(ATTRIBUTE)
-                #:endfor
-            write(unit,'(a/)') '</dos>'
-        else
-            stop 'ERROR [write_tb]: iotype /= LISTDIRECTED'
-        endif
-    end subroutine write_dos
-
-    subroutine     read_dos(dtv, unit, iotype, v_list, iostat, iomsg)
-        !
-        implicit none
-        !
-        class(am_class_dos), intent(inout) :: dtv
-        integer     , intent(in)    :: unit
-        character(*), intent(in)    :: iotype
-        integer     , intent(in)    :: v_list(:)
-        integer     , intent(out)   :: iostat
-        character(*), intent(inout) :: iomsg
-        logical :: isallocated
-        integer :: dims_rank
-        integer :: dims(10) ! read tensor up to rank 5
-        !
-        if (iotype.eq.'LISTDIRECTED') then
-            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-                ! non-allocatable
-                #:for ATTRIBUTE in ['nelecs','Ef','nEs','nprojections']
-                    $:read_xml_attribute_nonallocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable        
-                #:for ATTRIBUTE in ['E','D','iD','pD']
-                    $:read_xml_attribute_allocatable(ATTRIBUTE)
-                #:endfor
-            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-            ! set iostat
-            iostat=-1
-        else
-            stop 'ERROR [read_dos]: iotype /= LISTDIRECTED'
-        endif
-    end subroutine read_dos
-
-    subroutine     save_dos(dos,fname)
-        !
-        implicit none
-        !
-        class(am_class_dos), intent(in) :: dos
-        character(*), intent(in) :: fname
-        integer :: fid
-        integer :: iostat
-        ! fid
-        fid = 1
-        ! save space group
-        open(unit=fid, file=trim(fname), status='replace', action='write', iostat=iostat)
-            if (iostat/=0) stop 'ERROR [dos:load]: opening file'
-            write(fid,*) dos
-        close(fid)
-        !
-    end subroutine save_dos
-
-    subroutine     load_dos(dos,fname)
-        !
-        implicit none
-        !
-        class(am_class_dos), intent(inout) :: dos
-        character(*), intent(in) :: fname
-        integer :: fid
-        integer :: iostat
-        ! fid
-        fid = 1
-        ! save space group
-        open(unit=fid, file=trim(fname), status='old', action='read', iostat=iostat)
-            if (iostat/=0) stop 'ERROR [dos:load]: opening file'
-            read(fid,*) dos
-        close(fid)
-        !
-    end subroutine load_dos
 
     ! gaussian method
 

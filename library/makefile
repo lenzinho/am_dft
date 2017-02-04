@@ -28,7 +28,6 @@ OBJS  = mkl_rci.o 						\
 		am_shells.o                 	\
 		am_symmetry_relations.o 		\
 		am_symmetry_tensor.o 			\
-		am_tet_mesh.o                   \
 		am_brillouin_zone.o             \
 		am_dispersion.o                 \
 		am_dos.o                        \

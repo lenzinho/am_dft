@@ -2,7 +2,7 @@
 module am_matlab
 
     use am_constants
-    use am_mkl, only : am_zheev, inv, rand, am_zgeev, am_dgeev, null_svd, orth_svd
+    use am_mkl, only : am_zheev, inv, rand, am_zgeev, am_dgeev, null, orth
 
     implicit none
     
@@ -15,35 +15,35 @@ module am_matlab
     #:endif
 
     interface adjoint
-        module procedure zadjoint, dadjoint
+        module procedure z_adjoint, d_adjoint
     end interface ! adjoint
     
     interface linspace
-        module procedure linspace_double, linspace_integer
+        module procedure d_linspace, i_linspace
     end interface ! linspace
 
     interface diag
-        module procedure ddiag1, ddiag2, zdiag1, zdiag2
+        module procedure d_diag_1, d_diag_2, z_diag_1, z_diag_2
     end interface ! diag
 
     interface eye
-        module procedure eye, eye_nxm
-    end interface ! eye
+        module procedure eye_1, eye_2
+    end interface ! eye_1
 
     interface ones
-        module procedure ones, ones_nxm
-    end interface ! ones
+        module procedure ones_1, ones_2
+    end interface ! ones_1
 
     interface zeros
-        module procedure zeros_nxm, zeros
-    end interface ! zeros
+        module procedure zeros_2, zeros_1
+    end interface ! zeros_1
 
     interface cross_product
         module procedure :: d_cross_product, z_cross_product
     end interface ! cross_product
 
     interface meshgrid
-        module procedure dmeshgrid, imeshgrid
+        module procedure d_meshgrid, i_meshgrid
     end interface ! meshgrid
 
     interface fftshift
@@ -55,14 +55,14 @@ module am_matlab
     end interface ! rot2irrep
     
     interface trace
-        module procedure dtrace, ztrace
+        module procedure d_trace, z_trace
     end interface ! trace
 
     interface isequal
-        module procedure r0_isequal, r1_isequal, r2_isequal, &
-                         c0_isequal, c1_isequal, c2_isequal, &
-                         i0_isequal, i1_isequal, i2_isequal, &
-                         l0_isequal, l1_isequal, l2_isequal
+        module procedure r_isequal_0, r_isequal_1, r_isequal_2, &
+                         c_isequal_0, c_isequal_1, c_isequal_2, &
+                         i_isequal_0, i_isequal_1, i_isequal_2, &
+                         l_isequal_0, l_isequal_1, l_isequal_2 
     end interface ! isequal
     
     interface trim_null
@@ -993,7 +993,7 @@ module am_matlab
         ! vx(1:3,1) = [0.0,v(3),-v(2)];
         ! vx(1:3,2) = [-v(3),0.0,v(1)];
         ! vx(1:3,3) = [v(2),-v(1),0.0];
-        ! R = eye(3) + vx + (vx*vx)*(1.0-c)/(s.^2)
+        ! R = eye_1(3) + vx + (vx*vx)*(1.0-c)/(s.^2)
         ! R*A-B
         !
         implicit none
@@ -1013,7 +1013,7 @@ module am_matlab
         vx(1:3,2) = [-v(3),0.0_dp,v(1)]
         vx(1:3,3) = [v(2),-v(1),0.0_dp]
         !
-        R = eye(3) + vx + matmul(vx,vx)*(1.0_dp - c)/(s**2)
+        R = eye_1(3) + vx + matmul(vx,vx)*(1.0_dp - c)/(s**2)
         !
     end function  rotmat
 
@@ -1589,7 +1589,7 @@ module am_matlab
 
     ! grid functions
 
-    pure function dmeshgrid(v1,v2,v3) result(grid_points)
+    pure function d_meshgrid(v1,v2,v3) result(grid_points)
         !> 
         !> Generates a mesh of lattice vectors (fractional coordinates) around the origin. 
         !> n(1), n(2), n(3) specifies the number of mesh points away from 0, i.e. [-n:1:n]
@@ -1643,9 +1643,9 @@ module am_matlab
             !
         endif
         !
-    end function  dmeshgrid
+    end function  d_meshgrid
 
-    pure function imeshgrid(v1,v2,v3) result(grid_points)
+    pure function i_meshgrid(v1,v2,v3) result(grid_points)
         !
         implicit none
         !
@@ -1655,14 +1655,14 @@ module am_matlab
         real(dp), allocatable :: grid_points(:,:)
         !
         if (present(v3)) then
-            grid_points=dmeshgrid(real(v1,dp),real(v2,dp),real(v3,dp))
+            grid_points=d_meshgrid(real(v1,dp),real(v2,dp),real(v3,dp))
         else
-            grid_points=dmeshgrid(real(v1,dp),real(v2,dp))
+            grid_points=d_meshgrid(real(v1,dp),real(v2,dp))
         endif
         !
-    end function  imeshgrid
+    end function  i_meshgrid
 
-    pure function linspace_double(d1,d2,n) result(y)
+    pure function d_linspace(d1,d2,n) result(y)
         !
         implicit none
         !
@@ -1678,9 +1678,9 @@ module am_matlab
             y(i) = real(d1,dp) + (i-1.0_dp)*d;
         enddo
         !
-    end function  linspace_double
+    end function  d_linspace
 
-    pure function linspace_integer(d1,d2,n) result(y)
+    pure function i_linspace(d1,d2,n) result(y)
         !
         implicit none
         !
@@ -1696,7 +1696,7 @@ module am_matlab
             y(i) = real(d1,dp) + (i-1.0_dp)*d;
         enddo
         !
-    end function  linspace_integer
+    end function  i_linspace
 
     pure function regspace(d1,d2,d) result(y)
         !
@@ -1732,7 +1732,7 @@ module am_matlab
         !        
     end function  ishermitian
 
-    pure function zadjoint(A) result(adj)
+    pure function z_adjoint(A) result(adj)
         !
         implicit none
         !
@@ -1742,9 +1742,9 @@ module am_matlab
         allocate(adj(size(A,2),size(A,1)))
         adj = transpose(conjg(A))
         !
-    end function  zadjoint
+    end function  z_adjoint
 
-    pure function dadjoint(A) result(adj)
+    pure function d_adjoint(A) result(adj)
         !
         implicit none
         !
@@ -1754,9 +1754,9 @@ module am_matlab
         allocate(adj(size(A,2),size(A,1)))
         adj = transpose(A)
         !
-    end function  dadjoint
+    end function  d_adjoint
 
-    pure function dtrace(R) result(tr)
+    pure function d_trace(R) result(tr)
         !
         implicit none
         !
@@ -1769,9 +1769,9 @@ module am_matlab
             tr = tr + R(i,i)
         enddo
         !
-    end function  dtrace
+    end function  d_trace
 
-    pure function ztrace(R) result(tr)
+    pure function z_trace(R) result(tr)
         !
         implicit none
         !
@@ -1784,7 +1784,7 @@ module am_matlab
             tr = tr + R(i,i)
         enddo
         !
-    end function  ztrace
+    end function  z_trace
 
     function      z_eigenspace(A) result(V)
         ! Determine eigenvectors which simultaneously diagonalize n square matrices A(:,:,i)
@@ -1970,19 +1970,19 @@ module am_matlab
         !
         integer, intent(in) :: A(:,:)
         integer,allocatable :: B(:,:)
-        integer,allocatable :: zeros(:)
+        integer,allocatable :: zeros_1(:)
         logical,allocatable :: mask(:)
         integer,allocatable :: inds(:)
         integer :: n, i
         !
         n = size(A,2)
         allocate(inds, source = [1:n] )
-        allocate(zeros(size(A,1)))
-        zeros = 0
+        allocate(zeros_1(size(A,1)))
+        zeros_1 = 0
         !
         allocate(mask(n))
         do i = 1, n
-            if (isequal(A(:,i),zeros)) then
+            if (isequal(A(:,i),zeros_1)) then
                 mask(i) = .false.
             else
                 mask(i) = .true.
@@ -1999,19 +1999,19 @@ module am_matlab
         !
         real(dp), intent(in) :: A(:,:)
         real(dp), allocatable :: B(:,:)
-        real(dp), allocatable :: zeros(:)
+        real(dp), allocatable :: zeros_1(:)
         logical , allocatable :: mask(:)
         integer , allocatable :: inds(:)
         integer :: n, i
         !
         n = size(A,2)
         allocate(inds, source = [1:n] )
-        allocate(zeros(size(A,1)))
-        zeros = 0
+        allocate(zeros_1(size(A,1)))
+        zeros_1 = 0
         !
         allocate(mask(n))
         do i = 1, n
-            if (isequal( A(:,i) ,zeros)) then
+            if (isequal( A(:,i) ,zeros_1)) then
                 mask(i) = .false.
             else
                 mask(i) = .true.
@@ -2028,19 +2028,19 @@ module am_matlab
         !
         complex(dp), intent(in) :: A(:,:)
         complex(dp), allocatable :: B(:,:)
-        complex(dp), allocatable :: zeros(:)
+        complex(dp), allocatable :: zeros_1(:)
         logical , allocatable :: mask(:)
         integer , allocatable :: inds(:)
         integer :: n, i
         !
         n = size(A,2)
         allocate(inds, source = [1:n] )
-        allocate(zeros(size(A,1)))
-        zeros = 0
+        allocate(zeros_1(size(A,1)))
+        zeros_1 = 0
         !
         allocate(mask(n))
         do i = 1, n
-            if (isequal( A(:,i), zeros)) then
+            if (isequal( A(:,i), zeros_1)) then
                 mask(i) = .false.
             else
                 mask(i) = .true.
@@ -2123,11 +2123,11 @@ module am_matlab
         ns(1:m,[1:na]   ) = A
         ns(1:m,[1:nb]+na) = B
         ! get null space (coefficients)
-        ns = null_svd(ns)
+        ns = null(ns)
         ! check if there is an intersection
         if (size(ns,2).ne.0) then
             ! apply coefficients to construct interception subspace
-            C = orth_svd( matmul(A,ns(1:na,:)) )
+            C = orth( matmul(A,ns(1:na,:)) )
         else
             allocate(C(0,0))
         endif
@@ -2154,11 +2154,11 @@ module am_matlab
         ns(1:m,[1:na]   ) = A
         ns(1:m,[1:nb]+na) = B
         ! get null space (coefficients)
-        ns = null_svd(ns)
+        ns = null(ns)
         ! check if there is an intersection
         if (size(ns,2).ne.0) then
             ! apply coefficients to construct interception subspace
-            C = orth_svd( matmul(A,ns(1:na,:)) ) 
+            C = orth( matmul(A,ns(1:na,:)) ) 
         else
             allocate(C(0,0))
         endif
@@ -2464,7 +2464,7 @@ module am_matlab
 
     ! matrix generation
 
-    pure function ddiag1(M,j) result(d)
+    pure function d_diag_1(M,j) result(d)
         !
         ! gets jth (sub-,super-)diagonal elements of matrix M
         ! if j is not passed, retunrs diagonal elements (j = 0)
@@ -2517,9 +2517,9 @@ module am_matlab
             enddo
         endif
         !
-    end function  ddiag1
+    end function  d_diag_1
 
-    pure function ddiag2(d,j) result(M)
+    pure function d_diag_2(d,j) result(M)
         !
         ! get diagonal elements of matrix M
         implicit none
@@ -2562,9 +2562,9 @@ module am_matlab
             enddo
         endif
         !
-    end function  ddiag2 
+    end function  d_diag_2 
 
-    pure function zdiag1(M,j) result(d)
+    pure function z_diag_1(M,j) result(d)
         !
         ! gets jth (sub-,super-)diagonal elements of matrix M
         ! if j is not passed, retunrs diagonal elements (j = 0)
@@ -2617,9 +2617,9 @@ module am_matlab
             enddo
         endif
         !
-    end function  zdiag1
+    end function  z_diag_1
 
-    pure function zdiag2(d,j) result(M)
+    pure function z_diag_2(d,j) result(M)
         !
         ! get diagonal elements of matrix M
         implicit none
@@ -2662,24 +2662,24 @@ module am_matlab
             enddo
         endif
         !
-    end function  zdiag2
+    end function  z_diag_2
 
-    pure function eye(n)
+    pure function eye_1(n)
         !> nxn identity matrix
         implicit none
         !
         integer, intent(in) :: n
-        real(dp), dimension(:,:), allocatable :: eye
+        real(dp), dimension(:,:), allocatable :: eye_1
         integer :: i
         !
-        allocate(eye(n,n))
-        eye=0.0_dp
+        allocate(eye_1(n,n))
+        eye_1=0.0_dp
         do i = 1, n
-            eye(i,i) = 1.0_dp
+            eye_1(i,i) = 1.0_dp
         enddo
-    end function  eye
+    end function  eye_1
 
-    pure function eye_nxm(n) result(id)
+    pure function eye_2(n) result(id)
         !> nxm identity matrix
         implicit none
         !
@@ -2692,21 +2692,21 @@ module am_matlab
         do i = 1, minval(n)
             id(i,i) = 1.0_dp
         enddo
-    end function  eye_nxm
+    end function  eye_2
 
-    pure function ones(n)
+    pure function ones_1(n)
         !> nxn identity matrix
         implicit none
         !
         integer, intent(in) :: n
-        real(dp), dimension(:,:), allocatable :: ones
+        real(dp), dimension(:,:), allocatable :: ones_1
         !
-        allocate(ones(n,n))
-        ones=1.0_dp
+        allocate(ones_1(n,n))
+        ones_1=1.0_dp
         !
-    end function  ones
+    end function  ones_1
 
-    pure function ones_nxm(n) result(M)
+    pure function ones_2(n) result(M)
         !> nxn identity matrix
         implicit none
         !
@@ -2716,9 +2716,9 @@ module am_matlab
         allocate(M(n(1),n(2)))
         M=1.0_dp
         !
-    end function  ones_nxm
+    end function  ones_2
 
-    pure function zeros(n) result(M)
+    pure function zeros_1(n) result(M)
         !> nxn identity matrix
         implicit none
         !
@@ -2728,9 +2728,9 @@ module am_matlab
         allocate(M(n,n))
         M = 0.0_dp
         !
-    end function  zeros
+    end function  zeros_1
 
-    pure function zeros_nxm(n) result(M)
+    pure function zeros_2(n) result(M)
         !> nxn identity matrix
         implicit none
         !
@@ -2740,7 +2740,7 @@ module am_matlab
         allocate(M(n(1),n(2)))
         M=0.0_dp
         !
-    end function  zeros_nxm
+    end function  zeros_2
 
     ! matrix-matrix operations
 
@@ -2938,7 +2938,7 @@ module am_matlab
 
     ! isequal
 
-    pure function r0_isequal(x,y,iopt_prec) result(bool)
+    pure function r_isequal_0(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
@@ -2960,9 +2960,9 @@ module am_matlab
             bool = .false.
         endif
         !        
-    end function  r0_isequal
+    end function  r_isequal_0
 
-    pure function r1_isequal(x,y,iopt_prec) result(bool)
+    pure function r_isequal_1(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
@@ -2988,9 +2988,9 @@ module am_matlab
             endif
         enddo
         !          
-    end function  r1_isequal
+    end function  r_isequal_1
 
-    pure function r2_isequal(x,y,iopt_prec) result(bool)
+    pure function r_isequal_2(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
@@ -3019,9 +3019,9 @@ module am_matlab
         enddo
         enddo
         !        
-    end function  r2_isequal
+    end function  r_isequal_2
 
-    pure function c0_isequal(x,y,iopt_prec) result(bool)
+    pure function c_isequal_0(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
@@ -3046,9 +3046,9 @@ module am_matlab
             bool = .false.
         endif
         !
-    end function  c0_isequal
+    end function  c_isequal_0
 
-    pure function c1_isequal(x,y,iopt_prec) result(bool)
+    pure function c_isequal_1(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
@@ -3072,9 +3072,9 @@ module am_matlab
         else
             bool = .false.
         endif
-    end function  c1_isequal
+    end function  c_isequal_1
 
-    pure function c2_isequal(x,y,iopt_prec) result(bool)
+    pure function c_isequal_2(x,y,iopt_prec) result(bool)
         !
         implicit none
         !
@@ -3099,9 +3099,9 @@ module am_matlab
             bool = .false.
         endif
         !
-    end function  c2_isequal
+    end function  c_isequal_2
 
-    pure function i0_isequal(x,y) result(bool)
+    pure function i_isequal_0(x,y) result(bool)
         !
         implicit none
         !
@@ -3114,9 +3114,9 @@ module am_matlab
             bool = .false.
         endif
         !        
-    end function  i0_isequal
+    end function  i_isequal_0
 
-    pure function i1_isequal(x,y) result(bool)
+    pure function i_isequal_1(x,y) result(bool)
         !
         implicit none
         !
@@ -3134,9 +3134,9 @@ module am_matlab
             endif
         enddo
         !          
-    end function  i1_isequal
+    end function  i_isequal_1
 
-    pure function i2_isequal(x,y) result(bool)
+    pure function i_isequal_2(x,y) result(bool)
         !
         implicit none
         !
@@ -3157,9 +3157,9 @@ module am_matlab
         enddo
         enddo
         !        
-    end function  i2_isequal
+    end function  i_isequal_2
 
-    pure function l0_isequal(x,y) result(bool)
+    pure function l_isequal_0(x,y) result(bool)
         !
         implicit none
         !
@@ -3172,9 +3172,9 @@ module am_matlab
             bool = .false.
         endif
         !        
-    end function  l0_isequal
+    end function  l_isequal_0
 
-    pure function l1_isequal(x,y) result(bool)
+    pure function l_isequal_1(x,y) result(bool)
         !
         implicit none
         !
@@ -3192,9 +3192,9 @@ module am_matlab
             endif
         enddo
         !          
-    end function  l1_isequal
+    end function  l_isequal_1
 
-    pure function l2_isequal(x,y) result(bool)
+    pure function l_isequal_2(x,y) result(bool)
         !
         implicit none
         !
@@ -3215,7 +3215,7 @@ module am_matlab
         enddo
         enddo
         !        
-    end function  l2_isequal
+    end function  l_isequal_2
 
     ! issubset
 

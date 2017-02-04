@@ -17,11 +17,6 @@ module am_symmetry_tables
         integer    , allocatable :: nelements(:)            ! class_nelements(nclasses) get number of elements in each class
         integer    , allocatable :: member(:,:)             ! members(nclass,maxval(class_nelements)) record indicies of each class_member element for each class 
         real(dp)   , allocatable :: matrices(:,:,:)         ! 
-        contains
-        procedure, private :: write_conjugacy_class
-        procedure, private :: read_conjugacy_class
-        generic :: write(formatted) => write_conjugacy_class
-        generic :: read(formatted)  => read_conjugacy_class
     end type am_class_conjugacy_class
 
     type, public :: am_class_character_table
@@ -38,11 +33,6 @@ module am_symmetry_tables
         ! if subgroup
         complex(dp), allocatable :: subduced_chi(:,:)       ! subduced characters
         character(:),allocatable :: subduced_label(:)       ! subduced irrep labels
-        contains
-        procedure, private :: write_character_table
-        procedure, private :: read_character_table
-        generic :: write(formatted) => write_character_table
-        generic :: read(formatted)  => read_character_table
     end type am_class_character_table
 
     type, public :: am_class_multiplication_table
@@ -52,11 +42,6 @@ module am_symmetry_tables
         integer    , allocatable :: gen_id(:,:)             ! gen_id(i,:) identifies generators which produce element i
         integer    , allocatable :: gen(:)                  ! complete list of group generators
         integer    , allocatable :: commutator_id(:,:)      ! get_commutator_id(i,:) list of group symmetries which commute with symmetry i 
-        contains
-        procedure, private :: write_multiplication_table
-        procedure, private :: read_multiplication_table
-        generic :: write(formatted) => write_multiplication_table
-        generic :: read(formatted)  => read_multiplication_table
     end type am_class_multiplication_table
 
     type, public :: am_class_chartab_printer
@@ -78,59 +63,6 @@ module am_symmetry_tables
 contains
 
     ! multiplication table
-
-    subroutine     write_multiplication_table(dtv, unit, iotype, v_list, iostat, iomsg)
-        !
-        implicit none
-        !
-        class(am_class_multiplication_table), intent(in) :: dtv
-        integer     , intent(in)    :: unit
-        character(*), intent(in)    :: iotype
-        integer     , intent(in)    :: v_list(:)
-        integer     , intent(out)   :: iostat
-        character(*), intent(inout) :: iomsg
-        !
-        iostat = 0
-        !
-        if (iotype.eq.'LISTDIRECTED') then
-            write(unit,'(a/)') '<multiplication_table>'
-                #:for ATTRIBUTE in ['multab','inv_id','corder','gen_id','gen','commutator_id']
-                    $:write_xml_attribute_allocatable(ATTRIBUTE)
-                #:endfor
-            write(unit,'(a/)') '</multiplication_table>'
-        else
-            stop 'ERROR [write_multiplication_table]: iotype /= LISTDIRECTED'
-        endif
-    end subroutine write_multiplication_table
-
-    subroutine     read_multiplication_table(dtv, unit, iotype, v_list, iostat, iomsg)
-        !
-        implicit none
-        !
-        class(am_class_multiplication_table), intent(inout) :: dtv
-        integer     , intent(in)    :: unit
-        character(*), intent(in)    :: iotype
-        integer     , intent(in)    :: v_list(:)
-        integer     , intent(out)   :: iostat
-        character(*), intent(inout) :: iomsg
-        logical :: isallocated
-        integer :: dims_rank
-        integer :: dims(10) ! read tensor up to rank 5
-        !
-        if (iotype.eq.'LISTDIRECTED') then
-            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-                #:for ATTRIBUTE in ['multab','inv_id','corder','gen_id','gen','commutator_id']
-                    $:read_xml_attribute_allocatable(ATTRIBUTE)
-                #:endfor
-            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-            ! without the iostat=-1 here the following error is produced at compile time:
-            ! tb(67203,0x7fff7e4dd300) malloc: *** error for object 0x10c898cec: pointer being freed was not allocated
-            ! *** set a breakpoint in malloc_error_break to debug
-            iostat=-1
-        else
-            stop 'ERROR [read_multiplication_table]: iotype /= LISTDIRECTED'
-        endif
-    end subroutine read_multiplication_table
 
     function       get_multab(sym,flags) result(multab)
         !
@@ -391,69 +323,6 @@ contains
 
     ! conjugacy classes
 
-    subroutine     write_conjugacy_class(dtv, unit, iotype, v_list, iostat, iomsg)
-        !
-        implicit none
-        !
-        class(am_class_conjugacy_class), intent(in) :: dtv
-        integer     , intent(in)    :: unit
-        character(*), intent(in)    :: iotype
-        integer     , intent(in)    :: v_list(:)
-        integer     , intent(out)   :: iostat
-        character(*), intent(inout) :: iomsg
-        !
-        iostat = 0
-        !
-        if (iotype.eq.'LISTDIRECTED') then
-            write(unit,'(a/)') '<conjugacy_class>'
-                ! non-allocatable
-                #:for ATTRIBUTE in ['nclasses']
-                    $:write_xml_attribute_nonallocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable
-                #:for ATTRIBUTE in ['id','nelements','member','matrices']
-                    $:write_xml_attribute_allocatable(ATTRIBUTE)
-                #:endfor
-            write(unit,'(a/)') '</conjugacy_class>'
-        else
-            stop 'ERROR [write_conjugacy_class]: iotype /= LISTDIRECTED'
-        endif
-    end subroutine write_conjugacy_class
-
-    subroutine     read_conjugacy_class(dtv, unit, iotype, v_list, iostat, iomsg)
-        !
-        implicit none
-        !
-        class(am_class_conjugacy_class), intent(inout) :: dtv
-        integer     , intent(in)    :: unit
-        character(*), intent(in)    :: iotype
-        integer     , intent(in)    :: v_list(:)
-        integer     , intent(out)   :: iostat
-        character(*), intent(inout) :: iomsg
-        logical :: isallocated
-        integer :: dims_rank
-        integer :: dims(10) ! read tensor up to rank 5
-        !
-        if (iotype.eq.'LISTDIRECTED') then
-            read(unit,'(/)')
-                ! non-allocatable
-                #:for ATTRIBUTE in ['nclasses']
-                    $:read_xml_attribute_nonallocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable
-                #:for ATTRIBUTE in ['id','nelements','member','matrices']
-                    $:read_xml_attribute_allocatable(ATTRIBUTE)
-                #:endfor
-            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-            ! without the iostat=-1 here the following error is produced at compile time:
-            ! tb(67203,0x7fff7e4dd300) malloc: *** error for object 0x10c898cec: pointer being freed was not allocated
-            ! *** set a breakpoint in malloc_error_break to debug
-            iostat=-1
-        else
-            stop 'ERROR [read_conjugacy_class]: iotype /= LISTDIRECTED'
-        endif
-    end subroutine read_conjugacy_class
-
     function       get_class_id(multab,inv_id,ps_id) result(class_id)
         !
         ! for AX = XB, if elements A and B are conjugate pairs for some other element X in the group, then they are in the same class
@@ -588,78 +457,6 @@ contains
     end function   get_class_id
 
     ! character table
-
-    subroutine     write_character_table(dtv, unit, iotype, v_list, iostat, iomsg)
-        !
-        implicit none
-        !
-        class(am_class_character_table), intent(in) :: dtv
-        integer     , intent(in)    :: unit
-        character(*), intent(in)    :: iotype
-        integer     , intent(in)    :: v_list(:)
-        integer     , intent(out)   :: iostat
-        character(*), intent(inout) :: iomsg
-        !
-        iostat = 0
-        ! 
-        if (iotype.eq.'LISTDIRECTED') then
-            write(unit,'(a/)') '<character_table>'
-                ! non-allocatable
-                #:for ATTRIBUTE in ['nirreps']
-                    $:write_xml_attribute_nonallocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable        
-                #:for ATTRIBUTE in ['chartab','irrep_dim','irrep_id','irrep_decomp','irrep_proj','irrep_proj_V','block_proj','wigner_proj','subduced_chi']
-                    $:write_xml_attribute_allocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable string
-                #:for ATTRIBUTE in ['subduced_label','irrep_label']
-                    $:write_xml_attribute_allocatable_string(ATTRIBUTE)
-                #:endfor
-            write(unit,'(a/)') '</character_table>'
-        else
-            stop 'ERROR [write_character_table]: iotype /= LISTDIRECTED'
-        endif
-    end subroutine write_character_table
-
-    subroutine     read_character_table(dtv, unit, iotype, v_list, iostat, iomsg)
-        !
-        implicit none
-        !
-        class(am_class_character_table), intent(inout) :: dtv
-        integer     , intent(in)    :: unit
-        character(*), intent(in)    :: iotype
-        integer     , intent(in)    :: v_list(:)
-        integer     , intent(out)   :: iostat
-        character(*), intent(inout) :: iomsg
-        logical :: isallocated
-        integer :: dims_rank
-        integer :: dims(10) ! read tensor up to rank 5
-        integer :: str_length
-        !
-        if (iotype.eq.'LISTDIRECTED') then
-            read(unit,'(/)')
-                ! non-allocatable
-                #:for ATTRIBUTE in ['nirreps']
-                    $:read_xml_attribute_nonallocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable
-                #:for ATTRIBUTE in ['chartab','irrep_dim','irrep_id','irrep_decomp','irrep_proj','irrep_proj_V','block_proj','wigner_proj','subduced_chi']
-                    $:read_xml_attribute_allocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable string
-                #:for ATTRIBUTE in ['subduced_label','irrep_label']
-                    $:read_xml_attribute_allocatable_string(ATTRIBUTE)
-                #:endfor
-            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-            ! without the iostat=-1 here the following error is produced at compile time:
-            ! tb(67203,0x7fff7e4dd300) malloc: *** error for object 0x10c898cec: pointer being freed was not allocated
-            ! *** set a breakpoint in malloc_error_break to debug
-            iostat=-1
-        else
-            stop 'ERROR [read_conjugacy_class]: iotype /= LISTDIRECTED'
-        endif
-    end subroutine read_character_table
 
     function       get_chartab(multab,class_nelements,class_member,ps_id) result(chartab)
         !
@@ -1246,7 +1043,7 @@ contains
             ! get eigenvectors/eigenvalues (HERMITIAN)
             call am_zheev(A=irrep_proj(:,:,i), V=V, D=D)
             ! save projection
-            irrep_proj_V(:, selector(irrep_id.eq.i) ) = orth_svd( V(:, selector(abs(D).gt.tiny)) )
+            irrep_proj_V(:, selector(irrep_id.eq.i) ) = orth( V(:, selector(abs(D).gt.tiny)) )
         endif
         enddo
         !
@@ -1330,7 +1127,7 @@ contains
                         ! get basis corresponding to unique eigenvalue
                         inds2 = selector( abs(D-D_unique(i)).lt.tiny )
                         ! orthonormalize
-                        V(:,inds2) = orth_svd( V(:,inds2) )
+                        V(:,inds2) = orth( V(:,inds2) )
                     enddo
                     ! update M
                     do i = 1, nsyms
@@ -1467,146 +1264,6 @@ contains
         call spy( sum(abs(M),3).gt.tiny )
         !
     end subroutine print_blocks
-
-!     function       get_irrep_diag(sym,chartab,irrep_proj,irrep_dim,class_member) result(irrep_diag)
-!         !
-!         implicit none
-!         !
-!         real(dp)   , intent(in) :: sym(:,:,:)
-!         complex(dp), intent(in) :: chartab(:,:)
-!         complex(dp), intent(in) :: irrep_proj(:,:,:) ! projection
-!         integer    , intent(in) :: irrep_dim(:)
-!         integer    , intent(in) :: class_member(:,:)
-!         complex(dp),allocatable :: irrep_diag(:,:)
-!         complex(dp),allocatable :: phi(:,:)
-!         complex(dp),allocatable :: wrk(:,:)
-!         complex(dp),allocatable :: tr(:,:)
-!         complex(dp),allocatable :: Q(:)
-!         integer    ,allocatable :: S(:)
-!         integer    ,allocatable :: E(:)
-!         integer :: nirreps, nclasses, nbases, nsyms
-!         integer :: i, j, k, n
-!         ! get dimensions
-!         nsyms   = size(rr,3)
-!         nbases  = size(rr,1)
-!         nirreps = size(irrep_proj,3)
-!         nclasses= nirreps
-!         ! allocate phi
-!         allocate(phi(nbases,sum(irrep_dim)))
-!         phi = 0
-!         ! allocate local character table
-!         allocate(tr(nirreps,nsyms))
-!         ! allocate irrep_diag
-!         allocate(irrep_diag(sum(irrep_dim),nsyms))
-!         irrep_diag = 0
-!         ! allocate start/end
-!         allocate(S(nirreps))
-!         allocate(E(nirreps))
-!         ! allocate workspace
-!         allocate(wrk(nbases,nsyms))
-!         ! allocate random vector
-!         allocate(Q(nbases))
-!         ! Q = sqrt(real([1:nbases],dp))
-!         Q = pack( rand(nbases,1), .true.)
-!         ! 
-!         n = 0
-!         do j = 1, nirreps
-!             ! start/end
-!             n = n + 1
-!             S(j) = n
-!             n = n + irrep_dim(j) - 1 
-!             E(j) = n
-!             ! project a random vector onto the j-th irreducible subspace
-!             wrk(:,1) = matmul(irrep_proj(:,:,j), Q )
-!             ! generate partner symmetry functions
-!             if (irrep_dim(j).ge.2) then
-!                 k = 2
-!                 do i = 2, nsyms
-!                     wrk(:,k) = matmul(sym(:,:,i), wrk(:,1))
-!                     if (k.eq.rank_svd(wrk(:,1:k))) then
-!                     if (k.eq.irrep_dim(j)) then
-!                         exit
-!                     else
-!                         k = k + 1
-!                     endif
-!                     endif
-!                 enddo
-!             endif
-!             ! save phi
-!             phi(:,S(j):E(j)) = orth_svd( wrk(:,1:irrep_dim(j)) )
-!         enddo
-!         ! get diagonal symmetry elements
-!         do i = 1, nsyms
-!         do j = 1, nirreps
-!             do k = 1, irrep_dim(j)
-!                 irrep_diag(S(j)+k-1,i) = dot_product(matmul( conjg(phi(:,S(j)+k-1)), sym(:,:,i)), phi(:,S(j)+k-1))
-!             enddo
-!             tr(j,i) = sum( irrep_diag(S(j):E(j),i) )
-!         enddo
-!         enddo
-!         ! check that trace matches value in character table
-!         do j = 1, nirreps
-!         do i = 1, nclasses
-!             if ( abs(chartab(j,i)-tr(j,class_member(i,1))) .gt. tiny ) then
-!                 stop 'ERROR [get_irrep_diag]: character table mismatch'
-!             endif
-!         enddo
-!         enddo
-!     end function   get_irrep_diag
-
-!     function       get_wigner_proj(rr,irrep_diag,irrep_dim,class_matrices) result(wigner_proj)
-!         !
-!         implicit none
-!         !
-!         integer    , intent(in) :: rr(:,:,:)
-!         complex(dp), intent(in) :: irrep_diag(:,:)
-!         integer    , intent(in) :: irrep_dim(:)
-!         integer    , intent(in) :: class_matrices(:,:,:)
-!         complex(dp),allocatable :: wigner_proj(:,:,:,:) ! wigner_proj(nbases,nbases, maxval(irrep_dim), nirreps )
-!         integer :: nirreps, nsyms, nbases, nclasses
-!         integer :: i,j,k,n
-!         !
-!         ! get number of things
-!         nbases  = size(rr,1)
-!         nsyms   = nbases
-!         nclasses= size(class_matrices,3)
-!         nirreps = nclasses
-!         ! allocate space for wigner projection operator
-!         allocate(wigner_proj(nbases,nbases,maxval(irrep_dim),nirreps))
-!         wigner_proj = 0
-!         ! loop over irreps
-!         n = 0
-!         do j = 1, nirreps
-!             ! loop over dimensions of irreps
-!             do k = 1, irrep_dim(j)
-!                 ! n is a compound irrep and irrep dim index
-!                 n = n + 1
-!                 ! wooten eq 6.24: sum over symmetries
-!                 do i = 1, nsyms
-!                 wigner_proj(:,:,k,j) = wigner_proj(:,:,k,j) + rr(:,:,i) * irrep_diag(n,i)
-!                 enddo
-!                 wigner_proj(:,:,k,j) = wigner_proj(:,:,k,j) * irrep_dim(j)/real(nsyms,dp)
-!             enddo
-!         enddo
-!         ! check that each wigner projection operator is hermitian
-!         do j = 1, nirreps
-!         do k = 1, irrep_dim(j)
-!             if (.not.isequal(adjoint(wigner_proj(:,:,k,j)),wigner_proj(:,:,k,j))) then
-!                 stop 'ERROR [get_irrep_projection]: irrep_proj is not hermitian'
-!             endif
-!         enddo
-!         enddo
-!         ! check that each wigner projection operator is idempotent (A^2 = A)
-!         do j = 1, nirreps
-!         do k = 1, irrep_dim(j)
-!         if (.not.isequal(matmul(wigner_proj(:,:,k,j),wigner_proj(:,:,k,j)),wigner_proj(:,:,k,j))) then
-!             call disp(X=wigner_proj(:,:,k,j),title=tostring(k)//tostring(j),style='underline')
-!             stop 'ERROR [get_irrep_projection]: irrep_proj is not idempotent'
-!         endif
-!         enddo
-!         enddo
-!         !
-!     end function   get_wigner_proj
 
     ! identifier functions which operate on identifiers
 

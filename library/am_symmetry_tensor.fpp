@@ -29,12 +29,6 @@ module am_symmetry_tensor
         real(dp), allocatable :: V(:)           ! the value of the tensor, use reshape(V,dims)
         contains
         procedure :: symmetrize
-        procedure :: save => save_tensor
-        procedure :: load => load_tensor
-        procedure, private :: write_tensor
-        procedure, private :: read_tensor
-        generic :: write(formatted) => write_tensor
-        generic :: read(formatted)  => read_tensor
     end type am_class_tensor
 
     type, private, extends(am_class_representation_group) :: am_class_flat_group
@@ -45,107 +39,6 @@ module am_symmetry_tensor
     end type am_class_flat_group
 
 	contains
-
-    ! i/o
-
-    subroutine      write_tensor(dtv, unit, iotype, v_list, iostat, iomsg)
-        !
-        implicit none
-        !
-        class(am_class_tensor), intent(in) :: dtv
-        integer     , intent(in)    :: unit
-        character(*), intent(in)    :: iotype
-        integer     , intent(in)    :: v_list(:)
-        integer     , intent(out)   :: iostat
-        character(*), intent(inout) :: iomsg
-        !
-        iostat = 0
-        !
-        if (iotype.eq.'LISTDIRECTED') then
-            write(unit,'(a/)') '<tensor>'
-                ! non-allocatable
-                #:for ATTRIBUTE in ['property','flags','rank']
-                    $:write_xml_attribute_nonallocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable        
-                #:for ATTRIBUTE in ['dims','relations','V']
-                    $:write_xml_attribute_allocatable(ATTRIBUTE)
-                #:endfor
-            write(unit,'(a/)') '</tensor>'
-        else
-            stop 'ERROR [write_tensor]: iotype /= LISTDIRECTED'
-        endif
-    end subroutine  write_tensor
-
-    subroutine      read_tensor(dtv, unit, iotype, v_list, iostat, iomsg)
-        !
-        implicit none
-        !
-        class(am_class_tensor), intent(inout) :: dtv
-        integer     , intent(in)    :: unit
-        character(*), intent(in)    :: iotype
-        integer     , intent(in)    :: v_list(:)
-        integer     , intent(out)   :: iostat
-        character(*), intent(inout) :: iomsg
-        logical :: isallocated
-        integer :: dims_rank
-        integer :: dims(10) ! read tensor up to rank 5
-        !
-        if (iotype.eq.'LISTDIRECTED') then
-            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-                ! non-allocatable
-                #:for ATTRIBUTE in ['property','flags','rank']
-                    $:read_xml_attribute_nonallocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable        
-                #:for ATTRIBUTE in ['dims','relations','V']
-                    $:read_xml_attribute_allocatable(ATTRIBUTE)
-                #:endfor
-            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-            ! without the iostat=-1 here the following error is produced at compile time:
-            ! tensor(67203,0x7fff7e4dd300) malloc: *** error for object 0x10c898cec: pointer being freed was not allocated
-            ! *** set a breakpoint in malloc_error_break to debug
-            iostat=-1
-        else
-            stop 'ERROR [read_tensor]: iotype /= LISTDIRECTED'
-        endif
-    end subroutine  read_tensor
-
-    subroutine      save_tensor(tensor,fname)
-        !
-        implicit none
-        !
-        class(am_class_tensor), intent(in) :: tensor
-        character(*), intent(in) :: fname
-        integer :: fid
-        integer :: iostat
-        ! fid
-        fid = 1
-        ! save space group
-        open(unit=fid, file=trim(fname), status='replace', action='write', iostat=iostat)
-            if (iostat/=0) stop 'ERROR [tensor:load]: opening file'
-            write(fid,*) tensor
-        close(fid)
-        !
-    end subroutine  save_tensor
-
-    subroutine      load_tensor(tensor,fname)
-        !
-        implicit none
-        !
-        class(am_class_tensor), intent(inout) :: tensor
-        character(*), intent(in) :: fname
-        integer :: fid
-        integer :: iostat
-        ! fid
-        fid = 1
-        ! save space group
-        open(unit=fid, file=trim(fname), status='old', action='read', iostat=iostat)
-            if (iostat/=0) stop 'ERROR [tensor:load]: opening file'
-            read(fid,*) tensor
-        close(fid)
-        !
-    end subroutine  load_tensor
 
     ! operates on tensors
 
@@ -163,7 +56,6 @@ module am_symmetry_tensor
         type(am_shell_cell), optional, intent(in) :: shell ! required for tight binding input
         type(am_class_flat_group) :: flat_ig
         type(am_class_flat_group) :: flat_pg
-        character(:), allocatable :: str
         integer :: m, n, o, nterms
         !
         if (opts%verbosity.ge.1) call print_title('Symmeterized '//trim(property))

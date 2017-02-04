@@ -7,43 +7,36 @@ module am_mkl
     real(dp), parameter :: eps = 1.0D-14 ! used for regularization
     
     public
-    
-    private :: lwmax
-    private :: eps
 
-    private :: mkl_zdiag, mkl_ddiag
+    private :: lwmax, eps, mkl_zdiag, mkl_ddiag
     
     interface norm
-        module procedure am_dznrm2, am_dnrm2    
+        module procedure z_norm_2, d_norm_2    
     end interface ! norm
 
     interface dot
-        module procedure am_zdotc, am_ddot
+        module procedure z_dot, d_dot
     end interface ! dot
 
     interface det
-        module procedure zdet, ddet
+        module procedure z_det, d_det
     end interface ! det
 
     interface inv
-        module procedure am_zinv, am_dinv
+        module procedure z_inv, d_inv
     end interface ! det
 
     interface rand
-        module procedure d_rand, dv_rand, dm_rand, dt_rand
+        module procedure d_rand, d_rand_1, d_rand_2, d_rand_3
     end interface ! rand
 
-    interface null_svd
-        module procedure null_zgesvd, null_dgesvd
-    end interface ! null_svd
+    interface null
+        module procedure z_null, d_null
+    end interface ! null
 
-    interface orth_svd
-        module procedure orth_dgesvd, orth_zgesvd
-    end interface ! orth_svd
-
-    interface rank_svd
-        module procedure rank_dgesvd, rank_zgesvd
-    end interface ! rank_svd
+    interface orth
+        module procedure d_orth, z_orth
+    end interface ! orth
 
 contains
 
@@ -61,7 +54,7 @@ contains
         !
     end function   d_rand
 
-    function       dv_rand(n) result(a)
+    function       d_rand_1(n) result(a)
         !
         use ifport, only : rand_interal => rand
         !
@@ -75,9 +68,9 @@ contains
             a(i) = rand_interal()
         enddo
         !
-    end function   dv_rand
+    end function   d_rand_1
 
-    function       dm_rand(n,m) result(a)
+    function       d_rand_2(n,m) result(a)
         !
         use ifport, only : rand_interal => rand
         !
@@ -93,9 +86,9 @@ contains
         enddo
         enddo
         !
-    end function   dm_rand
+    end function   d_rand_2
 
-    function       dt_rand(n,m,o) result(a)
+    function       d_rand_3(n,m,o) result(a)
         !
         use ifport, only : rand_interal => rand
         !
@@ -113,48 +106,11 @@ contains
         enddo
         enddo
         !
-    end function   dt_rand
-
-    ! FFT
-
-    ! function       fft_2d(x,l) result(y)
-    !     !
-    !     use mkl_dfti
-    !     !
-    !     implicit none
-    !     !
-    !     real(dp), intent(in) :: x(:) ! flattened 2d matrix
-    !     integer , intent(in) :: l(:) ! lengths along 1st and 2d dimension of unflattened matrix
-    !     integer :: status
-    !     integer :: strides_in(3)
-    !     integer :: strides_out(3)
-    !     type(dfti_descriptor), pointer :: my_desc_handle
-    !     ! ...put input data into x_2d(j,k), 1<=j=32,1<=k<=100
-    !     ! ...set l(1) = 32, l(2) = 100
-    !     ! ...set strides_in(1) = 0, strides_in(2) = 1, strides_in(3) = 34
-    !     strides_in(1) = 0   !
-    !     strides_in(2) = 1   !
-    !     strides_in(3) = 34  !
-    !     ! ...set strides_out(1) = 0, strides_out(2) = 1, strides_out(3) = 17
-    !     strides_out(1) = 0  !
-    !     strides_out(2) = 1  !
-    !     strides_out(3) = 17 !
-    !     ! ...the transform is a 32-by-100
-    !     ! perform a real to complex conjugate-even transform
-    !     status = dfticreatedescriptor(my_desc_handle, dfti_single, dfti_real, 2, l )
-    !     status = dftisetvalue(my_desc_handle, dfti_conjugate_even_storage, dfti_complex_complex)
-    !     status = dftisetvalue(my_desc_handle, dfti_input_strides, strides_in)
-    !     status = dftisetvalue(my_desc_handle, dfti_output_strides, strides_out)
-    !     status = dfticommitdescriptor( my_desc_handle)
-    !     status = dfticomputeforward( my_desc_handle, x )
-    !     status = dftifreedescriptor(my_desc_handle)
-    !     ! result is given by the complex value z(j,k) 1<=j<=17; 1<=k<=100 and
-    !     ! is stored in real matrix x_2d in cce format.
-    ! end function   fft_2d
+    end function   d_rand_3
 
     ! eucledian norm of vector
 
-    function       am_dnrm2(V) result(n)
+    function       d_norm_2(V) result(n)
         !
         implicit none
         !
@@ -164,9 +120,9 @@ contains
         !
         n = dnrm2(size(V), V, 1)
         !
-    end function   am_dnrm2 
+    end function   d_norm_2 
 
-    function       am_dznrm2(V) result(n)
+    function       z_norm_2(V) result(n)
         !
         implicit none
         !
@@ -176,11 +132,11 @@ contains
         !
         n = dznrm2(size(V), V, 1)
         !
-    end function   am_dznrm2
+    end function   z_norm_2
 
     ! dot products
 
-    function       am_zdotc(X,Y) result(res)
+    function       z_dot(X,Y) result(res)
         !
         ! res = dot(conjg(x), y)
         ! 
@@ -192,9 +148,9 @@ contains
         !
         res = zdotc(size(X), X, 1, Y, 1)
         !
-    end function   am_zdotc
+    end function   z_dot
 
-    function       am_ddot(X,Y) result(res)
+    function       d_dot(X,Y) result(res)
         !
         ! res = dot(x, y)
         ! 
@@ -206,7 +162,7 @@ contains
         !
         res = ddot(size(X), X, 1, Y, 1)
         !
-    end function   am_ddot
+    end function   d_dot
 
     ! sort array in increasing order
     
@@ -236,10 +192,42 @@ contains
         call dlasrt( id, size(d), d, info )
         !
     end function   sort 
+
+    ! rank array in increasing order
+    
+    ! function       rank(A,flags) result(inds)
+    !     !
+    !     implicit none
+    !     !
+    !     real(dp), intent(in) :: A(:)
+    !     character(*), intent(in), optional :: flags
+    !     real(dp), allocatable :: d(:)
+    !     integer , allocatable :: inds(:)
+    !     character(1) :: id
+    !     integer :: info
+    !     !
+    !     ! copy input 
+    !     allocate(d,source=A)
+    !     ID = 'I'
+    !     if (present(flags)) then
+    !         if     (index(flags,'ascend')) then 
+    !             id = 'I'
+    !         elseif (index(flags,'descend')) then
+    !             id = 'D'
+    !         else
+    !             stop 'ERROR [sort]: flags /= I or D'
+    !         endif
+    !     endif
+    !     !
+    !     allocate(inds,source=[1:size(d)])
+    !     !
+    !     call dlasrt2( id, size(d), d, inds, info )
+    !     !
+    ! end function   rank 
     
     ! get determinant by LU facorization
 
-    function       zdet(A) result(d)
+    function       z_det(A) result(d)
         ! 
         implicit none
         !
@@ -285,9 +273,9 @@ contains
         ! the diagonal elements of U and the sign of P, that is - for an odd number of permutations and + for an even
         ! number. But aware that determinants can readliy overflow, or underflow.
         !
-    end function   zdet
+    end function   z_det
 
-    function       ddet(A) result(d)
+    function       d_det(A) result(d)
         ! 
         implicit none
         !
@@ -333,7 +321,7 @@ contains
         ! the diagonal elements of U and the sign of P, that is - for an odd number of permutations and + for an even
         ! number. But aware that determinants can readliy overflow, or underflow.
         !
-    end function   ddet
+    end function   d_det
     
     ! LU decomposition
 
@@ -371,7 +359,7 @@ contains
 
     ! inverse of real square matrix
     
-    function       am_dinv(A) result(Ainv)
+    function       d_inv(A) result(Ainv)
         !
         implicit none
         !
@@ -411,11 +399,11 @@ contains
         !
         if (info.ne.0) stop 'Error in dgetri'
         !
-    end function   am_dinv
+    end function   d_inv
 
     ! inverse of complex square matrixg
 
-    function       am_zinv(A) result(Ainv)
+    function       z_inv(A) result(Ainv)
         !
         implicit none
         !
@@ -455,7 +443,7 @@ contains
         !
         if (info.ne.0) stop 'Error in dgetri'
         !
-    end function   am_zinv
+    end function   z_inv
 
     function       pinv(A) result(Ainv)
         !
@@ -984,7 +972,7 @@ contains
 
     ! get null space using svd decomposition
 
-    function       null_dgesvd(A) result(null_space)
+    function       d_null(A) result(null_space)
         !
         real(dp), intent(in)  :: A(:,:)
         real(dp), allocatable :: null_space(:,:)
@@ -1010,9 +998,9 @@ contains
         else
             allocate(null_space(0,0))
         endif
-    end function   null_dgesvd
+    end function   d_null
 
-    function       null_zgesvd(A) result(null_space)
+    function       z_null(A) result(null_space)
         !
         complex(dp), intent(in)  :: A(:,:)
         complex(dp), allocatable :: null_space(:,:)
@@ -1038,7 +1026,7 @@ contains
         else
             allocate(null_space(0,0))
         endif
-    end function   null_zgesvd
+    end function   z_null
 
     ! get matrix rank using svd decomposition
 
@@ -1068,7 +1056,7 @@ contains
 
     ! orthonormalize vectors using svd decomposition
 
-    function       orth_dgesvd(A) result(A_orth)
+    function       d_orth(A) result(A_orth)
         !
         real(dp), intent(in)  :: A(:,:)
         real(dp), allocatable :: A_orth(:,:)
@@ -1098,9 +1086,9 @@ contains
         else
             allocate(A_orth(0,0))
         endif
-    end function   orth_dgesvd    
+    end function   d_orth    
 
-    function       orth_zgesvd(A) result(A_orth)
+    function       z_orth(A) result(A_orth)
         !
         complex(dp), intent(in)  :: A(:,:)
         complex(dp), allocatable :: A_orth(:,:)
@@ -1130,7 +1118,7 @@ contains
         else
             allocate(A_orth(0,0))
         endif
-    end function   orth_zgesvd
+    end function   z_orth
 
     ! solve Ax = B by QR factorization
 
@@ -1345,85 +1333,87 @@ contains
 
     ! multiply A and B and get a symmetric matrix C (only supported in ifort v 16)
 
-!     function       am_dgemm_dgemmt(A,B,flags) result(C)
-!         !
-!         implicit none
-!         !
-!         real(dp), intent(in) :: A(:,:)
-!         real(dp), intent(in) :: B(:,:)
-!         character(*), intent(in), optional :: flags
-!         real(dp), allocatable :: C(:,:)
-!         character(len=1) :: uplo
-!         character(len=1) :: transa
-!         character(len=1) :: transb
-!         integer :: Am,An,Bm,Bn
-!         integer :: m,n,k
-!         integer :: i, j
-!         !
-!         Am = size(A,1)
-!         An = size(A,2)
-!         Bm = size(B,1)
-!         Bn = size(B,2)
-!         !
-!         uplo  ='U'
-!         transa='N'
-!         transb='N'
-!         if (present(flags)) then
-!             if (index(flags,'U').ne.0) then
-!                 uplo    = 'T'
-!             endif
-!             if (index(flags,'L').ne.0) then
-!                 uplo    = 'L'
-!             endif
-!             if (index(flags,'AT').ne.0) then
-!                 transa = 'T'
-!             endif
-!             if (index(flags,'AC').ne.0) then
-!                 transa = 'C'
-!             endif
-!             if (index(flags,'BT').ne.0) then
-!                 transb = 'T'
-!             endif
-!             if (index(flags,'BC').ne.0) then
-!                 transb = 'C'
-!             endif
-!         endif
-!         !
-!         ! m Specifies the number of rows of the matrix op(A)
-!         m = Am
-!         if ((transa(1:1).eq.'T').or.(transa(1:1).eq.'C')) m = An
-!         !
-!         ! n Specifies the number of columns of the matrix op(B)
-!         n = Bn
-!         if ((transb(1:1).eq.'T').or.(transb(1:1).eq.'C')) n = Bm
-!         !
-!         if (n.ne.m) then
-!             write(*,*) 'ERROR: The final matrix must be square. n /= m.'
-!             stop
-!         endif
-!         !
-!         ! k Specifies the number of columns of the matrix op(A)
-!         k = An
-!         if ((transa(1:1).eq.'T').or.(transa(1:1).eq.'C')) k = Am
-!         !
-!         allocate(C(m,n))
-!         C = 0
-!         !
-!         ! C := alpha*op(A)*op(B) + beta*C,
-!         !            [m*k] [k*n]
-!         !
-!         !    dgemmt(uplo, transa, transb, n, k,  alpha, a, lda, b, ldb,   beta, c, ldc)
-!         call dgemmt(uplo, transa, transb, n, k, 1.0_dp, A,  Am, B,  Bm, 0.0_dp, C,   m)
-!         !
-!         do i = 1, m
-!             do j = 1, (i-1)
-!                 C(i,j) = C(j,i)
-!             enddo
-!         enddo
-!         !
-!     end function   am_dgemmt
+    function       am_dgemmt(A,B,flags) result(C)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: A(:,:)
+        real(dp), intent(in) :: B(:,:)
+        character(*), intent(in), optional :: flags
+        real(dp), allocatable :: C(:,:)
+        character(len=1) :: uplo
+        character(len=1) :: transa
+        character(len=1) :: transb
+        integer :: Am,An,Bm,Bn
+        integer :: m,n,k
+        integer :: i, j
+        !
+        Am = size(A,1)
+        An = size(A,2)
+        Bm = size(B,1)
+        Bn = size(B,2)
+        !
+        uplo  ='U'
+        transa='N'
+        transb='N'
+        if (present(flags)) then
+            if (index(flags,'U').ne.0) then
+                uplo    = 'T'
+            endif
+            if (index(flags,'L').ne.0) then
+                uplo    = 'L'
+            endif
+            if (index(flags,'AT').ne.0) then
+                transa = 'T'
+            endif
+            if (index(flags,'AC').ne.0) then
+                transa = 'C'
+            endif
+            if (index(flags,'BT').ne.0) then
+                transb = 'T'
+            endif
+            if (index(flags,'BC').ne.0) then
+                transb = 'C'
+            endif
+        endif
+        !
+        ! m Specifies the number of rows of the matrix op(A)
+        m = Am
+        if ((transa(1:1).eq.'T').or.(transa(1:1).eq.'C')) m = An
+        !
+        ! n Specifies the number of columns of the matrix op(B)
+        n = Bn
+        if ((transb(1:1).eq.'T').or.(transb(1:1).eq.'C')) n = Bm
+        !
+        if (n.ne.m) then
+            write(*,*) 'ERROR: The final matrix must be square. n /= m.'
+            stop
+        endif
+        !
+        ! k Specifies the number of columns of the matrix op(A)
+        k = An
+        if ((transa(1:1).eq.'T').or.(transa(1:1).eq.'C')) k = Am
+        !
+        allocate(C(m,n))
+        C = 0
+        !
+        ! C := alpha*op(A)*op(B) + beta*C,
+        !            [m*k] [k*n]
+        !
+        !    dgemmt(uplo, transa, transb, n, k,  alpha, a, lda, b, ldb,   beta, c, ldc)
+        call dgemmt(uplo, transa, transb, n, k, 1.0_dp, A,  Am, B,  Bm, 0.0_dp, C,   m)
+        !
+        do i = 1, m
+            do j = 1, (i-1)
+                C(i,j) = C(j,i)
+            enddo
+        enddo
+        !
+    end function   am_dgemmt
 
-    pure function mkl_ddiag(d) result(M)
+    ! aux
+
+    pure function  mkl_ddiag(d) result(M)
         !
         implicit none
         !
@@ -1439,9 +1429,9 @@ contains
             M(i,i) = d(i)
         enddo
         !
-    end function  mkl_ddiag
+    end function   mkl_ddiag
 
-    pure function mkl_zdiag(d) result(M)
+    pure function  mkl_zdiag(d) result(M)
         !
         implicit none
         !
@@ -1457,7 +1447,7 @@ contains
             M(i,i) = d(i)
         enddo
         !
-    end function  mkl_zdiag
+    end function   mkl_zdiag
 
 end module am_mkl
  

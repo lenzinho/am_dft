@@ -30,12 +30,6 @@ module am_symmetry
         procedure :: get_conjugacy_classes
         procedure :: get_character_table
         procedure :: print_character_table
-        procedure :: save => save_group
-        procedure :: load => load_group
-        procedure, private :: write_group
-        procedure, private :: read_group
-        generic :: write(formatted) => write_group
-        generic :: read(formatted) => read_group
     end type am_class_group
 
     type, public, extends(am_class_group)       :: am_class_representation_group
@@ -129,190 +123,6 @@ contains
         allocate(uc%uc_id, source=[1:uc%natoms])
         !
     end subroutine load_poscar
-
-    ! group i/o
-
-    subroutine     write_group(dtv, unit, iotype, v_list, iostat, iomsg)
-        !
-        implicit none
-        !
-        class(am_class_group), intent(in) :: dtv
-        integer     , intent(in)    :: unit
-        character(*), intent(in)    :: iotype
-        integer     , intent(in)    :: v_list(:)
-        integer     , intent(out)   :: iostat
-        character(*), intent(inout) :: iomsg
-        !
-        iostat = 0
-        !
-        if (iotype.eq.'LISTDIRECTED') then
-            write(unit,'(a/)') '<group>'
-                ! non-allocatable
-                #:for ATTRIBUTE in ['nsyms','nbases']
-                    $:write_xml_attribute_nonallocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable
-                #:for ATTRIBUTE in ['sym','ps_id','ax_id','supergroup_id']
-                    $:write_xml_attribute_allocatable(ATTRIBUTE)
-                #:endfor
-                ! nested objects
-                #:for ATTRIBUTE in ['cc','ct','mt']
-                    write(unit,*) dtv%${ATTRIBUTE}$
-                #:endfor
-                ! type-specific stuff
-                select type (dtv)
-                ! representation group
-                class is (am_class_representation_group)
-                    select type (dtv)
-                    ! tight binding point group
-                    class is (am_class_tightbinding_pointgroup)
-                        ! allocatable
-                        #:for ATTRIBUTE in ['S','E']
-                            $:write_xml_attribute_allocatable(ATTRIBUTE)
-                        #:endfor
-                    class default
-                        ! do nothing
-                    end select
-                ! seitz group
-                class is (am_class_seitz_group)
-                    ! non-allocatable
-                    #:for ATTRIBUTE in ['nlcrs','bas','recbas']
-                        $:write_xml_attribute_nonallocatable(ATTRIBUTE)
-                    #:endfor
-                    ! allocatable
-                    #:for ATTRIBUTE in ['seitz_cart','seitz_frac','seitz_recp','lcr_id']
-                        $:write_xml_attribute_allocatable(ATTRIBUTE)
-                    #:endfor
-                    ! type-spcific stuff
-                    select type (dtv)
-                    class is (am_class_point_group)
-                        #:for ATTRIBUTE in ['pg_code']
-                            $:write_xml_attribute_nonallocatable(ATTRIBUTE)
-                        #:endfor
-                    class default
-                        ! do nothing
-                    end select
-                class default
-                    ! do nothing
-                end select
-            write(unit,'(a/)') '</group>'
-        else
-            stop 'ERROR [write_group]: iotype /= LISTDIRECTED'
-        endif
-    end subroutine write_group
-
-    subroutine     read_group(dtv, unit, iotype, v_list, iostat, iomsg)
-        !
-        implicit none
-        !
-        class(am_class_group), intent(inout) :: dtv
-        integer     , intent(in)    :: unit
-        character(*), intent(in)    :: iotype
-        integer     , intent(in)    :: v_list(:)
-        integer     , intent(out)   :: iostat
-        character(*), intent(inout) :: iomsg
-        logical :: isallocated
-        integer :: dims_rank
-        integer :: dims(10)
-        !
-        if (iotype.eq.'LISTDIRECTED') then
-            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-                ! non-allocatable
-                #:for ATTRIBUTE in ['nsyms','nbases']
-                    $:read_xml_attribute_nonallocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable
-                #:for ATTRIBUTE in ['sym','ps_id','ax_id','supergroup_id']
-                    $:read_xml_attribute_allocatable(ATTRIBUTE)
-                #:endfor
-                ! nested objects
-                #:for ATTRIBUTE in ['cc','ct','mt']
-                    read(unit,*) dtv%${ATTRIBUTE}$
-                #:endfor
-                ! type-specific stuff
-                select type (dtv)
-                ! representation group
-                class is (am_class_representation_group)
-                    select type (dtv)
-                    ! tight binding point group
-                    class is (am_class_tightbinding_pointgroup)
-                        ! allocatable
-                        #:for ATTRIBUTE in ['S','E']
-                            $:read_xml_attribute_allocatable(ATTRIBUTE)
-                        #:endfor
-                    class default
-                        ! do nothing
-                    end select
-                class is (am_class_seitz_group)
-                    ! non-allocatable
-                    #:for ATTRIBUTE in ['nlcrs','bas','recbas']
-                        $:read_xml_attribute_nonallocatable(ATTRIBUTE)
-                    #:endfor
-                    ! allocatable
-                    #:for ATTRIBUTE in ['seitz_cart','seitz_frac','seitz_recp','lcr_id']
-                        $:read_xml_attribute_allocatable(ATTRIBUTE)
-                    #:endfor
-                    ! type-spcific stuff
-                    select type (dtv)
-                    class is (am_class_point_group)
-                        #:for ATTRIBUTE in ['pg_code']
-                            $:read_xml_attribute_nonallocatable(ATTRIBUTE)
-                        #:endfor
-                    class default
-                        ! do nothing
-                    end select
-                class default
-                    ! do nothing
-                end select
-            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-            ! without the iostat=-1 here the following error is produced at compile time:
-            ! tb(67203,0x7fff7e4dd300) malloc: *** error for object 0x10c898cec: pointer being freed was not allocated
-            ! *** set a breakpoint in malloc_error_break to debug
-            iostat=-1
-        else
-            stop 'ERROR [read_group]: iotype /= LISTDIRECTED'
-        endif
-    end subroutine read_group
-
-    subroutine     save_group(sg,fname)
-        !
-        implicit none
-        !
-        class(am_class_group), intent(in) :: sg
-        character(*), intent(in) :: fname
-        integer :: fid
-        integer :: iostat
-        ! fid
-        fid = 1
-        ! save space group
-        open(unit=fid, file=trim(fname), status='replace', action='write', iostat=iostat)
-            if (iostat/=0) stop 'ERROR [sg:load]: opening file'
-            write(fid,*) sg
-        close(fid)
-        !
-    end subroutine save_group
-
-    subroutine     load_group(sg,fname)
-        !
-        implicit none
-        !
-        class(am_class_group), intent(inout) :: sg
-        character(*), intent(in) :: fname
-        integer :: fid
-        integer :: iostat
-        ! fid
-        fid = 1
-        ! clock in
-        call start_clock('load')
-        ! save space group
-        open(unit=fid, file=trim(fname), status='old', action='read', iostat=iostat)
-            if (iostat/=0) stop 'ERROR [sg:load]: opening file'
-            read(fid,*) sg
-        close(fid)
-        ! clock out
-        call stop_clock('load')
-        !
-    end subroutine load_group
 
     ! operate on group representation
 
@@ -2015,9 +1825,9 @@ contains
         ! identify rotations and reflections
         allocate(ps_ns_rank(nsyms))
         do i = 1, nsyms
-            ps_ns_rank(i) = size(null_svd(R(1:3,1:3,i)-identity),2)
+            ps_ns_rank(i) = size(null(R(1:3,1:3,i)-identity),2)
             if (ps_ns_rank(i).eq.0) then
-            ps_ns_rank(i) =-size(null_svd(R(1:3,1:3,i)+identity),2)
+            ps_ns_rank(i) =-size(null(R(1:3,1:3,i)+identity),2)
             endif
         enddo
         ! among the rotations find the highest symmetry (principal) axis
@@ -2063,7 +1873,7 @@ contains
         ! see which planes of reflections contain the principal axis
         do i = 1, nsyms
         if (ps_ns_rank(i).eq.2) then
-            v = null_svd(R(1:3,1:3,i)-identity)
+            v = null(R(1:3,1:3,i)-identity)
             ! define reflection plane as the normal vector
             c = cross_product(v(:,1),v(:,2))
             ! get dot product with highest symmetry axis

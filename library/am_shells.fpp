@@ -18,13 +18,6 @@ module am_shells
         type(am_shell_cell), allocatable :: shell(:) ! shell(k)
         integer, allocatable :: ip_id(:) ! identifies irreducible pair
         integer, allocatable :: pp_id(:) ! identifies primitive cell pair
-        contains
-        procedure :: save => save_shell
-        procedure :: load => load_shell
-        procedure, private :: write_shell
-        procedure, private :: read_shell
-        generic :: write(formatted) => write_shell
-        generic :: read(formatted) => read_shell
     end type am_class_pair_shell
 
     type, public, extends(am_class_pair_shell) :: am_class_prim_pair
@@ -38,119 +31,6 @@ module am_shells
     end type am_class_irre_pair
 
 contains
-
-    ! i/o
-
-    subroutine      write_shell(dtv, unit, iotype, v_list, iostat, iomsg)
-        !
-        implicit none
-        !
-        class(am_class_pair_shell), intent(in) :: dtv
-        integer     , intent(in)    :: unit
-        character(*), intent(in)    :: iotype
-        integer     , intent(in)    :: v_list(:)
-        integer     , intent(out)   :: iostat
-        character(*), intent(inout) :: iomsg
-        !
-        iostat = 0
-        !
-        if (iotype.eq.'LISTDIRECTED') then
-            write(unit,'(a/)') '<character_table>'
-                ! non-allocatable
-                #:for ATTRIBUTE in ['nshells']
-                    $:write_xml_attribute_nonallocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable        
-                #:for ATTRIBUTE in ['ip_id','pp_id']
-                    $:write_xml_attribute_allocatable(ATTRIBUTE)
-                #:endfor
-                ! nested-allocatable object
-                #:for ATTRIBUTE in ['shell']
-                    $:write_xml_attribute_allocatable_derivedtype(ATTRIBUTE)
-                #:endfor
-            write(unit,'(a/)') '</character_table>'
-        else
-            stop 'ERROR [write_shell]: iotype /= LISTDIRECTED'
-        endif
-    end subroutine  write_shell
-
-    subroutine      read_shell(dtv, unit, iotype, v_list, iostat, iomsg)
-        !
-        implicit none
-        !
-        class(am_class_pair_shell), intent(inout) :: dtv
-        integer     , intent(in)    :: unit
-        character(*), intent(in)    :: iotype
-        integer     , intent(in)    :: v_list(:)
-        integer     , intent(out)   :: iostat
-        character(*), intent(inout) :: iomsg
-        logical :: isallocated
-        integer :: dims_rank
-        integer :: dims(10) ! read tensor up to rank 5
-        !
-        if (iotype.eq.'LISTDIRECTED') then
-            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-                ! non-allocatable
-                #:for ATTRIBUTE in ['nshells']
-                    $:read_xml_attribute_nonallocatable(ATTRIBUTE)
-                #:endfor
-                ! allocatable        
-                #:for ATTRIBUTE in ['ip_id','pp_id']
-                    $:read_xml_attribute_allocatable(ATTRIBUTE)
-                #:endfor
-                ! type-specific stuff
-                #:for ATTRIBUTE in ['shell']
-                    $:read_xml_attribute_allocatable_derivedtype(ATTRIBUTE)
-                #:endfor
-            read(unit=unit,fmt='(/)',iostat=iostat,iomsg=iomsg)
-            ! without the iostat=-1 here the following error is prodshelled at compile time:
-            ! tb(67203,0x7fff7e4dd300) malloc: *** error for object 0x10c898cec: pointer being freed was not allocated
-            ! *** set a breakpoint in malloc_error_break to debug
-            iostat=-1
-        else
-            stop 'ERROR [read_shell]: iotype /= LISTDIRECTED'
-        endif
-    end subroutine  read_shell
-
-    subroutine      save_shell(shell,fname)
-        !
-        implicit none
-        !
-        class(am_class_pair_shell), intent(in) :: shell
-        character(*), intent(in) :: fname
-        integer :: fid
-        integer :: iostat
-        ! fid
-        fid = 1
-        ! save space group
-        open(unit=fid, file=trim(fname), status='replace', action='write', iostat=iostat)
-            if (iostat/=0) stop 'ERROR [shell:load]: opening file'
-            write(fid,*) shell
-        close(fid)
-        !
-    end subroutine  save_shell
-
-    subroutine      load_shell(shell,fname)
-        !
-        implicit none
-        !
-        class(am_class_pair_shell), intent(inout) :: shell
-        character(*), intent(in) :: fname
-        integer :: fid
-        integer :: iostat
-        ! fid
-        fid = 1
-        ! clock in
-        call start_clock('load')
-        ! save space group
-        open(unit=fid, file=trim(fname), status='old', action='read', iostat=iostat)
-            if (iostat/=0) stop 'ERROR [shell:load]: opening file'
-            read(fid,*) shell
-        close(fid)
-        ! clock out
-        call stop_clock('load')
-        !
-    end subroutine  load_shell
 
     ! primitive shell
 
