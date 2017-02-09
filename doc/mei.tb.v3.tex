@@ -43,7 +43,7 @@
 \begin{document}
 \pagenumbering{arabic}
 
-\title{VN ARPES}
+\title{Electronically-induced Phonon Softening in Transition-Metal Nitrides}
 
 \author{A. B. Mei}
 \affiliation{Department of Materials Science and the Materials Research Laboratory
@@ -64,7 +64,7 @@ University of Illinois, 104 South Goodwin, Urbana, IL 61801}
 
 \begin{abstract}
 
-This highly-efficient basis is able to accurately reproduce both electronic band dispersion determined by ARPES and \emph{ab initio} density functional theory simulations with a minimal set of fourteen empirical fitting parameters.
+%This highly-efficient basis is able to accurately reproduce both electronic band dispersion determined by ARPES and \emph{ab initio} density functional theory simulations with a minimal set of fourteen empirical fitting parameters.
 \end{abstract}
 
 \maketitle
@@ -76,8 +76,8 @@ This highly-efficient basis is able to accurately reproduce both electronic band
 %	\caption[LRC circuit response.]{\label{fig:LR_circuit_IV} }
 %	\end{figure}
 
-\section{Calculation of Electronic Bands and Topological Properties}
-The electronic band dispersion and topological properties of B1 NaCl-structure VN are computed using a minimal-basis orthogonal second-neighbor tight-binding model based upon V $d$ and N $p$ orbitals. 
+\section{Main}
+Topological electronic properties of B1 NaCl-structure VN are investigated using a minimal-basis orthogonal second-neighbor tight-binding model based upon V $d$ and N $p$ orbitals. 
 
 Energy-momentum dispersion relations $E(\vec{k})$ are obtained by solving the secular equation
 % CARDONA p 88 + HESS p 36
@@ -93,9 +93,9 @@ associated with the time-independent Schrodinger equation
 \hat{H}(\vec{k}) \ket{\psi} = E(\vec{k}) \ket{\psi}.
 \end{equation}
 %
-The scripts on $\ham^{\alpha\beta}_{ij}(\vec{k})$ denote matrix elements of $\ham(\vec{k})$ with respect to wavevector $\vec{k}$ and orbitals $\alpha$ and $\beta$ centered on atoms $i$ and $j$; in Dirac notation, $\ham^{\alpha\beta}_{ij}(\vec{k}) = \braket{\vec{k},i\alpha | \ham | \vec{k},j\beta}$. $\delta$ represents Kronecker deltas and $|\cdot |$ indicates matrix determinant. Resulting tight-binding energy band dispersions are presented along high symmetry reciprocal space directions in Figure \ref{fig:dispersion}. For comparison, density functional theory calculations results obtained using the generalized gradient approximation are also plotted for comparison. The minimal tight binding basis efficiently and accurately reproduces the \emph{ab initio} dispersion, especially near the Fermi level. 
+The scripts on $\ham^{\alpha\beta}_{ij}(\vec{k})$ denote matrix elements of $\ham(\vec{k})$ with respect to wavevector $\vec{k}$ and orbitals $\alpha$ and $\beta$ centered on atoms $i$ and $j$; in Dirac notation, $\ham^{\alpha\beta}_{ij}(\vec{k}) = \braket{\vec{k},i\alpha | \ham | \vec{k},j\beta}$. $\delta$ represents Kronecker deltas and $|\cdot |$ indicates matrix determinant. Resulting tight-binding energy band dispersions are presented along high symmetry reciprocal space directions in Figure \ref{fig:dispersion}. For comparison, density functional theory calculations results obtained using the generalized gradient approximation are also plotted. The minimal tight binding basis efficiently and accurately reproduces the \emph{ab initio} dispersion, especially in the vicinity of the Fermi level. 
 
-The Hamiltonian eigenfunctions $\ket{\psi}$ reside in the space spanned by linear combinations of $\bloch$ periodic Bloch sates. $\bloch$ is in turn defined through 
+The Hamiltonian eigenfunctions $\ket{\psi}$ reside in the space spanned by linear combinations of $\bloch$ periodic Bloch sates and $\bloch$ is, in turn, defined through 
 % KITTEL p 246
 \begin{equation}
 \label{eq:bloch}
@@ -103,47 +103,42 @@ The Hamiltonian eigenfunctions $\ket{\psi}$ reside in the space spanned by linea
 \quad
 \alpha \equiv (l_\alpha,m_\alpha)
 \end{equation}
-as the Fourier transform of $\lowdin$, orthogonal atomic-like orbitals centered on atom $i$ and described by azimuthal and magnetic quantum numbers $l_\alpha$ and $m_\alpha$. Identification of the orbitals associated with each band is achieved by projecting the Hamiltonian eigenfunctions on symmetery-adapted Bloch basis functions $p$, $d_{t2g}$, and $d_{eg}$ and graphically represented in Figure \ref{fig:dispersion} by reducing the high-dimensional character space onto a one-dimensional linear color map. The three lowest bands display primarily $p$ character; the next three higher energy states consist predominately of $d_{t2g}$ orbitals; and the remaining two bands are chiefly comprised of $d_{eg}$ states.
+as the Fourier transform of $\lowdin$, orthogonal atomic-like orbitals centered on atom $i$ and described by azimuthal and magnetic quantum numbers $l_\alpha$ and $m_\alpha$. Identification of the orbitals associated with each band is achieved by projecting the Hamiltonian eigenfunctions on symmetery-adapted Bloch basis functions $p$, $d_{t2g}$, and $d_{eg}$. The results are represented in Figure \ref{fig:dispersion} by reducing the high-dimensional character space onto a one-dimensional linear color map. The three lowest bands display primarily $p$ character; the next three higher energy states consist predominately of $d_{t2g}$ orbitals; and the remaining two bands are chiefly comprised of $d_{eg}$ states.
 %
 \begin{figure}[h]
 \includegraphics[width=0.47\textwidth]{Figure_1_bands.pdf}
-\caption[LRC circuit response.]{\label{fig:dispersion} }
+\caption{\label{fig:dispersion} Electronic band dispersion of NaCl-structure VN obtained using a minimal orthogonal tight binding basis incorporating up to second neighbor V $d$ and N $p$ orbital interactions (solid line) and via first principle density functional theory calculations based on the generalized gradient approximation (points). Bands are color-coded according to their orbital character.}
 \end{figure}
 
-The Fermi surface corresponds to the constant-energy manifold formed by the intersection of bands with the Fermi level $E_F$. For VN, a maximum of five bands cross $E_F$. The individual surfaces generated by each band is presented in Figures \ref{fig:fermi_surface}(a)-(e) and the combined surfaces are shown in Figure \ref{fig:fermi_surface}(f); the coloring scheme is identical to that of Figure \ref{fig:dispersion}. With increasing distance from $\Gamma$ the zone-center, the character of Fermi-level states evolves from $d_{eg}$ to $d_{t2g}$. 
+The Fermi surface corresponds to the constant-energy manifold formed by the intersection of bands with the Fermi level $E_F$. For VN, a total of five different bands cross $E_F$. The individual surfaces generated by each band is presented in Figures \ref{fig:fermi_surface}(a)-(e) and the combined surfaces are shown in Figure \ref{fig:fermi_surface}(f); the coloring scheme is identical to that of Figure \ref{fig:dispersion}. With increasing distance from the zone center, the character of Fermi-level states evolves from $d_{eg}$ to $d_{t2g}$. 
 %
 \begin{figure}[h]
 \includegraphics[width=0.47\textwidth]{Figure_2_fermi_surface.png}
-\caption[LRC circuit response.]{\label{fig:fermi_surface} }
+\caption{\label{fig:fermi_surface} Fermi surfaces  generated by each of the five VN bands which intersect the Fermi level (a)-(e) and their combination (f). Bands are color-coded according to their orbital character, as in Figure \ref{fig:dispersion}.}
 \end{figure}
 
-The Fermi surface topology determines the phase space available for phonon-assisted electronic scattering and, conversely, electron-screened phonon softening. Because the vibrational energies are orders of magnitudes lower than electronic band widths, the energies that phonons supply to scattered electrons is negligible and, therefore, scattering amounts to simply rearranging electrons on the Fermi surface. The rate at which phonons with momenta $\hbar\vec{q}$ scatter electrons is directly proportional to the overlap area produced by the Fermi surface and it's $\vec{q}$-displaced image. The quantity characterizing the phase space is called the Fermi surface nesting function, 
+The Fermi surface topology determines the phase space available for phonon-assisted electronic scattering and, conversely, electron-screened phonon softening. Because vibrational energies are orders of magnitudes lower than electronic band widths, the energies that phonons supply to scattered electrons is negligible and scattering, therefore, amounts to simply rearranging electrons on the Fermi surface. The rate at which phonons with momenta $\hbar\vec{q}$ scatter electrons is directly proportional to the overlap area produced by the Fermi surface and it's $\vec{q}$-displaced image. The quantity measuring the area is called the Fermi surface nesting function, 
 %
 \begin{equation}
 \label{eq:nesting}
 \nesting = \int \delta\big[ E(\vec{k}) - E_F \big] \delta\big[ E(\vec{k + q}) - E_F \big] d\vec{k},
 \end{equation}
 %
-and its value on the plane containing $\mathrm{[001]}$ and $\mathrm{[110]}$ are plotted in Figure \ref{fig:nesting_2d}. The midpoint of each facet where $\nesting$ peaks in intensity corresponds to the zone center. As the distance from $\Gamma$ is increased $\nesting$ decreases. The rate of decay depends along the crystallographic orientation. The slow decay along $\Delta$ is attributed to the $d_{eg}$ star-like states which exhibit prongs along $\mathrm{[001]}$ directions. 
-
-Between $XK$ the $\nesting$ displays a pronounced increase above background. 
-
-Along the Brillouin zone boundary, 
-
-As the long-wavelenth limit is approached, $\nesting$ diverges 
-
-
+and its value on the plane containing $\mathrm{[001]}$ and $\mathrm{[110]}$ is plotted in Figure \ref{fig:nesting_2d}; the Brillouin-zone boundary point $\mathrm{X}$ is positioned at the center of the image and $\Gamma$ zone-center points are located midway along each edge. $\nesting$ peaks near the $\Gamma$ and decreases into lower symmetry regions. The rate of decrease depends on crystallographic orientation and is, for example, slower along $\Delta$ due to the $d_{eg}$ star-like states which exhibit prongs along $\mathrm{[001]}$ directions. At the $\overline{XK}$ zone boundary, $\nesting$ rises  prominently above the low symmetry background as a result of nesting connecting $\vec{q}$ connecting $d_{t2g}$ states. 
 %
 \begin{figure}[h]
 \includegraphics[width=0.47\textwidth]{Figure_3_nesting_2d.pdf}
-\caption[LRC circuit response.]{\label{fig:nesting_2d} }
+\caption{\label{fig:nesting_2d} NaCl-structure VN Fermi surface nesting function showing the phase space available for phonon-assisted scattering on the $\Sigma-\Delta$ plane.}
 \end{figure}
 
-Figure \ref{fig:nesting_1d} shows the nesting function along high symmetry reciprocal space directions.
+Figure \ref{fig:nesting_1d}(a) shows a $\nesting$ line profile along $\Delta \equiv \overline{\Gamma X}$ and $\Sigma \equiv \overline{\Gamma K}$ paths, as defined in Figure \ref{fig:nesting_2d}, as well as along $L\equiv\overline{\Gamma L}$. Plotted in panel \ref{fig:nesting_1d}(b) is the phonon dispersion of NaCl-structure VN at 150 K. Phonon energy $\hbar\omega$ vs. momentum $\vec{q}$ relations are obtained by identifying interatomic Born von Karman force constants which best reproduce \emph{ab initio} molecular dynamics displacement patterns and resulting quantum-mechanically-computed Hellman-Feynman forces while satisfying crystallographic symmetry inter-dependancies and acoustic sum rules. Between $\overline{KX}$, VN phonon energies are characterized by imaginary frequencies (represented graphically as negative values), indicating that the restoring force experienced by vibrating atoms are insufficient to return the atoms to their equilibrium positions and, as result, become trapped in local energy minima giving rise to a structural distortion, in agreement with the appearance of forbidden x-ray diffraction reflections below 250 K. That the reciprocal-space region containing the imaginary vibrational modes coincides with the elevated nesting values suggests that $d_{t2g}$ electrons, transitioning between Fermi-surface sheets strongly screen interatomic forces governing atomic motion and produce an effective atomic potential energy landscape which, upon cooling, develops negative a curvature near the high-temperature equilibrium configuration.
+%
 \begin{figure}[h]
 \includegraphics[width=0.47\textwidth]{Figure_4_nesting_1d.pdf}
-\caption[LRC circuit response.]{\label{fig:nesting_1d} }
+\caption{\label{fig:nesting_1d} (a) NaCl-structure VN Fermi surface nesting function and 150 K phonon energies along high symmetry reciprocal space directions.}
 \end{figure}
+%
+
 
 
 
@@ -152,10 +147,13 @@ Figure \ref{fig:nesting_1d} shows the nesting function along high symmetry recip
 
 \section{Hamiltonian}
 
-a minimal tight binding basis is employed. 
+A minimal basis spanning orbitals
+%
 \begin{equation}
 \big[ p_{x}, p_{y}, p_{z}, d_{xz}, d_{xy}, d_{yz}, d_{x^2-y^2}, d_{z^2}	\big]
 \end{equation}
+%
+is employed for defining the tight binding Hamiltonian $\ham$. In real space, 
 
 
 
@@ -173,7 +171,7 @@ $\bondvec \equiv \vec{r}_i - \vec{r}_j$ represents the bond between primitive at
 
 Character representation theory (Appendix \ref{appendix:groups}) is employed to identify symmetry-adapted matrix-elements describing on-site orbital energies. 
 
-On-site energies are subject to the full point group symmetry of the NaCl lattice. In descending from the three-dimensional orthogonal group $O(3)$ to the crystallographic point group $O_h$, the three-fold degeneracy of $p$ orbitals is preserved as $T_{1u}$ a triply-degenerate irreducible representation. As a result, matrix elements between $p$ orbitals transform as $T_{1u} \otimes T_{1u} = [A_{1g} \oplus E_g \oplus T_{2g}] \oplus \{T_{1g}\}$, with terms in square and curly brackets corresponding to symmetric and antisymmetric components.\footnote{In the $p$ basis, $T_{1g}$ and $T_{2g}$ are three-dimensional matrices with nonzero elements at off-diagonal positions; $E_g$ is a traceless matrix with nonzero elements at diagonal positions; and $A_{1g}$ is the identity matrix. Basis functions for $T_{1g}$, $T_{2g}$, $E_g$, and $A_{1g}$ include $\ket{x}\bra{y} - \ket{y}\bra{x}$, $\ket{x}\bra{y} + \ket{y}\bra{x}$, $\ket{x}\bra{x} + e^{i2\pi/3}\ket{y}\bra{y} + e^{-i2\pi/3}\ket{z}\bra{z}$, and $\ket{x}\bra{x} + \ket{y}\bra{y} + \ket{z}\bra{z}$, respectively.} The \emph{sole} occurrence of identity irreducible representation $A_{1g}$ in the decomposition signifies the existence \emph{one} symmetry-adapted tight-binding parameter, which is identified as the energy of the triply-degenerate $p$ states
+On-site energies in NaCl-structure compounds are subject to the full point group symmetry of the lattice. In descending from the three-dimensional orthogonal group $O(3)$ to the crystallographic point group $O_h$, the three-fold degeneracy of $p$ orbitals is preserved as $T_{1u}$ a triply-degenerate irreducible representation. As a result, matrix elements between $p$ orbitals transform as $T_{1u} \otimes T_{1u} = [A_{1g} \oplus E_g \oplus T_{2g}] \oplus \{T_{1g}\}$, with terms in square and curly brackets corresponding to symmetric and antisymmetric components.\footnote{In the $p$ basis, $T_{1g}$ and $T_{2g}$ are three-dimensional matrices with nonzero elements at off-diagonal positions; $E_g$ is a traceless matrix with nonzero elements at diagonal positions; and $A_{1g}$ is the identity matrix. Basis functions for $T_{1g}$, $T_{2g}$, $E_g$, and $A_{1g}$ include $\ket{x}\bra{y} - \ket{y}\bra{x}$, $\ket{x}\bra{y} + \ket{y}\bra{x}$, $\ket{x}\bra{x} + e^{i2\pi/3}\ket{y}\bra{y} + e^{-i2\pi/3}\ket{z}\bra{z}$, and $\ket{x}\bra{x} + \ket{y}\bra{y} + \ket{z}\bra{z}$, respectively.} The \emph{sole} occurrence of identity irreducible representation $A_{1g}$ in the decomposition signifies the existence \emph{one} symmetry-adapted tight-binding parameter, which is identified as the energy of the triply-degenerate $p$ states
 %
 \begin{align}
 \begin{split}
@@ -619,11 +617,10 @@ c_{yz}e_{1}           & \multirow{2}{*}{$-s_{xy}e_{2}$} & \multirow{2}{*}{$-s_{x
 
 
 
-%
-%
-% FULL MATRICES
-%
-%
+% ---------------------------------------------------------------------------------
+% ---------------------------------------------------------------------------------
+% ---------------------------------------------------------------------------------
+% FULL TIGHT BINDING MATRICES
 %
 %\begin{equation}
 %\label{eq:0pp}
@@ -685,4 +682,51 @@ c_{yz}e_{1}           & \multirow{2}{*}{$-s_{xy}e_{2}$} & \multirow{2}{*}{$-s_{x
 %                                 &                                         &                                        &                                                    & +(c_{xy}+c_{xz}+c_{yz})d_{6}\\
 %\end{bmatrix}
 %\end{equation}
+
+
+% ---------------------------------------------------------------------------------
+% ---------------------------------------------------------------------------------
+% ---------------------------------------------------------------------------------
+% NOTES ON TIGHT BINDING PARAMETERS
+%
+%hilbert space ( remember that for the paper, 6 and 7 are interchanged )
+%
+%d_eg has two states (higher in energy) ;  d_t2g has three states (lower in energy)
+%        
+%   Γ               [001]  [010]  [100]  [011]  [110] <-- k point used to evaluate hamiltonian 
+%1  p       x         x                                  
+%2  p       y         y                                  
+%3  p       z         z                                  
+%4  d t2g   xz       ...     y     ...    ...    ...       
+%5  d t2g   xy              ...    ...    ...     z        
+%7  d t2g   yz       ...    ...     x      x     ...      
+%6  d eg    x^2-y^2                                         
+%8  d eg    z^2                                 
+%
+%... = indistinguishable states
+%
+%eg      dx2-y2 dz2 imposible to distinguish between both states
+%t2g     dxz dyz dxy 
+%
+%p_{x}, p_{y}, p_{z}, d_{xz}, d_{xy},  d_{x^2-y^2}, d_{yz}, d_{z^2} %%  MATLAB ORDER
+%
+%             p_{x},    p_{y},       p_{z}
+%d_{xz}      [  c11,        0,           0]
+%d_{xy}      [    0,        0,           0]
+%d_{x^2-y^2} [    0,        0,         c12]
+%d_{yz}      [    0,     -c11,           0]
+%d_{z^2}     [    0,        0, 3^(1/2)*c12]
+%
+%               d_{xz}, d_{xy},     d_{x^2-y^2},       d_{yz},          d_{z^2}
+%d_{xz}       [    d12,    d11,               0,            0,               0]
+%d_{xy}       [    d11,    d12,               0,            0,               0]
+%d_{x^2-y^2}  [      0,      0,       d14 + d16,          d15, (3^(1/2)*d14)/2]
+%d_{yz}       [      0,      0,             d15,          d13,    -3^(1/2)*d15]
+%d_{z^2}      [      0,      0, (3^(1/2)*d14)/2, -3^(1/2)*d15,             d16]     
+% 
+%
+%      x    y     z
+%x  [ e11,   0,   0]
+%y  [   0, e13, e12]
+%z  [   0, e12, e13]
 

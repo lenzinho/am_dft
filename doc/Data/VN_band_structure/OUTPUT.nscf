@@ -1,0 +1,36 @@
+ running on    1 total cores
+ distrk:  each k-point on    1 cores,    1 groups
+ distr:  one band on    1 cores,    1 groups
+ using from now: INCAR     
+ vasp.5.4.1 24Jun15 (build Jan 21 2017 23:00:56) complex                        
+  
+ POSCAR found type information on POSCAR  V  N 
+ POSCAR found :  2 types and       2 ions
+
+ ----------------------------------------------------------------------------- 
+|                                                                             |
+|  ADVICE TO THIS USER RUNNING 'VASP/VAMP'   (HEAR YOUR MASTER'S VOICE ...):  |
+|                                                                             |
+|      You enforced a specific xc-type in the INCAR file,                     |
+|      a different type was found on the POTCAR file                          |
+|          I HOPE YOU KNOW, WHAT YOU ARE  DOING                               |
+|                                                                             |
+ ----------------------------------------------------------------------------- 
+
+ LDA part: xc-table for Pade appr. of Perdew
+ WARNING: stress and forces are not correct
+ POSCAR, INCAR and KPOINTS ok, starting setup
+ FFT: planning ...
+ WAVECAR not read
+ charge-density read from file: unknown                                 
+ entering main loop
+       N       E                     dE             d eps       ncg     rms          rms(c)
+RMM:   1    -0.589934629416E+02   -0.58993E+02   -0.48267E+03  8000   0.280E+02
+RMM:   2    -0.147530407131E+02    0.44240E+02   -0.24189E+02  8000   0.570E+01
+RMM:   3    -0.166013372337E+02   -0.18483E+01   -0.72716E+00  8000   0.117E+01
+RMM:   4    -0.166689856828E+02   -0.67648E-01   -0.44635E-01 20037   0.292E+00
+RMM:   5    -0.166706281345E+02   -0.16425E-02   -0.10500E-02 24246   0.444E-01
+RMM:   6    -0.166706881299E+02   -0.59995E-04   -0.40167E-04 23128   0.805E-02
+RMM:   7    -0.166706911525E+02   -0.30226E-05   -0.17477E-05 23858   0.155E-02
+RMM:   8    -0.166706912841E+02   -0.13164E-06   -0.89156E-07 19295   0.317E-03
+   1 F= -.16670691E+02 E0= -.16669993E+02  d E =-.139688E-02
