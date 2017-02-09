@@ -1,6 +1,7 @@
 #:include "fypp_macros.fpp"
 module am_mkl
-    
+
+    use lapack95
     use am_constants
     
     integer , parameter :: lwmax = 1000  ! maximum workspace size
@@ -195,35 +196,35 @@ contains
 
     ! rank array in increasing order
     
-    ! function       rank(A,flags) result(inds)
-    !     !
-    !     implicit none
-    !     !
-    !     real(dp), intent(in) :: A(:)
-    !     character(*), intent(in), optional :: flags
-    !     real(dp), allocatable :: d(:)
-    !     integer , allocatable :: inds(:)
-    !     character(1) :: id
-    !     integer :: info
-    !     !
-    !     ! copy input 
-    !     allocate(d,source=A)
-    !     ID = 'I'
-    !     if (present(flags)) then
-    !         if     (index(flags,'ascend')) then 
-    !             id = 'I'
-    !         elseif (index(flags,'descend')) then
-    !             id = 'D'
-    !         else
-    !             stop 'ERROR [sort]: flags /= I or D'
-    !         endif
-    !     endif
-    !     !
-    !     allocate(inds,source=[1:size(d)])
-    !     !
-    !     call dlasrt2( id, size(d), d, inds, info )
-    !     !
-    ! end function   rank 
+    function       rank(A,flags) result(inds)
+        !
+        implicit none
+        !
+        real(dp), intent(in) :: A(:)
+        character(*), intent(in), optional :: flags
+        real(dp), allocatable :: d(:)
+        integer , allocatable :: inds(:)
+        character(1) :: id
+        integer :: info
+        !
+        ! copy input 
+        allocate(d,source=A)
+        ID = 'I'
+        if (present(flags)) then
+            if     (index(flags,'ascend')) then 
+                id = 'I'
+            elseif (index(flags,'descend')) then
+                id = 'D'
+            else
+                stop 'ERROR [sort]: flags /= I or D'
+            endif
+        endif
+        !
+        allocate(inds,source=[1:size(d)])
+        !
+        call dlasrt2( id, size(d), d, inds, info )
+        !
+    end function   rank 
     
     ! get determinant by LU facorization
 

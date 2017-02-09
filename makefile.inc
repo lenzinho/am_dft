@@ -1,7 +1,7 @@
 MAKE      = make
 FC        = mpifort
 OPTS      = -DCOLOR 
-MKL       = -mkl
+MKL       = -mkl -lpthread -ldl -lmkl_lapack95_lp64 -lmkl_scalapack_lp64 -lmkl_blacs_mpich_lp64
 FFLAGS    = $(MKL) -fpp -O3 -implicitnone -assume realloc_lhs -assume byterecl
 FYPPOPTS  = -DCOLOR=1
 AMLIB     = libam.a
