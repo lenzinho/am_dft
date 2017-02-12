@@ -1249,7 +1249,7 @@ contains
                 write(*,'(5x,i2,6f16.10)') i,def_mat(1,1,i),def_mat(2,2,i),def_mat(3,3,i),def_mat(2,3,i),def_mat(1,3,i),def_mat(1,2,i)
             enddo
         endif
-    end function   apply_elastic_deformation
+        end function   apply_elastic_deformation
 
 end module am_unit_cell
 

@@ -766,7 +766,7 @@ contains
     ! matrix element stuff
 
     subroutine     set_matrix_element(tb,V,flags)
-        ! flags = seq/rand/zero/selector/decompress
+        ! flags = seq/zero/selector/decompress
         implicit none
         !
         class(am_class_tightbinding)      , intent(inout)        :: tb
@@ -777,11 +777,6 @@ contains
         ! set irreducible matrix elements
         if      (index(flags,   'seq').ne.0) then
             tb%V = [1:tb%nVs]
-        elseif  (index(flags,  'rand').ne.0) then
-            stop 'ERROR [set_matrix_element]: rand does not seem to be working here'
-            do i = 1, tb%nVs
-                tb%V(i) = rand()
-            enddo
         elseif  (index(flags,  'zero').ne.0) then
             tb%V = 0
         elseif  (present(V)                ) then
