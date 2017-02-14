@@ -420,21 +420,22 @@ contains
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*,iostat=iostat) opts%verbosity
-                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbvsk]: iostat /= 0'
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbbuild]: iostat /= 0'
                 case('-prec')
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*,iostat=iostat) opts%prec
-                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbvsk]: iostat /= 0'
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbbuild]: iostat /= 0'
                 case('-pair_cutoff')
                     i=i+1
                     call get_command_argument(i,argument)
                     read(argument,*,iostat=iostat) opts%pair_cutoff
-                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbvsk]: iostat /= 0'
+                    if (iostat.ne.0) stop 'ERROR [parse_command_line_tbbuild]: iostat /= 0'
                 case default
-                    stop 'ERROR [parse_command_line_tbvsk]: unrecognized option'
+                    stop 'ERROR [parse_command_line_tbbuild]: unrecognized option'
             end select
         enddo
+        if (abs(opts%pair_cutoff).lt.opts%prec) stop 'ERROR [parse_command_line_tbbuild]: pair cutoff must be set.'
     end subroutine parse_command_line_tbbuild
 
     subroutine     parse_command_line_tbforce(opts)

@@ -137,6 +137,10 @@ module am_matlab
         module procedure d_fourrank, i_fourrank
     end interface ! fourrank
 
+    interface rank
+        module procedure d_rank, i_rank
+    end interface ! rank
+
     interface rref
         module procedure :: z_rref, d_rref
     end interface ! rref
@@ -2358,6 +2362,224 @@ module am_matlab
         endif
         !
     end function  i_fourrank
+
+    pure function d_rank(v) result(ind)
+      !
+      ! based on dlasrt2
+      !
+      implicit none
+      !
+      real(dp), intent(in) :: v(:)
+      real(dp), allocatable :: d(:)
+      integer, allocatable :: ind(:)
+      integer :: select, endd, i, j, start, stkpnt, tmpind, stack(2,32), n
+      real(dp) :: d1, d2, d3, dmnmx, tmp
+      !
+      select = 20
+      !
+      n = size(v)
+      !
+      allocate(d,source=v)
+      !
+      allocate(ind,source=[1:n])
+      !
+      if (n.le.1) return
+      !
+      stkpnt = 1
+      stack(1,1) = 1
+      stack(2,1) = n
+      !
+      do
+         start = stack(1, stkpnt)
+         endd = stack(2, stkpnt)
+         stkpnt = stkpnt - 1
+         if(endd-start.gt.0) then
+            do i = start + 1, endd
+               do j = i, start + 1, -1
+                  if(d(j).lt.d(j-1)) then
+                     dmnmx = d(j)
+                     d(j) = d(j-1)
+                     d(j-1) = dmnmx
+                     tmpind = ind(j)
+                     ind(j) = ind(j-1)
+                     ind(j-1) = tmpind
+                  else
+                     exit
+                  end if
+               enddo
+            enddo
+         else if(endd-start.gt.select) then
+            d1 = d(start)
+            d2 = d(endd)
+            i = (start+endd) / 2
+            d3 = d(i)
+            if(d1.lt.d2) then
+               if(d3.lt.d1) then
+                  dmnmx = d1
+               else if(d3.lt.d2) then
+                  dmnmx = d3
+               else
+                  dmnmx = d2
+               end if
+            else
+               if(d3.lt.d2) then
+                  dmnmx = d2
+               else if(d3.lt.d1) then
+                  dmnmx = d3
+               else
+                  dmnmx = d1
+               end if
+            end if
+            i = start - 1
+            j = endd + 1
+            do
+               do
+                  j = j - 1
+                  if (.not.(d(j).gt.dmnmx)) exit
+               enddo
+               do
+                  i = i + 1
+                  if (.not.(d(i).lt.dmnmx)) exit
+               enddo
+               if(i.gt.j) then
+                  exit   
+               else 
+                  tmp = d(i)
+                  d(i) = d(j)
+                  d(j) = tmp
+                  tmpind = ind(j)
+                  ind(j) = ind(i)
+                  ind(i) = tmpind
+               end if
+            enddo
+            if(j-start.gt.endd-j-1) then
+               stkpnt = stkpnt + 1
+               stack(1, stkpnt) = start
+               stack(2, stkpnt) = j
+               stkpnt = stkpnt + 1
+               stack(1, stkpnt) = j + 1
+               stack(2, stkpnt) = endd
+            else
+               stkpnt = stkpnt + 1
+               stack(1, stkpnt) = j + 1
+               stack(2, stkpnt) = endd
+               stkpnt = stkpnt + 1
+               stack(1, stkpnt) = start
+               stack(2, stkpnt) = j
+            end if
+         end if
+         if (.not.(stkpnt.gt.0)) exit
+      enddo
+    end function  d_rank
+
+    pure function i_rank(v) result(ind)
+      !
+      ! based on dlasrt2
+      !
+      implicit none
+      !
+      integer, intent(in) :: v(:)
+      integer, allocatable :: d(:)
+      integer, allocatable :: ind(:)
+      integer :: select, endd, i, j, start, stkpnt, tmpind, stack(2,32), n
+      integer :: d1, d2, d3, dmnmx, tmp
+      !
+      select = 20
+      !
+      n = size(v)
+      !
+      allocate(d,source=v)
+      !
+      allocate(ind,source=[1:n])
+      !
+      if (n.le.1) return
+      !
+      stkpnt = 1
+      stack(1,1) = 1
+      stack(2,1) = n
+      !
+      do
+         start = stack(1, stkpnt)
+         endd = stack(2, stkpnt)
+         stkpnt = stkpnt - 1
+         if(endd-start.gt.0) then
+            do i = start + 1, endd
+               do j = i, start + 1, -1
+                  if(d(j).lt.d(j-1)) then
+                     dmnmx = d(j)
+                     d(j) = d(j-1)
+                     d(j-1) = dmnmx
+                     tmpind = ind(j)
+                     ind(j) = ind(j-1)
+                     ind(j-1) = tmpind
+                  else
+                     exit
+                  end if
+               enddo
+            enddo
+         else if(endd-start.gt.select) then
+            d1 = d(start)
+            d2 = d(endd)
+            i = (start+endd) / 2
+            d3 = d(i)
+            if(d1.lt.d2) then
+               if(d3.lt.d1) then
+                  dmnmx = d1
+               else if(d3.lt.d2) then
+                  dmnmx = d3
+               else
+                  dmnmx = d2
+               end if
+            else
+               if(d3.lt.d2) then
+                  dmnmx = d2
+               else if(d3.lt.d1) then
+                  dmnmx = d3
+               else
+                  dmnmx = d1
+               end if
+            end if
+            i = start - 1
+            j = endd + 1
+            do
+               do
+                  j = j - 1
+                  if (.not.(d(j).gt.dmnmx)) exit
+               enddo
+               do
+                  i = i + 1
+                  if (.not.(d(i).lt.dmnmx)) exit
+               enddo
+               if(i.gt.j) then
+                  exit   
+               else 
+                  tmp = d(i)
+                  d(i) = d(j)
+                  d(j) = tmp
+                  tmpind = ind(j)
+                  ind(j) = ind(i)
+                  ind(i) = tmpind
+               end if
+            enddo
+            if(j-start.gt.endd-j-1) then
+               stkpnt = stkpnt + 1
+               stack(1, stkpnt) = start
+               stack(2, stkpnt) = j
+               stkpnt = stkpnt + 1
+               stack(1, stkpnt) = j + 1
+               stack(2, stkpnt) = endd
+            else
+               stkpnt = stkpnt + 1
+               stack(1, stkpnt) = j + 1
+               stack(2, stkpnt) = endd
+               stkpnt = stkpnt + 1
+               stack(1, stkpnt) = start
+               stack(2, stkpnt) = j
+            end if
+         end if
+         if (.not.(stkpnt.gt.0)) exit
+      enddo
+    end function  i_rank
 
     ! cumulative sum / product
 

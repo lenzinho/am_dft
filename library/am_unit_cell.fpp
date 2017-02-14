@@ -34,12 +34,6 @@ module am_unit_cell
         procedure :: get_primitive => get_primitive_cell
     end type am_class_prim_cell
 
-    type, public, extends(am_class_unit_cell) :: am_class_conv_cell
-        real(dp) :: centering(3,3) ! centering matrix
-        contains
-        ! procedure :: get_conventional => get_conventional_cell
-    end type am_class_conv_cell
-
     ! irreducible
 
     type, public, extends(am_class_prim_cell) :: am_class_irre_cell
@@ -591,7 +585,7 @@ contains
 
     ! conventional cell
 
-    function       get_lattice_id(bas,prec) result(lattice_id)
+    function        get_lattice_id(bas,prec) result(lattice_id)
         ! Symmetry and Condensed Matter Physics: A Computational Approach. 1 edition. Cambridge,
         ! UK; New York: Cambridge University Press, 2008. p 282, table 10.3; p 288, table 10.4
         !
@@ -704,9 +698,9 @@ contains
         end select
         if (lattice_id.eq.0) stop 'ERROR [lattice_type]: unkown lattice type'
         !
-    end function   get_lattice_id
+    end function    get_lattice_id
 
-    function       get_lattice_type(lattice_id) result(lattice_type)
+    function        get_lattice_type(lattice_id) result(lattice_type)
         !
         implicit none
         !
@@ -732,9 +726,9 @@ contains
             stop 'ERROR [get_lattice_type]: Unknown lattice_id'
         end select
         !
-    end function   get_lattice_type
+    end function    get_lattice_type
 
-    function       get_bravais_id(lattice_id) result(bravais_id)
+    function        get_bravais_id(lattice_id) result(bravais_id)
         !
         implicit none
         !
@@ -752,9 +746,9 @@ contains
         case default
             stop 'ERROR [get_bravais_id]: Unknown lattice_id'
         end select
-    end function   get_bravais_id
+    end function    get_bravais_id
 
-    pure function  get_celldm(bas) result(celldm)
+    pure function   get_celldm(bas) result(celldm)
         !
         implicit none
         !
@@ -774,7 +768,7 @@ contains
         celldm(5) = acos(M(1,3)/celldm(1)*celldm(3))*rad2deg
         celldm(6) = acos(M(1,2)/celldm(1)*celldm(2))*rad2deg
         !
-    end function   get_celldm
+    end function    get_celldm
 
     ! irreducible cell
 

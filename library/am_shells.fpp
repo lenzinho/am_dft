@@ -57,6 +57,7 @@ contains
         !
         ! print title
         if (opts%verbosity.ge.1) call print_title('Primitive neighbor pairs')
+
         ! get maxmimum number of pair shells
         nshells=0
         do i = 1, pc%natoms
@@ -71,7 +72,7 @@ contains
         ! loop
         k = 0 ! shell index
         do i = 1, pc%natoms
-          	! create sphere containing atoms a maximum distance of a choosen atom (atoms are translated to as close to sphere center as possible)
+            ! create sphere containing atoms a maximum distance of a choosen atom (atoms are translated to as close to sphere center as possible)
             sphere = create_sphere(pc=pc, sphere_center=pc%tau_cart(:,i), pair_cutoff=pair_cutoff, opts=opts )
             ! identify atoms in the whole sphere that can be mapped onto each other by point symmetry operations and return the id of the pair for each atom (including the center atom)
             shell_id = identify_shells(sphere=sphere,pg=pg)
@@ -174,7 +175,7 @@ contains
                 if (i.eq.pp%shell(k)%m) then
                     write(*,'(5x)'    ,advance='no')
                     write(*,'(i5)'    ,advance='no') k
-                    write(*,'(a6)'    ,advance='no') trim(atm_symb(pc%Z( pp%shell(k)%i )))//'-'//trim(atm_symb(pc%Z( pp%shell(k)%j )))
+                    write(*,'(a3,a1,a2)'    ,advance='no') trim(atm_symb(pc%Z( pp%shell(k)%i ))), '-', trim(atm_symb(pc%Z( pp%shell(k)%j )))
                     write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%i))//'-'//trim(int2char(pp%shell(k)%j))
                     write(*,'(a6)'    ,advance='no') trim(int2char(pp%shell(k)%m))//'-'//trim(int2char(pp%shell(k)%n))
                     write(*,'(i5)'    ,advance='no') pp%shell(k)%natoms
@@ -182,9 +183,9 @@ contains
                     write(*,'(a8)'    ,advance='no') trim(get_pg_name(get_pg_code( pp%shell(k)%rotg%ps_id )))
                     write(*,'(a8)'    ,advance='no') trim(get_pg_name(get_pg_code( pp%shell(k)%revg%ps_id )))
                     write(*,'(f10.3)' ,advance='no') norm2(pp%shell(k)%tau_cart(1:3,1))
-                    write(*,'(3f10.3)',advance='no') 	   pp%shell(k)%tau_cart(1:3,1)
+                    write(*,'(3f10.3)',advance='no')       pp%shell(k)%tau_cart(1:3,1)
                     write(*,'(f10.3)' ,advance='no') norm2(pp%shell(k)%tau_frac(1:3,1))
-                    write(*,'(3f10.3)',advance='no') 	   pp%shell(k)%tau_frac(1:3,1)
+                    write(*,'(3f10.3)',advance='no')       pp%shell(k)%tau_frac(1:3,1)
                     write(*,'(l8)'    ,advance='no') pp%shell(k)%isonsite
                     write(*,*)
                 endif
@@ -211,7 +212,7 @@ contains
             real(dp), intent(in)  :: pair_cutoff
             integer , allocatable :: atoms_inside(:)
             type(am_class_options) :: notalk ! supress verbosity
-        	integer , allocatable :: ind(:)
+            integer , allocatable :: ind(:)
             real(dp) :: bscfp(3,3), inv_bscfp(3,3)
             real(dp) :: grid_points(3,27) ! voronoi points
             logical  :: check_center
@@ -221,9 +222,12 @@ contains
             notalk = opts 
             notalk%verbosity = 0
             ! create sphere instance based on a supercell
+            if (abs(pair_cutoff).lt.opts%prec) stop 'ERROR [create_sphere]: pair_cutoff is zero.'
             bscfp     = eye(3) * ceiling(2.0_dp*pair_cutoff/minval(norm2(pc%bas(:,:),1)))
             inv_bscfp = inv(bscfp)
             call sphere%get_supercell(uc=pc, bscfp=bscfp, opts=notalk)
+            ! check that sphere has atoms
+            if (sphere%natoms.eq.0) stop 'ERROR [create_sphere]: Sphere has no atoms.'
             ! generate voronoi points [cart]
             grid_points = meshgrid([-1:1],[-1:1],[-1:1])
             grid_points = matmul(sphere%bas,grid_points)
@@ -238,9 +242,9 @@ contains
                 ! translate atoms to be as close to the origin as possible
                 sphere%tau_cart(:,i) = reduce_to_wigner_seitz(tau=sphere%tau_cart(:,i), grid_points=grid_points)
                 ! also apply same tranformations to [frac], shift to origin
-				sphere%tau_frac(:,i) = sphere%tau_frac(:,i) - matmul(matmul(inv_bscfp,pc%recbas),sphere_center)
-				! also apply translation to get [frac] in the range [0,1)
-            	sphere%tau_frac(:,i) = modulo(sphere%tau_frac(:,i) + 0.5_dp + opts%prec, 1.0_dp) - opts%prec - 0.5_dp
+                sphere%tau_frac(:,i) = sphere%tau_frac(:,i) - matmul(matmul(inv_bscfp,pc%recbas),sphere_center)
+                ! also apply translation to get [frac] in the range [0,1)
+                sphere%tau_frac(:,i) = modulo(sphere%tau_frac(:,i) + 0.5_dp + opts%prec, 1.0_dp) - opts%prec - 0.5_dp
                 ! take note of points within the predetermined pair cutoff radius [cart.]
                 if (norm2(sphere%tau_cart(:,i)).le.pair_cutoff) then
                     j=j+1
@@ -257,7 +261,7 @@ contains
             sphere%tau_frac = matmul(bscfp,sphere%tau_frac)
             ! correct rounding error
             where (abs(sphere%tau_cart).lt.opts%prec) sphere%tau_cart = 0
-        	where (abs(sphere%tau_frac).lt.opts%prec) sphere%tau_frac = 0
+            where (abs(sphere%tau_frac).lt.opts%prec) sphere%tau_frac = 0
             ! filter atoms outside sphere (keep ones within cutoff radius)
             call sphere%filter(ind=atoms_inside(1:j))
             ! sort atoms by increasing distance from [0,0,0]
@@ -270,7 +274,7 @@ contains
                     exit
                 endif
             enddo
-            if (check_center.eq..false.) stop 'No atom [frac] at the origin.'
+            if (check_center.eq..false.) stop 'ERROR [create_sphere]: No atom [frac] at the origin.'
             !
             do i = 1,sphere%natoms
                 if (isequal(sphere%tau_frac(:,i),real([0,0,0],dp))) then
@@ -278,7 +282,7 @@ contains
                     exit
                 endif
             enddo
-            if (check_center.eq..false.) stop 'No atom [cart] at the origin.'
+            if (check_center.eq..false.) stop 'ERROR [create_sphere]: No atom [cart] at the origin.'
             !
         end function   create_sphere
         function       identify_shells(sphere,pg) result(shell_id)
@@ -308,11 +312,11 @@ contains
                 endif
             enddo
             !  Permutation matrix for Si (first atom is in a shell by itself, second three atoms are in a shell by themselves):
-			!  atom 1 [ 0.00000, 0.00000, 0.00000]:  1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1
-			!  atom 2 [ 1.35750, 1.35750, 1.35750]:  2   4   3   5   0   0   0   0   0   0   5   5   3   2   4   2   4   3   0   0   0   0   0   0   0   0   0   0   5   2   2   4   2   3   0   0   0   0   0   0   0   0   5   5   4   3   4   3
-			!  atom 3 [-1.35750,-1.35750, 1.35750]:  3   5   2   4   0   0   0   0   0   0   2   3   5   5   3   4   2   4   0   0   0   0   0   0   0   0   0   0   3   5   3   3   4   2   0   0   0   0   0   0   0   0   4   2   5   5   2   4
-			!  atom 4 [ 1.35750,-1.35750,-1.35750]:  4   2   5   3   0   0   0   0   0   0   4   2   4   3   5   5   3   2   0   0   0   0   0   0   0   0   0   0   4   4   5   2   3   4   0   0   0   0   0   0   0   0   2   3   3   2   5   5
-			!  atom 5 [-1.35750, 1.35750,-1.35750]:  5   3   4   2   0   0   0   0   0   0   3   4   2   4   2   3   5   5   0   0   0   0   0   0   0   0   0   0   2   3   4   5   5   5   0   0   0   0   0   0   0   0   3   4   2   4   3   2
+            !  atom 1 [ 0.00000, 0.00000, 0.00000]:  1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1   1
+            !  atom 2 [ 1.35750, 1.35750, 1.35750]:  2   4   3   5   0   0   0   0   0   0   5   5   3   2   4   2   4   3   0   0   0   0   0   0   0   0   0   0   5   2   2   4   2   3   0   0   0   0   0   0   0   0   5   5   4   3   4   3
+            !  atom 3 [-1.35750,-1.35750, 1.35750]:  3   5   2   4   0   0   0   0   0   0   2   3   5   5   3   4   2   4   0   0   0   0   0   0   0   0   0   0   3   5   3   3   4   2   0   0   0   0   0   0   0   0   4   2   5   5   2   4
+            !  atom 4 [ 1.35750,-1.35750,-1.35750]:  4   2   5   3   0   0   0   0   0   0   4   2   4   3   5   5   3   2   0   0   0   0   0   0   0   0   0   0   4   4   5   2   3   4   0   0   0   0   0   0   0   0   2   3   3   2   5   5
+            !  atom 5 [-1.35750, 1.35750,-1.35750]:  5   3   4   2   0   0   0   0   0   0   3   4   2   4   2   3   5   5   0   0   0   0   0   0   0   0   0   0   2   3   4   5   5   5   0   0   0   0   0   0   0   0   3   4   2   4   3   2
         end function   identify_shells
     end subroutine get_primitive_shell
 
