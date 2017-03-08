@@ -30,19 +30,25 @@ tiny = am_lib.tiny;
 
 cutoff=5;
 fname='POSCAR';
-fname='POSCAR.BMg2';
-% fname='outfile.supercell';
-fname='infile.supercell';
+% fname='POSCAR.BMg2';
+fname='outfile.supercell';
+% fname='infile.supercell';
 flags='';
 
 % get cells
 [uc,pc,ic] = get_cells(fname,flags);
 
-[bvk,pp] = get_bvk(cutoff,pc,uc,'infile.force_position.4.00-300',flags);
+% get irreducible shells
+[ip,pp] = get_pairs(pc,uc,cutoff); 
 
-bzp = get_bz_path(pc,'fcc');
+% force constant model
+% bvk = get_bvk_model(pc,pp);
 
-plot_bvk_dispersion(bvk,bzp);
+% [bvk,pp] = get_bvk(cutoff,pc,uc,'infile.force_position.4.00-300',flags);
+
+% bzp = get_bz_path(pc,'fcc');
+
+% plot_bvk_dispersion(bvk,bzp);
 %%
 plot_bvk_dispersion(bvk,bzp,pp,uc) % MATCHES SYMBOLIC VERSION
 
