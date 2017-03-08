@@ -31,7 +31,7 @@ tiny = am_lib.tiny;
 cutoff=5;
 fname='POSCAR';
 % fname='POSCAR.BMg2';
-fname='outfile.supercell';
+% fname='outfile.supercell';
 % fname='infile.supercell';
 flags='';
 
@@ -39,7 +39,7 @@ flags='';
 [uc,pc,ic] = get_cells(fname,flags);
 
 % get irreducible shells
-[ip,pp] = get_pairs(pc,uc,cutoff); 
+[pp]         = get_pairs(pc,uc,cutoff)
 
 % force constant model
 % bvk = get_bvk_model(pc,pp);
