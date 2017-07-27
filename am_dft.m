@@ -323,9 +323,9 @@ classdef am_dft
             X_ = @(tau,species) sortc_([species;mod_(tau)]); X = X_(pc.tau(:,:,1),pc.species);
 
             % get vectors that preserve periodic boundary conditions
-            N=1; T=mod_(pc.tau(:,pc.species==pc.species(N))-pc.tau(:,N)); nTs=size(T,2); T_ck=false(1,nTs);
-            for j = 1:nTs; T_ck(j) = check3_( X_(pc.tau(1:3,:,1)-T(:,j),pc.species)-X ); end
-            T=[T(:,T_ck),eye(3)]; T=T(:,rankc_(normc_(T))); nTs = size(T,2);
+            N=1; V=mod_(pc.tau(:,pc.species==pc.species(N))-pc.tau(:,N)); nVs=size(V,2); T_ck=false(1,nVs);
+            for j = 1:nVs; T_ck(j) = check3_( X_(pc.tau(1:3,:,1)-V(:,j),pc.species)-X ); end
+            T=[V(:,T_ck),eye(3)]; T=T(:,rankc_(normc_(T)));
 
             if nargout == 1; return; end
             
@@ -338,9 +338,9 @@ classdef am_dft
             if nargout == 2; return; end
             
             % get seitz operators which leave the atomic basis invariant
-            S = zeros(4,4,nHs*nTs); S(4,4,:)=1; nSs=0;
-            for i = 1:nHs; for j = 1:nTs
-                if check3_( X_(H(:,:,i)*pc.tau+T(:,j),pc.species) - X ); nSs=nSs+1; S(1:3,1:4,nSs)=[ H(:,:,i), T(:,j) ]; end
+            S = zeros(4,4,nHs*nVs); S(4,4,:)=1; nSs=0;
+            for i = 1:nHs; for j = 1:nVs
+                if check3_( X_(H(:,:,i)*pc.tau+V(:,j),pc.species) - X ); nSs=nSs+1; S(1:3,1:4,nSs)=[ H(:,:,i), V(:,j) ]; end
             end; end; S = S(:,:,1:nSs); 
         
             % set identity first
@@ -1670,7 +1670,7 @@ classdef am_dft
 
             hold off; daspect([1 1 1]); box on;
         end
-        
+
 
         % phonons (harmonic)
 
@@ -2893,6 +2893,11 @@ classdef am_dft
             import am_lib.*
             import am_dft.*
             
+            % translate one atom to the origin if there isn't one already
+            if all(sum(uc.tau,1)>am_lib.tiny)
+                uc.tau = uc.tau-uc.tau(:,1);
+            end
+            
             % build permutation matrix for atoms related by translations
             T = get_symmetries(uc); nTs=size(T,2); PM=zeros(uc.natoms,nTs);
             for i = [1:nTs]; PM(:,i)=rankc_( [mod_(uc.tau(:,:,1)+T(1:3,i));uc.species] ); end
@@ -2909,7 +2914,7 @@ classdef am_dft
             
             % set identifiers (see NOTE: cannot simply using p2u = findrow_(A)!)
             p2u = member_(mod_(B*mod_(B\uc.tau(:,findrow_(A),1))),mod_(uc.tau(:,:,1))).'; u2p = ([1:size(A,1)]*A);
-
+            
             % define primitive cell creation function and make structure
             pc_ = @(uc,B,p2u) struct('units','frac','bas',uc.bas*B, ...
                 'symb',{uc.symb},'mass',uc.mass,'nspecies',sum(unique(uc.species(p2u)).'==uc.species(p2u),2).', ...
