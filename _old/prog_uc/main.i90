@@ -1,0 +1,69 @@
+# 1 "main.f90"
+!****************************************************************************
+!
+!  PROGRAM: uc
+!
+!  PURPOSE: Converts unit cells: primitive, supercell, irreducible, conventional.
+!
+!****************************************************************************
+    program main
+!
+    use am_stdout
+    use am_options
+    use am_unit_cell
+    use am_symmetry
+!
+    implicit none
+!
+    type(am_class_unit_cell) :: uc
+    type(am_class_unit_cell) :: sc
+    type(am_class_conv_cell) :: conv
+    type(am_class_prim_cell) :: prim
+    type(am_class_unit_cell), allocatable :: def(:)
+    type(am_class_options) :: opts
+    integer :: i
+!
+    call opts%parse_command_line_uc
+!
+    call uc%load_poscar(opts)
+!
+! get primitive
+    if ( (index(opts%flags,'prim').ne.0) .or. &
+         (index(opts%flags,'conv').ne.0)) then
+        call prim%get_primitive(uc=uc,opts=opts)
+! export file
+        call prim%write_poscar('outfile.primitive')
+    endif
+! get conventional
+!     if (opts%conventional) then
+!         call conv%get_conventional(prim=prim,opts=opts)
+!         call conv%write_poscar('outfile.POSCAR.conventional')
+!     endif
+! get supercell
+    if (index(opts%flags,'supercell').ne.0) then
+        call sc%get_supercell(uc=uc, &
+            bscfp=reshape([ opts%supercell(1),0,0, &
+                            0,opts%supercell(2),0, &
+                            0,0,opts%supercell(3)],[3,3])*1.0_dp,opts=opts)
+! export file
+        call sc%write_poscar('outfile.supercell')
+    endif
+! deform structure
+    if (index(opts%flags,'def').ne.0) then
+        call deform(def=def,uc=uc,opts=opts)
+! export file
+        do i = 1,size(def)
+            call def(i)%write_poscar('outfile.def_'//int2char(i))
+        enddo
+    endif
+!
+    if (opts%verbosity.ge.1) call print_title('Done!')
+!
+    end program
+
+
+
+
+
+
+    

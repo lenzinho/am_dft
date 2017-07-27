@@ -1,0 +1,92 @@
+# 1 "main.f90"
+!****************************************************************************
+!
+!  PROGRAM: tbdf
+!
+!  PURPOSE: Calculates the tight-binding dielectric function, neglecting intra-atomic contributions.
+!
+!****************************************************************************
+    program main
+!
+    use am_options
+    use am_unit_cell
+    use am_symmetry
+    use am_shells
+    use am_symmetry_tensor
+    use am_tight_binding
+    use am_brillouin_zone
+    use am_dft
+    use am_clock
+!
+    implicit none
+!
+    type(am_class_options)      :: opts
+    type(am_class_tightbinding) :: tb
+    type(am_class_prim_pair)    :: pp
+    type(am_class_prim_cell)    :: pc
+    type(am_class_fbz)          :: fbz  ! full monkhorst pack mesh
+    type(am_class_ibz)          :: ibz  ! symmetry reduced monkhorst pack mesh (irreducible wedge)
+    integer :: i,j
+!
+    call print_title('Tight-binding Dielectric Function')
+! intialize clocks
+    call init_clocks(.true.)
+! start main clock
+    call start_clock('main')
+! load options
+    call opts%parse_command_line_tbdf()
+! load tb model
+    call tb%load(fname='save.tb')
+! load primitive pairs
+    call pp%load(fname='save.pp')
+! load pc
+    call pc%load(fname='save.pc')
+! load fbz
+    call fbz%load(fname='save.fbz')
+! load ibz
+    call ibz%load(fname='save.ibz')
+! load tight binding parameters
+    call tb%read_irreducible_matrix_element(fname='infile.tb_vsk')
+! get hamiltonian
+    call tb%get_hamiltonian(pp=pp,bz=ibz)
+! get dispersion
+    call tb%get_dispersion()
+! adjust Fermi energy basd on nelecs
+    if (opts%nelecs.gt.tiny) then
+! get fermi energy
+        call tb%get_fermi_energy(ibz=ibz,nelecs=opts%nelecs)
+! shift dispersion to set fermi energy at zero
+        tb%dr%E = tb%dr%E - tb%dos%Ef
+! shift diagonal Hamiltonian matrix elements to set fermi energy at zero
+        do i = 1, tb%dr%nbands
+        do j = 1, ibz%nkpts
+            tb%dr%H(i,i,j) = tb%dr%H(i,i,j) - tb%dos%Ef
+        enddo
+        enddo
+! set fermi energy to zero
+        tb%dos%Ef = 0.0_dp
+! NOTE: ON-SITE MATRIX ELEMENTS ARE NOT READJUSTED!
+    endif
+! get grad_k H
+    call tb%get_hamiltonian_kgradient(pc=pc,fbz=fbz,opts=opts)
+! get joint-DOS and dielectric function
+    if (opts%nEs.ne.0) then
+        call tb%get_df(ibz=ibz, pc=pc, E=linspace(opts%Emin,opts%Emax,opts%nEs), opts=opts)
+    else
+        call tb%get_df(ibz=ibz, pc=pc, opts=opts)
+    endif
+
+! clock out
+    call stop_clock('main')
+! header
+    if (opts%verbosity.ge.1) call print_title('Timing')
+! print timings
+    call print_clock('')
+! exit clealy
+    if (opts%verbosity.ge.1) call print_title('Done!')
+!
+    end program
+
+
+
+

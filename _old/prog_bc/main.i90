@@ -1,0 +1,54 @@
+# 1 "main.f90"
+!****************************************************************************
+!
+!  PROGRAM: band character
+!
+!  PURPOSE: Parses PROCAR and outputs outfile.bandcharacter
+!
+!****************************************************************************
+    program prog_bandcharacter
+!
+	use am_stdout
+    
+    use am_options
+	use am_unit_cell
+    use am_brillouin_zone
+    use am_symmetry
+    use am_dispersion
+!
+	implicit none
+!
+	type(am_class_unit_cell) :: uc
+    type(am_class_bz)        :: bz
+    type(am_class_dr)        :: dr
+    type(am_class_options)   :: opts
+!
+    call opts%get
+!
+    call uc%load_poscar(opts)
+!
+    if (fexists(opts%procar)) then
+!
+        call bz%load_procar(opts)
+!
+        call dr%load_procar(opts)
+!
+    elseif (fexists(opts%eigenval)) then
+!
+        call bz%load_eigenval(opts)
+!
+        call dr%load_eigenval(opts)
+!
+    else
+        call am_print('ERROR','PROCAR or EIGEVAL not found.')
+        stop 
+    endif
+!
+    call dr%write_bandcharacter(bz=bz,uc=uc,opts=opts)
+!
+    if (opts%verbosity.ge.1) call am_print_title('Done!')
+!
+    end program
+
+
+

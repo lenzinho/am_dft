@@ -1,0 +1,65 @@
+# 1 "main.f90"
+!  src.f90
+!
+!  FUNCTIONS:
+!  src - Entry point of  application.
+!
+!
+!****************************************************************************
+!
+!  PROGRAM: src
+!
+!  PURPOSE:  Entry point for the console application.
+!
+!****************************************************************************
+    program main
+!
+	use am_stdout
+    use am_options
+	use am_unit_cell
+    use am_brillouin_zone
+    use am_symmetry
+    use am_wannier
+!
+	implicit none
+!
+!type(am_class_symmetry) :: sg
+!type(am_class_symmetry) :: pg
+	type(am_class_unit_cell) :: uc
+    type(am_class_options) :: opts
+    type(am_class_bz) :: bz
+    type(am_class_wannier) :: wan
+!
+    call opts%get
+!
+    call uc%load_poscar(opts)
+!
+    call bz%load_ibzkpt(opts=opts)
+!
+    call wan%load_amn(opts=opts)
+!
+    call wan%load_eig(opts=opts)
+!
+    call wan%get_hamiltonian()
+!
+    call wan%fourier_interpolation(uc=uc,bz=bz,opts=opts)
+!
+
+!
+
+!     call determine_symmetry(uc=uc,sg=sg,pg=pg,opts=opts)
+!     !
+!     call fbz%full_monkhorst_pack_mesh(uc=uc,n=[31,31,31],s=real([0,0,0],dp),opts=opts)
+!     !
+!     call fbz%outfile_kpoints('outfile.full_monkhorst_pack')
+!     !
+!     call ibz%reduce_to_ibz(bz=fbz,uc=uc,pg=pg,opts=opts)
+!     !
+!     call ibz%outfile_kpoints('outfile.irre_monkhorst_pack')
+!     !
+
+!
+    if (opts%verbosity.ge.1) call am_print_title('Done!')
+    
+
+    end program

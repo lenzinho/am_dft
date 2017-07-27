@@ -1,0 +1,28 @@
+----------------------------------------
+Begin Torque Prologue (Sun Jul 24 00:52:36 2016)
+Job ID:           4599843.cc-mgmt1.campuscluster.illinois.edu
+Username:         amei2
+Group:            mrl_arockett
+Job Name:         job
+Limits:           neednodes=1:ppn=12,nodes=1:ppn=12,walltime=00:30:00
+Job Queue:        cse
+Account:          mrl
+Nodes:            taub476
+End Torque Prologue
+----------------------------------------
+----------------------------------------
+Begin Torque Epilogue (Sun Jul 24 00:58:23 2016)
+Job ID:           4599843.cc-mgmt1.campuscluster.illinois.edu
+Username:         amei2
+Group:            mrl_arockett
+Job Name:         job
+Session:          30737
+Limits:           neednodes=1:ppn=12,nodes=1:ppn=12,walltime=00:30:00
+Resources:        cput=01:08:09,energy_used=0,mem=814076kb,vmem=4283744kb,walltime=00:05:47
+Job Queue:        cse
+Account:          mrl
+Nodes:            taub476
+/projects/admin/scripts/rolling_reboot.sh: line 13: syntax error near unexpected token `fi'
+/projects/admin/scripts/rolling_reboot.sh: line 13: `    fi'
+End Torque Epilogue
+----------------------------------------

@@ -1,0 +1,112 @@
+# 1 "main.f90"
+!****************************************************************************
+!
+!  PROGRAM: tbforce
+!
+!  PURPOSE: Given two sets of irreducible matrix elements, calculate the difference of the two and set it as a projection.
+!
+!****************************************************************************
+    program main
+!
+    use am_options
+    use am_symmetry
+    use am_shells
+    use am_unit_cell
+    use am_tight_binding
+    use am_brillouin_zone
+!
+    implicit none
+!
+    type(am_class_options)      :: opts
+    type(am_class_prim_pair)    :: pp   ! primitive pairs
+    type(am_class_tightbinding) :: tb   ! tight binding
+    type(am_class_prim_cell)    :: pc   ! primitive cell
+    type(am_class_ibz)          :: ibz  ! symmetry reduced monkhorst pack mesh (irreducible wedge)
+    type(am_class_path)         :: bzp  ! bz path
+! <LOAD>
+    call opts%parse_command_line_tbforce() 
+! <DOS>
+        if (index(opts%flags,'dos').ne.0) then
+! <LOAD>
+! load tight binding model
+            call tb%load(fname='save.tb')
+! load primitive pair info
+            call pp%load(fname='save.pp')
+! load irreducible monkhorst-pack k-point mesh (generated with program ibz)
+            call ibz%load(fname='save.ibz')
+! <MAIN>
+! load deformed irreducible matrix elements 'infile.tb_vsk'
+            call tb%read_irreducible_matrix_element(fname=opts%vsk_def)
+! get hamiltonian
+            call tb%get_hamiltonian(pp=pp,bz=ibz)
+! get dispersion on irreducible monkhorst-pack k-point mesh
+            call tb%get_dispersion()
+! save deformed dispersion
+            allocate(tb%dr%weight,source=tb%dr%E)
+! load reference irreducible matrix elements, 'infile.tb_vsk'
+            call tb%read_irreducible_matrix_element(fname=opts%vsk_ref)
+! get hamiltonian
+            call tb%get_hamiltonian(pp=pp,bz=ibz)
+! get dispersion on irreducible monkhorst-pack k-point mesh
+            call tb%get_dispersion()
+! update weights
+            tb%dr%weight=(tb%dr%weight-tb%dr%E)/opts%delta
+! get dos weighted by difference
+            if (opts%nEs.ne.0) then
+                call tb%get_dos(ibz=ibz, E=linspace(opts%Emin,opts%Emax,opts%nEs), weight=tb%dr%weight, opts=opts)
+            else
+                call tb%get_dos(ibz=ibz, weight=tb%dr%weight, opts=opts)
+            endif
+!<SAVE>
+            call tb%dos%save(fname='save.dos_tbforce')
+        endif
+! <PATH>
+        if (index(opts%flags,'path').ne.0) then
+! <LOAD>
+! load tight binding model
+            call tb%load(fname='save.tb')
+! load primitive pair info
+            call pp%load(fname='save.pp')
+! load primitive cell info
+            call pc%load(fname='save.pc')
+! <MAIN>
+! get path
+            if (opts%npaths.eq.0) then
+                call bzp%get_path(path_symb=get_pathsymb(lattice_id=pc%lattice_id), ndivs=opts%ndivs, pc=pc, opts=opts)
+            else
+                call bzp%get_path(path_symb=opts%path_symb, ndivs=opts%ndivs, pc=pc, opts=opts)
+            endif
+! load reference irreducible matrix elements, 'infile.tb_vsk'
+            call tb%read_irreducible_matrix_element(fname=opts%vsk_def)
+! get hamiltonian
+            call tb%get_hamiltonian(pp=pp,bz=ibz)
+! get dispersion on irreducible monkhorst-pack k-point mesh
+            call tb%get_dispersion()
+! save deformed dispersion
+            if (allocated(tb%dr%weight)) deallocate(tb%dr%weight)
+            allocate(tb%dr%weight,source=tb%dr%E)
+! load reference irreducible matrix elements, 'infile.tb_vsk'
+            call tb%read_irreducible_matrix_element(fname=opts%vsk_ref)
+! get hamiltonian
+            call tb%get_hamiltonian(pp=pp,bz=ibz)
+! get dispersion on irreducible monkhorst-pack k-point mesh
+            call tb%get_dispersion()
+! update weights
+            tb%dr%weight = (tb%dr%weight-tb%dr%E)/opts%delta
+!<SAVE>
+! save path
+            call tb%dr%save(fname='save.dr_tbforce')
+! save dr
+            call bzp%save(fname='save.bzp_tbforce')
+        endif
+! <CLEAN EXIT>
+    if (opts%verbosity.ge.1) call print_title('Done!')
+!
+    end program
+
+
+
+
+
+
+

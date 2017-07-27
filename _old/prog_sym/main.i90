@@ -1,0 +1,74 @@
+# 1 "main.f90"
+!****************************************************************************
+!
+!  PROGRAM: sym
+!
+!  PURPOSE: Analyzes the symmetry of the unit cell.
+!
+!****************************************************************************
+! Note: need to save stuff at the end, since initializing ic modifies uc (pc_id and ic_id)
+    program main
+!
+    use am_options
+    use am_unit_cell
+    use am_symmetry
+    use am_shells
+    use am_symmetry_tensor
+    use am_matlab
+    use am_dft
+!
+    implicit none
+!
+    type(am_class_options)     :: opts  ! options
+    type(am_class_prim_cell)   :: pc    ! primitive cell
+    type(am_class_irre_cell)   :: ic    ! irreducible cell
+    type(am_class_unit_cell)   :: uc    ! unit cell
+    type(am_class_space_group) :: sg    ! space group
+    type(am_class_point_group) :: pg    ! point group
+!
+! <OPTS>
+    call opts%parse_command_line_sym()
+! <MAIN>
+! load unit cell
+        call uc%load_poscar(opts)
+! primitive cell
+        call pc%get_primitive(uc=uc, opts=opts)
+! space group
+        call sg%get_space_group(pc=pc, opts=opts)
+! point group
+        call pg%get_point_group(sg=sg, pc=pc, opts=opts)
+! irreducible cell
+        call ic%get_irreducible(pc=pc, uc=uc, sg=sg, opts=opts)
+! <SAVE>
+! save space group
+        call sg%save(fname='save.sg')
+! save point group
+        call pg%save(fname='save.pg')
+! save unitcell
+        call uc%save(fname='save.uc')
+! save primitive cell
+        call pc%save(fname='save.pc')
+! save irreducible cell
+        call ic%save(fname='save.ic')
+! <OUTPUT>
+! write sg action table
+        call sg%write_action_table(uc=pc,fname='outfile.sg_act',opts=opts)
+! write pg action table
+        call pg%write_action_table(uc=pc,fname='outfile.pg_act',opts=opts)
+! <END>
+    if (opts%verbosity.ge.1) call print_title('Done!')
+!
+    end program
+
+
+
+
+
+
+
+
+
+
+
+
+
