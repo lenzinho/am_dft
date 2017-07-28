@@ -256,6 +256,82 @@ classdef am_dft
             fprintf('(%.f secs)\n',toc);
         end
 
+        function [dft]   = load_procar(fprocar,Ef)
+            
+            fprintf(' ... loading dft band structure from %s ',fprocar); tic;
+            
+            % spins is not implemented yet
+            dft.nspins = 1;
+            
+            parse_line_ = @(fid) strsplit(strtrim(fgetl(fid)),' ');
+            
+            fid=fopen(fprocar);
+                % (LINE 1) PROCAR lm decomposed
+                fgetl(fid)
+                % (LINE 2) # of kpt-points:  160         # of bands:   8         # of ions:   2
+                buffer = parse_line_(fid);
+                dft.nks    = sscanf(buffer{4},'%f');
+                dft.nbands = sscanf(buffer{8},'%f');
+                dft.nions  = sscanf(buffer{12},'%f');
+                % allocate
+                dft.k = zeros(3,dft.nks);
+                dft.w = zeros(1,dft.nks);
+                dft.E = zeros(dft.nbands,dft.nks);
+                for i = 1:dft.nks
+                    % (LINE 3,62) skip line
+                    fgetl(fid);
+                    % (LINE 4,63) kpt-point    1 :    0.50000000 0.50000000 0.50000000     weight = 0.00625000
+                    buffer = parse_line_(fid);
+                    dft.k(1,i) = sscanf(buffer{4},'%f');
+                    dft.k(2,i) = sscanf(buffer{5},'%f');
+                    dft.k(3,i) = sscanf(buffer{6},'%f');
+                    dft.w(3,i) = sscanf(buffer{9},'%f');
+                    for j = 1:dft.nbands
+                        % (LINE 5,64) skip line
+                        fgetl(fid);
+                        % (LINE 6,65) band   1 # energy   -3.91737559 # occ.  2.00000000
+                        buffer = parse_line_(fid);
+                        dft.E(j,i) = sscanf(buffer{5},'%f');
+                        % (LINE 7,66) skip line
+                        fgetl(fid);
+                        if and(i==1,j==1)
+                            % (LINE 8,67) ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    tot
+                            % (LINE 8,67) ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3    tot
+                            buffer = parse_line_(fid);
+                            dft.norbitals = numel(buffer)-2;
+                            dft.orbital = {buffer{1+[1:dft.norbitals]}};
+                            % allocate space for lmproj(nspins,norbitals,nions,nbands,nkpts)
+                            dft.lmproj = zeros(dft.nspins,dft.norbitals,dft.nions,dft.nbands,dft.nks);
+                        else
+                            % (LINE 8,67) ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    tot
+                            fgetl(fid);
+                        end
+                        % (LINE 9,10,11,...) 
+                        % 1  0.224  0.003  0.001  0.009  0.000  0.000  0.000  0.000  0.000  0.237
+                        % 2  0.224  0.003  0.001  0.009  0.000  0.000  0.000  0.000  0.000  0.237
+                        % ...
+                        for l = 1:dft.nions
+                            buffer = parse_line_(fid);
+                        for m = 1:dft.norbitals
+                            %> lmproj(nspins,norbitals,nions,nbands,nkpts) (spins not implemented yet%)
+                            dft.lmproj(1,m,l,j,i) = sscanf(buffer{m+1},'%f');
+                        end
+                        end
+                        % skip two lines
+                        fgetl(fid);
+                        fgetl(fid);
+                    end
+                    % skip a line
+                    fgetl(fid);
+                end
+                % zero fermi and sort bands in increasing order
+                dft.E = sort(dft.E - Ef); 
+                % close file
+            fclose(fid);
+            
+            fprintf('(%.f secs)\n',toc);
+        end
+        
         function [md]    = load_md(uc,fforces,dt)
             %
             % Loads outcar preprocessed with outcar2fp.sh (generate_script).
@@ -1330,17 +1406,21 @@ classdef am_dft
             if     contains( lower(brav), 'fcc-short' )
                 G=[0;0;0];  X1=[0;1;1]/2; X2=[2;1;1]/2; 
                 L=[1;1;1]/2; K=[6;3;3]/8;
-                % short path
                 ql={'G','X','K','G','L'}; 
                 qs=[G,X2,K,G]; 
                 qe=[X1,K,G,L];
-            elseif contains( lower(brav), 'fcc' )
+            elseif contains( lower(brav), 'fcc-long' )
                 G=[0;0;0];  X1=[0;1;1]/2; W=[1;3;2]/4;
                 U=[2;5;5]/8; L=[1;1;1]/2; K=[3;6;3]/8;
-                % long path
                 ql={'G','X','W','K','G','L','U','W','L','K'}; 
                 qs=[G,X1,W,K,G,L,U,W,L]; 
                 qe=[X1,W,K,G,L,U,W,L,K];
+            elseif contains( lower(brav), 'sc' )
+                G=[0;0;0];   X=[0;1;0]/2;
+                M=[1;1;0]/2; R=[1;1;1]/2;
+                ql={'G','X','M','G','R','X'};
+                qs=[G,X,M,G,R]; 
+                qe=[X,M,G,R,X];
             elseif contains( lower(brav), 'hex' )
                 % for a pc.bas ordered like so:
                 %     3.0531   -1.5266         0
@@ -1585,7 +1665,7 @@ classdef am_dft
             % plot results
             plot_interpolated(fbz,bzp, ibz2fbz(fbz,ibz,get_nesting(fbz,ibz,degauss,Ep)) ,varargin{:})
         end
-        
+
         function plot_bz(fbz)
             
             import am_lib.*
@@ -1671,7 +1751,7 @@ classdef am_dft
             hold off; daspect([1 1 1]); box on;
         end
 
-
+        
         % phonons (harmonic)
 
         function [bvk,pp]     = get_bvk(pc,uc,md,cutoff2,flags)
@@ -2376,7 +2456,7 @@ classdef am_dft
 
         end
 
-        function [tb]         = get_tb_model(ip,pp,uc,spdf)
+        function [tb,H]        = get_tb_model(ip,pp,uc,spdf)
             % set oribtals per irreducible atom: spdf = {'d','p'};
             % may wish to do this to set it per species: x={'p','d'}; spdf={x{ic.species}};
             import am_lib.*
