@@ -1192,7 +1192,7 @@ classdef am_dft
             if mod(det(B),1)~=0; error('determinant of B must be an integer'); end 
 
             % generate primitive lattice vectors
-            n=round(sum(abs(B),1)); [Y{3:-1:1}]=ndgrid(1:n(1),1:n(2),1:n(3)); nLs=prod(n); L=reshape(cat(3+1,Y{:})-1,[],3).'; 
+            n=round(sum(abs(B),1)); [Y{1:3}]=ndgrid(1:n(1),1:n(2),1:n(3)); nLs=prod(n); L=reshape(cat(3+1,Y{:})-1,[],3).'; 
 
             % expand atoms, coordinates supercell fractional, and reduce to primitive supercell
             X=uniquecol_([ reshape(repmat([1:pc.natoms],nLs,1),1,[]); mod_(inv(B)*osum_(L,pc.tau,2)) ]);
@@ -2605,7 +2605,7 @@ classdef am_dft
 
         end
 
-        function [tb,H]        = get_tb_model(ip,pp,uc,spdf)
+        function [tb,H]       = get_tb_model(ip,pp,uc,spdf)
             % set oribtals per irreducible atom: spdf = {'d','p'};
             % may wish to do this to set it per species: x={'p','d'}; spdf={x{ic.species}};
             import am_lib.*
@@ -2656,7 +2656,7 @@ classdef am_dft
             vec_ = @(xy) uc2ws(uc.bas*(uc.tau(:,xy(2,:))-uc.tau(:,xy(1,:))),pp.bas);
             
             % construct symbolic hamiltonian matrix
-            H=sym(zeros(tb.nbands)); kvec=sym('k%d',[3,1],'real');
+            H=sym(zeros(tb.nbands,tb.nbands,ip.nshells)); kvec=sym('k%d',[3,1],'real');
             for p = 1:pp.pc_natoms
             for u = 1:pp.npairs(p)
                 % get indicies:
@@ -2677,15 +2677,19 @@ classdef am_dft
                 vsk =  sym(D{i}(:,:,iq)) * permute(tb.vsk{ir},pp.Q{2}(:,iq)) * sym(D{j}(:,:,iq))';
                 
                 % build hamiltonian matrix
-                H(mp,np) = H(mp,np) + vsk .* exp(sym(2i*pi * rij(:).','d') * kvec(:) );
+                H(mp,np,ir) = H(mp,np,ir) + vsk .* exp(sym(2i*pi * rij(:).','d') * kvec(:) );
             end
             end
             
             % simplify (speeds evaluation up significantly later)
-            H = simplify(rewrite(H,'cos'),'steps',20);
+            for i = 1:tb.nshells; H(:,:,i) = simplify(rewrite(H(:,:,i),'cos'),'steps',20); end
+            
+            % stupid matlab, doesn't allow for sum(H,3)
+            Hsum=sym(zeros(tb.nbands,tb.nbands));
+            for i = 1:tb.nshells; Hsum = Hsum + H(:,:,i); end
             
             % attach symbolic dynamical matrix to bvk
-            tb.H = matlabFunction(H);
+            tb.H = matlabFunction(Hsum);
         end
 
         function [tb]         = get_tb_matrix_elements(tb,dft,nskips)
