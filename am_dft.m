@@ -267,12 +267,12 @@ classdef am_dft
             
             fid=fopen(fprocar);
                 % (LINE 1) PROCAR lm decomposed
-                fgetl(fid)
+                fgetl(fid);
                 % (LINE 2) # of kpt-points:  160         # of bands:   8         # of ions:   2
                 buffer = parse_line_(fid);
                 dft.nks    = sscanf(buffer{4},'%f');
                 dft.nbands = sscanf(buffer{8},'%f');
-                dft.nions  = sscanf(buffer{12},'%f');
+                dft.natoms = sscanf(buffer{12},'%f');
                 % allocate
                 dft.k = zeros(3,dft.nks);
                 dft.w = zeros(1,dft.nks);
@@ -295,37 +295,57 @@ classdef am_dft
                         % (LINE 7,66) skip line
                         fgetl(fid);
                         if and(i==1,j==1)
-                            % (LINE 8,67) ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    tot
                             % (LINE 8,67) ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3    tot
                             buffer = parse_line_(fid);
                             dft.norbitals = numel(buffer)-2;
                             dft.orbital = {buffer{1+[1:dft.norbitals]}};
                             % allocate space for lmproj(nspins,norbitals,nions,nbands,nkpts)
-                            dft.lmproj = zeros(dft.nspins,dft.norbitals,dft.nions,dft.nbands,dft.nks);
+                            dft.lmproj = zeros(dft.nspins,dft.norbitals,dft.natoms,dft.nbands,dft.nks);
                         else
-                            % (LINE 8,67) ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    tot
+                            % (LINE 8,67) ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3    tot
                             fgetl(fid);
                         end
-                        % (LINE 9,10,11,...) 
-                        % 1  0.224  0.003  0.001  0.009  0.000  0.000  0.000  0.000  0.000  0.237
-                        % 2  0.224  0.003  0.001  0.009  0.000  0.000  0.000  0.000  0.000  0.237
-                        % ...
-                        for l = 1:dft.nions
+                        % (LINE 9,10,...) 
+                        %   1  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000
+                        %   2  0.984  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.984
+                        %   ...
+                        for l = 1:dft.natoms
                             buffer = parse_line_(fid);
                         for m = 1:dft.norbitals
-                            %> lmproj(nspins,norbitals,nions,nbands,nkpts) (spins not implemented yet%)
+                            % lmproj(nspins,norbitals,nions,nbands,nkpts) (spins not implemented yet%)
                             dft.lmproj(1,m,l,j,i) = sscanf(buffer{m+1},'%f');
                         end
                         end
-                        % skip two lines
+                        % skip: tot  0.985  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.985
                         fgetl(fid);
+                        % skip blank line
                         fgetl(fid);
+                        % read next line
+                        buffer = parse_line_(fid);
+                        if numel(buffer)==1
+                            % do nothing (PROCAR generated without phase factors, LROBIT = 11)
+                        else
+                            % load phase factors (PROCAR generated with phase factors, LROBIT = 12)
+                            if and(i==1,j==1)
+                                dft.phase = zeros(dft.nspins,dft.norbitals,dft.natoms,dft.nbands,dft.nks);
+                            end
+                            % read phase factors 
+                            for l = 1:dft.natoms
+                                % read real part of phase factors
+                                buffer_real = parse_line_(fid); buffer_imag = parse_line_(fid);
+                                for m = 1:dft.norbitals
+                                    dft.phase(1,m,l,j,i) = sscanf(buffer_real{m+1},'%f') + 1i * sscanf(buffer_imag{m+1},'%f');
+                                end
+                            end
+                        end
                     end
                     % skip a line
                     fgetl(fid);
                 end
                 % zero fermi and sort bands in increasing order
                 dft.E = sort(dft.E - Ef); 
+                % normalize projections by summing over atoms and characters?
+                dft.lmproj = dft.lmproj ./ sum(sum(dft.lmproj,2),3);
                 % close file
             fclose(fid);
             
@@ -380,6 +400,44 @@ classdef am_dft
             nsteps=nlines/nbands; fid=fopen(fbands); en=reshape(fscanf(fid,'%f'),nbands,nsteps); fclose(fid);
         end
         
+        function           save_incar()
+            fid=fopen('INCAR','w');
+                fprintf(fid,'START PARAMETERS:\n');
+                fprintf(fid,'%13s = %10i # %s \n'  , 'ISTART'  , 0          , '(0) new (1) cont (2) samecut');
+                fprintf(fid,'%13s = %10i # %s \n'  , 'ICHARG'  , 2          , '(1) file (2) atom (3) const <scf|nscf> (11)-chgcar');
+                fprintf(fid,'ELECTRONIC RELAXATION:\n');
+                fprintf(fid,'%13s = %10s # %s \n'  , 'GGA'     , 'AM05'     , '');
+                fprintf(fid,'%13s = %10s # %s \n'  , 'PREC'    , 'Accurate' , 'Accurate, Normal');
+                fprintf(fid,'%13s = %10i # %s \n'  , 'NELMDL'  , -5         , 'non-selfconsistent steps (<0) applied once (>0) applied after each ionic step');
+                fprintf(fid,'%13s = %10i # %s \n'  , '#IVDW'   , 2          , 'vdW');
+                fprintf(fid,'%13s = %10s # %s \n'  , 'ALGO'    , 'Fast'     , '(VeryFast) RMM-DIIS (Fast) Davidson/RMM-DIIS (Normal) Davidson');
+                fprintf(fid,'%13s = %10i # %s \n'  , '#IALGO'  , 48         , '(38) Davidson (48) RMM-DIIS algorithm');
+                fprintf(fid,'%13s = %10i # %s \n'  , '#NBANDS' , 72         , 'number of bands');
+                fprintf(fid,'%13s = %10i # %s \n'  , 'ENCUT'   , 500        , 'cutoff');
+                fprintf(fid,'%13s = %10i # %s \n'  , 'ISMEAR'  , 0          , '(0) gauss (1) mp (-5) tetrah');
+                fprintf(fid,'%13s = %10.8g # %s \n', 'SIGMA'   , 0.0001     , 'maximize with entropy below 0.1 meV / atom');
+                fprintf(fid,'%13s = %10.8g # %s \n', 'EDIFF'   , 1E-6       , 'toten convergence');
+                fprintf(fid,'IONIC RELAXATION:\n');
+                fprintf(fid,'%13s = %10i # %s \n'  , 'TEBEG'   , 0          , 'temperature of the MD');
+                fprintf(fid,'%13s = %10i # %s \n'  , 'IBRION'  , 2          , '(-1) no update (0) MD (1) RMM-DIIS quasi-Newton (2) conjugate-gradient');
+                fprintf(fid,'%13s = %10i # %s \n'  , 'POTIM '  , 2          , 'Timestep in femtoseconds');
+                fprintf(fid,'%13s = %10i # %s \n'  , 'ISIF'    , 3          , 'Relax (2) ions (3) ions,volume,shape (4) ions,shape');
+                fprintf(fid,'%13s = %10i # %s \n'  , 'NBLOCK'  , 1          , 'write after every iteration');
+                fprintf(fid,'%13s = %10i # %s \n'  , 'NSW'     , 100        , 'number of ionic steps');
+                fprintf(fid,'%13s = %10i # %s \n'  , 'SMASS'   , 0          , '(-3) NVE (=>0) Nosé thermostat');
+                fprintf(fid,'PARALLELIZATION:\n');
+                fprintf(fid,'%13s = %10i # %s \n'  , '#NCORE'  , 4          , 'approx SQRT( number of cores )');
+                fprintf(fid,'%13s = %10i # %s \n'  , '#NPAR'   , 1          , 'Parallelization');
+                fprintf(fid,'%13s = %10i # %s \n'  , '#NSIM'   , 1          , 'Number of bands which are optimized by RMMS-DIIS algorithm simultaneously');
+                fprintf(fid,'OTHER:\n');
+                fprintf(fid,'%13s = %10i # %s \n'  , 'LORBIT'  , 0          , '(11) lm-proj DOS and PROCAR (0) DOS');
+                fprintf(fid,'SAVE:\n');
+                fprintf(fid,'%13s = %10s # %s \n'  , 'LREAL '  , '.FALSE.'  , '(.FALSE.) for <20 atoms (Auto) for >20 atoms');
+                fprintf(fid,'%13s = %10s # %s \n'  , 'LWAVE '  , '.TRUE.'   , '(.TRUE.) Write wavefunctions');
+                fprintf(fid,'%13s = %10s # %s \n'  , 'LCHARG'  , '.TRUE.'   , '(.TRUE.) Write charge density');
+                fprintf(fid,'%13s = %10s # %s \n'  , 'LVTOT '  , '.TRUE.'   , '(.TRUE.) Write local charge potential');
+            fclose(fid);
+        end
         
         % symmetry
 
@@ -1655,6 +1713,97 @@ classdef am_dft
             end
             
 
+        end
+        
+        function plot_dispersion_orbital_character(dft,bzp)
+            % FPOSCAR = 'POSCAR'; Ef = 5.0740;
+            % [~,pc] = get_cells(FPOSCAR); 
+            % [dft]   = load_procar('evk/PROCAR',Ef);
+            % [bzp]   = get_bz_path(pc,40,'sc');
+            
+            import am_lib.*
+            
+            % normalize columns of matrix
+            normc_ = @(m) ones(size(m,1),1)*sqrt(1./sum(m.*m)).*m;
+
+            % get eigenvalues and band character weights
+            c = zeros(dft.nbands,dft.nks); character_labels = {'s','p','d','f'};
+            for i = 1:dft.nks
+                %    s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3
+                % l-PROJECTION (sum over spin, atoms, m-quantum numbers) 
+                % lmproj(nspins,norbitals,nions,nbands,nkpts)
+                Vp(1,:) = squeeze(sum(sum(sum(dft.lmproj(:,   [1],:,:,i),1),2),3)); % s
+                Vp(2,:) = squeeze(sum(sum(sum(dft.lmproj(:, [2:4],:,:,i),1),2),3)); % p
+                Vp(3,:) = squeeze(sum(sum(sum(dft.lmproj(:, [5:9],:,:,i),1),2),3)); % d
+                Vp(4,:) = squeeze(sum(sum(sum(dft.lmproj(:,[9:16],:,:,i),1),2),3)); % f
+                c(:,i) = assign_color_(normc_(Vp));
+            end
+
+            % define figure properties
+            fig_ = @(h)       set(h,'color','white');
+            axs_ = @(h,qt,ql) set(h,'Box','on','XTick',qt,'Xticklabel',ql);
+            fig_(gcf);
+
+            % plot band structure
+            figure(1); clf; fig_(gcf); hold on; 
+            for j = 1:dft.nbands; plotc_(bzp.x,dft.E(j,:),c(j,:)); end
+            hold off;
+
+            % label axes
+            axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [eV]'); xlabel('Wavevector k');
+
+            % plot fermi level
+            line([0,bzp.x(end)],[0,0],'linewidth',2,'color',[1,1,1]*0.5,'linestyle',':');
+
+            % apply color map and label axes
+            colormap( get_colormap('spectral',100).^(2) ); h = colorbar; caxis([0,1]);
+            cticks = assign_color_(eye(size(Vp,1))); [~,inds] = sort( cticks );
+            set(h,'Ticks',cticks(inds),'TickLabels',character_labels(inds));
+        end
+        
+        function plot_dispersion_atomic_character(dft,bzp,pc)
+            % FPOSCAR = 'POSCAR'; Ef = 5.0740;
+            % [~,pc] = get_cells(FPOSCAR); 
+            % [dft]   = load_procar('evk/PROCAR',Ef);
+            % [bzp]   = get_bz_path(pc,40,'sc');
+            
+            import am_lib.*
+            
+            % normalize columns of matrix
+            normc_ = @(m) ones(size(m,1),1)*sqrt(1./sum(m.*m)).*m;
+
+            % get eigenvalues and band character weights
+            c = zeros(dft.nbands,dft.nks); character_labels = pc.symb;
+            for i = 1:dft.nks
+                %    s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3
+                % atomic-PROJECTION: project on irreducible atoms
+                % lmproj(nspins,norbitals,nions,nbands,nkpts)
+                for j = 1:numel(unique(pc.p2i))
+                    Vp(j,:) = squeeze(sum(sum(sum(dft.lmproj(:,:,j==pc.p2i,:,i),1),2),3));
+                end
+                c(:,i) = assign_color_(normc_(Vp));
+            end
+
+            % define figure properties
+            fig_ = @(h)       set(h,'color','white');
+            axs_ = @(h,qt,ql) set(h,'Box','on','XTick',qt,'Xticklabel',ql);
+            fig_(gcf);
+
+            % plot band structure
+            figure(1); clf; fig_(gcf); hold on; 
+            for j = 1:dft.nbands; plotc_(bzp.x,dft.E(j,:),c(j,:)); end
+            hold off;
+
+            % label axes
+            axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [eV]'); xlabel('Wavevector k');
+
+            % plot fermi level
+            line([0,bzp.x(end)],[0,0],'linewidth',2,'color',[1,1,1]*0.5,'linestyle',':');
+
+            % apply color map and label axes
+            colormap( get_colormap('spectral',100).^(2) ); h = colorbar; caxis([0,1]);
+            cticks = assign_color_(eye(size(Vp,1))); [~,inds] = sort( cticks );
+            set(h,'Ticks',cticks(inds),'TickLabels',character_labels(inds));
         end
         
         function plot_nesting(ibz,fbz,bzp,degauss,Ep,varargin)
