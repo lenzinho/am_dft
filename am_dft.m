@@ -1939,7 +1939,7 @@ classdef am_dft
             else; fprintf('(skipped)\n'); end
         end
  
-        function [bvk]        = get_bvk_model(ip,pp,uc)
+        function [bvk,D,Dasr] = get_bvk_model(ip,pp,uc)
             
             import am_lib.*
             import am_dft.*
@@ -1978,7 +1978,7 @@ classdef am_dft
             vec_ = @(xy) uc2ws(uc.bas*(uc.tau(:,xy(2,:))-uc.tau(:,xy(1,:))),pp.bas);
             
             % construct symbolic dynamical matrix
-            D=sym(zeros(bvk.nbranches)); kvec=sym('k%d',[3,1],'real'); mass=sym('m%d',[1,numel(pp.i2u)],'positive');
+            D=sym(zeros(bvk.nbranches,bvk.nbranches,bvk.nshells)); kvec=sym('k%d',[3,1],'real'); mass=sym('m%d',[1,numel(pp.i2u)],'positive');
             for p = 1:pp.pc_natoms
             for j = 1:pp.npairs(p)
                 % get indicies and already permute xy,mn,mp,np if necessary by iq
@@ -1991,18 +1991,30 @@ classdef am_dft
                 phi = sym(pp.Q{1}(1:3,1:3,iq)) * permute(bvk.phi{i},pp.Q{2}(:,iq)) * sym(pp.Q{1}(1:3,1:3,iq)).';
                 
                 % build dynamical matrix
-                D(mp,np) = D(mp,np) + phi .* exp(sym(2i*pi * rij(:).','d') * kvec(:) );
+                D(mp,np,i) = D(mp,np,i) + phi .* exp(sym(2i*pi * rij(:).','d') * kvec(:) );
             end
             end
 
             % simplify (speeds evaluation up significantly later)
-            D = simplify(D,'steps',500);
+            for i = 1:bvk.nshells; D(:,:,i) = simplify(rewrite(D(:,:,i),'cos'),'steps',20); end
+            
+            % stupid matlab, doesn't allow for sum(H,3)
+            Dsum=sym(zeros(bvk.nbranches,bvk.nbranches));
+            for i = 1:bvk.nshells; Dsum = Dsum + D(:,:,i); end
             
             % multiply by 1/sqrt(mass)
-            mass = repelem(mass(pp.species(pp.p2u)),1,3); mass = 1./sqrt(mass.' * mass); D = D .* mass;
+            mass = repelem(mass(pp.species(pp.p2u)),1,3); mass = 1./sqrt(mass.' * mass); Dsum = Dsum .* mass;
             
             % attach symbolic dynamical matrix to bvk
-            bvk.D = matlabFunction(D);
+            bvk.D = matlabFunction(Dsum);
+            
+            % enforce acoustic sum rule algebraically?
+            if nargout > 2
+                Dasr = sym(zeros(bvk.nbranches,bvk.nbranches));
+                for i = 1:bvk.nshells; Dasr = Dasr + subs(subs(subs(D(:,:,i),kvec(1),0),kvec(2),0),kvec(3),0); end
+                % simplify and remove TRUE = TRUE (first term) from the set of equations
+                Dasr = unique(simplify(Dasr(:)==0)); Dasr = Dasr(2:end);
+            end
         end
 
         function [bvk]        = get_bvk_force_constants(uc,md,bvk,pp)
@@ -2309,7 +2321,7 @@ classdef am_dft
             end
         end
 
-        
+
         % phonons (anharmonic)
         
         function [bvt,pt,bvk] = get_bvt(pc,uc,md,cutoff3,bvk,pp,flags)
@@ -2480,7 +2492,7 @@ classdef am_dft
             bvt = bvt_(pt,it,sav);
 
         end
-        
+
         function [bvt,bvk]    = get_bvt_force_constants(uc,md,bvk,pp,bvt,pt)
             % Extracts symmetry adapted third-order force constant and
             % second order force constants 
