@@ -438,7 +438,7 @@ classdef am_dft
                 fprintf(fid,'%13s = %10s # %s \n'  , 'LVTOT '  , '.TRUE.'   , '(.TRUE.) Write local charge potential');
             fclose(fid);
         end
-        
+                
         % symmetry
 
         function [T,H,S,R]    = get_symmetries(pc)
@@ -686,6 +686,26 @@ classdef am_dft
                 end
             end
         end
+
+        function bv_code      = identify_bravais_lattice(bas)
+            % get metric tensor
+            M = bas * (bas.');
+            ii = [M(1,1),M(2,2),M(3,3)];
+            ij = [M(1,2),M(1,3),M(2,3)];
+            t = numel(unique(ii)); 
+            o = numel(unique(ij)); 
+            z = sum(abs(ij)<am_lib.tiny);
+            % de Graef p 86
+            if     all([t == 3, o == 3, z == 0]); bv_code = 1; % triclinic
+            elseif all([t == 2, o == 2, z == 2]); bv_code = 2; % hexagonal
+            elseif all([t == 3, o == 2, z == 2]); bv_code = 3; % monoclinic
+            elseif all([t == 2, o == 1, z == 3]); bv_code = 4; % tetragonal
+            elseif all([t == 3, o == 1, z == 3]); bv_code = 5; % orthorhombic
+            elseif all([t == 1, o == 1, z == 3]); bv_code = 6; % cubic
+            elseif all([t == 1, o == 1, z == 0]); bv_code = 7; % rhombahedral
+            else;                                 bv_code = 0; % unknown
+            end
+        end
         
         function pg_code      = identify_pointgroup(R)
             % 
@@ -853,6 +873,14 @@ classdef am_dft
             sg_code = find( (pg_database==pg_code) );
             
         end
+
+        function bv_name      = decode_bravais(bv_code)
+            % bravais lattices dataset
+            bv={'triclinic','hexagonal','monoclinic','tetragonal',...
+                'orthorhombic','cubic','rhombahedral'};
+            % print bravais lattice type
+            bv_name = bv{bv_code};
+        end
         
         function brv_name     = decode_holohodry(pg_code)
             % point group dataset
@@ -862,7 +890,7 @@ classdef am_dft
             % print point group name
             brv_name = brav{pg_code};
         end
-
+        
         function pg_name      = decode_pg(pg_code)
             % point group dataset
             pg={'c_1' ,'s_2' ,'c_2' ,'c_1h','c_2h','d_2' ,'c_2v','d_2h', ...
@@ -1133,6 +1161,31 @@ classdef am_dft
             end
         end
 
+        function abc_angles   = bas2abc(bas)
+            M = bas * (bas.');
+            % de Graef p 86
+            a = sqrt(M(1,1));
+            b = sqrt(M(2,2));
+            c = sqrt(M(3,3)); 
+            alpha= acosd(M(2,3)/(b*c)); 
+            beta = acosd(M(1,3)/(a*c));
+            gamma= acosd(M(1,2)/(a*b));
+            abc_angles = [a,b,c,alpha,beta,gamma];
+        end
+        
+        function bas          = abc2bas(abc_angles)
+            a=abc_angles(1); alpha=abc_angles(4);
+            b=abc_angles(2); beta =abc_angles(5);
+            c=abc_angles(3); gamma=abc_angles(6);
+            % correct rounding errors
+            abs_cap = @(x) max(min(x,180), -180);
+            val = abs_cap( (cosd(alpha)*cosd(beta)-cosd(gamma))/(sind(alpha)*sind(beta)) ); gamma_star = acosd(val);
+            % generate basis
+            bas(:,1) = [ a * sind(beta)                    ,                                0.0, a * cosd(beta) ];
+            bas(:,2) = [-b * sind(alpha) * cosd(gamma_star), b * sind(alpha) * sind(gamma_star), b * cosd(alpha)];
+            bas(:,3) = [                                0.0,                                0.0, c              ];
+        end
+        
         
         % unit cells
 
@@ -1172,8 +1225,10 @@ classdef am_dft
             uc.bas2pc = pc.bas/uc.bas; uc.tau2pc = pc.bas\uc.bas;
             
             % print basic symmetry info
-            [~,H,~,R] = get_symmetries(pc); 
-            hg_code = identify_pointgroup(H); fprintf(', %s',decode_holohodry(hg_code));
+            [~,~,~,R] = get_symmetries(pc); 
+            bv_code = identify_bravais_lattice(pc.bas); fprintf(', %s',decode_bravais(bv_code));
+            % holohodry should give same info as bravais lattice
+            % hg_code = identify_pointgroup(H); fprintf(', %s',decode_holohodry(hg_code));
             pg_code = identify_pointgroup(R); fprintf(', %s',decode_pg(pg_code));
             
             % beta (POSSIBLE SPACE GROUPS)
