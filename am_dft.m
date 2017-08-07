@@ -187,10 +187,19 @@ classdef am_dft
         end
 
         function [uc]    = load_cif(fcif)
+            
+            % NEED TO CONFIRM THAT THIS WORKS!
+            % NEED TO CONFIRM THAT THIS WORKS!
+            % NEED TO CONFIRM THAT THIS WORKS!
+            % MAY NOT WORK FOR ALL CASES!
+            
             import am_dft.* am_lib.*
 
             % load file into memory
-            str = load_file_(fcif);
+            str = load_file_(fcif); 
+            
+            % exclude blank lines
+            ex_=strcmp(strtrim(str),''); str=strtrim(str(~ex_)); nlines=numel(str);
 
             % get name
             name_aliases = {...
@@ -234,42 +243,71 @@ classdef am_dft
                  100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116, ...
                    1,  5,  6,  7,  8,  9, 15, 16, 19, 23, 39, 53, 74, 92];
             species_aliases = {...
-                '_atom_type_oxidation_number'};
+                '_atom_type_oxidation_number', ...
+                '_atom_site_U_iso_or_equiv'};
             for alias = species_aliases
-                j=find(contains(str,alias{:})); i=1; species_list=[];
-                while ~any(strmatchi_(str{j+i},{'_','#','loop_'}))
-                    t = strmatchi_(str{j+i},symb_dataset);
-                    species_list(i) = t(find(t,1)); i=i+1;
+                ex_ = contains(str,alias{:});
+                if any(ex_); j=find(ex_); i=1; species_list=[];
+                    while and(~any(strmatchi_(str{j+i},{'_','#','loop_'})),lt(i+j,nlines))
+                        t = strmatch_(str{j+i},symb_dataset);
+                        species_list(i) = t(find(t,1)); i=i+1;
+                    end
+                    if ~isempty(species_list); break; end
                 end
-                if ~isempty(species_list); break; end
             end
             Z = reindex(species_list);
+            
+            % remove redundancies
+            [~,i] = unique(species_list,'stable'); Z=Z(i); species_list=species_list(i); symb = symb_dataset(species_list);
 
             % get atomic positions
             position_aliases = {...
                 '_atom_site_attached_hydrogens',...
-                '_atom_site_calc_flag'};
-            for alias = position_aliases
-                j=find(contains(str,alias{:})); i=1; tau=[];
-                while ~any(strmatchi_(str{j+i},{'_','#','loop_'}))
-                    buffer = strsplit(str{j+i},' '); nbuffs=numel(buffer);
-                    tau(1,i) = str2double(buffer{nbuffs-6+1});
-                    tau(2,i) = str2double(buffer{nbuffs-6+2});
-                    tau(3,i) = str2double(buffer{nbuffs-6+3});
-                    t = strmatchi_(buffer{1},symb_dataset(species_list));
+                '_atom_site_calc_flag',...
+                '_atom_site_U_iso_or_equiv'};
+            for alias = position_aliases; ex_ = contains(str,alias{:}); if any(ex_)
+                j=find(ex_); i=1; tau=[];
+                while and(~any(strmatchi_(str{j+i},{'_','#','loop_'})),lt(i+j,nlines))
+                    buffer = strsplit(str{j+i},' ');
+                    tau(1,i) = str2double(buffer{4});
+                    tau(2,i) = str2double(buffer{5});
+                    tau(3,i) = str2double(buffer{6});
+                    t = strmatchi_(buffer{1},symb);
                     species(i) = t(find(t,1));
                     i=i+1;
                 end
                 if ~isempty(tau); break; end
-            end
-
-            % get species
-            [~,i]=uniquecol_(tau); tau=tau(:,i); [~,~,j]=unique(species(:,i),'stable');
-            symb = symb_dataset(species_list(species(i))); Z = Z(species(i)); species = j(:).';
+            end; end
+            % make sure there is only one atom at each site
+            [~,i]=uniquecol_(tau); tau=tau(:,i); species=species(:,i);
 
             % get space group symmetries
             sg_id = extract_token_(str,'_symmetry_Int_Tables_number',true); S = generate_sg(sg_id); nSs=size(S,3);
 
+            % get space group symmetries directly
+            position_aliases = {...
+                '_symmetry_equiv_pos_as_xyz'};
+            for alias = position_aliases; ex_ = contains(str,alias{:}); if any(ex_)
+                j=find(ex_); i=1;
+                syms x y z;
+                while and(~any(strmatchi_(str{j+i},{'_','#','loop_'})),lt(i+j,nlines))
+                    buffer = strsplit( strrep(str{j+i},'''',''), ',');
+                    for k = 1:3
+                        M(k) = eval(buffer{k}); 
+                        T(k,:) = coeffs(M(k),'All');
+                    end
+                    SS(1:3,1:3,i) = double(equationsToMatrix(M));
+                    SS(1:3,  4,i) = double(T(:,2));
+                    SS(  4,  4,i) = 1;
+                    i=i+1;
+                end
+                if ~isempty(SS); break; end
+            end; end
+            nSSs = size(SS,3);
+            
+            % take the space group with the most symmetries 
+            if nSSs > nSs; S = SS; nSs = nSSs; end
+            
             % generate all positions based on symmetry operations
             seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
             tau = reshape(mod_(seitz_apply_(S,tau)),3,[]); species=repmat(species,1,nSs);
@@ -1510,7 +1548,11 @@ classdef am_dft
             fprintf(' ... solving for cells and symmetries'); tic
             
             % load poscar
-            uc = load_poscar(fposcar);
+            if contains(fposcar,'cif')
+                uc = load_cif(fposcar);
+            else
+                uc = load_poscar(fposcar);
+            end
 
             % get primitive cell
             [pc,p2u,u2p] = get_primitive_cell(uc);  % write_poscar(get_supercell(pc,eye(3)*2),'POSCAR.2x2')
