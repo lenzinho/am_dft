@@ -130,6 +130,7 @@ classdef am_dft
 
     methods (Static)
 
+        
         % vasp
 
         function           save_poscar(uc,fposcar)
@@ -499,46 +500,111 @@ classdef am_dft
             % open file and parse
             nsteps=nlines/nbands; fid=fopen(fbands); en=reshape(fscanf(fid,'%f'),nbands,nsteps); fclose(fid);
         end
-        
-        function           save_incar()
-            fid=fopen('INCAR','w');
-                fprintf(fid,'START PARAMETERS:\n');
-                fprintf(fid,'%13s = %10i # %s \n'  , 'ISTART'  , 0          , '(0) new (1) cont (2) samecut');
-                fprintf(fid,'%13s = %10i # %s \n'  , 'ICHARG'  , 2          , '(1) file (2) atom (3) const <scf|nscf> (11)-chgcar');
-                fprintf(fid,'ELECTRONIC RELAXATION:\n');
-                fprintf(fid,'%13s = %10s # %s \n'  , 'GGA'     , 'AM05'     , '');
-                fprintf(fid,'%13s = %10s # %s \n'  , 'PREC'    , 'Accurate' , 'Accurate, Normal');
-                fprintf(fid,'%13s = %10i # %s \n'  , 'NELMDL'  , -5         , 'non-selfconsistent steps (<0) applied once (>0) applied after each ionic step');
-                fprintf(fid,'%13s = %10i # %s \n'  , '#IVDW'   , 2          , 'vdW');
-                fprintf(fid,'%13s = %10s # %s \n'  , 'ALGO'    , 'Fast'     , '(VeryFast) RMM-DIIS (Fast) Davidson/RMM-DIIS (Normal) Davidson');
-                fprintf(fid,'%13s = %10i # %s \n'  , '#IALGO'  , 48         , '(38) Davidson (48) RMM-DIIS algorithm');
-                fprintf(fid,'%13s = %10i # %s \n'  , '#NBANDS' , 72         , 'number of bands');
-                fprintf(fid,'%13s = %10i # %s \n'  , 'ENCUT'   , 500        , 'cutoff');
-                fprintf(fid,'%13s = %10i # %s \n'  , 'ISMEAR'  , 0          , '(0) gauss (1) mp (-5) tetrah');
-                fprintf(fid,'%13s = %10.8g # %s \n', 'SIGMA'   , 0.0001     , 'maximize with entropy below 0.1 meV / atom');
-                fprintf(fid,'%13s = %10.8g # %s \n', 'EDIFF'   , 1E-6       , 'toten convergence');
-                fprintf(fid,'IONIC RELAXATION:\n');
-                fprintf(fid,'%13s = %10i # %s \n'  , 'TEBEG'   , 0          , 'temperature of the MD');
-                fprintf(fid,'%13s = %10i # %s \n'  , 'IBRION'  , 2          , '(-1) no update (0) MD (1) RMM-DIIS quasi-Newton (2) conjugate-gradient');
-                fprintf(fid,'%13s = %10i # %s \n'  , 'POTIM '  , 2          , 'Timestep in femtoseconds');
-                fprintf(fid,'%13s = %10i # %s \n'  , 'ISIF'    , 3          , 'Relax (2) ions (3) ions,volume,shape (4) ions,shape');
-                fprintf(fid,'%13s = %10i # %s \n'  , 'NBLOCK'  , 1          , 'write after every iteration');
-                fprintf(fid,'%13s = %10i # %s \n'  , 'NSW'     , 100        , 'number of ionic steps');
-                fprintf(fid,'%13s = %10i # %s \n'  , 'SMASS'   , 0          , '(-3) NVE (=>0) Nosé thermostat');
-                fprintf(fid,'PARALLELIZATION:\n');
-                fprintf(fid,'%13s = %10i # %s \n'  , '#NCORE'  , 4          , 'approx SQRT( number of cores )');
-                fprintf(fid,'%13s = %10i # %s \n'  , '#NPAR'   , 1          , 'Parallelization');
-                fprintf(fid,'%13s = %10i # %s \n'  , '#NSIM'   , 1          , 'Number of bands which are optimized by RMMS-DIIS algorithm simultaneously');
-                fprintf(fid,'OTHER:\n');
-                fprintf(fid,'%13s = %10i # %s \n'  , 'LORBIT'  , 0          , '(11) lm-proj DOS and PROCAR (0) DOS');
-                fprintf(fid,'SAVE:\n');
-                fprintf(fid,'%13s = %10s # %s \n'  , 'LREAL '  , '.FALSE.'  , '(.FALSE.) for <20 atoms (Auto) for >20 atoms');
-                fprintf(fid,'%13s = %10s # %s \n'  , 'LWAVE '  , '.TRUE.'   , '(.TRUE.) Write wavefunctions');
-                fprintf(fid,'%13s = %10s # %s \n'  , 'LCHARG'  , '.TRUE.'   , '(.TRUE.) Write charge density');
-                fprintf(fid,'%13s = %10s # %s \n'  , 'LVTOT '  , '.TRUE.'   , '(.TRUE.) Write local charge potential');
-            fclose(fid);
+           
+        function [incar] = load_incar(fincar)
+            str = load_file_(fincar);
+            token_list = {...
+                'istart','icharg','gga','prec','ivdw','algo','ialgo','nbands','encut',...
+                'ismear','sigma','ediff','tebeg','ibrion','potim','isif','nblock','nsw',...
+                'smass','ncore','npar','nsim','lorbit','lreal','lwave','lcharg','lvtot'};
+            parse_ = @(x) strsplit(strtrim(strrep(x,'=',' ')),' ');
+            selec_ = @(x,i) x{i};
+            for i = 1:numel(token_list)
+                token = token_list{i};
+                incar.(token) = selec_(parse_(extract_token_(lower(strtrim(str)),token)),1);
+            end
         end
-               
+        
+        function incar   = gen_incar(flag)
+            switch flag
+                case 'evk'
+                    incar.istart='0';
+                    incar.icharg='11';
+                    incar.gga='am05';
+                    incar.prec='accurate';
+                    incar.ivdw='';
+                    incar.algo='fast';
+                    incar.ialgo='';
+                    incar.nbands='50';
+                    incar.encut='500';
+                    incar.ismear='0';
+                    incar.sigma='0.0001';
+                    incar.ediff='1e-6';
+                    incar.tebeg='0';
+                    incar.ibrion='-1';
+                    incar.potim='2';
+                    incar.isif='3';
+                    incar.nblock='1';
+                    incar.nsw='0';
+                    incar.smass='0';
+                    incar.ncore='';
+                    incar.npar='';
+                    incar.nsim='';
+                    incar.lorbit='5';
+                    incar.lreal='.false.';
+                    incar.lwave='.false.';
+                    incar.lcharg='.false.';
+                    incar.lvtot='.false.';
+                case 'rlx'
+                    incar.istart='0';
+                    incar.icharg='2';
+                    incar.gga='am05';
+                    incar.prec='accurate';
+                    incar.ivdw='';
+                    incar.algo='fast';
+                    incar.ialgo='';
+                    incar.nbands='';
+                    incar.encut='500';
+                    incar.ismear='0';
+                    incar.sigma='0.0001';
+                    incar.ediff='1e-6';
+                    incar.tebeg='0';
+                    incar.ibrion='2';
+                    incar.potim='2';
+                    incar.isif='3';
+                    incar.nblock='1';
+                    incar.nsw='100';
+                    incar.smass='0';
+                    incar.ncore='';
+                    incar.npar='';
+                    incar.nsim='';
+                    incar.lorbit='0';
+                    incar.lreal='.false.';
+                    incar.lwave='.true.';
+                    incar.lcharg='.true.';
+                    incar.lvtot='.true.';
+                case 'scf'
+                    incar.istart='0';
+                    incar.icharg='2';
+                    incar.gga='am05';
+                    incar.prec='accurate';
+                    incar.ivdw='';
+                    incar.algo='fast';
+                    incar.ialgo='';
+                    incar.nbands='50';
+                    incar.encut='500';
+                    incar.ismear='0';
+                    incar.sigma='0.0001';
+                    incar.ediff='1e-6';
+                    incar.tebeg='0';
+                    incar.ibrion='-1';
+                    incar.potim='2';
+                    incar.isif='3';
+                    incar.nblock='1';
+                    incar.nsw='0';
+                    incar.smass='0';
+                    incar.ncore='';
+                    incar.npar='';
+                    incar.nsim='';
+                    incar.lorbit='11';
+                    incar.lreal='.false.';
+                    incar.lwave='.true.';
+                    incar.lcharg='.true.';
+                    incar.lvtot='.true.';  
+            end
+        end
+
+        
         % symmetry
 
         function [T,H,S,R]    = get_symmetries(pc)
