@@ -136,19 +136,21 @@ classdef am_dft
         function           save_poscar(uc,fposcar)
             n = size(uc.tau,3);
             for i = 1:n
-                if n == 1; fid=fopen(sprintf('%s'     ,fposcar,i),'w'); else
-                           fid=fopen(sprintf('%s_%06i',fposcar,i),'w');
+                if n == 1
+                    fid=fopen(sprintf('%s'     ,fposcar),'w'); 
+                else
+                    fid=fopen(sprintf('%s_%06i',fposcar,i),'w');
                 end
-                fprintf(fid,' %i ',uc.nspecies); 
-                fprintf(fid,'%s \n',sprintf('POSCAR %i of %i',i,n)); 
-                fprintf(fid,'%12.8f \n',1.0);  % latpar
-                fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.bas(:,1)); 
-                fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.bas(:,2)); 
-                fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.bas(:,3)); 
-                fprintf(fid,' %s ',uc.symb{:}); fprintf(fid,'\n');
-                fprintf(fid,' %i ',uc.nspecies); fprintf(fid,'\n');
-                fprintf(fid,'Direct \n'); 
-                fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.tau(:,:,i));
+                    fprintf(fid,' %i ',uc.nspecies); 
+                    fprintf(fid,'%s \n',sprintf('POSCAR %i of %i',i,n)); 
+                    fprintf(fid,'%12.8f \n',1.0);  % latpar
+                    fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.bas(:,1)); 
+                    fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.bas(:,2)); 
+                    fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.bas(:,3)); 
+                    fprintf(fid,' %s ',uc.symb{:}); fprintf(fid,'\n');
+                    fprintf(fid,' %i ',uc.nspecies); fprintf(fid,'\n');
+                    fprintf(fid,'Direct \n'); 
+                    fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.tau(:,:,i));
                 fclose(fid);
             end
         end
@@ -446,7 +448,7 @@ classdef am_dft
                 % zero fermi and sort bands in increasing order
                 dft.E = sort(dft.E - Ef); 
                 % normalize projections by summing over atoms and characters?
-                dft.lmproj = dft.lmproj ./ sum(sum(dft.lmproj,2),3);
+                % dft.lmproj = dft.lmproj ./ sum(sum(dft.lmproj,2),3);
                 % close file
             fclose(fid);
             
@@ -604,7 +606,7 @@ classdef am_dft
             end
         end
 
-        
+
         % symmetry
 
         function [T,H,S,R]    = get_symmetries(pc)
@@ -1684,7 +1686,6 @@ classdef am_dft
             uc.p2u = p2u; 
             uc.u2i = pc.p2i(uc.u2p); 
             uc.i2u = uc.p2u(pc.i2p);
-            
         end
         
         function [dc,idc]     = get_displaced_cell(pc,bvk,n,kpt,amp,mode,nsteps)
@@ -3060,7 +3061,7 @@ classdef am_dft
                     for s = 1:bvt.nshells; bvt.fc{s} = double(fc(s_id==s+bvk.nshells).'); end
             end
         end
-        
+
         
         % electrons
 
@@ -3660,11 +3661,39 @@ classdef am_dft
             
             % define irreducible cell creation function and make structure
             ic_ = @(uc,i2p) struct('units','frac','bas',uc.bas, ...
-                'symb',{uc.symb},'mass',uc.mass,'nspecies',sum(unique(i2p).'==i2p,2).', ...
+                'symb',{uc.symb},'mass',uc.mass,'nspecies',sum(unique(uc.species(i2p)).'==uc.species(i2p),2).', ...
                 'natoms',numel(i2p),'tau',uc.tau(1:3,i2p),'species',uc.species(i2p));
             ic = ic_(pc,i2p);
         end
 
+        function [xc,i2x,x2i] = expand_irreducible_cell(ic,S)
+            % S = space symmetry
+            
+            import am_lib.* am_dft.*
+
+            % define function to apply symmetries to position vectors
+            seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
+
+            % apply symmetry operations to all atoms
+            nSs = size(S,3); tau = reshape(seitz_apply_(S,ic.tau),3,[]);
+            species = reshape(repmat(ic.species(:),1,nSs),1,[]);
+            
+            % get unique species
+            [~,ind] = uniquecol_(tau); tau = tau(:,ind); species = species(ind);
+            
+            % sort by species
+            [~,ind] = sort(species);  tau = tau(:,ind); species = species(ind);
+            
+            % get map
+            i2x = repmat([1:ic.natoms].',1,nSs); i2x = reshape(i2x,1,[]); [~,x2i] = unique(i2x);
+
+            % define irreducible cell creation function and make structure
+            uc_ = @(ic,tau,species) struct('units','frac','bas',ic.bas,...
+                'symb',{ic.symb},'mass',ic.mass,'nspecies',sum(unique(species).'==species,2).', ...
+                'natoms',size(tau,2),'tau',tau,'species',species);
+            xc = uc_(ic,tau,species);
+        end
+        
         function [uc,inds]    = match_cell(uc,uc_ref)
             
             import am_lib.*
@@ -3732,7 +3761,7 @@ classdef am_dft
                 'n',fbz.n,'nks',numel(i2f),'k',fbz.k(:,i2f),'w',w,'ntets',size(tet,2),'tet',tet,'tetw',tetw);
             ibz = ibz_(fbz,i2f,w,tet,tetw);
         end
-
+        
         function tet           = get_tetrahedra(recbas,n)
             % divide mesh into boxes
             box = am_lib.grid2box(n); nboxes = size(box,2);
@@ -4395,6 +4424,7 @@ classdef am_dft
               263.000000000,   262.000000000,   265.000000000,   266.000000000]; mass = m(Z);
         end
     end
+    
     
     % unix functions and scripts
     
