@@ -2,11 +2,13 @@ classdef am_dft
 
     
     properties (Constant)
-        tiny      = 1E-3; % precision of atomic coordinates
+        tiny      = 1E-2; % precision of atomic coordinates
         eps       = 1E-8; % numerical precision
         units_eV  = 0.06465555; % sqrt( [eV/Ang^2] * [1/amu] ) --> 0.06465555 [eV]
         units_THz = 98.22906;   % sqrt( [eV/Ang^2] * [1/amu] ) --> 98.22906 [THz=1/ps]
         units_GHz = 98229.06;   % sqrt( [eV/Ang^2] * [1/amu] ) --> 98229.06 [GHz=1/fs]
+        
+        verbosity = 1;
         
         % mex compiler parameters
         usemex    = false;
@@ -129,11 +131,12 @@ classdef am_dft
     % core
 
     methods (Static)
-
         
         % vasp
 
-        function           save_poscar(uc,fposcar)
+        function           write_poscar(uc,fposcar)
+            % write_poscar(uc,fposcar)
+            if nargin < 2; fposcar='POSCAR'; end
             n = size(uc.tau,3);
             for i = 1:n
                 if n == 1
@@ -154,7 +157,7 @@ classdef am_dft
                 fclose(fid);
             end
         end
-
+        
         function [uc]    = load_poscar(fposcar)
             import am_lib.*
             import am_dft.*
@@ -189,18 +192,19 @@ classdef am_dft
             fclose(fid);
         end
 
+        % load cif file
         function [uc]    = load_cif(fcif)
-            
+
             % NEED TO CONFIRM THAT THIS WORKS!
             % NEED TO CONFIRM THAT THIS WORKS!
             % NEED TO CONFIRM THAT THIS WORKS!
             % MAY NOT WORK FOR ALL CASES!
-            
+
             import am_dft.* am_lib.*
 
             % load file into memory
             str = load_file_(fcif); 
-            
+
             % exclude blank lines
             ex_=strcmp(strtrim(str),''); str=strtrim(str(~ex_)); nlines=numel(str);
 
@@ -259,7 +263,7 @@ classdef am_dft
                 end
             end
             Z = reindex(species_list);
-            
+
             % remove redundancies
             [~,i] = unique(species_list,'stable'); Z=Z(i); species_list=species_list(i); symb = symb_dataset(species_list);
 
@@ -307,10 +311,10 @@ classdef am_dft
                 if ~isempty(SS); break; end
             end; end
             nSSs = size(SS,3);
-            
+
             % take the space group with the most symmetries 
             if nSSs > nSs; S = SS; nSs = nSSs; end
-            
+
             % generate all positions based on symmetry operations
             seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
             tau = reshape(mod_(seitz_apply_(S,tau)),3,[]); species=repmat(species,1,nSs);
@@ -323,6 +327,7 @@ classdef am_dft
                 'natoms',numel(species),'tau',tau,'species',species);
             uc = uc_(bas,symb,Z,species);
         end
+
         
         function [dft]   = load_eigenval(feigenval,Ef)
             % load dispersion [frac-recp] and shift Fermi energy to zero
@@ -609,26 +614,53 @@ classdef am_dft
 
         % symmetry
 
-        function [T,H,S,R]    = get_symmetries(pc)
+%         function [sg,pg]      = get_groups(pc,tol)
+%             
+%             % getting point groups
+%             [T,H,S,R]    = get_symmetries(pc,tol)
+%             
+%             fprintf(' ... getting group properties')
+%             
+%             % get multiplication table
+%             [MT,E,I] = get_multiplication_table(S);
+%             if all(all(MT-MT.'==0))
+%                 fprintf(', abelian' );
+%             else
+%                 fprintf(', non-abelian' );
+%             end
+%             
+%             % get generators 
+%             G = get_generators(MT);
+%             fprintf(', %i generators (', numel(G)); fprintf(' %i', G); fprintf(')');
+%             
+%             % character table
+%             
+%         end
+        
+        function [T,H,S,R]    = get_symmetries(pc,tol)
+            % [T,H,S,R] = get_symmetries(pc, tol=am_lib.tiny)
             % T = all possible translations which restore the crystal to iteself
             % H = holohogries (all possible rotations which restore the bravais lattice onto iteself)
             % S = space group symmetries
             % R = point group symmetries
             
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
+            
+            if nargin < 2
+                tol = am_lib.tiny;
+            end
             
             % define function to check first two dimensions
-            check3_ = @(A) all(all(abs(A)<am_lib.tiny,1),2);
+            check3_ = @(A) all(all(abs(A)<tol,1),2);
             
             % define function to sort atoms and species into a unique order (reference)
-            X_ = @(tau,species) sortc_([species;mod_(tau)]); X = X_(pc.tau(:,:,1),pc.species);
+            X_ = @(species,tau) sortc_([species;mod_(tau)]); X = X_(pc.species,pc.tau(:,:,1));
 
             % get vectors that preserve periodic boundary conditions
-            N=1; V=mod_(pc.tau(:,pc.species==pc.species(N))-pc.tau(:,N)); nVs=size(V,2); T_ck=false(1,nVs);
-            for j = 1:nVs; T_ck(j) = check3_( X_(pc.tau(1:3,:,1)-V(:,j),pc.species)-X ); end
-            T=[V(:,T_ck),eye(3)]; T=T(:,rankc_(normc_(T)));
-
+            N = 1; V=mod_(pc.tau(:,pc.species==pc.species(N))-pc.tau(:,N));  nVs=size(V,2); ex_=false(1,nVs);
+            for j = 1:nVs; ex_(j) = check3_( X_(pc.species,pc.tau(1:3,:,1)-V(:,j))-X ); end
+            T=[V(:,ex_),eye(3)]; T=T(:,rankc_(normc_(T))); 
+            
             if nargout == 1; return; end
             
             % get arithmetic holodries (symmetries for which R'*g*R = g; g = bas'*bas)
@@ -642,7 +674,7 @@ classdef am_dft
             % get seitz operators which leave the atomic basis invariant
             S = zeros(4,4,nHs*nVs); S(4,4,:)=1; nSs=0;
             for i = 1:nHs; for j = 1:nVs
-                if check3_( X_(H(:,:,i)*pc.tau+V(:,j),pc.species) - X ); nSs=nSs+1; S(1:3,1:4,nSs)=[ H(:,:,i), V(:,j) ]; end
+                if check3_( X_(pc.species,H(:,:,i)*pc.tau+V(:,j)) - X ); nSs=nSs+1; S(1:3,1:4,nSs)=[ H(:,:,i), V(:,j) ]; end
             end; end; S = S(:,:,1:nSs); 
         
             % set identity first
@@ -658,11 +690,10 @@ classdef am_dft
         end
 
         function [MT,E,I]     = get_multiplication_table(S)
-            % get multiplication table: S(:,:,i)*S(:,:,j) = S(:,:,MT(i,j)
+            % [MT,E,I] = get_multiplication_table(S)
+            % get multiplication table: S(:,:,i)*S(:,:,j) = S(:,:,MT(i,j))
+            import am_lib.* am_dft.*
 
-            import am_lib.*
-            import am_dft.*
-            
             if     size(S,1) == 4
                 % seitz operator (applies mod to translational components)
                 md_ = @(X) [X(1:12,:);mod_(X(13:15,:));X(16:end,:)];
@@ -713,13 +744,96 @@ classdef am_dft
             if nargout>2; I = [MT==E]*[1:nSs].'; end
         end
 
+        function [G,u]        = get_generators(MT)
+            % [G,u] = get_generators(MT)
+            % u reindexes symmetries based on the generators
+            import am_lib.*
+            % [gen_id] = get_generators(MT)
+            nsyms = size(MT,1); flatten_ = @(x) x(:);
+            for ngens = 1:nsyms
+                % generate a list of all possible generators
+                genlist = nchoosek_(nsyms,ngens);
+                % loop over the list one at a time, checking whether the entire multiplication table can be generated
+                for i = 1:size(genlist,2)
+                    % initialize, include identity
+                    x = genlist(:,i); 
+                    % expand multiplication table
+                    while true
+                        u = unique([flatten_(MT(x,x));x],'stable');
+                        switch numel(u)
+                            case nsyms
+                                % found! 
+                                G = genlist(:,i);
+                                return;
+                                %
+                            case numel(x)
+                                % exausted all possibiltiies
+                                break;
+                            otherwise
+                                % update
+                                x = u;
+                        end
+                    end
+                end
+            end
+        end
+        
+        function [Glist,ulist]= get_generators_list(MT,ngens)
+            % retunrs all possible sets of generators with ngens elements
+            import am_lib.*
+            % [gen_id] = get_generators(MT)
+            nsyms = size(MT,1); flatten_ = @(x) x(:);
+            % generate a list of all possible generators
+            Glist = nchoosek_(nsyms,ngens); ngenlists = size(Glist,2); 
+            ex_ = false(1,ngenlists); ulist = zeros(nsyms,ngenlists);
+            % loop over the list one at a time, checking whether the entire multiplication table can be generated
+            for i = 1:ngenlists
+                % initialize
+                x = Glist(:,i); 
+                % expand multiplication table
+                while true
+                    u = unique([flatten_(MT(x,x));x],'stable');
+                    switch numel(u)
+                        case nsyms
+                            % found! 
+                            ex_(i) = true;
+                            ulist(:,i) = u;
+                            break;
+                            %
+                        case numel(x)
+                            ex_(i) = false;
+                            % exausted all possibiltiies
+                            break;
+                        otherwise
+                            % update
+                            x = u;
+                    end
+                end
+            end
+            Glist = Glist(:,ex_); ulist = ulist(:,ex_);
+        end
+        
+        function [MT]         = relabel_multiplication_table(MT,fwd)
+            nsyms = size(MT,1); rev(fwd) = [1:nsyms]; MT = rev(MT(fwd,fwd));
+        end
+        
+        function                plot_cayley_graph(MT)
+            % 
+            [G] = get_generators(MT);
+            i=[]; j=[]; x = MT(1,:);
+            for k = 1:numel(G)
+                i = [i;flatten_(x)];
+                j = [j;flatten_(MT(G(k),x))];
+            end
+            plot(digraph(i,j));
+        end
+        
         function [CT,c_id,irr]= get_irreps(S)
             % s2c = identifies the class to which symmetries belong
             % CT = character table
             % irreps
             
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
             
             % get regular rep G by putting identity along diagonal of multiplciation table
             [MT,~,I] = get_multiplication_table(S); nGs = size(MT,2);
@@ -804,8 +918,7 @@ classdef am_dft
             %
             % for AX = XB, if elements A and B are conjugate pairs for some other element X in the group,  they are in the same class
             %
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             nsyms = size(MT,2);
             % allocate space for conjugacy class
@@ -1578,7 +1691,8 @@ classdef am_dft
         end
 
         function abc_angles   = bas2abc(bas)
-            M = bas * (bas.');
+            % [a,b,c,alpha,beta,gamma] = bas2abc(bas)
+            M = bas.' * bas;
             % de Graef p 86
             a = sqrt(M(1,1));
             b = sqrt(M(2,2));
@@ -1590,30 +1704,74 @@ classdef am_dft
         end
         
         function bas          = abc2bas(abc_angles)
+            % bas = abc2bas([a,b,c,alpha,beta,gamma])
             a=abc_angles(1); alpha=abc_angles(4);
             b=abc_angles(2); beta =abc_angles(5);
             c=abc_angles(3); gamma=abc_angles(6);
             % correct rounding errors
             abs_cap = @(x) max(min(x,180), -180);
             val = abs_cap( (cosd(alpha)*cosd(beta)-cosd(gamma))/(sind(alpha)*sind(beta)) ); gamma_star = acosd(val);
-            % generate basis
+            % generate basis (column vectors)
             bas(:,1) = [ a * sind(beta)                    ,                                0.0, a * cosd(beta) ];
             bas(:,2) = [-b * sind(alpha) * cosd(gamma_star), b * sind(alpha) * sind(gamma_star), b * cosd(alpha)];
             bas(:,3) = [                                0.0,                                0.0, c              ];
         end
         
+        function inds         = find_isomorphic_bijection(g,h)
+            % inds = find_isomorphic_bijection(g,h), g and h are point or space group symmetries
+            % ismorphism: g <==> h(:,:,inds) , returns inds = [] if groups are not isomorphic
+
+            import am_lib.* am_dft.*
+
+            nsyms = size(g,3);
+
+            % get multiplication tables
+            G = get_multiplication_table(g); 
+            H = get_multiplication_table(h);
+
+            % get multiplication point symmetry identities and classes
+            Gp = identify_point_symmetries(g); Gc = identify_classes(G);
+            Hp = identify_point_symmetries(h); Hc = identify_classes(H); 
+
+            % sort symmetries by identities and classes
+            Gfwd=rankc_([Gp;Gc(:).']); Grev(Gfwd) = [1:nsyms]; G=relabel_multiplication_table(G,Gfwd);  % out of sync: Gp=Gp(Gfwd); Gc=Gc(Gfwd); g=g(:,:,Gfwd);
+            Hfwd=rankc_([Hp;Hc(:).']); Hrev(Hfwd) = [1:nsyms]; H=relabel_multiplication_table(H,Hfwd);  % out of sync: Hp=Hp(Hfwd); Hc=Hc(Hfwd); h=h(:,:,Hfwd);
+
+                % get generators
+                [gg,Gg] = get_generators(G); ngenerators = numel(gg);
+                [ ~,Hg] = get_generators_list(H,ngenerators);
+
+                % compare multiplication tables, looking for bijections between symmetries g and h, i.e. isomorphism between G and H
+                isfound = false; j=0; inds=[];
+                for i = 1:size(Hg,2)
+                    % fwd = relabeling of H to match G
+                    fwd(Gg) = Hg(:,i);
+                    if all(all( G == relabel_multiplication_table(H,fwd) ))
+                        % isomorphism found,  save bijection which takes symmetries in H to G in original order
+                        j=j+1; inds(Gfwd,j) = Hfwd(fwd);
+                    end 
+                end
+
+            % restore original ordering
+            % G = relabel_multiplication_table(G,Grev);
+            % H = relabel_multiplication_table(H,Hrev);
+
+            % % check with:
+            % G = get_multiplication_table(g);
+            % H = get_multiplication_table(h);
+            % G - relabel_multiplication_table(H,inds)
+        end
         
         % unit cells
 
         function [uc,pc,ic]   = get_cells(fposcar)
-            % wrapper routine
-            % fname = 'infile.supercell' (poscar)
+            % [uc,pc,ic]   = get_cells(fposcar)
+            % fposcar can be a poscar or cif file
             
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % time
-            fprintf(' ... solving for cells and symmetries'); tic
+            fprintf(' ... getting cells and symmetries'); tic
             
             % load poscar
             if contains(fposcar,'cif')
@@ -1645,11 +1803,11 @@ classdef am_dft
             uc.bas2pc = pc.bas/uc.bas; uc.tau2pc = pc.bas\uc.bas;
             
             % print basic symmetry info
-            [~,~,~,R] = get_symmetries(pc); 
-            bv_code = identify_bravais_lattice(pc.bas); fprintf(', %s',decode_bravais(bv_code));
+            [~,H,~,R] = get_symmetries(pc); 
+            bv_code = identify_bravais_lattice(pc.bas); fprintf(', bravais=%s',decode_bravais(bv_code));
             % holohodry should give same info as bravais lattice
-            % hg_code = identify_pointgroup(H); fprintf(', %s',decode_holohodry(hg_code));
-            pg_code = identify_pointgroup(R); fprintf(', %s',decode_pg(pg_code));
+            hg_code = identify_pointgroup(H); fprintf(', holohodry=%s',decode_holohodry(hg_code));
+            pg_code = identify_pointgroup(R); fprintf(', pointgroup=%s',decode_pg(pg_code));
             
             % beta (POSSIBLE SPACE GROUPS)
             sg_code = identify_spacegroup(pg_code);
@@ -1660,8 +1818,7 @@ classdef am_dft
 
         function [uc]         = get_supercell(pc,B)
             
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % basic check
             if mod(det(B),1)~=0; error('determinant of B must be an integer'); end 
@@ -1692,7 +1849,7 @@ classdef am_dft
             % Note: can set mode=[] for interactive selection
             % n=[4;4;4]; kpt=[0;0;1/4]; amp=10; mode=6; nsteps=51;
             % [~,md] = get_displaced_cell(pc,bvk,n,kpt,amp,mode,nsteps); 
-            % clf; [F]=plot_md_cell(md,'view',[0;1;0]); movie(F,3); % save_poscar(md,'POSCAR_test')
+            % clf; [F]=plot_md_cell(md,'view',[0;1;0]); movie(F,3); % write_poscar(md,'POSCAR_test')
             %
             % Q: What effect does the kpt have on vibrational wave?
             % A: Gamma-center and zone boundary points are standing waves.
@@ -1742,8 +1899,7 @@ classdef am_dft
             %   -0.0000 + 0.0000i   -0.0000 + 0.0000i
             %
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
             
             % get a supercell commensurate with the kpoint
             uc = get_supercell(pc,diag(n)); [~,pp] = get_pairs(pc,uc,bvk.cutoff);
@@ -1879,7 +2035,7 @@ classdef am_dft
         function [F]          = plot_md_cell(md,varargin)
             % n=[4;4;4]; kpt=[0;0;1/4]; amp=10; mode=6; nsteps=51;
             % [~,md] = get_displaced_cell(pc,bvk,n,kpt,amp,mode,nsteps); 
-            % clf; [F]=plot_md_cell(md,'view',[0;1;0]); movie(F,3); % save_poscar(md,'POSCAR_test')
+            % clf; [F]=plot_md_cell(md,'view',[0;1;0]); movie(F,3); % write_poscar(md,'POSCAR_test')
             
             import am_lib.*
             import am_dft.*
@@ -2001,8 +2157,7 @@ classdef am_dft
             % bzs=get_bvk_dispersion(bvk,bzs);
             % plot_bz_surf(bzs,1)
             
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
             
             % get number of kpoints
             nks=prod(n); recbas = inv(pc.bas).';
@@ -3594,6 +3749,7 @@ classdef am_dft
             fprintf('  %-30s    %-30s   %-4s   %-11s   %-11s   %-4s\n',      bar_(30),      bar_(30),bar_(4),bar_(11),bar_(11),bar_(4));
             fprintf('%10.5f %10.5f %10.5f  %10.5f %10.5f %10.5f   %4i   %3i-%3i-%3i   %3i-%3i-%3i   %4i\n', Z(2:end,rankc_(Z(1,:)))); 
         end
+    
     end
         
     
@@ -3603,19 +3759,68 @@ classdef am_dft
         
         % aux unit cells
         
-        function [pc,p2u,u2p] = get_primitive_cell(uc)
+        function [uc]         = create_cell(bas,tau,symb,sg_code)
+            % create_cell(bas,tau,symb,sg_code) creates cell based on wyckoff positions and standard crystallographic setting
+            %
+            % Example input for BiFeO3 P63cm (hypothetical polymorph):
+            %     % define basis, atomic positions, species, and elements
+            %     a = 6.200; c = 12.076;
+            %     bas = abc2bas([a,a,c,90,90,120]);
+            %     tau=[0.00000 0.00000 0.48021; 0.33333 0.66667 0.01946; ...
+            %       0.29931 0.00000 0.15855; 0.63457 0.00000 0.34439; ...
+            %       0.33440 0.00000 0.00109; 0.00000 0.00000 0.27855; ...
+            %       0.33333 0.66667 0.23206].';
+            %     symb = {'O','O','O','O','Fe','Bi','Bi'}; sg_code=185;
+            %     % create cell
+            %     [uc] = create_cell(bas,tau,symb,sg_code); [bragg] = get_bragg(uc); 
+            %     plot_bragg(bragg); tablulate_bragg(bragg,10);
+            %     % save poscar
+            %     write_poscar(uc,'BiFeO3_P63cm_dft.poscar');
+            %
+            
+            import am_dft.* am_lib.*
+
+            % identify atomic types and assign a number label
+            [symb,~,species]=unique(symb,'stable');
+
+            % get space symmetries in conventional setting
+            S = generate_sg(sg_code);
+
+            % define function to apply symmetries to position vectors
+            seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
+
+            % apply symmetry operations to all atoms
+            natoms = size(tau,2); nSs = size(S,3); i2u = repmat([1:natoms].',1,nSs); i2u=i2u(:).';
+            tau = reshape(seitz_apply_(S,tau),3,[]); species = repmat(species(:),1,nSs); species=species(:).';
+
+            % get unique species
+            [~,ind] = uniquecol_(tau); tau = tau(:,ind); species = species(ind); i2u = i2u(ind);
+
+            % sort by species
+            [~,ind] = sort(i2u);  tau = tau(:,ind); species = species(ind); i2u = i2u(ind);
+
+            % define irreducible cell creation function and make structure
+            uc_ = @(bas,tau,symb,species) struct('units','frac','bas',bas,...
+                'symb',{symb},'mass',get_atomic_mass(get_atomic_number(symb)),...
+                'nspecies',sum(unique(species).'==species,2).', ...
+                'natoms',size(tau,2),'tau',tau,'species',species);
+            uc = uc_(bas,tau,symb,species);
+        end
+        
+        function [pc,p2u,u2p] = get_primitive_cell(uc,tol)
+            % [pc,p2u,u2p] = get_primitive_cell(uc,tol)
             % NOTE: saves p2u entries which share a common closest
             % primitive lattice vector, not just the first primitive atoms
             % produced by the matrix A. When building shells, this property
             % is exploited.
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
+            
+            % set tolerance if not specified
+            if nargin<2; tol = am_lib.tiny; end
             
             % translate one atom to the origin if there isn't one already
-            if all(sum(uc.tau,1)>am_lib.tiny)
-                uc.tau = uc.tau-uc.tau(:,1);
-            end
+            if all(sum(uc.tau,1)>am_lib.tiny); uc.tau = uc.tau-uc.tau(:,1); end
             
             % build permutation matrix for atoms related by translations
             T = get_symmetries(uc); nTs=size(T,2); PM=zeros(uc.natoms,nTs);
@@ -3623,13 +3828,38 @@ classdef am_dft
 
             % construct a sparse binary representation 
             A=zeros(uc.natoms); A(sub2ind([1,1]*uc.natoms,repmat([1:uc.natoms].',nTs,1),PM(:)))=1; A=frref_(A); A=A(~all(A==0,2),:);
+            
+            % find the smallest primitive cell volume (the three smallest vectors which preserve periodic boundary conditions)
+            inds=[0,0,0]; T_cart = uc.bas*T; fwd = rankc_(normc_(T_cart)); T_cart = T_cart(:,fwd); T = T(:,fwd);
+            for j =           1:nTs; if sum(abs(T_cart(:,j)))                         >tol; inds(1)=j; break; end; end
+            for j = (inds(1)+1):nTs; if sum(abs(cross(T_cart(:,inds(1)),T_cart(:,j))))>tol; inds(2)=j; break; end; end
+            for j = (inds(2)+1):nTs; if abs(det(T_cart(:,[inds(1:2),j])+eye(3)*eps))  >tol; inds(3)=j; break; end; end
+            if any(inds==0); error('basis not found'); end
 
-            % set basis (the three smallest vectors which preserve periodic boundary conditions)
-            inds=[0,0,0];
-            for j = 1:nTs; if any(abs(T(:,j))>am_lib.eps); inds(1)=j; break; end; end
-            for j = 1:nTs; if any(abs(cross(T(:,2),T(:,j)))>am_lib.eps); inds(2)=j; break; end; end
-            for j = 1:nTs; inds(3)=j; if abs(det(T(:,inds))+eye(3)*eps) > am_lib.eps; break; end; end
-            B=T(:,inds); if det(B)<0; B=fliplr(B); end
+            % save basis
+            B=T(:,inds); vol=det(uc.bas*B);
+            if vol<0; B=fliplr(B); vol=-vol; end
+            
+            % refined the primitive cell to try and get angles to be either
+            % equal to each other or equal to 30,60,90,120; also try to get
+            % the lengths of the primitive vectors to be the same 
+            if true
+                % get possible lattice vectors
+                grid_ =  [1, 0,1,1, 1,0,0, -1, 1, 1, 0, -1, 1,-1, 1, 0, 0, -1,-1, 1, -1, 0, 0, -1,-1, 0, -1; ...
+                          1, 1,0,1, 0,1,0,  1,-1, 1, 0,  0, 0, 1,-1, 1,-1, -1, 1,-1,  0,-1, 0, -1, 0,-1, -1; ...
+                          1, 1,1,0, 0,0,1,  1, 1,-1, 0,  1,-1, 0, 0,-1, 1,  1,-1,-1,  0, 0,-1,  0,-1,-1, -1];
+                T = osum_(T,grid_,2); T = uniquecol_(T); T_cart = uc.bas*T; nTs = size(T,2);
+
+                % find all combination of unit vectors that have volume equal to the smallest volume determined above
+                ijk = nchoosek_(nTs,3); m = size(ijk,2);
+                v = zeros(1,m); for i = 1:m; v(i) = abs(det(T_cart(:,ijk(:,i)))); end
+                ex_ = abs(v-vol)<am_lib.tiny; ijk = ijk(:,ex_); m = size(ijk,2);
+
+                % find basis which produces the highest symmetry
+                n = zeros(1,m); 
+                for i = 1:m; n(i) = numel(uniquetol([30,60,90,120,bas2abc(T_cart(:,ijk(:,i)))],tol)); end
+                nmin=min(n); inds_ = find(n==nmin); B = T(:,ijk(:,inds_(1)));
+            end
             
             % set identifiers (see NOTE: cannot simply using p2u = findrow_(A)!)
             p2u = member_(mod_(B*mod_(B\uc.tau(:,findrow_(A),1))),mod_(uc.tau(:,:,1))).'; u2p = ([1:size(A,1)]*A);
@@ -3639,13 +3869,26 @@ classdef am_dft
                 'symb',{uc.symb},'mass',uc.mass,'nspecies',sum(unique(uc.species(p2u)).'==uc.species(p2u),2).', ...
                 'natoms',numel(p2u),'tau',mod_(B\uc.tau(:,p2u)),'species',uc.species(p2u) );
             pc = pc_(uc,B,p2u);
+            
+            % symmeterize basis vectors
+            if true
+                [a,~,c]=uniquecol_(bas2abc(pc.bas)); pc.bas = abc2bas(a(c));
+                % strange... should not convert atomic positions to cart
+                % and then back to fractional, but keep the positions fixed
+                % just redefining the basis appears to be enough.
+                % convert atomic poisitons to cart
+                % tau_cart = pc.bas*pc.tau;
+                % % redefine basis
+                % [a,~,c]=uniquecol_(bas2abc(pc.bas)); pc.bas = abc2bas(a(c));
+                % % transform atomic positions back to fractional
+                % pc.tau = mod_(pc.bas\tau_cart);
+            end
         end
 
         function [ic,i2p,p2i] = get_irreducible_cell(pc)
             % idenitifes irreducible atoms
             
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
             
             % get seitz matrices
             [~,~,S] = get_symmetries(pc);
@@ -3665,40 +3908,10 @@ classdef am_dft
                 'natoms',numel(i2p),'tau',uc.tau(1:3,i2p),'species',uc.species(i2p));
             ic = ic_(pc,i2p);
         end
-
-        function [xc,i2x,x2i] = expand_irreducible_cell(ic,S)
-            % S = space symmetry
-            
-            import am_lib.* am_dft.*
-
-            % define function to apply symmetries to position vectors
-            seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
-
-            % apply symmetry operations to all atoms
-            nSs = size(S,3); tau = reshape(seitz_apply_(S,ic.tau),3,[]);
-            species = reshape(repmat(ic.species(:),1,nSs),1,[]);
-            
-            % get unique species
-            [~,ind] = uniquecol_(tau); tau = tau(:,ind); species = species(ind);
-            
-            % sort by species
-            [~,ind] = sort(species);  tau = tau(:,ind); species = species(ind);
-            
-            % get map
-            i2x = repmat([1:ic.natoms].',1,nSs); i2x = reshape(i2x,1,[]); [~,x2i] = unique(i2x);
-
-            % define irreducible cell creation function and make structure
-            uc_ = @(ic,tau,species) struct('units','frac','bas',ic.bas,...
-                'symb',{ic.symb},'mass',ic.mass,'nspecies',sum(unique(species).'==species,2).', ...
-                'natoms',size(tau,2),'tau',tau,'species',species);
-            xc = uc_(ic,tau,species);
-        end
         
         function [uc,inds]    = match_cell(uc,uc_ref)
-            
-            import am_lib.*
-            import am_dft.*
-            
+            import am_lib.* am_dft.*
+
             % find closest atom
             [~,inds] = min(reshape(normc_( ...
                 mod_(osum_(-uc.tau(:,:,1),uc_ref.tau(:,:,1),2)+.5)-.5 ),...
@@ -4388,41 +4601,67 @@ classdef am_dft
     
     methods (Static)
 
-        function [Z] = get_atomic_number(symb)
-        s = {'h'  ,'he' ,'li' ,'be' ,'b'  ,'c'  ,'n'  ,'o'  ,'f'  ,'ne' ,'na' ,'mg' ,'al' ,'si' ,'p'  ,'s'  , ...
-             'cl' ,'ar' ,'k'  ,'ca' ,'sc' ,'ti' ,'v'  ,'cr' ,'mn' ,'fe' ,'co' ,'ni' ,'cu' ,'zn' ,'ga' ,'ge' , ...
-             'as' ,'se' ,'br' ,'kr' ,'rb' ,'sr' ,'y'  ,'zr' ,'nb' ,'mo' ,'tc' ,'ru' ,'rh' ,'pd' ,'ag' ,'cd' , ...
-             'in' ,'sn' ,'sb' ,'te' ,'i'  ,'xe' ,'cs' ,'ba' ,'la' ,'ce' ,'pr' ,'nd' ,'pm' ,'sm' ,'eu' ,'gd' , ...
-             'tb' ,'dy' ,'ho' ,'er' ,'tm' ,'yb' ,'lu' ,'hf' ,'ta' ,'w'  ,'re' ,'os' ,'ir' ,'pt' ,'au' ,'hg' , ...
-             'tl' ,'pb' ,'bi' ,'po' ,'at' ,'rn' ,'fr' ,'ra' ,'ac' ,'th' ,'pa' ,'u'  ,'np' ,'pu' ,'am' ,'cm' , ...
-             'bk' ,'cf' ,'es' ,'fm' ,'md' ,'no' ,'lr' ,'rf' ,'db' ,'sg' ,'bh' ,'hs' ,'mt' ,'ds' ,'rg' ,'uub', ...
-             'uut','uuq','uup','uuh'}; Z = find(strcmp(strtrim(lower(symb)),s));
+        function [Z]    = get_atomic_number(symb)
+            symbol_database = {...
+                 'h'  ,'he' ,'li' ,'be' ,'b'  ,'c'  ,'n'  ,'o'  ,'f'  ,'ne' ,'na' ,'mg' ,'al' ,'si' ,'p'  ,'s'  , ...
+                 'cl' ,'ar' ,'k'  ,'ca' ,'sc' ,'ti' ,'v'  ,'cr' ,'mn' ,'fe' ,'co' ,'ni' ,'cu' ,'zn' ,'ga' ,'ge' , ...
+                 'as' ,'se' ,'br' ,'kr' ,'rb' ,'sr' ,'y'  ,'zr' ,'nb' ,'mo' ,'tc' ,'ru' ,'rh' ,'pd' ,'ag' ,'cd' , ...
+                 'in' ,'sn' ,'sb' ,'te' ,'i'  ,'xe' ,'cs' ,'ba' ,'la' ,'ce' ,'pr' ,'nd' ,'pm' ,'sm' ,'eu' ,'gd' , ...
+                 'tb' ,'dy' ,'ho' ,'er' ,'tm' ,'yb' ,'lu' ,'hf' ,'ta' ,'w'  ,'re' ,'os' ,'ir' ,'pt' ,'au' ,'hg' , ...
+                 'tl' ,'pb' ,'bi' ,'po' ,'at' ,'rn' ,'fr' ,'ra' ,'ac' ,'th' ,'pa' ,'u'  ,'np' ,'pu' ,'am' ,'cm' , ...
+                 'bk' ,'cf' ,'es' ,'fm' ,'md' ,'no' ,'lr' ,'rf' ,'db' ,'sg' ,'bh' ,'hs' ,'mt' ,'ds' ,'rg' ,'uub', ...
+                 'uut','uuq','uup','uuh'}; f_ = @(symb) find(strcmp(strtrim(lower(symb)),symbol_database));
+            if iscell(symb)
+                nZs = numel(symb); Z = zeros(1,nZs);
+                for i = 1:nZs; Z(i) = f_(symb{i}); end
+            else
+                Z = f_(symb);
+            end
+        end
+        
+        function [symb] = get_atomic_symbol(Z)
+            %
+            symbol_database = {...
+                 'h'  ,'he' ,'li' ,'be' ,'b'  ,'c'  ,'n'  ,'o'  ,'f'  ,'ne' ,'na' ,'mg' ,'al' ,'si' ,'p'  ,'s'  , ...
+                 'cl' ,'ar' ,'k'  ,'ca' ,'sc' ,'ti' ,'v'  ,'cr' ,'mn' ,'fe' ,'co' ,'ni' ,'cu' ,'zn' ,'ga' ,'ge' , ...
+                 'as' ,'se' ,'br' ,'kr' ,'rb' ,'sr' ,'y'  ,'zr' ,'nb' ,'mo' ,'tc' ,'ru' ,'rh' ,'pd' ,'ag' ,'cd' , ...
+                 'in' ,'sn' ,'sb' ,'te' ,'i'  ,'xe' ,'cs' ,'ba' ,'la' ,'ce' ,'pr' ,'nd' ,'pm' ,'sm' ,'eu' ,'gd' , ...
+                 'tb' ,'dy' ,'ho' ,'er' ,'tm' ,'yb' ,'lu' ,'hf' ,'ta' ,'w'  ,'re' ,'os' ,'ir' ,'pt' ,'au' ,'hg' , ...
+                 'tl' ,'pb' ,'bi' ,'po' ,'at' ,'rn' ,'fr' ,'ra' ,'ac' ,'th' ,'pa' ,'u'  ,'np' ,'pu' ,'am' ,'cm' , ...
+                 'bk' ,'cf' ,'es' ,'fm' ,'md' ,'no' ,'lr' ,'rf' ,'db' ,'sg' ,'bh' ,'hs' ,'mt' ,'ds' ,'rg' ,'uub', ...
+                 'uut','uuq','uup','uuh'}; 
+            nZs = numel(Z); symb = cell(1,nZs);
+            for i = 1:nZs; symb(i) = symbol_database(Z(i)); end
         end
         
         function [mass] = get_atomic_mass(Z)
-        m = [   1.007947000,     4.002602000,     6.941200000,     9.012182000,    10.811500000, ...
-               12.011100000,    14.006747000,    15.999430000,    18.998403000,    20.179760000, ...
-               22.989769000,    24.305060000,    26.981540000,    28.085530000,    30.973762000, ...
-               32.066600000,    35.452790000,    39.948100000,    39.098310000,    40.078900000, ...
-               44.955911000,    47.883000000,    50.941510000,    51.996160000,    54.938051000, ...
-               55.847300000,    58.933201000,    58.693400000,    63.546300000,    65.392000000, ...
-               69.723100000,    72.612000000,    74.921592000,    78.963000000,    79.904000000, ...
-               83.801000000,    85.467830000,    87.621000000,    88.905852000,    91.224200000, ...
-               92.906382000,    95.941000000,    98.000000000,   101.072000000,   102.905503000, ...
-              106.421000000,   107.868220000,   112.411800000,   114.821000000,   118.710700000, ...
-              121.757000000,   127.603000000,   126.904473000,   131.292000000,   132.905435000, ...
-              137.327700000,   138.905520000,   140.115400000,   140.907653000,   144.243000000, ...
-              145.000000000,   150.363000000,   151.965900000,   157.253000000,   158.925343000, ...
-              162.503000000,   164.930323000,   167.263000000,   168.934213000,   173.043000000, ...
-              174.967100000,   178.492000000,   180.947910000,   183.853000000,   186.207100000, ...
-              190.210000000,   192.223000000,   195.083000000,   196.966543000,   200.593000000, ...
-              204.383320000,   207.210000000,   208.980373000,   209.000000000,   210.000000000, ...
-              222.000000000,   223.000000000,   226.025000000,   227.028000000,   232.038110000, ...
-              231.035900000,   238.028910000,   237.048000000,   244.000000000,   243.000000000, ...
-              247.000000000,   247.000000000,   251.000000000,   252.000000000,   257.000000000, ...
-              258.000000000,   259.000000000,   262.000000000,   261.000000000,   262.000000000, ...
-              263.000000000,   262.000000000,   265.000000000,   266.000000000]; mass = m(Z);
+            mass_database = [...
+                    1.007947000,     4.002602000,     6.941200000,     9.012182000,    10.811500000, ...
+                   12.011100000,    14.006747000,    15.999430000,    18.998403000,    20.179760000, ...
+                   22.989769000,    24.305060000,    26.981540000,    28.085530000,    30.973762000, ...
+                   32.066600000,    35.452790000,    39.948100000,    39.098310000,    40.078900000, ...
+                   44.955911000,    47.883000000,    50.941510000,    51.996160000,    54.938051000, ...
+                   55.847300000,    58.933201000,    58.693400000,    63.546300000,    65.392000000, ...
+                   69.723100000,    72.612000000,    74.921592000,    78.963000000,    79.904000000, ...
+                   83.801000000,    85.467830000,    87.621000000,    88.905852000,    91.224200000, ...
+                   92.906382000,    95.941000000,    98.000000000,   101.072000000,   102.905503000, ...
+                  106.421000000,   107.868220000,   112.411800000,   114.821000000,   118.710700000, ...
+                  121.757000000,   127.603000000,   126.904473000,   131.292000000,   132.905435000, ...
+                  137.327700000,   138.905520000,   140.115400000,   140.907653000,   144.243000000, ...
+                  145.000000000,   150.363000000,   151.965900000,   157.253000000,   158.925343000, ...
+                  162.503000000,   164.930323000,   167.263000000,   168.934213000,   173.043000000, ...
+                  174.967100000,   178.492000000,   180.947910000,   183.853000000,   186.207100000, ...
+                  190.210000000,   192.223000000,   195.083000000,   196.966543000,   200.593000000, ...
+                  204.383320000,   207.210000000,   208.980373000,   209.000000000,   210.000000000, ...
+                  222.000000000,   223.000000000,   226.025000000,   227.028000000,   232.038110000, ...
+                  231.035900000,   238.028910000,   237.048000000,   244.000000000,   243.000000000, ...
+                  247.000000000,   247.000000000,   251.000000000,   252.000000000,   257.000000000, ...
+                  258.000000000,   259.000000000,   262.000000000,   261.000000000,   262.000000000, ...
+                  263.000000000,   262.000000000,   265.000000000,   266.000000000]; 
+            nZs = numel(Z); mass = zeros(1,nZs);
+            for i = 1:nZs; mass(i) = mass_database(Z(i)); end
         end
+
     end
     
     
