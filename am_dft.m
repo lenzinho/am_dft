@@ -3844,11 +3844,14 @@ classdef am_dft
             % equal to each other or equal to 30,60,90,120; also try to get
             % the lengths of the primitive vectors to be the same 
             if true
-                % get possible lattice vectors
+                % augment lattice vectors
                 grid_ =  [1, 0,1,1, 1,0,0, -1, 1, 1, 0, -1, 1,-1, 1, 0, 0, -1,-1, 1, -1, 0, 0, -1,-1, 0, -1; ...
                           1, 1,0,1, 0,1,0,  1,-1, 1, 0,  0, 0, 1,-1, 1,-1, -1, 1,-1,  0,-1, 0, -1, 0,-1, -1; ...
                           1, 1,1,0, 0,0,1,  1, 1,-1, 0,  1,-1, 0, 0,-1, 1,  1,-1,-1,  0, 0,-1,  0,-1,-1, -1];
-                T = osum_(T,grid_,2); T = uniquecol_(T); T_cart = uc.bas*T; nTs = size(T,2);
+                T = osum_(T,grid_,2);  T = uniquecol_(T); T_cart = uc.bas*T; 
+                
+                % (to speed things up) keep vectors whose norm are smaller than 2 times the largest norm in B the tentative basis
+                ex_ = normc_(T_cart)<2*max(normc_(uc.bas*B)); nTs = sum(ex_); T = T(:,ex_); T_cart = T_cart(:,ex_);
 
                 % find all combination of unit vectors that have volume equal to the smallest volume determined above
                 ijk = nchoosek_(nTs,3); m = size(ijk,2);
