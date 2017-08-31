@@ -751,9 +751,9 @@ classdef am_dft
             % [gen_id] = get_generators(MT)
             nsyms = size(MT,1); flatten_ = @(x) x(:);
             for ngens = 1:nsyms
-                % generate a list of all possible generators
+                % generate a list of all possible generators (ignores generator order for speed)
                 genlist = nchoosek_(nsyms,ngens);
-                % loop over the list one at a time, checking whether the entire multiplication table can be generated
+                % loop over the list one set of generators at a time, checking whether the entire multiplication table can be generated
                 for i = 1:size(genlist,2)
                     % initialize, include identity
                     x = genlist(:,i); 
@@ -779,14 +779,14 @@ classdef am_dft
         end
         
         function [Glist,ulist]= get_generators_list(MT,ngens)
-            % retunrs all possible sets of generators with ngens elements
+            % returns all possible sets of generators with ngens elements
             import am_lib.*
             % [gen_id] = get_generators(MT)
             nsyms = size(MT,1); flatten_ = @(x) x(:);
-            % generate a list of all possible generators
-            Glist = nchoosek_(nsyms,ngens); ngenlists = size(Glist,2); 
+            % generate a list of all possible generators (incldues order of generator for completness)
+            Glist = perm_norep_(nsyms,ngens); ngenlists = size(Glist,2); 
             ex_ = false(1,ngenlists); ulist = zeros(nsyms,ngenlists);
-            % loop over the list one at a time, checking whether the entire multiplication table can be generated
+            % loop over the list one set of generators at a time, checking whether the entire multiplication table can be generated
             for i = 1:ngenlists
                 % initialize
                 x = Glist(:,i); 
@@ -811,10 +811,6 @@ classdef am_dft
                 end
             end
             Glist = Glist(:,ex_); ulist = ulist(:,ex_);
-        end
-        
-        function [MT]         = relabel_multiplication_table(MT,fwd)
-            nsyms = size(MT,1); rev(fwd) = [1:nsyms]; MT = rev(MT(fwd,fwd));
         end
         
         function                plot_cayley_graph(MT)
@@ -1717,9 +1713,13 @@ classdef am_dft
             bas(:,3) = [                                0.0,                                0.0, c              ];
         end
         
-        function inds         = find_isomorphic_bijection(g,h)
-            % inds = find_isomorphic_bijection(g,h), g and h are point or space group symmetries
-            % ismorphism: g <==> h(:,:,inds) , returns inds = [] if groups are not isomorphic
+        function [bjc,gen]    = find_isomorphic_bijection(g,h)
+            % bjc = find_isomorphic_bijection(g,h), g and h are point or space group symmetries
+            % isomorphism: g <==> h(:,:,inds) , returns inds = [] if groups are not isomorphic
+            % % check with:
+            % G = get_multiplication_table(g);
+            % H = get_multiplication_table(h);
+            % i=1; G - relabel_multiplication_table(H,bjc(:,i))
 
             import am_lib.* am_dft.*
 
@@ -1737,29 +1737,35 @@ classdef am_dft
             Gfwd=rankc_([Gp;Gc(:).']); Grev(Gfwd) = [1:nsyms]; G=relabel_multiplication_table(G,Gfwd);  % out of sync: Gp=Gp(Gfwd); Gc=Gc(Gfwd); g=g(:,:,Gfwd);
             Hfwd=rankc_([Hp;Hc(:).']); Hrev(Hfwd) = [1:nsyms]; H=relabel_multiplication_table(H,Hfwd);  % out of sync: Hp=Hp(Hfwd); Hc=Hc(Hfwd); h=h(:,:,Hfwd);
 
-                % get generators
-                [gg,Gg] = get_generators(G); ngenerators = numel(gg);
-                [ ~,Hg] = get_generators_list(H,ngenerators);
+%             Gfwd = [1:nsyms]; Grev(Gfwd) = [1:nsyms];
+%             Hfwd = [1:nsyms]; Hrev(Hfwd) = [1:nsyms];
+            
+            % get generators
+            [gg,Gg] = get_generators(G); ngenerators = numel(gg);
+            [hg,Hg] = get_generators_list(H,ngenerators);
 
-                % compare multiplication tables, looking for bijections between symmetries g and h, i.e. isomorphism between G and H
-                isfound = false; j=0; inds=[];
-                for i = 1:size(Hg,2)
-                    % fwd = relabeling of H to match G
-                    fwd(Gg) = Hg(:,i);
-                    if all(all( G == relabel_multiplication_table(H,fwd) ))
-                        % isomorphism found,  save bijection which takes symmetries in H to G in original order
-                        j=j+1; inds(Gfwd,j) = Hfwd(fwd);
-                    end 
+            % compare multiplication tables, looking for bijections between symmetries g and h, i.e. isomorphism between G and H
+            j=0; bjc=[]; gen=[];
+            for i = 1:size(Hg,2)
+                % fwd = relabeling of H to match G
+                fwd(Gg) = Hg(:,i);
+                if all(all( G == relabel_multiplication_table(H,fwd) ))
+                    % isomorphism found,  save bijection which takes symmetries in H to G in original order
+                    j=j+1; bjc(Gfwd,j) = Hfwd(fwd); gen(:,j) = hg(:,i);
+                    % save 
                 end
+            end
+            nbjcs = j;
+            
+            % relabel generators for h in terms of g
+            for j = 1:nbjcs
+                bak(bjc(:,j)) = [1:nsyms]; gen(:,j) = bak(gen(:,j));
+            end
 
-            % restore original ordering
-            % G = relabel_multiplication_table(G,Grev);
-            % H = relabel_multiplication_table(H,Hrev);
-
-            % % check with:
-            % G = get_multiplication_table(g);
-            % H = get_multiplication_table(h);
-            % G - relabel_multiplication_table(H,inds)
+            % relabel multiplication table
+            function [MT] = relabel_multiplication_table(MT,fwd)
+                rev(fwd) = [1:size(MT,1)]; MT = rev(MT(fwd,fwd));
+            end
         end
         
         % unit cells
@@ -1804,7 +1810,7 @@ classdef am_dft
             
             % print basic symmetry info
             [~,H,~,R] = get_symmetries(pc); 
-            bv_code = identify_bravais_lattice(pc.bas); fprintf(', bravais=%s',decode_bravais(bv_code));
+            bv_code = identify_bravais_lattice(pc.bas); fprintf(', primitive=%s',decode_bravais(bv_code));
             % holohodry should give same info as bravais lattice
             hg_code = identify_pointgroup(H); fprintf(', holohodry=%s',decode_holohodry(hg_code));
             pg_code = identify_pointgroup(R); fprintf(', pointgroup=%s',decode_pg(pg_code));
