@@ -10,6 +10,9 @@ classdef am_dft
         
         verbosity = 1;
         
+        % potential directory
+        potdir    = '/Users/lenzinho/Linux/vasp.5.4/potcars/PBE.54/';
+        
         % mex compiler parameters
         usemex    = false;
         FC        = 'ifort'; 
@@ -134,65 +137,39 @@ classdef am_dft
         
         % vasp
 
-        function           write_poscar(uc,fposcar)
-            % write_poscar(uc,fposcar)
-            if nargin < 2; fposcar='POSCAR'; end
-            n = size(uc.tau,3);
-            for i = 1:n
-                if n == 1
-                    fid=fopen(sprintf('%s'     ,fposcar),'w'); 
-                else
-                    fid=fopen(sprintf('%s_%06i',fposcar,i),'w');
-                end
-                    fprintf(fid,' %i ',uc.nspecies); 
-                    fprintf(fid,'%s \n',sprintf('POSCAR %i of %i',i,n)); 
-                    fprintf(fid,'%12.8f \n',1.0);  % latpar
-                    fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.bas(:,1)); 
-                    fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.bas(:,2)); 
-                    fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.bas(:,3)); 
-                    fprintf(fid,' %s ',uc.symb{:}); fprintf(fid,'\n');
-                    fprintf(fid,' %i ',uc.nspecies); fprintf(fid,'\n');
-                    fprintf(fid,'Direct \n'); 
-                    fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.tau(:,:,i));
-                fclose(fid);
-            end
-        end
-        
         function [uc]    = load_poscar(fposcar)
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
             fid=fopen(fposcar,'r');            % open file
-            header=fgetl(fid); uc.units='frac';% read header (often times contains atomic symbols)
-            latpar=sscanf(fgetl(fid),'%f');    % read lattice parameter
-            a1=sscanf(fgetl(fid),'%f %f %f');  % first basis vector
-            a2=sscanf(fgetl(fid),'%f %f %f');  % second basis vector
-            a3=sscanf(fgetl(fid),'%f %f %f');  % third basis vector
-            uc.bas=latpar*[a1,a2,a3];          % construct the basis (column vectors)
-            buffer=fgetl(fid);                 % check vasp format
-            if ~isempty(sscanf(buffer,'%f'))
-                % vasp 4 format (symbols are missing, jumps straight to species)
-                uc.symb=regexp(header, '([^ \s][^\s]*)', 'match');
-                uc.nspecies=sscanf(buffer,repmat('%f' ,1,length(uc.symb)))';
-            else
-                % vasp 5 format (symbols are present)
-                uc.symb=regexp(buffer, '([^ \s][^\s]*)', 'match');
-                uc.nspecies=sscanf(fgetl(fid),repmat('%f' ,1,length(uc.symb)))';
-            end
-            for i=1:length(uc.nspecies); uc.mass(i)=get_atomic_mass(get_atomic_number(uc.symb{i})); end
-            uc.natoms=sum(uc.nspecies);
-            coordtype=lower(strtrim(fgetl(fid)));
-            l=0;
-            for i=1:length(uc.nspecies)
-                for j=1:uc.nspecies(i); l=l+1;
-                    uc.tau(:,l)=sscanf(fgetl(fid),'%f %f %f');
-                    uc.species(l)=i;
+                header=fgetl(fid); uc.units='frac';% read header (often times contains atomic symbols)
+                latpar=sscanf(fgetl(fid),'%f');    % read lattice parameter
+                a1=sscanf(fgetl(fid),'%f %f %f');  % first basis vector
+                a2=sscanf(fgetl(fid),'%f %f %f');  % second basis vector
+                a3=sscanf(fgetl(fid),'%f %f %f');  % third basis vector
+                uc.bas=latpar*[a1,a2,a3];          % construct the basis (column vectors)
+                buffer=fgetl(fid);                 % check vasp format
+                if ~isempty(sscanf(buffer,'%f'))
+                    % vasp 4 format (symbols are missing, jumps straight to species)
+                    uc.symb=regexp(header, '([^ \s][^\s]*)', 'match');
+                    uc.nspecies=sscanf(buffer,repmat('%f' ,1,length(uc.symb)))';
+                else
+                    % vasp 5 format (symbols are present)
+                    uc.symb=regexp(buffer, '([^ \s][^\s]*)', 'match');
+                    uc.nspecies=sscanf(fgetl(fid),repmat('%f' ,1,length(uc.symb)))';
                 end
-            end
-            if ~strcmp(coordtype(1),'d'); uc.tau=uc.bas\uc.tau*latpar; end
+                for i=1:length(uc.nspecies); uc.mass(i)=get_atomic_mass(get_atomic_number(uc.symb{i})); end
+                uc.natoms=sum(uc.nspecies);
+                coordtype=lower(strtrim(fgetl(fid)));
+                l=0;
+                for i=1:length(uc.nspecies)
+                    for j=1:uc.nspecies(i); l=l+1;
+                        uc.tau(:,l)=sscanf(fgetl(fid),'%f %f %f');
+                        uc.species(l)=i;
+                    end
+                end
+                if ~strcmp(coordtype(1),'d'); uc.tau=uc.bas\uc.tau*latpar; end
             fclose(fid);
         end
 
-        % load cif file
         function [uc]    = load_cif(fcif)
 
             % NEED TO CONFIRM THAT THIS WORKS!
@@ -327,7 +304,6 @@ classdef am_dft
                 'natoms',numel(species),'tau',tau,'species',species);
             uc = uc_(bas,symb,Z,species);
         end
-
         
         function [dft]   = load_eigenval(feigenval,Ef)
             % load dispersion [frac-recp] and shift Fermi energy to zero
@@ -522,40 +498,47 @@ classdef am_dft
             end
         end
         
-        function incar   = gen_incar(flag)
+        function incar   = generate_incar(flag,nondefault_incar_opts_)
             switch flag
                 case 'evk'
-                    incar.istart='0';
-                    incar.icharg='11';
+                    % START PARAMETERS:
+                    incar.istart='0';        % (0) new  (1) cont (2) samecut
+                    incar.icharg='11';       % (1) file (2) atom (3) const <scf | nscf> (11)-chgcar
+                    % ELECTRON RELAXATION:
                     incar.gga='am05';
-                    incar.prec='accurate';
-                    incar.ivdw='';
-                    incar.algo='fast';
-                    incar.ialgo='';
-                    incar.nbands='50';
-                    incar.encut='500';
-                    incar.ismear='0';
-                    incar.sigma='0.0001';
-                    incar.ediff='1e-6';
-                    incar.tebeg='0';
-                    incar.ibrion='-1';
-                    incar.potim='2';
-                    incar.isif='3';
-                    incar.nblock='1';
-                    incar.nsw='0';
-                    incar.smass='0';
-                    incar.ncore='';
-                    incar.npar='';
-                    incar.nsim='';
-                    incar.lorbit='5';
-                    incar.lreal='.false.';
-                    incar.lwave='.false.';
-                    incar.lcharg='.false.';
-                    incar.lvtot='.false.';
+                    incar.ispin='1';
+                    incar.prec='accurate';   % Accurate, Normal
+                    incar.ivdw='';           % vdW
+                    incar.algo='fast';       % (VeryFast) RMM-DIIS (Fast) Davidson/RMM-DIIS (Normal) Davidson
+                    incar.ialgo='';          % (38) Davidson (48) RMM-DIIS algorithm
+                    incar.nbands='';         % number of bands
+                    incar.encut='500';       % cutoff
+                    incar.ismear='0';        % (0) gauss (1) mp (-5) tetrah
+                    incar.sigma='0.0001';    % maximize with entropy below 0.1 meV / atom
+                    incar.ediff='1e-6';      % toten convergence
+                    % MD PARAMETERS:
+                    incar.tebeg='0';         % temperature of the MD
+                    incar.ibrion='-1';       % (-1) no update (0) MD (1) RMM-DIIS quasi-Newton (2) conjugate-gradient
+                    incar.potim='2';         % Timestep in femtoseconds
+                    incar.isif='3';          % Relax (2) ions (3) ions,volume,shape (4) ions,shape
+                    incar.nblock='1';        % write after every iteration
+                    incar.nsw='0';           % number of ionic steps
+                    incar.smass='0';         % (-3) NVE (=>0) Nosé thermostat
+                    % PARALLELIZATION:
+                    incar.ncore='';          % approx SQRT( number of cores)
+                    incar.npar='';           % Parallelization
+                    incar.nsim='';           % Number of bands which are optimized by RMMS-DIIS algorithm simultaneously
+                    incar.lorbit='5';        % (11) lm-proj DOS and PROCAR (0) DOS
+                    % SAVE SPACE
+                    incar.lreal='.FALSE.';   % (.FALSE.) for <20 atoms (Auto) for >20 atoms
+                    incar.lwave='.FALSE.';   % write wavefunctions
+                    incar.lcharg='.FALSE.';  % write charge density
+                    incar.lvtot='.FALSE.';   % write local charge potential
                 case 'rlx'
                     incar.istart='0';
                     incar.icharg='2';
                     incar.gga='am05';
+                    incar.ispin='1';
                     incar.prec='accurate';
                     incar.ivdw='';
                     incar.algo='fast';
@@ -576,19 +559,20 @@ classdef am_dft
                     incar.npar='';
                     incar.nsim='';
                     incar.lorbit='0';
-                    incar.lreal='.false.';
-                    incar.lwave='.true.';
-                    incar.lcharg='.true.';
-                    incar.lvtot='.true.';
+                    incar.lreal='.FALSE.';
+                    incar.lwave='.FALSE.';
+                    incar.lcharg='.FALSE.';
+                    incar.lvtot='.FALSE.';
                 case 'scf'
                     incar.istart='0';
                     incar.icharg='2';
                     incar.gga='am05';
+                    incar.ispin='1';
                     incar.prec='accurate';
                     incar.ivdw='';
                     incar.algo='fast';
                     incar.ialgo='';
-                    incar.nbands='50';
+                    incar.nbands='';
                     incar.encut='500';
                     incar.ismear='0';
                     incar.sigma='0.0001';
@@ -604,14 +588,187 @@ classdef am_dft
                     incar.npar='';
                     incar.nsim='';
                     incar.lorbit='11';
-                    incar.lreal='.false.';
-                    incar.lwave='.true.';
-                    incar.lcharg='.true.';
-                    incar.lvtot='.true.';  
+                    incar.lreal='.FALSE.';
+                    incar.lwave='.TRUE.';
+                    incar.lcharg='.TRUE.';
+                    incar.lvtot='.TRUE.';  
+            end
+            
+            if nargin > 1
+                n = numel(nondefault_incar_opts_);
+                for i = 1:2:n
+                    incar.(nondefault_incar_opts_{i})=nondefault_incar_opts_{i+1};
+                end
             end
         end
 
 
+        
+        % for automating vasp simulations
+        
+        function           write_poscar(uc,fposcar)
+            
+            import am_lib.* am_dft.*
+            
+            % write_poscar(uc,fposcar)
+            if nargin < 2; fposcar='POSCAR'; end
+            
+            n = size(uc.tau,3); 
+            for i = 1:n
+                % file name
+                fname = sprintf('%s',fposcar);
+                if n ~= 1; fname = sprintf('%s%s_%06i',fname,fposcar,i); end
+                % open file
+                fid=fopen(fname,'w');
+                    % header
+                    fprintf(fid,'%s',get_formula(uc));
+                    if n ~= 1; fprintf(fid,' %i of %i',i,n); end
+                    fprintf(fid,'\n');
+                    % print body
+                    fprintf(fid,'%12.8f \n',1.0);  % latpar
+                    fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.bas(:,1)); 
+                    fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.bas(:,2)); 
+                    fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.bas(:,3)); 
+                    fprintf(fid,' %s ',uc.symb{:}); fprintf(fid,'\n');
+                    fprintf(fid,' %i ',uc.nspecies); fprintf(fid,'\n');
+                    fprintf(fid,'Direct \n'); 
+                    fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.tau(:,:,i));
+                fclose(fid);
+            end
+        end
+        
+        function           write_potcar(uc,potdir)
+            
+            import am_dft.*
+            
+            % directory where potcars are
+            if nargin < 2; potdir = am_dft.potdir; end
+            
+            potcar_database = {...
+                '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'O_s_GW' , ... %  h     he    li    be    b     c     n     o   
+                '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  f     ne    na    mg    al    si    p     s   
+                '  ' ,'  ' ,'  ' ,'  ' ,'Sc_sv_GW' ,'  ' ,'  ' ,'  ' , ... %  cl    ar    k     ca    sc    ti    v     cr  
+                'Mn_GW' ,'Fe_GW' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  mn    fe    co    ni    cu    zn    ga    ge  
+                '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'Y_sv_GW' ,'  ' , ... %  as    se    br    kr    rb    sr    y     zr  
+                '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  nb    mo    tc    ru    rh    pd    ag    cd  
+                '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  in    sn    sb    te    i     xe    cs    ba  
+                'La_GW' ,'Ce_GW' ,'Pr' ,'Nd' ,'Pm' ,'Sm' ,'Eu' ,'Gd' , ... %  la    ce    pr    nd    pm    sm    eu    gd  
+                'Tb' ,'Dy' ,'Ho' ,'Er' ,'Tm' ,'Yb' ,'Lu' ,'  ' , ... %  tb    dy    ho    er    tm    yb    lu    hf  
+                '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  ta    w     re    os    ir    pt    au    hg  
+                '  ' ,'  ' ,'Bi_GW' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  tl    pb    bi    po    at    rn    fr    ra  
+                '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  ac    th    pa    u     np    pu    am    cm  
+                '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  bk    cf    es    fm    md    no    lr    rf  
+                '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' };    %  db    sg    bh    hs    mt    ds    rg    uub 
+            Z = get_atomic_number(uc.symb); nZs = numel(Z);
+            for i = 1:nZs
+                if isempty(potcar_database{Z(i)}); error('potcar not defined'); end
+                if i == 1
+                    cmd = sprintf('cat %s/%s/POTCAR > POTCAR' ,potdir,potcar_database{Z(i)});
+                else
+                    cmd = sprintf('cat %s/%s/POTCAR >> POTCAR',potdir,potcar_database{Z(i)});
+                end
+                system(cmd);
+            end
+        end
+
+        function           write_incar(incar,fincar)
+            token_list = fields(incar);
+            fid = fopen(fincar,'w');
+                for i = 1:numel(token_list)
+                    token = token_list{i};
+                    if ~isempty(incar.(token))
+                        fprintf(fid,'%-10s ',token);
+                        fprintf(fid,'= %-10s',incar.(token));
+                        fprintf(fid,'%% %-10s',get_comments_(token));
+                        fprintf(fid,'\n');
+                    end
+                end
+            fclose(fid);
+            
+            function c = get_comments_(token)
+                switch token
+                case 'istart'; c='(0) new  (1) cont (2) samecut';
+                case 'icharg'; c='(1) file (2) atom (3) const <scf | nscf> (11)-chgcar';
+                case 'gga';    c='exchannge correlation function';
+                case 'ispin';  c='(1) non-spin-polarized (2) spin-polarized';
+                case 'prec';   c='Accurate, Normal';
+                case 'ivdw';   c='vdW';
+                case 'algo';   c='(VeryFast) RMM-DIIS (Fast) Davidson/RMM-DIIS (Normal) Davidson';
+                case 'ialgo';  c='(38) Davidson (48) RMM-DIIS algorithm';
+                case 'nbands'; c='number of bands';
+                case 'encut';  c='cutoff';
+                case 'ismear'; c='(0) gauss (1) mp (-5) tetrah';
+                case 'sigma';  c='maximize with entropy below 0.1 meV / atom';
+                case 'ediff';  c='toten convergence';
+                case 'tebeg';  c='temperature of the MD';
+                case 'ibrion'; c='(-1) no update (0) MD (1) RMM-DIIS quasi-Newton (2) conjugate-gradient';
+                case 'potim';  c='Timestep in femtoseconds';
+                case 'isif';   c='Relax (2) ions (3) ions,volume,shape (4) ions,shape';
+                case 'nblock'; c='write after every iteration';
+                case 'nsw';    c='number of ionic steps';
+                case 'smass';  c='(-3) NVE (=>0) Nose thermostat';
+                case 'ncore';  c='approx SQRT( number of cores)';
+                case 'npar';   c='Parallelization';
+                case 'nsim';   c='Number of bands which are optimized by RMMS-DIIS algorithm simultaneously';
+                case 'lorbit'; c='(11) lm-proj DOS and PROCAR (0) DOS';
+                case 'lreal';  c='(.FALSE.) for <20 atoms (Auto) for >20 atoms';
+                case 'lwave';  c='write wavefunctions';
+                case 'lcharg'; c='write charge density';
+                case 'lvtot';  c='write local charge potential';
+                otherwise;     c='';
+                end
+            end
+        end
+
+        function           write_kpoints(bz,fkpoints)
+            if     isnumeric(bz)
+                % simple list [nx,ny,nz] kpoint point density
+                fid = fopen(fkpoints,'w');
+                    fprintf(fid,'%s \n','Automatically generated mesh');
+                    fprintf(fid,'%s \n','0');
+                    fprintf(fid,'%s \n','Monkhorst-Pack');
+                    fprintf(fid,' %i %i %i \n',ceil(bz));
+                    fprintf(fid,' %i %i %i \n',[0 0 0]);
+               fclose(fid);
+            elseif isstruct(bz)
+            end
+                % still need to implement.
+        end
+        
+        function           write_qsub(hardware,account,nnodes,hrs,job)
+            % defaults
+            if nargin < 2; account = []; end
+            if nargin < 3; nnodes = 1; end
+            if nargin < 4; hrs = 12; end
+            if nargin < 5; job = 'job'; end
+
+            fid = fopen('QSUB','w');
+                switch hardware
+                    case 'taub'
+                        fprintf(fid,'#PBS -l nodes=%i:ppn=12\n',nnodes);
+                        fprintf(fid,'#PBS -N %s \n',job);
+                        fprintf(fid,'#PBS -l walltime=%i:00:00\n',hrs);
+                        fprintf(fid,'#PBS -q cse \n');
+                        fprintf(fid,'#PBS -V \n');
+                        fprintf(fid,'module load openmpi/1.4-gcc\n');
+                        fprintf(fid,'module load intel/11.1\n');
+                        fprintf(fid,'cd \\${PBS_O_WORKDIR}\n');
+                        fprintf(fid,'mpiexec /home/amei2/vasp.5.3.3 > output\n');
+                    case 'trio'
+                        if isempty(account); error('Account is required for running on triolith'); end
+                        fprintf(fid,'#!/bin/bash \n');
+                        fprintf(fid,'#SBATCH -N %i \n',nnodes);
+                        fprintf(fid,'#SBATCH -t %i:00:00 \n',hrs);
+                        fprintf(fid,'#SBATCH -J %s \n',job);
+                        fprintf(fid,'#SBATCH --exclusive \n');
+                        fprintf(fid,'#SBATCH -A %s \n',account);
+                        fprintf(fid,'module load vasp/5.4.4-18Apr17 \n');
+                        fprintf(fid,'mpprun vasp_std > output \n');
+                        fprintf(fid,'#mpprun vasp-gamma > output \n');
+                end
+            fclose(fid);
+        end
+        
         % symmetry
 
 %         function [sg,pg]      = get_groups(pc,tol)
@@ -1713,8 +1870,8 @@ classdef am_dft
             bas(:,3) = [                                0.0,                                0.0, c              ];
         end
         
-        function [bjc,gen]    = find_isomorphic_bijection(g,h)
-            % bjc = find_isomorphic_bijection(g,h), g and h are point or space group symmetries
+        function [bjc,gen]    = find_multiplicationtable_bijection(G,H)
+            % bjc = find_isomorphic_bijection(g,h), g and h are multiplication tables
             % isomorphism: g <==> h(:,:,inds) , returns inds = [] if groups are not isomorphic
             % % check with:
             % G = get_multiplication_table(g);
@@ -1723,22 +1880,11 @@ classdef am_dft
 
             import am_lib.* am_dft.*
 
-            nsyms = size(g,3);
+            % number of symmetries
+            nsyms = size(G,1);
 
-            % get multiplication tables
-            G = get_multiplication_table(g); 
-            H = get_multiplication_table(h);
-
-            % get multiplication point symmetry identities and classes
-            Gp = identify_point_symmetries(g); Gc = identify_classes(G);
-            Hp = identify_point_symmetries(h); Hc = identify_classes(H); 
-
-            % sort symmetries by identities and classes
-            Gfwd=rankc_([Gp;Gc(:).']); Grev(Gfwd) = [1:nsyms]; G=relabel_multiplication_table(G,Gfwd);  % out of sync: Gp=Gp(Gfwd); Gc=Gc(Gfwd); g=g(:,:,Gfwd);
-            Hfwd=rankc_([Hp;Hc(:).']); Hrev(Hfwd) = [1:nsyms]; H=relabel_multiplication_table(H,Hfwd);  % out of sync: Hp=Hp(Hfwd); Hc=Hc(Hfwd); h=h(:,:,Hfwd);
-
-%             Gfwd = [1:nsyms]; Grev(Gfwd) = [1:nsyms];
-%             Hfwd = [1:nsyms]; Hrev(Hfwd) = [1:nsyms];
+            % sorting if desired (changes order of bjc but does not affect final result)
+            Gfwd = [1:nsyms]; Hfwd = [1:nsyms]; 
             
             % get generators
             [gg,Gg] = get_generators(G); ngenerators = numel(gg);
@@ -1767,6 +1913,87 @@ classdef am_dft
                 rev(fwd) = [1:size(MT,1)]; MT = rev(MT(fwd,fwd));
             end
         end
+        
+        function [fwd,M]      = find_pointgroup_transformation(g,h)
+            % finds the permutation fwd and rotation M which transforms
+            % point group g into point group h:
+            % matmul_(matmul_(X(:,:,k),g(:,:,:)),invX(:,:,k)) == h(:,:,fwd)
+            
+            import am_dft.* am_lib.*
+            
+            % find bijection bjc: h -> g and generators for h
+            G = get_multiplication_table(g);
+            H = get_multiplication_table(h);
+            [bjc,gen] = find_multiplicationtable_bijection(G,H); 
+            fwd = rankc_(bjc); bjc = bjc(:,fwd); gen = gen(:,fwd);
+
+            % check diagonalize symmetry values to make sure the symmetries are of the correct type
+            % this removes the possibility that multiplication table may be obeyed with symmetries of differnet types
+            reim_ = @(x) [real(x);imag(x)]; nbjcs=size(bjc,2); ex_ = true(1,nbjcs); nsyms = size(g,3);
+            for j = 1:nbjcs
+                for i = 1:nsyms
+                    [A,a]=eig(g(:,:,i),'vector');        ind = rankc_(reim_(a.')); a=a(ind); A=A(:,ind);
+                    [B,b]=eig(h(:,:,bjc(i,j)),'vector'); ind = rankc_(reim_(b.')); b=b(ind); B=B(:,ind);
+                    if any(abs(a-b)>am_lib.tiny); ex_(i) = false; end
+                end
+            end
+            bjc = bjc(:,ex_); gen = gen(:,ex_); nbjcs=size(bjc,2); 
+
+            % find integer transformation matrix (try all possible bijections and integer transformations with nonzero-determinants)
+            ngens = size(gen,1);
+            for m = 0:1
+                % transformation matrix switch:
+                switch m
+                    case 0
+                        % first try the identity
+                        X = eye(3); nXs = 1; 
+                    otherwise
+                        % then try other integer matrices with nonzero determinants
+                        N=9; Q=[-m:m]; nQs=numel(Q);[Y{N:-1:1}]=ndgrid(1:nQs); X=reshape(Q(reshape(cat(N+1,Y{:}),[],N)).',3,3,[]);
+                        ex_ = false(1,size(X,3)); for i = 1:size(X,3); ex_(i) = abs(det(X(:,:,i)))<am_lib.eps; end
+                        X = X(:,:,~ex_); nXs = size(X,3); 
+                        % sort it to make it nice (put positive values first)
+                        X=X(:,:,rankc_( -[max(reshape(X,9,[]));min(reshape(X,9,[]));sum(reshape(X,9,[]),1)] ));
+                end
+                % get inverse elements
+                invX = zeros(3,3,nXs); for i = 1:nXs; invX(:,:,i) = inv(X(:,:,i)); end
+
+                % find similarity transform which converts all symmetries from g to h
+                for k = 1:nXs
+                % loop over possible bijections
+                for j = 1:nbjcs
+                    gencheck_ = true;
+                    % first pass check generators (for some reason this check isn't sufficient by itself...)
+                    for i = 1:ngens 
+                        if any(any(abs( X(:,:,k) * g(:,:,gen(i,j)) * inv(X(:,:,k)) - h(:,:,bjc(gen(i,j),j)) )>am_lib.eps ))
+                            gencheck_ = false; break;
+                        end
+                    end
+                    % second pass: check all symmetries
+                    if gencheck_
+                        for i = 1:nsyms 
+                            if any(any( abs(X(:,:,k) * g(:,:,i) * invX(:,:,k) - h(:,:,bjc(i,j)))>am_lib.eps ))
+                                gencheck_ = false; break;
+                            end
+                        end
+                    end
+                    % outer loop control:
+                    if gencheck_
+                        % at this point: 
+                        % matmul_(matmul_(X(:,:,k),g(:,:,:)),invX(:,:,k)) == h(:,:,bjc(:,j))
+                        % also, X(:,:,k) should be proportional to the centering matrix?
+                        M = X(:,:,k); fwd = bjc(:,j);
+            %             all(all(all(matmul_(matmul_(X(:,:,k),g(:,:,:)),invX(:,:,k)) == h(:,:,bjc(:,j)))))
+            %             asdf
+                        % found!
+                        % break;
+                        return;
+                    end
+                end
+                end
+            end
+        end
+        
         
         % unit cells
 
@@ -2071,8 +2298,121 @@ classdef am_dft
             end
             end
         end
+
+        function [T]          = get_niggli_transformation(bas,tol)
+            
+            % default tolerance 
+            if nargin<2; tol = am_lib.tiny; end
+
+            % numerical precision
+            lt_ = @(x,y) x<y-tol;
+            gt_ = @(x,y) lt_(y,x);
+            eq_ = @(x,y) not(lt_(x,y)||gt_(x,y));
+
+            % initialize matrix S;
+            metric_ = @(M) [M(1,1),M(2,2),M(3,3),2*M(2,3),2*M(1,3),2*M(1,2)];
+            S = metric_(bas.'*bas);
+            
+            % perform reduction
+            i=0; ii=0; T = eye(3);
+            while i < 9 && ii < 100
+                C = eye(3);
+                switch i
+                    case 1
+                        if gt_(S(1), S(2)) || (eq_(S(1), S(2)) && gt_(abs(S(4)), abs(S(5))))
+                            C = [0,-1,0; -1,0,0; 0,0,-1];
+                            S([1,2,4,5]) = S([2,1,5,4]);
+                        end
+                    case 2
+                        if gt_(S(2), S(3)) || (eq_(S(2), S(3)) && gt_(abs(S(5)), abs(S(6))))
+                            C = [-1,0,0; 0,0,-1; 0,-1,0];
+                            S([2,3,5,6]) = S([3,2,6,5]);
+                            i=0;
+                        end
+                    case {3,4}
+                        n_zero = 0; n_positive = 0;
+                        for m = [4:6]
+                            if        (lt_(0, S(m))); n_positive = n_positive + 1;
+                            elseif not(lt_(S(m), 0)); n_zero     = n_zero + 1;
+                            end
+                        end
+                        if n_positive == 3 || (n_zero == 0 && n_positive == 1)
+                            [a,b,c] = deal(1,1,1);
+                            if lt_(S(4),0); a = -1; end
+                            if lt_(S(5),0); b = -1; end
+                            if lt_(S(6),0); c = -1; end
+                            C = [a,0,0; 0,b,0; 0,0,c];
+                            S(4:6) = abs(S(4:6));
+                        else
+                            f = [1,1,1]; z = -1;
+                            if gt(S(4), 0); f(1) = -1; elseif not(lt_(S(4), 0)); z = 1; end
+                            if gt(S(5), 0); f(2) = -1; elseif not(lt_(S(5), 0)); z = 2; end
+                            if gt(S(6), 0); f(3) = -1; elseif not(lt_(S(6), 0)); z = 3; end
+                            if (f(1)*f(2)*f(3)<0); f(z) = -1; end
+                            C = diag(f);
+                            S(4:5) = -abs(S(4:5));
+                        end
+                    case 5
+                        if gt_(abs(S(4)), S(2)) || (eq_(S(4), S(2)) && lt_(S(5)+S(5), S(6))) || (eq_(S(4), -S(2)) && lt_(S(6), 0))
+                            if (S(4) > 0)
+                                C = [1,0,0;0,1,-1;0,0,1];
+                                S(3) = S(3) + S(2) - S(4);
+                                S(4) = S(4) - (S(2) + S(2));
+                                S(5) = S(5) - (S(6));
+                            else
+                                C = [1,0,0;0,1,1;0,0,1];
+                                S(3) = S(3) + S(2) + S(4);
+                                S(4) = S(4) + S(2) + S(2);
+                                S(5) = S(5) + S(6);
+                            end
+                            i=0;
+                        end
+                    case 6
+                        if gt_(abs(S(5)), S(1)) || (eq_(S(5), S(1)) && lt_(S(4)+S(4), S(6))) || (eq_(S(5), -S(1)) && lt_(S(6), 0))
+                            if (S(5) > 0)
+                                C = [1,0,-1;0,1,0;0,0,1];
+                                S(3) = S(3) + S(1) - S(5);
+                                S(4) = S(4) - (S(6));
+                                S(5) = S(5) - (S(1) + S(1));
+                            else
+                                C = [1,0,1;0,1,0;0,0,1];
+                                S(3) = S(3) + S(1) + S(5);
+                                S(4) = S(4) + S(6);
+                                S(5) = S(5) + S(1) + S(1);
+                            end
+                            i=0;
+                        end
+                    case 7
+                        if gt_(abs(S(6)), S(1)) || (eq_(S(6), S(1)) && lt_(S(4)+S(4), S(5))) || (eq_(S(6), -S(1)) && lt_(S(5), 0))
+                            if (S(6) > 0)
+                                C = [1,-1,0;0,1,0;0,0,1];
+                                S(2) = S(2) + S(1) - S(6);
+                                S(4) = S(4) - (S(5));
+                                S(6) = S(6) - (S(1) + S(1));
+                            else
+                                C = [1,1,0;0,1,0;0,0,1];
+                                S(2) = S(2) + S(1) + S(6);
+                                S(4) = S(4) + S(5);
+                                S(6) = S(6) + S(1) + S(1);
+                            end
+                            i=0;
+                        end
+                    case 8
+                        if lt_(S(4)+S(5)+S(6)+S(1)+S(2), 0) || (eq_(S(4)+S(5)+S(6)+S(1)+S(2), 0) && gt_(S(1)+S(1)+S(5)+S(5)+S(6), 0))
+                            C = [1,0,1;0,1,1;0,0,1];
+                            S(3) = S(3) + S(1)+S(2)+S(4)+S(5)+S(6);
+                            S(4) = S(4) + S(2)+S(2)+S(6);
+                            S(5) = S(5) + S(1)+S(1)+S(6);
+                            i=0;
+                        end
+                end
+                T = C*T;
+                % if any(any(C~=eye(3))); fprintf('%5i ',[S]); fprintf('\n'); end
+                i=i+1; ii=ii+1;
+            end
+        end
         
-        
+
         % brillouin zones
 
         function [fbz,ibz]    = get_zones(pc,n)
@@ -3223,7 +3563,7 @@ classdef am_dft
             end
         end
 
-        
+
         % electrons
 
         function [tb,pp]      = get_tb(pc,uc,dft,cutoff,spdf,nskips)
@@ -3409,7 +3749,7 @@ classdef am_dft
             xlabel('dft energies [eV]'); ylabel('tb energies [eV]');  
         end
 
-        
+
         % pairs and triplets
 
         function [ip,pp]      = get_pairs(pc,uc,cutoff)
@@ -3880,7 +4220,7 @@ classdef am_dft
             pc = pc_(uc,B,p2u);
             
             % symmeterize basis vectors
-            if true
+            if false
                 [a,~,c]=uniquecol_(bas2abc(pc.bas)); pc.bas = abc2bas(a(c));
                 % strange... should not convert atomic positions to cart
                 % and then back to fractional, but keep the positions fixed
@@ -3938,6 +4278,16 @@ classdef am_dft
             end
         end
         
+        function formula      = get_formula(uc)
+            import am_lib.*
+            formula = ''; x = uc.nspecies./gcd_(uc.nspecies);  
+            for j = 1:numel(x)
+                formula = [formula,strtrim(uc.symb{j})];
+                if x(j)~=1
+                    formula=[formula,strtrim(num2str(x(j)))];
+                end
+            end
+        end
 
         % aux brillouin zones
         
