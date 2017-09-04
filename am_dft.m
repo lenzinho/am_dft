@@ -519,6 +519,7 @@ classdef am_dft
             end
         end
 
+        
         % for automating vasp simulations
 
         function           write_poscar(uc,fposcar)
@@ -560,7 +561,7 @@ classdef am_dft
                 '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'O_s_GW' , ... %  h     he    li    be    b     c     n     o
                 '  ' ,'  ' ,'  ' ,'  ' ,'Al_GW' ,'  ' ,'  ' ,'  ' , ... %  f     ne    na    mg    al    si    p     s
                 '  ' ,'  ' ,'  ' ,'  ' ,'Sc_sv_GW' ,'  ' ,'  ' ,'  ' , ... %  cl    ar    k     ca    sc    ti    v     cr
-                'Mn_GW' ,'Fe_GW' ,'  ' ,'  ' ,'  ' ,'  ' ,'Ga_sv_GW' ,'  ' , ... %  mn    fe    co    ni    cu    zn    ga    ge
+                'Mn_GW' ,'Fe_GW' ,'  ' ,'Ni_sv_GW' ,'  ' ,'  ' ,'Ga_sv_GW' ,'  ' , ... %  mn    fe    co    ni    cu    zn    ga    ge
                 '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'Y_sv' ,'  ' , ... %  as    se    br    kr    rb    sr    y     zr
                 '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  nb    mo    tc    ru    rh    pd    ag    cd
                 'In_sv_GW' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  in    sn    sb    te    i     xe    cs    ba
@@ -600,36 +601,51 @@ classdef am_dft
 
             function c = get_comments_(token)
                 switch token
-                case 'istart'; c='(0) new  (1) cont (2) samecut';
-                case 'icharg'; c='(1) file (2) atom (3) const <scf | nscf> (11)-chgcar';
-                case 'gga';    c='exchannge correlation function';
-                case 'nelmdl'; c='non-selfconsistent iterations: (<0) only once, (>0) at every ionic step';
-                case 'ispin';  c='(1) non-spin-polarized (2) spin-polarized';
-                case 'prec';   c='Accurate, Normal';
-                case 'ivdw';   c='vdW';
-                case 'algo';   c='(VeryFast) RMM-DIIS (Fast) Davidson/RMM-DIIS (Normal) Davidson';
-                case 'ialgo';  c='(38) Davidson (48) RMM-DIIS algorithm';
-                case 'nbands'; c='number of bands';
-                case 'encut';  c='cutoff';
-                case 'ismear'; c='(0) gauss (1) mp (-5) tetrah';
-                case 'sigma';  c='maximize with entropy below 0.1 meV / atom';
-                case 'ediff';  c='toten convergence';
-                case 'tebeg';  c='temperature of the MD';
-                case 'ibrion'; c='(-1) no update (0) MD (1) RMM-DIIS quasi-Newton (2) conjugate-gradient';
-                case 'potim';  c='Timestep in femtoseconds';
-                case 'isif';   c='Relax (2) ions (3) ions,volume,shape (4) ions,shape';
-                case 'nblock'; c='write after every iteration';
-                case 'nsw';    c='number of ionic steps';
-                case 'smass';  c='(-3) NVE (=>0) Nose thermostat';
-                case 'ncore';  c='approx SQRT( number of cores)';
-                case 'npar';   c='Parallelization';
-                case 'nsim';   c='Number of bands which are optimized by RMMS-DIIS algorithm simultaneously';
-                case 'lorbit'; c='(11) lm-proj DOS and PROCAR (0) DOS';
-                case 'lreal';  c='(.FALSE.) for <20 atoms (Auto) for >20 atoms';
-                case 'lwave';  c='write wavefunctions';
-                case 'lcharg'; c='write charge density';
-                case 'lvtot';  c='write local charge potential';
-                otherwise;     c='';
+                % starting
+                case 'istart'; 		c='(0) new  (1) cont (2) samecut';
+                case 'icharg'; 		c='(1) file (2) atom (3) const <scf | nscf> (11)-chgcar';
+                % electronic
+                case 'gga';    		c='exchannge correlation function';
+                case 'nelmdl'; 		c='non-selfconsistent iterations: (<0) only once, (>0) at every ionic step';
+                case 'ispin';  		c='(1) non-spin-polarized (2) spin-polarized';
+                case 'prec';   		c='Accurate, Normal';
+                case 'ivdw';   		c='vdW';
+                case 'algo';   		c='(VeryFast) RMM-DIIS (Fast) Davidson/RMM-DIIS (Normal) Davidson';
+                case 'ialgo';  		c='(38) Davidson (48) RMM-DIIS algorithm';
+                case 'nbands'; 		c='number of bands';
+                case 'encut';  		c='cutoff';
+                case 'ismear'; 		c='(0) gauss (1) mp (-5) tetrah';
+                case 'sigma';  		c='maximize with entropy below 0.1 meV / atom';
+                case 'ediff';  		c='toten convergence';
+                % dft+U
+                case 'ldau'; 		c='Activates DFT+U calculation';
+                case 'ldautype'; 	c='(1) Liechtenstein (2) Dudarev Ueff = U - J (3) adds Ueff on the atomic sites';
+                case 'ldaul'; 	    c='one entry per species: (>0) quantum number to which U is applied (-1) U not applied to this species';
+                case 'ldauu'; 	    c='(for LDAUTYPE = 1,2) Hubbard U per species  (for LDAUTYPE = 3) Ueff acting on spin up';
+                case 'ldauj'; 	    c='(for LDAUTYPE = 1,2) Exchange J per species (for LDAUTYPE = 3) Ueff acting on spin down';
+                case 'ldauprint';   c='(0) silent (1) write occupancy matrix OUTCAR (2) occupancy matrix OUTCAR and potential matrix STDOUT';
+                case 'lmaxmix'; 	c='(4) d-electrons, (6) f-electrons';
+                % ionic
+                case 'tebeg';  		c='temperature of the MD';
+                case 'ibrion'; 		c='(-1) no update (0) MD (1) RMM-DIIS quasi-Newton (2) conjugate-gradient';
+                case 'potim';  		c='Timestep in femtoseconds';
+                case 'isif';   		c='Relax (2) ions (3) ions,volume,shape (4) ions,shape';
+                case 'nblock'; 		c='write after every iteration';
+                case 'nsw';    		c='number of ionic steps';
+                case 'smass';  		c='(-3) NVE (=>0) Nose thermostat';
+                % parallelization
+                case 'ncore';  		c='approx SQRT( number of cores)';
+                case 'npar';   		c='Parallelization';
+                case 'nsim';   		c='Number of bands which are optimized by RMMS-DIIS algorithm simultaneously';
+                % oribtal info
+                case 'lorbit'; 		c='(11) lm-proj DOS and PROCAR (0) DOS';
+                % projection scheme
+                case 'lreal';  		c='(.FALSE.) for <20 atoms (Auto) for >20 atoms';
+                % save
+                case 'lwave';  		c='write wavefunctions';
+                case 'lcharg'; 		c='write charge density';
+                case 'lvtot';  		c='write local charge potential';
+                otherwise;     		c='';
                 end
             end
         end
@@ -684,6 +700,26 @@ classdef am_dft
             fclose(fid);
         end
 
+        function [b]  =    get_vasp(flag)
+            import am_dft.*
+            switch flag
+            	case 'dft+u:occupancy'
+                    [~,m] = system('awk ''/onsite density matrix/'' OUTCAR'); m = numel(strfind(m,'matrix'));
+                    [~,b] = system('awk ''/ o = /{ print $3 }'' OUTCAR');     b = sscanf(b,'%f'); b = reshape(b,[],m);
+                case 'toten'
+                    [~,b] = system('awk ''/ TOTEN / { print $5 }'' OUTCAR');  b = sscanf(b,'%f');
+                case 'fermi'
+                    [~,b] = system('awk ''/E-fermi/ { print $3 }'' OUTCAR');  b = sscanf(b,'%f');
+                case 'pressure'
+                    [~,b] = system('awk ''/pressure/ { print $4 }'' OUTCAR'); b = sscanf(b,'%f');
+                case 'kpoint'
+                    [~,b] = system('awk ''/ plane waves: / { print $4 "  " $5 "  " $6}'' OUTCAR'); b = sscanf(b,'%f'); b = reshape(b,3,[]).';
+                case 'niterations'
+                    [~,b] = system('awk ''/Iteration/'' OUTCAR'); b = numel(strfind(b,'Iteration'));
+            end
+        end
+            
+        
         % symmetry
 
 %         function [sg,pg]      = get_groups(pc,tol)
