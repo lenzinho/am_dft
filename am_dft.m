@@ -329,70 +329,79 @@ classdef am_dft
 
         function [dft]   = load_procar(fprocar,Ef)
 
+            import am_dft.* am_lib.*
+
+            if nargin < 1; fprocar = 'PROCAR'; end
             fprintf(' ... loading dft band structure from %s ',fprocar); tic;
+            
+            if nargin < 2; Ef = get_vasp('Ef'); fprintf(', Ef = %.2f ',Ef); end
+            if nargin < 3; dft.nspins = get_vasp('ispin'); end
+            
+            % load file into buffer
+            str = load_file_(fprocar);
 
-            % spins is not implemented yet
-            dft.nspins = 1;
-
-            parse_line_ = @(fid) strsplit(strtrim(fgetl(fid)),' ');
-
-            fid=fopen(fprocar);
-                % (LINE 1) PROCAR lm decomposed
-                fgetl(fid);
-                % (LINE 2) # of kpt-points:  160         # of bands:   8         # of ions:   2
-                buffer = parse_line_(fid);
-                dft.nks    = sscanf(buffer{4},'%f');
-                dft.nbands = sscanf(buffer{8},'%f');
-                dft.natoms = sscanf(buffer{12},'%f');
-                % allocate
-                dft.k = zeros(3,dft.nks);
-                dft.w = zeros(1,dft.nks);
-                dft.E = zeros(dft.nbands,dft.nks);
+            x = 0;
+            % (LINE 1) PROCAR lm decomposed
+            x = x+1; 
+            % (LINE 2) # of kpt-points:  160         # of bands:   8         # of ions:   2
+            x = x+1; buffer = strsplit(str{x});
+            dft.nks    = sscanf(buffer{4},'%f');
+            dft.nbands = sscanf(buffer{8},'%f');
+            dft.natoms = sscanf(buffer{12},'%f');
+            % allocate
+            dft.k = zeros(3,dft.nks);
+            dft.w = zeros(1,dft.nks);
+            dft.E = zeros(dft.nbands,dft.nks);
+            for s = 1:dft.nspins
                 for i = 1:dft.nks
                     % (LINE 3,62) skip line
-                    fgetl(fid);
+                    x = x+1; 
                     % (LINE 4,63) kpt-point    1 :    0.50000000 0.50000000 0.50000000     weight = 0.00625000
-                    buffer = parse_line_(fid);
-                    dft.k(1,i) = sscanf(buffer{4},'%f');
-                    dft.k(2,i) = sscanf(buffer{5},'%f');
-                    dft.k(3,i) = sscanf(buffer{6},'%f');
-                    dft.w(3,i) = sscanf(buffer{9},'%f');
+                    x = x+1; buffer = strsplit(str{x}); 
+                    if (s == 1)
+                        dft.k(1,i) = sscanf(buffer{4},'%f');
+                        dft.k(2,i) = sscanf(buffer{5},'%f');
+                        dft.k(3,i) = sscanf(buffer{6},'%f');
+                        dft.w(1,i) = sscanf(buffer{9},'%f');
+                    end
+                    % (LINE 5,64) skip line
+                    x = x+1;
                     for j = 1:dft.nbands
-                        % (LINE 5,64) skip line
-                        fgetl(fid);
                         % (LINE 6,65) band   1 # energy   -3.91737559 # occ.  2.00000000
-                        buffer = parse_line_(fid);
-                        dft.E(j,i) = sscanf(buffer{5},'%f');
+                        x = x+1; buffer = strsplit(str{x}); 
+                        dft.E(j,i,s) = sscanf(buffer{5},'%f');
+                        dft.f(j,i,s) = sscanf(buffer{8},'%f'); % occupation
                         % (LINE 7,66) skip line
-                        fgetl(fid);
-                        if and(i==1,j==1)
+                        x = x+1;
+                        % allocate space on first pass
+                        if (s==1 && i==1 && j==1)
                             % (LINE 8,67) ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3    tot
-                            buffer = parse_line_(fid);
+                            x = x+1; buffer = strsplit(str{x});
                             dft.norbitals = numel(buffer)-2;
                             dft.orbital = {buffer{1+[1:dft.norbitals]}};
                             % allocate space for lmproj(nspins,norbitals,nions,nbands,nkpts)
                             dft.lmproj = zeros(dft.nspins,dft.norbitals,dft.natoms,dft.nbands,dft.nks);
                         else
                             % (LINE 8,67) ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3    tot
-                            fgetl(fid);
+                            x = x+1;
                         end
                         % (LINE 9,10,...)
                         %   1  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000
                         %   2  0.984  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.984
                         %   ...
                         for l = 1:dft.natoms
-                            buffer = parse_line_(fid);
+                            x = x+1; buffer = strsplit(str{x});
                         for m = 1:dft.norbitals
                             % lmproj(nspins,norbitals,nions,nbands,nkpts) (spins not implemented yet%)
-                            dft.lmproj(1,m,l,j,i) = sscanf(buffer{m+1},'%f');
+                            dft.lmproj(s,m,l,j,i) = sscanf(buffer{m+1},'%f');
                         end
                         end
                         % skip: tot  0.985  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.985
-                        fgetl(fid);
+                        x = x+1;
                         % skip blank line
-                        fgetl(fid);
+                        x = x+1;
                         % read next line
-                        buffer = parse_line_(fid);
+                        x = x+1; buffer = strsplit(str{x});
                         if numel(buffer)==1
                             % do nothing (PROCAR generated without phase factors, LROBIT = 11)
                         else
@@ -403,7 +412,8 @@ classdef am_dft
                             % read phase factors
                             for l = 1:dft.natoms
                                 % read real part of phase factors
-                                buffer_real = parse_line_(fid); buffer_imag = parse_line_(fid);
+                                x = x+1; buffer_real = strsplit(str{x});
+                                x = x+1; buffer_imag = strsplit(str{x});
                                 for m = 1:dft.norbitals
                                     dft.phase(1,m,l,j,i) = sscanf(buffer_real{m+1},'%f') + 1i * sscanf(buffer_imag{m+1},'%f');
                                 end
@@ -411,16 +421,22 @@ classdef am_dft
                         end
                     end
                     % skip a line
-                    fgetl(fid);
+                    % x = x+1;
                 end
-                % zero fermi and sort bands in increasing order
-                dft.E = sort(dft.E - Ef);
-                % normalize projections by summing over atoms and characters?
-                % dft.lmproj = dft.lmproj ./ sum(sum(dft.lmproj,2),3);
-                % close file
-            fclose(fid);
+                % skip a line
+                x = x+1;
+            end
+            % zero fermi and sort bands in increasing order
+            dft.E = sort(dft.E - Ef);
+            % normalize projections by summing over atoms and characters?
+            % dft.lmproj = dft.lmproj ./ sum(sum(dft.lmproj,2),3);
 
             fprintf('(%.f secs)\n',toc);
+            
+            % faster 
+            % [~,b]=system(sprintf('grep ions %s',fprocar)); dft.nspins=numel(strfind(b,'ions'));
+            % [~,b]=system(sprintf('grep -A%i py %s | grep -v py | awk ''{print $2 " " $3 " " $4 " " $5 " " $6 " " $7 " " $8 " " $9 " " $10 " " $11 " " $12 " " $13 " " $14 " " $15 " " $16 " " $17 " " $18}''',natoms,fprocar)); b = strrep(b,'--',''); b = sscanf(b,'%f');
+            % b = reshape(b,17,[],dft.nspins);
         end
 
         function [md]    = load_md(uc,fforces,dt)
@@ -700,22 +716,26 @@ classdef am_dft
             fclose(fid);
         end
 
-        function [b]  =    get_vasp(flag)
+        function [x]  =    get_vasp(flag)
             import am_dft.*
             switch flag
             	case 'dft+u:occupancy'
                     [~,m] = system('awk ''/onsite density matrix/'' OUTCAR'); m = numel(strfind(m,'matrix'));
-                    [~,b] = system('awk ''/ o = /{ print $3 }'' OUTCAR');     b = sscanf(b,'%f'); b = reshape(b,[],m);
+                    [~,x] = system('awk ''/ o = /{ print $3 }'' OUTCAR');     x = sscanf(x,'%f'); x = reshape(x,[],m);
                 case 'toten'
-                    [~,b] = system('awk ''/ TOTEN / { print $5 }'' OUTCAR');  b = sscanf(b,'%f');
-                case 'fermi'
-                    [~,b] = system('awk ''/E-fermi/ { print $3 }'' OUTCAR');  b = sscanf(b,'%f');
+                    [~,x] = system('awk ''/ TOTEN / { print $5 }'' OUTCAR');  x = sscanf(x,'%f');
+                case 'Ef'
+                    [~,x] = system('awk ''/E-fermi/ { print $3 }'' OUTCAR');  x = sscanf(x,'%f');
                 case 'pressure'
-                    [~,b] = system('awk ''/pressure/ { print $4 }'' OUTCAR'); b = sscanf(b,'%f');
+                    [~,x] = system('awk ''/pressure/ { print $4 }'' OUTCAR'); x = sscanf(x,'%f');
+                case 'ispin'
+                    [~,x] = system('awk ''/ISPIN/ { print $3 }'' OUTCAR'); x = sscanf(x,'%f');
                 case 'kpoint'
-                    [~,b] = system('awk ''/ plane waves: / { print $4 "  " $5 "  " $6}'' OUTCAR'); b = sscanf(b,'%f'); b = reshape(b,3,[]).';
+                    [~,x] = system('awk ''/ plane waves: / { print $4 "  " $5 "  " $6}'' OUTCAR'); x = sscanf(x,'%f'); x = reshape(x,3,[]).';
                 case 'niterations'
-                    [~,b] = system('awk ''/Iteration/'' OUTCAR'); b = numel(strfind(b,'Iteration'));
+                    [~,x] = system('awk ''/Iteration/'' OUTCAR'); x = numel(strfind(x,'Iteration'));
+                case 'magnetization'
+                    [~,x] = system('awk ''/magnetization/'' OUTCAR | awk ''/electron/ { print $6 }'''); x = sscanf(x,'%f');
             end
         end
             
@@ -5168,11 +5188,12 @@ classdef am_dft
             usage_ () {
                 echo "Queues unfinished calculations based on folders containing INCAR,POSCAR,KPOINTS,POTCAR,QSUB."
                 echo ""
-                echo "Usage: $0 [-h] [-v] [-n]"
+                echo "Usage: $0 [-h] [-l] [-v] [-n] [-t:target]" 
                 echo ""
-                echo "Example: $0 -h -v -n -o \"\$(find . -name "OUTCAR*" | grep 4.00-300)\" -n 250"
                 echo ""
                 echo "-h : prints this message"
+                echo "-l : runs on local computer without queuing"
+                echo "-t : target file to match"
                 echo "-v : shows directories with an incomplete OUTCAR"
                 echo "-n : (dry run) prints directors which would get queued"
                 echo ""
@@ -5181,7 +5202,7 @@ classdef am_dft
 
             main_ () {
                 odir=$PWD
-                dlist=$(find . -name "QSUB" -exec sh -c '(cd `dirname {}` && pwd  )' ';' )
+                dlist=$(find . -name ${TARGET} -exec sh -c '(cd `dirname {}` && pwd  )' ';' )
                 for d in ${dlist}; do
                 cd ${d}
                  if ! grep -sq "Total CPU time" OUTCAR; then
@@ -5193,6 +5214,7 @@ classdef am_dft
                       if ! ${ISDRY}; then
                           if hash qsub   2>/dev/null; then qsub   QSUB; fi
                           if hash sbatch 2>/dev/null; then sbatch QSUB; fi
+                          if local; then vasp; fi
                       fi
                      fi
                     fi
@@ -5204,14 +5226,16 @@ classdef am_dft
             }
 
             show_ () {
-                grep -LR "Voluntary" --include="OUTCAR" .
+                grep -LR "Voluntary" --include="OUTCAR" . 
             }
 
-            ISDRY=false;
+            ISDRY=false; ISLOCAL=false; TARGET='QSUB'
             if (($# == 0)); then usage_; exit 1; fi
-            while getopts "nvh" o; do
+            while getopts "nlvht:" o; do
                 case "${o}" in
+                t)  TARGET=${OPTARG} ;;
                     n)  ISDRY=true ;;
+                    l)  ISLOCAL=true ;;
                     v)  show_; exit 0 ;;
                     h)  usage_; exit 0 ;;
                     *)  usage_; exit 1 ;;
