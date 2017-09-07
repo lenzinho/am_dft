@@ -503,28 +503,41 @@ classdef am_dft
 
         function incar   = generate_incar(flag,nondefault_incar_opts_)
             import am_dft.*
-            switch flag
-                case 'rlx'
-                    opts_ = { ...
+            
+            if isstruct(flag)
+                incar=flag;
+            else
+                switch flag
+                    case 'base'
+                        opts_ = { ...
+                        'istart'   , '' , 'icharg' , '' , 'gga'    , '' , 'nelmdl' , '' , 'ispin'     , '' , 'prec'    , '' , 'ivdw'   , '' , ...
+                        'algo'     , '' , 'ialgo'  , '' , 'nbands' , '' , 'encut'  , '' , 'ismear'    , '' , 'sigma'   , '' , 'ediff'  , '' , 'ldau'  , '' , ...
+                        'ldautype' , '' , 'ldaul'  , '' , 'ldauu'  , '' , 'ldauj'  , '' , 'ldauprint' , '' , 'lmaxmix' , '' , 'ediffg' , '' , ...
+                        'tebeg'    , '' , 'ibrion' , '' , 'potim'  , '' , 'isif'   , '' , 'nblock'    , '' , 'nsw'     , '' , 'smass'  , '' , 'ncore' , '' , ...
+                        'npar'     , '' , 'nsim'   , '' , 'lorbit' , '' , 'lreal'  , '' , 'lwave'     , '' , 'lcharg'  , '' , 'lvtot'  , '' };
+                        incar = generate_incar('',opts_);
+                    case 'rlx'
+                        opts_ = { ...
                         'istart' , '0'        , 'icharg' , '2'       , 'gga'    , 'am05'    , 'ispin'  , '1'       , ...
                         'prec'   , 'accurate' , 'nelmdl' , '-12'     , 'ivdw'   , ''        , 'algo'   , 'fast'    , 'ialgo'  , ''        , ...
                         'nbands' , ''         , 'encut'  , '500'     , 'ismear' , '0'       , 'sigma'  , '0.2'     , ...
-                        'ediff'  , '1e-6'     , 'tebeg'  , '0'       , 'ibrion' , '2'       , 'potim'  , '0.5'     , ...
+                        'ediff'  , '1e-6'     , 'tebeg'  , '0'       , 'ibrion' , '2'       , 'potim'  , '0.5'     , 'ediffg' , '-0.01'   , ...
                         'isif'   , '3'        , 'nblock' , '1'       , 'nsw'    , '100'     , 'smass'  , '0'       , ...
                         'ncore'  , ''         , 'npar'   , ''        , 'nsim'   , ''        , 'lorbit' , '0'       , ...
                         'lreal'  , '.FALSE.'  , 'lwave'  , '.FALSE.' , 'lcharg' , '.FALSE.' , 'lvtot'  , '.FALSE.' };
-                    incar = generate_incar('',opts_);
-                case 'scf'
-                    % just like rlx but do not update atomic positions and write charges and wavefunctions
-                    opts_ = { ...
-                        'ibrion' , '-1'       , 'nsw'    , '0'       , 'lorbit' , '11'      , ...
-                        'lwave'  , '.TRUE.'   , 'lcharg' , '.TRUE.'  , 'lvtot'  , '.TRUE.'  };
-                    incar = generate_incar('rlx',opts_);
-                case 'evk'
-                    % just like scf but do not write charges and wave functions
-                    opts_ = {...
-                        'lwave'  ,'.FALSE.'   , 'lcharg' , '.FALSE.' , 'lvtot'  , '.FALSE.' };
-                    incar = generate_incar('scf',opts_);
+                        incar = generate_incar('base',opts_);
+                    case 'scf'
+                        % just like rlx but do not update atomic positions and write charges and wavefunctions
+                        opts_ = { ...
+                            'ibrion' , '-1'       , 'nsw'    , '0'       , 'lorbit' , '11'      , ...
+                            'lwave'  , '.TRUE.'   , 'lcharg' , '.TRUE.'  , 'lvtot'  , '.TRUE.'  };
+                        incar = generate_incar('rlx',opts_);
+                    case 'evk'
+                        % just like scf but do not write charges and wave functions
+                        opts_ = {...
+                            'lwave'  ,'.FALSE.'   , 'lcharg' , '.FALSE.' , 'lvtot'  , '.FALSE.' };
+                        incar = generate_incar('scf',opts_);
+                end
             end
 
             if nargin > 1
@@ -642,6 +655,7 @@ classdef am_dft
                 case 'ldauprint';   c='(0) silent (1) write occupancy matrix OUTCAR (2) occupancy matrix OUTCAR and potential matrix STDOUT';
                 case 'lmaxmix'; 	c='(4) d-electrons, (6) f-electrons';
                 % ionic
+                case 'ediffg';      c='(<0) relaxation will stop if all forces are less than |EDIFFG| (>0) relaxation stops if energy change is less than EDIFFG';
                 case 'tebeg';  		c='temperature of the MD';
                 case 'ibrion'; 		c='(-1) no update (0) MD (1) RMM-DIIS quasi-Newton (2) conjugate-gradient';
                 case 'potim';  		c='Timestep in femtoseconds';
@@ -2016,40 +2030,6 @@ classdef am_dft
             fprintf(' (%s)',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
 
             fprintf(' (%.f secs)\n',toc);
-        end
-
-        function [uc]         = get_supercell(pc,B)
-            % Example: to make a cell pc have the same shape as a reference cell ref, do this:
-            % [~,ref] = get_cells('185_P63cm.poscar');
-            % [~,pc]  = get_cells('194_P63mmc.poscar');
-            % pc.bas = rotzd_(-30)*pc.bas; T = round(pc.bas\ref.bas);
-            % sc = get_supercell(pc,T);
-            %
-            import am_lib.* am_dft.*
-
-            % basic check
-            if abs(mod_(det(B)))>am_lib.eps; error('determinant of B must be an integer'); end
-
-            % generate primitive lattice vectors
-            n=ceil(normc_(B.')); [Y{1:3}]=ndgrid(0:n(1),0:n(2),0:n(3)); nLs=prod(n+1); L=reshape(cat(3+1,Y{:})-1,[],3).';
-
-            % expand atoms, coordinates supercell fractional, and reduce to primitive supercell
-            X = uniquecol_([ reshape(repmat([1:pc.natoms],nLs,1),1,[]); mod_(inv(B)*osum_(L,pc.tau,2)) ]);
-
-            % create mapping
-            u2p = X(1,:); [~,p2u]=unique(u2p); p2u=p2u(:).';
-
-            % define irreducible cell creation function and make structure
-            uc_ = @(uc,tau,B,s2u) struct('units','frac','bas',uc.bas*B,'bas2pc',inv(B),'tau2pc',B,...
-                'symb',{{uc.symb{unique(uc.species(s2u))}}},'mass',uc.mass,'nspecies',sum(unique(uc.species(s2u)).'==uc.species(s2u),2).', ...
-                'natoms',numel(s2u),'tau',tau,'species',uc.species(s2u));
-            uc = uc_(pc,X(2:4,:),B,u2p);
-
-            % add maps
-            uc.u2p = u2p;
-            uc.p2u = p2u;
-            uc.u2i = pc.p2i(uc.u2p);
-            uc.i2u = uc.p2u(pc.i2p);
         end
 
         function [dc,idc]     = get_displaced_cell(pc,bvk,n,kpt,amp,mode,nsteps)
@@ -4232,6 +4212,67 @@ classdef am_dft
             ic = ic_(pc,i2p);
         end
 
+        function [xc,x2i,i2x] = get_expanded_cell(ic,S)
+            
+            import am_lib.*
+            
+            % space groups
+            nSs = size(S,3);
+            % define function to apply symmetries to position vectors
+            seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
+            % expand atomic positions over symmetry basis
+            X = [repmat(1:ic.natoms,1,nSs);reshape(seitz_apply_(S,ic.tau),3,[])]; [~,~,jc] = uniquecol_(X); 
+            % symmeterize atomic positions
+            natoms=max(jc); tau = zeros(3,natoms); x2i = zeros(1,natoms);
+            for i = 1:natoms
+                tau(:,i) = mean(X(2:4,jc==i),2); 
+                x2i(i) = X(1,find(jc==i,1));
+            end
+            % reorder to put irreducible atoms close together
+            fwd = rankc_([x2i;tau]); x2i = x2i(fwd); tau = tau(:,fwd);
+            % get mapping 
+            [~,i2x,~]=unique(x2i,'stable');
+            % define irreducible cell creation function and make structure
+            xc_ = @(ic,tau,x2i) struct('units','frac','bas',ic.bas, ...
+                'symb',{ic.symb},'mass',ic.mass,'nspecies',sum(unique(ic.species(x2i))==ic.species(x2i).',1), ...
+                'natoms',numel(x2i),'tau',tau,'species',ic.species(x2i));
+            xc = xc_(ic,tau,x2i);
+        end
+
+        function [uc,u2p,p2u] = get_supercell(pc,B)
+            % Example: to make a cell pc have the same shape as a reference cell ref, do this:
+            % [~,ref] = get_cells('185_P63cm.poscar');
+            % [~,pc]  = get_cells('194_P63mmc.poscar');
+            % pc.bas = rotzd_(-30)*pc.bas; T = round(pc.bas\ref.bas);
+            % sc = get_supercell(pc,T);
+            %
+            import am_lib.* am_dft.*
+
+            % basic check
+            if abs(mod_(det(B)))>am_lib.eps; error('determinant of B must be an integer'); end
+
+            % generate primitive lattice vectors
+            n=ceil(normc_(B.')); [Y{1:3}]=ndgrid(0:n(1),0:n(2),0:n(3)); nLs=prod(n+1); L=reshape(cat(3+1,Y{:})-1,[],3).';
+
+            % expand atoms, coordinates supercell fractional, and reduce to primitive supercell
+            X = uniquecol_([ reshape(repmat([1:pc.natoms],nLs,1),1,[]); mod_(inv(B)*osum_(L,pc.tau,2)) ]);
+
+            % create mapping
+            u2p = X(1,:); [~,p2u]=unique(u2p); p2u=p2u(:).';
+
+            % define irreducible cell creation function and make structure
+            uc_ = @(uc,tau,B,s2u) struct('units','frac','bas',uc.bas*B,'bas2pc',inv(B),'tau2pc',B,...
+                'symb',{{uc.symb{unique(uc.species(s2u))}}},'mass',uc.mass,'nspecies',sum(unique(uc.species(s2u)).'==uc.species(s2u),2).', ...
+                'natoms',numel(s2u),'tau',tau,'species',uc.species(s2u));
+            uc = uc_(pc,X(2:4,:),B,u2p);
+
+            % % add maps
+            % uc.u2p = u2p;
+            % uc.p2u = p2u;
+            % uc.u2i = pc.p2i(uc.u2p);
+            % uc.i2u = uc.p2u(pc.i2p);
+        end
+        
         function [uc,inds]    = match_cell(uc,uc_ref)
 
             import am_lib.* am_dft.*
