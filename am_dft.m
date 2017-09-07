@@ -337,106 +337,111 @@ classdef am_dft
             if nargin < 2; Ef = get_vasp('Ef'); fprintf(', Ef = %.2f ',Ef); end
             if nargin < 3; dft.nspins = get_vasp('ispin'); end
             
-            % load file into buffer
-            str = load_file_(fprocar);
+            switch 2
+                case 1
+                    % % should be faster, but not yet ready
+                    % [~,b]=system(sprintf('grep ions %s',fprocar)); dft.nspins=numel(strfind(b,'ions'));
+                    % [~,b]=system(sprintf('grep -A%i py %s | grep -v py | awk ''{print $2 " " $3 " " $4 " " $5 " " $6 " " $7 " " $8 " " $9 " " $10 " " $11 " " $12 " " $13 " " $14 " " $15 " " $16 " " $17 " " $18}''',natoms,fprocar)); b = strrep(b,'--',''); b = sscanf(b,'%f');
+                    % b = reshape(b,17,[],dft.nspins); 
+                    
+                case 2
+                    % load file into buffer
+                    str = load_file_(fprocar);
 
-            x = 0;
-            % (LINE 1) PROCAR lm decomposed
-            x = x+1; 
-            % (LINE 2) # of kpt-points:  160         # of bands:   8         # of ions:   2
-            x = x+1; buffer = strsplit(str{x});
-            dft.nks    = sscanf(buffer{4},'%f');
-            dft.nbands = sscanf(buffer{8},'%f');
-            dft.natoms = sscanf(buffer{12},'%f');
-            % allocate
-            dft.k = zeros(3,dft.nks);
-            dft.w = zeros(1,dft.nks);
-            dft.E = zeros(dft.nbands,dft.nks);
-            for s = 1:dft.nspins
-                for i = 1:dft.nks
-                    % (LINE 3,62) skip line
+                    x = 0;
+                    % (LINE 1) PROCAR lm decomposed
                     x = x+1; 
-                    % (LINE 4,63) kpt-point    1 :    0.50000000 0.50000000 0.50000000     weight = 0.00625000
-                    x = x+1; buffer = strsplit(str{x}); 
-                    if (s == 1)
-                        dft.k(1,i) = sscanf(buffer{4},'%f');
-                        dft.k(2,i) = sscanf(buffer{5},'%f');
-                        dft.k(3,i) = sscanf(buffer{6},'%f');
-                        dft.w(1,i) = sscanf(buffer{9},'%f');
-                    end
-                    % (LINE 5,64) skip line
-                    x = x+1;
-                    for j = 1:dft.nbands
-                        % (LINE 6,65) band   1 # energy   -3.91737559 # occ.  2.00000000
-                        x = x+1; buffer = strsplit(str{x}); 
-                        dft.E(j,i,s) = sscanf(buffer{5},'%f');
-                        dft.f(j,i,s) = sscanf(buffer{8},'%f'); % occupation
-                        % (LINE 7,66) skip line
-                        x = x+1;
-                        % allocate space on first pass
-                        if (s==1 && i==1 && j==1)
-                            % (LINE 8,67) ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3    tot
-                            x = x+1; buffer = strsplit(str{x});
-                            dft.norbitals = numel(buffer)-2;
-                            dft.orbital = {buffer{1+[1:dft.norbitals]}};
-                            % allocate space for lmproj(nspins,norbitals,nions,nbands,nkpts)
-                            dft.lmproj = zeros(dft.nspins,dft.norbitals,dft.natoms,dft.nbands,dft.nks);
-                        else
-                            % (LINE 8,67) ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3    tot
-                            x = x+1;
-                        end
-                        % (LINE 9,10,...)
-                        %   1  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000
-                        %   2  0.984  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.984
-                        %   ...
-                        for l = 1:dft.natoms
-                            x = x+1; buffer = strsplit(str{x});
-                        for m = 1:dft.norbitals
-                            % lmproj(nspins,norbitals,nions,nbands,nkpts) (spins not implemented yet%)
-                            dft.lmproj(s,m,l,j,i) = sscanf(buffer{m+1},'%f');
-                        end
-                        end
-                        % skip: tot  0.985  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.985
-                        x = x+1;
-                        % skip blank line
-                        x = x+1;
-                        % read next line
-                        x = x+1; buffer = strsplit(str{x});
-                        if numel(buffer)==1
-                            % do nothing (PROCAR generated without phase factors, LROBIT = 11)
-                        else
-                            % load phase factors (PROCAR generated with phase factors, LROBIT = 12)
-                            if and(i==1,j==1)
-                                dft.phase = zeros(dft.nspins,dft.norbitals,dft.natoms,dft.nbands,dft.nks);
+                    % (LINE 2) # of kpt-points:  160         # of bands:   8         # of ions:   2
+                    x = x+1; buffer = strsplit(str{x});
+                    dft.nks    = sscanf(buffer{4},'%f');
+                    dft.nbands = sscanf(buffer{8},'%f');
+                    dft.natoms = sscanf(buffer{12},'%f');
+                    % allocate
+                    dft.k = zeros(3,dft.nks);
+                    dft.w = zeros(1,dft.nks);
+                    dft.E = zeros(dft.nbands,dft.nks);
+                    for s = 1:dft.nspins
+                        for i = 1:dft.nks
+                            % (LINE 3,62) skip line
+                            x = x+1; 
+                            % (LINE 4,63) kpt-point    1 :    0.50000000 0.50000000 0.50000000     weight = 0.00625000
+                            x = x+1; buffer = strsplit(str{x}); 
+                            if (s == 1)
+                                dft.k(1,i) = sscanf(buffer{4},'%f');
+                                dft.k(2,i) = sscanf(buffer{5},'%f');
+                                dft.k(3,i) = sscanf(buffer{6},'%f');
+                                dft.w(1,i) = sscanf(buffer{9},'%f');
                             end
-                            % read phase factors
-                            for l = 1:dft.natoms
-                                % read real part of phase factors
-                                x = x+1; buffer_real = strsplit(str{x});
-                                x = x+1; buffer_imag = strsplit(str{x});
+                            % (LINE 5,64) skip line
+                            x = x+1;
+                            for j = 1:dft.nbands
+                                % (LINE 6,65) band   1 # energy   -3.91737559 # occ.  2.00000000
+                                x = x+1; buffer = strsplit(str{x}); 
+                                dft.E(j,i,s) = sscanf(buffer{5},'%f');
+                                dft.f(j,i,s) = sscanf(buffer{8},'%f'); % occupation
+                                % (LINE 7,66) skip line
+                                x = x+1;
+                                % allocate space on first pass
+                                if (s==1 && i==1 && j==1)
+                                    % (LINE 8,67) ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3    tot
+                                    x = x+1; buffer = strsplit(str{x});
+                                    dft.norbitals = numel(buffer)-2;
+                                    dft.orbital = {buffer{1+[1:dft.norbitals]}};
+                                    % allocate space for lmproj(nspins,norbitals,nions,nbands,nkpts)
+                                    dft.lmproj = zeros(dft.nspins,dft.norbitals,dft.natoms,dft.nbands,dft.nks);
+                                else
+                                    % (LINE 8,67) ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3    tot
+                                    x = x+1;
+                                end
+                                % (LINE 9,10,...)
+                                %   1  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000
+                                %   2  0.984  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.984
+                                %   ...
+                                for l = 1:dft.natoms
+                                    x = x+1; buffer = strsplit(str{x});
                                 for m = 1:dft.norbitals
-                                    dft.phase(1,m,l,j,i) = sscanf(buffer_real{m+1},'%f') + 1i * sscanf(buffer_imag{m+1},'%f');
+                                    % lmproj(nspins,norbitals,nions,nbands,nkpts) (spins not implemented yet%)
+                                    dft.lmproj(s,m,l,j,i) = sscanf(buffer{m+1},'%f');
+                                end
+                                end
+                                % skip: tot  0.985  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.985
+                                x = x+1;
+                                % skip blank line
+                                x = x+1;
+                                % read next line
+                                x = x+1; buffer = strsplit(str{x});
+                                if numel(buffer)==1
+                                    % do nothing (PROCAR generated without phase factors, LROBIT = 11)
+                                else
+                                    % load phase factors (PROCAR generated with phase factors, LROBIT = 12)
+                                    if and(i==1,j==1)
+                                        dft.phase = zeros(dft.nspins,dft.norbitals,dft.natoms,dft.nbands,dft.nks);
+                                    end
+                                    % read phase factors
+                                    for l = 1:dft.natoms
+                                        % read real part of phase factors
+                                        x = x+1; buffer_real = strsplit(str{x});
+                                        x = x+1; buffer_imag = strsplit(str{x});
+                                        for m = 1:dft.norbitals
+                                            dft.phase(1,m,l,j,i) = sscanf(buffer_real{m+1},'%f') + 1i * sscanf(buffer_imag{m+1},'%f');
+                                        end
+                                    end
                                 end
                             end
+                            % skip a line
+                            % x = x+1;
                         end
+                        % skip a line
+                        x = x+1;
                     end
-                    % skip a line
-                    % x = x+1;
-                end
-                % skip a line
-                x = x+1;
+                    % zero fermi and sort bands in increasing order
+                    dft.E = sort(dft.E - Ef);
+                    % normalize projections by summing over atoms and characters?
+                    % dft.lmproj = dft.lmproj ./ sum(sum(dft.lmproj,2),3);
             end
-            % zero fermi and sort bands in increasing order
-            dft.E = sort(dft.E - Ef);
-            % normalize projections by summing over atoms and characters?
-            % dft.lmproj = dft.lmproj ./ sum(sum(dft.lmproj,2),3);
 
             fprintf('(%.f secs)\n',toc);
             
-            % faster 
-            % [~,b]=system(sprintf('grep ions %s',fprocar)); dft.nspins=numel(strfind(b,'ions'));
-            % [~,b]=system(sprintf('grep -A%i py %s | grep -v py | awk ''{print $2 " " $3 " " $4 " " $5 " " $6 " " $7 " " $8 " " $9 " " $10 " " $11 " " $12 " " $13 " " $14 " " $15 " " $16 " " $17 " " $18}''',natoms,fprocar)); b = strrep(b,'--',''); b = sscanf(b,'%f');
-            % b = reshape(b,17,[],dft.nspins);
         end
 
         function [md]    = load_md(uc,fforces,dt)
@@ -488,16 +493,19 @@ classdef am_dft
         end
 
         function [incar] = load_incar(fincar)
+            import am_lib.* am_dft.*
+            % load incar file into memory as string
             str = load_file_(fincar);
-            token_list = {...
-                'istart','icharg','gga','prec','ivdw','algo','ialgo','nbands','encut',...
-                'ismear','sigma','ediff','tebeg','ibrion','potim','isif','nblock','nsw',...
-                'smass','ncore','npar','nsim','lorbit','lreal','lwave','lcharg','lvtot'};
-            parse_ = @(x) strsplit(strtrim(strrep(x,'=',' ')),' ');
-            selec_ = @(x,i) x{i};
+            % generate base incar and get tokens
+            incar = generate_incar('base'); token_list = fields(incar);
             for i = 1:numel(token_list)
                 token = token_list{i};
-                incar.(token) = selec_(parse_(extract_token_(lower(strtrim(str)),token)),1);
+                % parse
+                    t = extract_token_(strtrim(str),token);
+                    t = strsplit(t,'%');
+                    t = strrep(t{1},'=','');
+                    t = strtrim(t);
+                incar.(token) = t;
             end
         end
 
@@ -521,7 +529,7 @@ classdef am_dft
                         'istart' , '0'        , 'icharg' , '2'       , 'gga'    , 'am05'    , 'ispin'  , '1'       , ...
                         'prec'   , 'accurate' , 'nelmdl' , '-12'     , 'ivdw'   , ''        , 'algo'   , 'fast'    , 'ialgo'  , ''        , ...
                         'nbands' , ''         , 'encut'  , '500'     , 'ismear' , '0'       , 'sigma'  , '0.2'     , ...
-                        'ediff'  , '1e-6'     , 'tebeg'  , '0'       , 'ibrion' , '2'       , 'potim'  , '0.5'     , 'ediffg' , '-0.01'   , ...
+                        'ediff'  , '1e-6'     , 'tebeg'  , '0'       , 'ibrion' , '2'       , 'potim'  , '0.5'     , 'ediffg' , '-0.0005' , ...
                         'isif'   , '3'        , 'nblock' , '1'       , 'nsw'    , '100'     , 'smass'  , '0'       , ...
                         'ncore'  , ''         , 'npar'   , ''        , 'nsim'   , ''        , 'lorbit' , '0'       , ...
                         'lreal'  , '.FALSE.'  , 'lwave'  , '.FALSE.' , 'lcharg' , '.FALSE.' , 'lvtot'  , '.FALSE.' };
@@ -622,7 +630,7 @@ classdef am_dft
                     if ~isempty(incar.(token))
                         fprintf(fid,'%-10s ',token);
                         fprintf(fid,'= %-10s',incar.(token));
-                        fprintf(fid,'%% %-10s',get_comments_(token));
+                        fprintf(fid,' %% %-10s',get_comments_(token));
                         fprintf(fid,'\n');
                     end
                 end
@@ -1104,13 +1112,14 @@ classdef am_dft
             end
         end
 
-        function bv_code      = identify_bravais_lattice(bas)
+        function bv_code      = identify_bravais_lattice(bas,tol)
+            if nargin < 2; tol = am_lib.tiny; end
             % get metric tensor
             M = bas * (bas.');
             ii = [M(1,1),M(2,2),M(3,3)];
             ij = [M(1,2),M(1,3),M(2,3)];
-            t = numel(unique(ii));
-            o = numel(unique(ij));
+            t = numel(uniquetol(ii,tol));
+            o = numel(uniquetol(ij,tol));
             z = sum(abs(ij)<am_lib.tiny);
             % de Graef p 86
             if     all([t == 3, o == 3, z == 0]); bv_code = 1; % triclinic
