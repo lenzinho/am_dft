@@ -519,9 +519,9 @@ classdef am_dft
                     case 'base'
                         opts_ = { ...
                         'istart'   , '' , 'icharg' , '' , 'gga'    , '' , 'nelmdl' , '' , 'ispin'     , '' , 'prec'    , '' , 'ivdw'   , '' , ...
-                        'algo'     , '' , 'ialgo'  , '' , 'nbands' , '' , 'encut'  , '' , 'ismear'    , '' , 'sigma'   , '' , 'ediff'  , '' , 'ldau'  , '' , ...
-                        'ldautype' , '' , 'ldaul'  , '' , 'ldauu'  , '' , 'ldauj'  , '' , 'ldauprint' , '' , 'lmaxmix' , '' , 'ediffg' , '' , ...
-                        'tebeg'    , '' , 'ibrion' , '' , 'potim'  , '' , 'isif'   , '' , 'nblock'    , '' , 'nsw'     , '' , 'smass'  , '' , 'ncore' , '' , ...
+                        'algo'     , '' , 'ialgo'  , '' , 'nbands' , '' , 'encut'  , '' , 'ismear'    , '' , 'sigma'   , '' , 'ediff'  , '' , 'ldau'   , '' , ...
+                        'ldautype' , '' , 'ldaul'  , '' , 'ldauu'  , '' , 'ldauj'  , '' , 'ldauprint' , '' , 'lmaxmix' , '' , 'ediffg' , '' , 'addgrid', '' , ...
+                        'tebeg'    , '' , 'ibrion' , '' , 'potim'  , '' , 'isif'   , '' , 'nblock'    , '' , 'nsw'     , '' , 'smass'  , '' , 'ncore'  , '' , ...
                         'npar'     , '' , 'nsim'   , '' , 'lorbit' , '' , 'lreal'  , '' , 'lwave'     , '' , 'lcharg'  , '' , 'lvtot'  , '' };
                         incar = generate_incar('',opts_);
                     case 'rlx'
@@ -595,13 +595,13 @@ classdef am_dft
         function           write_potcar(uc,potdir)
             import am_dft.*
             potcar_database = {...
-                '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'O_s_GW' , ... %  h     he    li    be    b     c     n     o
-                '  ' ,'  ' ,'  ' ,'  ' ,'Al_GW' ,'  ' ,'  ' ,'  ' , ... %  f     ne    na    mg    al    si    p     s
-                '  ' ,'  ' ,'  ' ,'  ' ,'Sc_sv_GW' ,'  ' ,'  ' ,'  ' , ... %  cl    ar    k     ca    sc    ti    v     cr
+                '  ' ,'  ' ,'Li_sv' ,'Be_sv' ,'  ' ,'  ' ,'  ' ,'O_s_GW' , ... %  h     he    li    be    b     c     n     o
+                '  ' ,'  ' ,'Na_pv' ,'Mg_pv' ,'Al_GW' ,'  ' ,'  ' ,'  ' , ... %  f     ne    na    mg    al    si    p     s
+                '  ' ,'  ' ,'K_sv' ,'Ca_sv' ,'Sc_sv_GW' ,'Ti_pv' ,'  ' ,'  ' , ... %  cl    ar    k     ca    sc    ti    v     cr
                 'Mn_GW' ,'Fe_GW' ,'  ' ,'Ni_sv_GW' ,'  ' ,'  ' ,'Ga_sv_GW' ,'  ' , ... %  mn    fe    co    ni    cu    zn    ga    ge
-                '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'Y_sv' ,'  ' , ... %  as    se    br    kr    rb    sr    y     zr
+                '  ' ,'  ' ,'  ' ,'  ' ,'Rb_sv' ,'Sr_sv' ,'Y_sv' ,'  ' , ... %  as    se    br    kr    rb    sr    y     zr
                 '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  nb    mo    tc    ru    rh    pd    ag    cd
-                'In_sv_GW' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  in    sn    sb    te    i     xe    cs    ba
+                'In_sv_GW' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'Cs_sv' ,'Ba_sv' , ... %  in    sn    sb    te    i     xe    cs    ba
                 'La_GW' ,'Ce_3' ,'Pr_3' ,'Nd_3' ,'Pm_3' ,'Sm_3' ,'Eu_3' ,'Gd_3' , ... %  la    ce    pr    nd    pm    sm    eu    gd
                 'Tb_3' ,'Dy_3' ,'Ho_3' ,'Er_3' ,'Tm_3' ,'Yb_3' ,'Lu' ,'  ' , ... %  tb    dy    ho    er    tm    yb    lu    hf
                 '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  ta    w     re    os    ir    pt    au    hg
@@ -752,8 +752,12 @@ classdef am_dft
                     [~,x] = system('awk ''/pressure/ { print $4 }'' OUTCAR'); x = sscanf(x,'%f');
                 case 'ispin'
                     [~,x] = system('awk ''/ISPIN/ { print $3 }'' OUTCAR'); x = sscanf(x,'%f');
+                case 'nbands'
+                    [~,x] = system('awk ''/NBANDS/ {print $15}'' OUTCAR'); x = sscanf(x,'%f');
                 case 'kpoint'
                     [~,x] = system('awk ''/ plane waves: / { print $4 "  " $5 "  " $6}'' OUTCAR'); x = sscanf(x,'%f'); x = reshape(x,3,[]).';
+                case 'gamma'
+                    [~,x] = system('awk ''/GAMMA/ {print $4}'' OUTCAR'); x = sscanf(x,'%f');
                 case 'niterations'
                     [~,x] = system('awk ''/Iteration/'' OUTCAR'); x = numel(strfind(x,'Iteration'));
                 case 'magnetization'
@@ -761,6 +765,65 @@ classdef am_dft
             end
         end
             
+        
+        function           vasp_fix_input(flags)
+            
+            import am_dft.*
+            
+            % no flag
+            if nargin < 1; flags=''; end
+            
+            % defaults
+            if contains(flags,'dryrun'); isdryrun = true; else; isdryrun=false; end
+            
+            % check for not enough bands
+            [~,b]=system('grep ''Your highest band is occupied at some k-points!'' output');
+            if ~isempty(b)
+                nbands = get_vasp('nbands');
+                fprintf('ERROR: not enough bands (nbands = %g). \n',nbands);
+                fprintf('>>>>>> DIR: %s \n',pwd); 
+                % read incar
+                incar = load_incar('INCAR');
+                if isfield(incar,'ncore'); ncore = str2double(incar.ncore); else; ncore = 1; end
+                % update nbands
+                nbands = ceil(nbands*1.2); nbands = ncore-mod(nbands,ncore)+nbands;
+                fprintf('>>>>>> FIX: increase nbands by ~1.2x to %i\n',nbands)
+                % fix is to try a lower AMIX and set SCF algo to Normal
+                incar = generate_incar(incar,{'nbands',nbands});
+                if ~isdryrun
+                    write_incar(incar);
+                end
+                return;
+            end
+            
+            % check for convergent SCF
+            [~,b]=system('tail -n+2 OSZICAR | awk ''{print $5}'''); b=sscanf(b,'%f');
+            if abs(b(end)) > 1E6
+                fprintf('ERROR: electronic cycle failed to converge (d eps = %g). \n',b(end));
+                fprintf('>>>>>> DIR: %s \n',pwd);
+                % fix is to try a lower AMIX and set SCF algo to Normal
+                incar = load_incar('INCAR');
+                % find average value of gamma (optimal amix = current amix * gamma)
+                if isfield(incar,'amix'); amix = incar.amix; else; amix = 0.4; end
+                amix = amix * mean(get_vasp('gamma'));
+                incar = generate_incar(incar,{'algo','Normal','amix',num2str(amix)});
+                % print the fix
+                fprintf('>>>>>> FIX: set algo = normal and reduce amix to %0.2f\n',amix)
+                if ~isdryrun
+                    write_incar(incar);
+                end
+                return;
+            end
+            
+            % check for non-hermitian matrix
+            [~,b]=system('grep ''WARNING: Sub-Space-Matrix is not hermitian!'' output');
+            if ~isempty(b)
+                fprintf('ERROR: Sub-Space-Matrix is not hermitian. \n');
+                fprintf('>>>>>> DIR: %s \n',pwd); 
+                fprintf('>>>>>> This is usually caused by some other problem. Investigate the output manually. \n')
+            return;
+            end
+        end
         
         % symmetry
 
