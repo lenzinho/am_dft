@@ -519,7 +519,7 @@ classdef am_dft
                     case 'base'
                         opts_ = { ...
                         'istart'   , '' , 'icharg' , '' , 'gga'    , '' , 'nelmdl' , '' , 'ispin'     , '' , 'prec'    , '' , 'ivdw'   , '' , ...
-                        'algo'     , '' , 'ialgo'  , '' , 'nbands' , '' , 'encut'  , '' , 'ismear'    , '' , 'sigma'   , '' , 'ediff'  , '' , 'ldau'   , '' , ...
+                        'algo'     , '' , 'ialgo'  , '' , 'amix'   , '' , 'nbands' , '' , 'encut'     , '' , 'ismear'  , '' , 'sigma'  , '' , 'ediff'  , '' , 'ldau'   , '' , ...
                         'ldautype' , '' , 'ldaul'  , '' , 'ldauu'  , '' , 'ldauj'  , '' , 'ldauprint' , '' , 'lmaxmix' , '' , 'ediffg' , '' , 'addgrid', '' , ...
                         'tebeg'    , '' , 'ibrion' , '' , 'potim'  , '' , 'isif'   , '' , 'nblock'    , '' , 'nsw'     , '' , 'smass'  , '' , 'ncore'  , '' , ...
                         'npar'     , '' , 'nsim'   , '' , 'lorbit' , '' , 'lreal'  , '' , 'lwave'     , '' , 'lcharg'  , '' , 'lvtot'  , '' };
@@ -765,7 +765,6 @@ classdef am_dft
             end
         end
             
-        
         function           vasp_fix_input(flags)
             
             import am_dft.*
@@ -859,7 +858,8 @@ classdef am_dft
 
             import am_lib.* am_dft.*
 
-            if nargin < 2; tol = am_lib.tiny; end
+            % set default numerical tolerance
+            if nargin < 2; tol = am_lib.eps; end
 
             % define function to check first two dimensions
             check_ = @(A) all(all(abs(A)<tol,1),2);
@@ -868,7 +868,7 @@ classdef am_dft
             X_ = @(species,tau) sortc_([species;mod_(tau)]); X = X_(pc.species,pc.tau(:,:,1));
 
             % get vectors that preserve periodic boundary conditions
-            N = 1; V=mod_(pc.tau(:,pc.species==pc.species(N))-pc.tau(:,N));  nVs=size(V,2); ex_=false(1,nVs);
+            N = 1; V=mod_(pc.tau(:,pc.species==pc.species(N))-pc.tau(:,N),tol);  nVs=size(V,2); ex_=false(1,nVs);
             for j = 1:nVs; ex_(j) = check_( X_(pc.species,pc.tau(1:3,:,1)-V(:,j))-X ); end
             T=[V(:,ex_),eye(3)]; T=T(:,rankc_(normc_(T)));
 
@@ -1176,14 +1176,17 @@ classdef am_dft
         end
 
         function bv_code      = identify_bravais_lattice(bas,tol)
-            if nargin < 2; tol = am_lib.tiny; end
+
+            % set default numerical tolerance
+            if nargin < 2; tol = am_lib.eps; end
+            
             % get metric tensor
-            M = bas * (bas.');
+            M  = bas.'*bas;
             ii = [M(1,1),M(2,2),M(3,3)];
             ij = [M(1,2),M(1,3),M(2,3)];
-            t = numel(uniquetol(ii,tol));
-            o = numel(uniquetol(ij,tol));
-            z = sum(abs(ij)<am_lib.tiny);
+            t  = numel(uniquetol(ii,tol));
+            o  = numel(uniquetol(ij,tol));
+            z  = sum(abs(ij)<am_lib.tiny);
             % de Graef p 86
             if     all([t == 3, o == 3, z == 0]); bv_code = 1; % triclinic
             elseif all([t == 2, o == 2, z == 2]); bv_code = 2; % hexagonal
@@ -1194,6 +1197,7 @@ classdef am_dft
             elseif all([t == 1, o == 1, z == 0]); bv_code = 7; % rhombahedral
             else;                                 bv_code = 0; % unknown
             end
+            
         end
 
         function pg_code      = identify_pointgroup(R)
@@ -2052,12 +2056,15 @@ classdef am_dft
 
         % unit cells
 
-        function [uc,pc,ic]   = get_cells(fposcar)
+        function [uc,pc,ic]   = get_cells(fposcar,tol)
             % [uc,pc,ic]   = get_cells(fposcar)
             % fposcar can be a poscar or cif file
 
             import am_lib.* am_dft.*
 
+            % set default numerical tolerance
+            if nargin < 2; tol = am_lib.eps; end
+            
             % time
             fprintf(' ... getting cells and symmetries'); tic
 
@@ -2069,10 +2076,10 @@ classdef am_dft
             end
 
             % get primitive cell
-            [pc,p2u,u2p] = get_primitive_cell(uc);  % write_poscar(get_supercell(pc,eye(3)*2),'POSCAR.2x2')
+            [pc,p2u,u2p] = get_primitive_cell(uc,tol);  % write_poscar(get_supercell(pc,eye(3)*2),'POSCAR.2x2')
 
             % get irreducible cell
-            [ic,i2p,p2i] = get_irreducible_cell(pc);
+            [ic,i2p,p2i] = get_irreducible_cell(pc,tol);
 
             % complete mapping
             u2i = round(p2i(u2p)); i2u = round(p2u(i2p));
@@ -2091,8 +2098,8 @@ classdef am_dft
             uc.bas2pc = pc.bas/uc.bas; uc.tau2pc = pc.bas\uc.bas;
 
             % print basic symmetry info
-            [~,H,~,R] = get_symmetries(pc);
-            bv_code = identify_bravais_lattice(pc.bas); fprintf(', primitive=%s',decode_bravais(bv_code));
+            [~,H,~,R] = get_symmetries(pc,tol);
+            bv_code = identify_bravais_lattice(pc.bas,tol); fprintf(', primitive=%s',decode_bravais(bv_code));
             % holohodry should give same info as bravais lattice
             hg_code = identify_pointgroup(H); fprintf(', holohodry=%s',decode_holohodry(hg_code));
             pg_code = identify_pointgroup(R); fprintf(', pointgroup=%s',decode_pg(pg_code));
@@ -4235,7 +4242,7 @@ classdef am_dft
                 nmin=min(n); inds_ = find(n==nmin); B = T(:,ijk(:,inds_(1)));
             end
 
-            % set identifiers (see NOTE: cannot simply using p2u = findrow_(A)!)
+            % set identifiers (see NOTE: cannot simply use p2u = findrow_(A)!)
             p2u = member_(mod_(B*mod_(B\uc.tau(:,findrow_(A),1))),mod_(uc.tau(:,:,1))).'; u2p = ([1:size(A,1)]*A);
 
             % define primitive cell creation function and make structure
@@ -4246,7 +4253,7 @@ classdef am_dft
 
             % symmeterize basis vectors
             if false
-%                 pc.tau = (abc2bas(bas2abc(pc.bas))\pc.bas)*pc.tau;
+                % pc.tau = (abc2bas(bas2abc(pc.bas))\pc.bas)*pc.tau;
                 [a,~,c]=uniquecol_(bas2abc(pc.bas)); pc.bas = abc2bas(a(c));
                 % strange... should not convert atomic positions to cart
                 % and then back to fractional, but keep the positions fixed
@@ -4260,19 +4267,22 @@ classdef am_dft
             end
         end
 
-        function [ic,i2p,p2i] = get_irreducible_cell(pc)
+        function [ic,i2p,p2i] = get_irreducible_cell(pc,tol)
             % idenitifes irreducible atoms
 
             import am_lib.* am_dft.*
 
+            % set default numerical tolernece
+            if nargin < 2; tol = am_lib.tiny; end
+            
             % get seitz matrices
             [~,~,S] = get_symmetries(pc);
 
             % define function to apply symmetries to position vectors
-            seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
+            seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:),tol);
 
             % get permutation matrix and construct a sparse binary representation
-            PM = member_(seitz_apply_(S,pc.tau),pc.tau); A = get_connectivity(PM);
+            PM = member_(seitz_apply_(S,pc.tau),pc.tau,tol); A = get_connectivity(PM);
 
             % set identifiers
             i2p = round(findrow_(A)).'; p2i = round(([1:size(A,1)]*A));
