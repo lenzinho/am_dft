@@ -334,24 +334,37 @@ classdef am_dft
             if nargin < 1; fprocar = 'PROCAR'; end
             fprintf(' ... loading dft band structure from %s ',fprocar); tic;
             
-            if nargin < 2; Ef = get_vasp('Ef'); fprintf(', Ef = %.2f ',Ef); end
-            if nargin < 3; dft.nspins = get_vasp('ispin'); end
+            if nargin < 2; Ef = get_vasp('outcar:fermi'); fprintf(', Ef = %.2f ',Ef); end
+            if nargin < 3; dft.nspins = get_vasp('outcar:ispin'); end
             
             switch 2
                 case 1
-                    % % should be faster, but not yet ready
-                    % [~,b]=system(sprintf('grep ions %s',fprocar)); dft.nspins=numel(strfind(b,'ions'));
-                    % [~,b]=system(sprintf('grep -A%i py %s | grep -v py | awk ''{print $2 " " $3 " " $4 " " $5 " " $6 " " $7 " " $8 " " $9 " " $10 " " $11 " " $12 " " $13 " " $14 " " $15 " " $16 " " $17 " " $18}''',natoms,fprocar)); b = strrep(b,'--',''); b = sscanf(b,'%f');
-                    % b = reshape(b,17,[],dft.nspins); 
+                    % ~ 3 x faster than case 2
+                    
+                    dft.nks    = get_vasp('procar:nkpts');
+                    dft.nbands = get_vasp('procar:nbands');
+                    dft.natoms = get_vasp('procar:natoms');
+                    dft.norbitals = get_vasp('procar:norbitals');
+                    dft.nspins = get_vasp('procar:ispin');
+                    dft.k = get_vasp('procar:kpoint');
+                    dft.w = get_vasp('procar:weight');
+                    dft.E = get_vasp('procar:energy');
+                    dft.f = get_vasp('procar:occupation');
+                    dft.f = get_vasp('procar:orbital');
+                    dft.lmproj = get_vasp('procar:lmproj');
                     
                 case 2
-                    % load file into buffer
-                    str = load_file_(fprocar);
-
+                    % slower but perhaps more robust?
+                    
+                    % load everything into memory and exclude empty lines
+                    str = load_file_(fprocar); 
+                    % exclude all empty lines
+                    ex_ = ~cellfun(@isempty,str); str = str(ex_); nlines = sum(ex_);
+                    
                     x = 0;
-                    % (LINE 1) PROCAR lm decomposed
+                    % PROCAR lm decomposed
                     x = x+1; 
-                    % (LINE 2) # of kpt-points:  160         # of bands:   8         # of ions:   2
+                    % # of kpt-points:  160         # of bands:   8         # of ions:   2
                     x = x+1; buffer = strsplit(str{x});
                     dft.nks    = sscanf(buffer{4},'%f');
                     dft.nbands = sscanf(buffer{8},'%f');
@@ -362,38 +375,28 @@ classdef am_dft
                     dft.E = zeros(dft.nbands,dft.nks);
                     for s = 1:dft.nspins
                         for i = 1:dft.nks
-                            % (LINE 3,62) skip line
-                            x = x+1; 
-                            % (LINE 4,63) kpt-point    1 :    0.50000000 0.50000000 0.50000000     weight = 0.00625000
-                            x = x+1; buffer = strsplit(str{x}); 
+                            % kpt-point    1 :    0.50000000 0.50000000 0.50000000     weight = 0.00625000
+                            x = x+1; buffer = strsplit(strrep(str{x},'-',' -')); 
                             if (s == 1)
-                                dft.k(1,i) = sscanf(buffer{4},'%f');
-                                dft.k(2,i) = sscanf(buffer{5},'%f');
-                                dft.k(3,i) = sscanf(buffer{6},'%f');
-                                dft.w(1,i) = sscanf(buffer{9},'%f');
+                                dft.k(1,i) = sscanf(buffer{5},'%f');
+                                dft.k(2,i) = sscanf(buffer{6},'%f');
+                                dft.k(3,i) = sscanf(buffer{7},'%f');
+                                dft.w(1,i) = sscanf(buffer{10},'%f');
                             end
-                            % (LINE 5,64) skip line
-                            x = x+1;
                             for j = 1:dft.nbands
-                                % (LINE 6,65) band   1 # energy   -3.91737559 # occ.  2.00000000
+                                % band   1 # energy   -3.91737559 # occ.  2.00000000
                                 x = x+1; buffer = strsplit(str{x}); 
                                 dft.E(j,i,s) = sscanf(buffer{5},'%f');
                                 dft.f(j,i,s) = sscanf(buffer{8},'%f'); % occupation
-                                % (LINE 7,66) skip line
-                                x = x+1;
+                                % ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3    tot
+                                x = x+1; 
                                 % allocate space on first pass
                                 if (s==1 && i==1 && j==1)
-                                    % (LINE 8,67) ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3    tot
-                                    x = x+1; buffer = strsplit(str{x});
+                                    buffer = strsplit(str{x});
                                     dft.norbitals = numel(buffer)-2;
                                     dft.orbital = {buffer{1+[1:dft.norbitals]}};
-                                    % allocate space for lmproj(nspins,norbitals,nions,nbands,nkpts)
                                     dft.lmproj = zeros(dft.nspins,dft.norbitals,dft.natoms,dft.nbands,dft.nks);
-                                else
-                                    % (LINE 8,67) ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3    tot
-                                    x = x+1;
                                 end
-                                % (LINE 9,10,...)
                                 %   1  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000
                                 %   2  0.984  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.984
                                 %   ...
@@ -405,15 +408,12 @@ classdef am_dft
                                 end
                                 end
                                 % skip: tot  0.985  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.985
-                                x = x+1;
-                                % skip blank line
-                                x = x+1;
-                                % read next line
-                                x = x+1; buffer = strsplit(str{x});
-                                if numel(buffer)==1
-                                    % do nothing (PROCAR generated without phase factors, LROBIT = 11)
-                                else
-                                    % load phase factors (PROCAR generated with phase factors, LROBIT = 12)
+                                x = x+1; 
+                                % derail phase factor
+                                if (x < nlines) && contains(str{x+1},'ion')
+                                    % ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3    tot
+                                    x = x+1;
+                                    % load phase factors (PROCAR generated with phase factors, LROBIT = 5 or 12)
                                     if and(i==1,j==1)
                                         dft.phase = zeros(dft.nspins,dft.norbitals,dft.natoms,dft.nbands,dft.nks);
                                     end
@@ -423,25 +423,21 @@ classdef am_dft
                                         x = x+1; buffer_real = strsplit(str{x});
                                         x = x+1; buffer_imag = strsplit(str{x});
                                         for m = 1:dft.norbitals
-                                            dft.phase(1,m,l,j,i) = sscanf(buffer_real{m+1},'%f') + 1i * sscanf(buffer_imag{m+1},'%f');
+                                            dft.phase(s,m,l,j,i) = sscanf(buffer_real{m+1},'%f') + 1i * sscanf(buffer_imag{m+1},'%f');
                                         end
-                                    end
-                                end
-                            end
-                            % skip a line
-                            % x = x+1;
-                        end
-                        % skip a line
-                        x = x+1;
-                    end
-                    % zero fermi and sort bands in increasing order
-                    dft.E = sort(dft.E - Ef);
-                    % normalize projections by summing over atoms and characters?
-                    % dft.lmproj = dft.lmproj ./ sum(sum(dft.lmproj,2),3);
+                                    end % phase factor loop
+                                end % phase factor switch
+                            end % band
+                        end % nks
+                    end % nspins
             end
+            
+            % zero fermi and sort bands in increasing order
+            dft.E = sort(dft.E - Ef);
+            % normalize projections by summing over atoms and characters?
+            % dft.lmproj = dft.lmproj ./ sum(sum(dft.lmproj,2),3);
 
             fprintf('(%.f secs)\n',toc);
-            
         end
 
         function [md]    = load_md(uc,fforces,dt)
@@ -509,11 +505,12 @@ classdef am_dft
             end
         end
 
-        function incar   = generate_incar(flag,nondefault_incar_opts_)
+        function incar   = generate_incar(flag,nondefault_incar_opts_,uc)
+            
             import am_dft.*
             
             if isstruct(flag)
-                incar=flag;
+                incar = flag;
             else
                 switch flag
                     case 'base'
@@ -527,9 +524,9 @@ classdef am_dft
                     case 'rlx'
                         opts_ = { ...
                         'istart' , '0'        , 'icharg' , '2'       , 'gga'    , 'am05'    , 'ispin'  , '1'       , ...
-                        'prec'   , 'accurate' , 'nelmdl' , '-12'     , 'ivdw'   , ''        , 'algo'   , 'fast'    , 'ialgo'  , ''        , ...
-                        'nbands' , ''         , 'encut'  , '500'     , 'ismear' , '0'       , 'sigma'  , '0.2'     , ...
-                        'ediff'  , '1e-6'     , 'tebeg'  , '0'       , 'ibrion' , '2'       , 'potim'  , '0.5'     , 'ediffg' , '-0.0005' , ...
+                        'prec'   , 'accurate' , 'nelmdl' , '-12'     , 'algo'   , 'fast'    , 'ialgo'  , ''        , ...
+                        'encut'  , '650'      , 'ismear' , '0'       , 'sigma'  , '0.2'     , 'ediff'  , '1e-9'    , ...
+                        'tebeg'  , '0'        , 'ibrion' , '2'       , 'potim'  , '0.5'     , 'ediffg' , '1e-8'    , ...
                         'isif'   , '3'        , 'nblock' , '1'       , 'nsw'    , '100'     , 'smass'  , '0'       , ...
                         'ncore'  , ''         , 'npar'   , ''        , 'nsim'   , ''        , 'lorbit' , '0'       , ...
                         'lreal'  , '.FALSE.'  , 'lwave'  , '.FALSE.' , 'lcharg' , '.FALSE.' , 'lvtot'  , '.FALSE.' };
@@ -545,6 +542,14 @@ classdef am_dft
                         opts_ = {...
                             'lwave'  ,'.FALSE.'   , 'lcharg' , '.FALSE.' , 'lvtot'  , '.FALSE.' };
                         incar = generate_incar('scf',opts_);
+                end
+            end
+            
+            % set defaults based on unit cell
+            if nargin > 2
+                % set default number of bands
+                if exist('POTCAR','file') == 2
+                    incar.nbands = sprintf('%i',ceil( (sum(uc.nspecies.*get_vasp('potcar:zval').')+uc.natoms)/2 * 1.2 /5) * 5);
                 end
             end
 
@@ -644,16 +649,16 @@ classdef am_dft
                 % electronic
                 case 'gga';    		c='exchannge correlation function';
                 case 'nelmdl'; 		c='non-selfconsistent iterations: (<0) only once, (>0) at every ionic step';
-                case 'ispin';  		c='(1) non-spin-polarized (2) spin-polarized';
+                case 'outcar:ispin';  		c='(1) non-spin-polarized (2) spin-polarized';
                 case 'prec';   		c='Accurate, Normal';
                 case 'ivdw';   		c='vdW';
                 case 'algo';   		c='(VeryFast) RMM-DIIS (Fast) Davidson/RMM-DIIS (Normal) Davidson';
                 case 'ialgo';  		c='(38) Davidson (48) RMM-DIIS algorithm';
-                case 'nbands'; 		c='number of bands';
+                case 'outcar:nbands'; 		c='number of bands';
                 case 'encut';  		c='cutoff';
                 case 'ismear'; 		c='(0) gauss (1) mp (-5) tetrah';
                 case 'sigma';  		c='maximize with entropy below 0.1 meV / atom';
-                case 'ediff';  		c='toten convergence';
+                case 'ediff';  		c='outcar:toten convergence';
                 % dft+U
                 case 'ldau'; 		c='Activates DFT+U calculation';
                 case 'ldautype'; 	c='(1) Liechtenstein (2) Dudarev Ueff = U - J (3) adds Ueff on the atomic sites';
@@ -741,27 +746,78 @@ classdef am_dft
         function [x]  =    get_vasp(flag)
             import am_dft.*
             switch flag
-            	case 'dft+u:occupancy'
+                % OUTCAR
+            	case 'outcar:site_occupancy' % for DFT+U
                     [~,m] = system('awk ''/onsite density matrix/'' OUTCAR'); m = numel(strfind(m,'matrix'));
                     [~,x] = system('awk ''/ o = /{ print $3 }'' OUTCAR');     x = sscanf(x,'%f'); x = reshape(x,[],m);
-                case 'toten'
-                    [~,x] = system('awk ''/ TOTEN / { print $5 }'' OUTCAR');  x = sscanf(x,'%f');
-                case 'Ef'
+                case 'outcar:toten'
+                    [~,x] = system('awk ''/TOTEN/ { print $5 }'' OUTCAR');  x = sscanf(x,'%f');
+                case 'outcar:fermi'
                     [~,x] = system('awk ''/E-fermi/ { print $3 }'' OUTCAR');  x = sscanf(x,'%f');
-                case 'pressure'
+                case 'outcar:pressure'
                     [~,x] = system('awk ''/pressure/ { print $4 }'' OUTCAR'); x = sscanf(x,'%f');
-                case 'ispin'
+                case 'outcar:ispin'
                     [~,x] = system('awk ''/ISPIN/ { print $3 }'' OUTCAR'); x = sscanf(x,'%f');
-                case 'nbands'
+                case 'outcar:nbands'
                     [~,x] = system('awk ''/NBANDS/ {print $15}'' OUTCAR'); x = sscanf(x,'%f');
-                case 'kpoint'
+                case 'outcar:kpoint'
                     [~,x] = system('awk ''/ plane waves: / { print $4 "  " $5 "  " $6}'' OUTCAR'); x = sscanf(x,'%f'); x = reshape(x,3,[]).';
-                case 'gamma'
+                case 'outcar:gamma'
                     [~,x] = system('awk ''/GAMMA/ {print $4}'' OUTCAR'); x = sscanf(x,'%f');
-                case 'niterations'
+                case 'outcar:niterations'
                     [~,x] = system('awk ''/Iteration/'' OUTCAR'); x = numel(strfind(x,'Iteration'));
-                case 'magnetization'
+                case 'outcar:magnetization'
                     [~,x] = system('awk ''/magnetization/'' OUTCAR | awk ''/electron/ { print $6 }'''); x = sscanf(x,'%f');
+                % POTCAR
+                case 'potcar:zval' 
+                    % valence on each atom in potcar
+                    [~,x] = system('awk ''/ZVAL/{print $6}'' POTCAR'); x = sscanf(x,'%f');
+                % PROCAR
+                case 'procar:ispin'
+                    [~,x] = system('awk ''/# of k-points:/'' PROCAR'); x = numel(strfind(x,'ions'));
+                case 'procar:nkpts'
+                    [~,x] = system('grep -m 1 "# of k-points:" PROCAR | awk ''{print $4}'''); x = sscanf(x,'%f');
+                case 'procar:nbands'
+                    [~,x] = system('grep -m 1 "# of k-points:" PROCAR | awk ''{print $8}'''); x = sscanf(x,'%f');
+                case 'procar:natoms'
+                    [~,x] = system('grep -m 1 "# of k-points:" PROCAR | awk ''{print $12}'''); x = sscanf(x,'%f');
+                case 'procar:norbitals'
+                    [~,x] = system('grep -m 1 py PROCAR'); x = numel(strsplit(strtrim(x))) - 2;
+                case 'procar:orbital'
+                    [~,x] = system('grep -m 1 py PROCAR'); x = strsplit(strtrim(x)); x=x{2:(end-1)};
+                case 'procar:kpoint'
+                    [~,x] = system('grep weight PROCAR | sed ''s/-/ -/g'' | awk ''{print $5 " " $6 " " $7}'''); x = sscanf(x,'%f'); x = reshape(x,3,[]).';
+                case 'procar:weight'
+                    [~,x] = system('grep weight PROCAR | awk ''/k-point/{print $9}'''); x = sscanf(x,'%f');
+                case 'procar:energy'
+                    nkpts     = get_vasp('procar:nkpts');
+                    nbands    = get_vasp('procar:nbands');
+                    nspins    = get_vasp('procar:ispin');
+                    [~,x] = system('awk ''/energy/{print $5}'' PROCAR'); x = sscanf(x,'%f');
+                    % E(nbands,nkpts,nspins)
+                    x = reshape(x,nbands,nkpts,nspins);
+                case 'procar:occupation'
+                    nkpts     = get_vasp('procar:nkpts');
+                    nbands    = get_vasp('procar:nbands');
+                    nspins    = get_vasp('procar:ispin');
+                    [~,x] = system('awk ''/energy/{print $8}'' PROCAR'); x = sscanf(x,'%f');
+                    % E(nbands,nkpts,nspins)
+                    x = reshape(x,nbands,nkpts,nspins);
+                case 'procar:lmproj'
+                    natoms    = get_vasp('procar:natoms');
+                    norbitals = get_vasp('procar:norbitals');
+                    nkpts     = get_vasp('procar:nkpts');
+                    nbands    = get_vasp('procar:nbands');
+                    nspins    = get_vasp('procar:ispin');
+                    switch norbitals
+                        case 1+3+5
+                            [~,x]=system(sprintf('grep -A%i py PROCAR | grep -v py | awk ''{print $2 " " $3 " " $4 " " $5 " " $6 " " $7 " " $8 " " $9 " " $10}''',natoms));
+                        case 1+3+5+7
+                            [~,x]=system(sprintf('grep -A%i py PROCAR | grep -v py | awk ''{print $2 " " $3 " " $4 " " $5 " " $6 " " $7 " " $8 " " $9 " " $10 " " $11 " " $12 " " $13 " " $14 " " $15 " " $16 " " $17}''',natoms));
+                    end
+                    x = strrep(x,'--',''); x = sscanf(x,'%f'); x = reshape(x,norbitals,natoms,nbands,nkpts,nspins); % last is ispin
+                    % lmproj(nspins,norbitals,nions,nbands,nkpts)
+                    x = permute(x,[5,1,2,3,4]);
             end
         end
             
@@ -778,7 +834,7 @@ classdef am_dft
             % check for not enough bands
             [~,b]=system('grep ''Your highest band is occupied at some k-points!'' output');
             if ~isempty(b)
-                nbands = get_vasp('nbands');
+                nbands = get_vasp('outcar:nbands');
                 fprintf('ERROR: not enough bands (nbands = %g). \n',nbands);
                 fprintf('>>>>>> DIR: %s \n',pwd); 
                 % read incar
@@ -788,7 +844,7 @@ classdef am_dft
                 nbands = ceil(nbands*1.2); nbands = ncore-mod(nbands,ncore)+nbands;
                 fprintf('>>>>>> FIX: increase nbands by ~1.2x to %i\n',nbands)
                 % fix is to try a lower AMIX and set SCF algo to Normal
-                incar = generate_incar(incar,{'nbands',nbands});
+                incar = generate_incar(incar,{'outcar:nbands',nbands});
                 if ~isdryrun
                     write_incar(incar);
                 end
@@ -804,7 +860,7 @@ classdef am_dft
                 incar = load_incar('INCAR');
                 % find average value of gamma (optimal amix = current amix * gamma)
                 if isfield(incar,'amix'); amix = incar.amix; else; amix = 0.4; end
-                amix = amix * mean(get_vasp('gamma'));
+                amix = amix * mean(get_vasp('outcar:gamma'));
                 incar = generate_incar(incar,{'algo','Normal','amix',num2str(amix)});
                 % print the fix
                 fprintf('>>>>>> FIX: set algo = normal and reduce amix to %0.2f\n',amix)
@@ -850,7 +906,7 @@ classdef am_dft
 %         end
 
         function [T,H,S,R]    = get_symmetries(pc,tol)
-            % [T,H,S,R] = get_symmetries(pc, tol=am_lib.tiny)
+            % [T,H,S,R] = get_symmetries(pc, tol=am_dft.tiny)
             % T = all possible translations which restore the crystal to iteself
             % H = holohogries (all possible rotations which restore the bravais lattice onto iteself)
             % S = space group symmetries
@@ -859,7 +915,7 @@ classdef am_dft
             import am_lib.* am_dft.*
 
             % set default numerical tolerance
-            if nargin < 2; tol = am_lib.eps; end
+            if nargin < 2; tol = am_lib.tiny; end
 
             % define function to check first two dimensions
             check_ = @(A) all(all(abs(A)<tol,1),2);
@@ -876,7 +932,7 @@ classdef am_dft
 
             % get arithmetic holodries (symmetries for which R'*g*R = g; g = bas'*bas)
             N=9; Q=[-1:1]; nQs=numel(Q);[Y{N:-1:1}]=ndgrid(1:nQs); L=reshape(Q(reshape(cat(N+1,Y{:}),[],N)).',3,3,[]);
-            get_holodries_frac_ = @(M) L(:,:,check_(matmul_(matmul_(permute(L,[2,1,3]),M'*M),L)-M'*M));
+            get_holodries_frac_ = @(M) L(:,:,check_(matmul_(matmul_(permute(L,[2,1,3]),M.'*M),L)-M.'*M));
             H = get_holodries_frac_(pc.bas); nHs = size(H,3);
             id = member_(flatten_(eye(3)),reshape(H,3^2,[])); H(:,:,[1,id])=H(:,:,[id,1]);
 
@@ -1178,7 +1234,7 @@ classdef am_dft
         function bv_code      = identify_bravais_lattice(bas,tol)
 
             % set default numerical tolerance
-            if nargin < 2; tol = am_lib.eps; end
+            if nargin < 2; tol = am_dft.tiny; end
             
             % get metric tensor
             M  = bas.'*bas;
@@ -1186,7 +1242,7 @@ classdef am_dft
             ij = [M(1,2),M(1,3),M(2,3)];
             t  = numel(uniquetol(ii,tol));
             o  = numel(uniquetol(ij,tol));
-            z  = sum(abs(ij)<am_lib.tiny);
+            z  = sum(abs(ij)<am_dft.tiny);
             % de Graef p 86
             if     all([t == 3, o == 3, z == 0]); bv_code = 1; % triclinic
             elseif all([t == 2, o == 2, z == 2]); bv_code = 2; % hexagonal
@@ -1993,7 +2049,7 @@ classdef am_dft
                 for i = 1:nsyms
                     [A,a]=eig(g(:,:,i),'vector');        ind = rankc_(reim_(a.')); a=a(ind); A=A(:,ind);
                     [B,b]=eig(h(:,:,bjc(i,j)),'vector'); ind = rankc_(reim_(b.')); b=b(ind); B=B(:,ind);
-                    if any(abs(a-b)>am_lib.tiny); ex_(i) = false; end
+                    if any(abs(a-b)>am_dft.tiny); ex_(i) = false; end
                 end
             end
             bjc = bjc(:,ex_); gen = gen(:,ex_); nbjcs=size(bjc,2);
@@ -2062,8 +2118,11 @@ classdef am_dft
 
             import am_lib.* am_dft.*
 
+            % default poscar file
+            if nargin < 1; fposcar = 'POSCAR'; end
+            
             % set default numerical tolerance
-            if nargin < 2; tol = am_lib.eps; end
+            if nargin < 2; tol = am_dft.tiny; end
             
             % time
             fprintf(' ... getting cells and symmetries'); tic
@@ -2335,7 +2394,7 @@ classdef am_dft
         function [T]          = get_niggli_transformation(bas,tol)
 
             % default tolerance
-            if nargin<2; tol = am_lib.tiny; end
+            if nargin<2; tol = am_dft.tiny; end
 
             % numerical precision
             lt_ = @(x,y) x<y-tol;
@@ -3669,7 +3728,7 @@ classdef am_dft
             % create bvk structure
             tb_ = @(pp,ip,sav,nbands) struct('units','cart','bas',pp.bas2pc*pp.bas, ...
                 'symb',{pp.symb},'mass',pp.mass,'species',pp.species(pp.p2u),'cutoff',pp.cutoff,'natoms',pp.pc_natoms,...
-                'nbands',nbands,'nshells',size(sav.W,2),'W',{sav.W},'vsk',{sav.vsk},'d',ip.d,'v',ip.v,'xy',ip.xy);
+                'outcar:nbands',nbands,'nshells',size(sav.W,2),'W',{sav.W},'vsk',{sav.vsk},'d',ip.d,'v',ip.v,'xy',ip.xy);
             tb = tb_(pp,ip,sav,nbands);
 
             % define function to get bond vector
@@ -3811,7 +3870,7 @@ classdef am_dft
             %         % apply rotations
             %         UR = permute(matmul_(Rq,permute(U,[1,3,2])),[1,3,2]);
             %         % translate to wigner-seitz cell
-            %         UR = reshape(uc2ws_mex(UR,uc.bas,am_lib.tiny),size(UR));
+            %         UR = reshape(uc2ws_mex(UR,uc.bas,am_dft.tiny),size(UR));
 
             import am_lib.*
             import am_dft.*
@@ -3927,7 +3986,7 @@ classdef am_dft
 
             % correct rounding errors in cart
             for i = 1:numel(Q{1}); for wdv = [0,1,.5,sqrt(3)/2]
-                if abs(abs(Q{1}(i))-wdv)<am_lib.tiny; Q{1}(i)=wdv*sign(Q{1}(i)); end
+                if abs(abs(Q{1}(i))-wdv)<am_dft.tiny; Q{1}(i)=wdv*sign(Q{1}(i)); end
             end;end
 
             % save "primitive" pairs
@@ -4048,7 +4107,7 @@ classdef am_dft
             Q{1} = sym_rebase_(uc.bas2pc*uc.bas,Q{1});
             % correct rounding errors in cart
             for i = 1:numel(Q{1}); for wdv = [0,1,.5,sqrt(3)/2]
-                if abs(abs(Q{1}(i))-wdv)<am_lib.tiny; Q{1}(i)=wdv*sign(Q{1}(i)); end
+                if abs(abs(Q{1}(i))-wdv)<am_dft.tiny; Q{1}(i)=wdv*sign(Q{1}(i)); end
             end;end
 
             % save "primitive" pairs
@@ -4196,10 +4255,10 @@ classdef am_dft
             import am_lib.* am_dft.*
 
             % set tolerance if not specified
-            if nargin<2; tol = am_lib.tiny; end
+            if nargin<2; tol = am_dft.tiny; end
 
             % translate one atom to the origin if there isn't one already
-            if all(sum(uc.tau,1)>am_lib.tiny); uc.tau = uc.tau-uc.tau(:,1); end
+            if all(sum(uc.tau,1)>am_dft.tiny); uc.tau = uc.tau-uc.tau(:,1); end
 
             % build permutation matrix for atoms related by translations
             T = get_symmetries(uc); nTs=size(T,2); PM=zeros(uc.natoms,nTs);
@@ -4218,9 +4277,9 @@ classdef am_dft
             % save basis
             B=T(:,inds); vol=abs(det(uc.bas*B));
 
-            % refined the primitive cell to try and get angles to be either
-            % equal to each other or equal to 30,60,90,120; also try to get
-            % the lengths of the primitive vectors to be the same
+            % refined the primitive cell vectors to get (if possible)
+            % 1) angles between vectors to equal each other or 30, 60, 90, or 120 deg
+            % 2) lengths of primitive vectors to be the same
             if true
                 % augment lattice vectors
                 grid_ =  [1, 0,1,1, 1,0,0, -1, 1, 1, 0, -1, 1,-1, 1, 0, 0, -1,-1, 1, -1, 0, 0, -1,-1, 0, -1; ...
@@ -4234,7 +4293,7 @@ classdef am_dft
                 % find all combination of unit vectors that have volume equal to the smallest volume determined above
                 ijk = nchoosek_(nTs,3); m = size(ijk,2);
                 v = zeros(1,m); for i = 1:m; v(i) = det(T_cart(:,ijk(:,i))); end
-                ex_ = v>0; ex_(ex_) = abs(v(ex_)-vol)<am_lib.tiny; ijk = ijk(:,ex_); m = size(ijk,2);
+                ex_ = v>0; ex_(ex_) = abs(v(ex_)-vol)<am_dft.tiny; ijk = ijk(:,ex_); m = size(ijk,2);
 
                 % find basis which produces the highest symmetry
                 n = zeros(1,m);
@@ -4250,21 +4309,6 @@ classdef am_dft
                 'symb',{uc.symb},'mass',uc.mass,'nspecies',sum(unique(uc.species(p2u)).'==uc.species(p2u),2).', ...
                 'natoms',numel(p2u),'tau',mod_(B\uc.tau(:,p2u)),'species',uc.species(p2u) );
             pc = pc_(uc,B,p2u);
-
-            % symmeterize basis vectors
-            if false
-                % pc.tau = (abc2bas(bas2abc(pc.bas))\pc.bas)*pc.tau;
-                [a,~,c]=uniquecol_(bas2abc(pc.bas)); pc.bas = abc2bas(a(c));
-                % strange... should not convert atomic positions to cart
-                % and then back to fractional, but keep the positions fixed
-                % just redefining the basis appears to be enough.
-                % convert atomic poisitons to cart
-                % tau_cart = pc.bas*pc.tau;
-                % % redefine basis
-                % [a,~,c]=uniquecol_(bas2abc(pc.bas)); pc.bas = abc2bas(a(c));
-                % % transform atomic positions back to fractional
-                % pc.tau = mod_(pc.bas\tau_cart);
-            end
         end
 
         function [ic,i2p,p2i] = get_irreducible_cell(pc,tol)
@@ -4273,7 +4317,7 @@ classdef am_dft
             import am_lib.* am_dft.*
 
             % set default numerical tolernece
-            if nargin < 2; tol = am_lib.tiny; end
+            if nargin < 2; tol = am_dft.tiny; end
             
             % get seitz matrices
             [~,~,S] = get_symmetries(pc);
@@ -5059,7 +5103,7 @@ classdef am_dft
             C = sparse(v(:,1),v(:,2),ones(size(v,1),1),natoms,natoms); % A = double((A'*A)~=0);
 
             % merge and reduce binary rep
-            C = merge_(C); C(abs(C)<am_lib.tiny)=0; C(abs(C)>am_lib.tiny)=1; C=full(C(any(C~=0,2),:));
+            C = merge_(C); C(abs(C)<am_dft.tiny)=0; C(abs(C)>am_dft.tiny)=1; C=full(C(any(C~=0,2),:));
 
             % convert to logical
             C = logical(C);
