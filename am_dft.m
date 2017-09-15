@@ -2156,26 +2156,27 @@ classdef am_dft
             % save bas2pc and tau2pc to convert [uc-frac] to [pc-frac]
             uc.bas2pc = pc.bas/uc.bas; uc.tau2pc = pc.bas\uc.bas;
 
-            % print formula
-            fprintf(', formula=%s',get_formula(uc));
-            
             % print basic symmetry info
             [~,H,~,R] = get_symmetries(pc,tol);
-            bv_code = identify_bravais_lattice(pc.bas,tol); fprintf(', primitive=%s',decode_bravais(bv_code));
+            bv_code = identify_bravais_lattice(pc.bas,tol); 
             % holohodry should give same info as bravais lattice
-            hg_code = identify_pointgroup(H); fprintf(', holohodry=%s',decode_holohodry(hg_code));
-            pg_code = identify_pointgroup(R); fprintf(', point=%s',decode_pg(pg_code));
-
-            % beta (POSSIBLE SPACE GROUPS)
-            sg_code = identify_spacegroup(pg_code);
-            fprintf(', space=%s',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
+            hg_code = identify_pointgroup(H); 
+            pg_code = identify_pointgroup(R); 
+            sg_code = identify_spacegroup(pg_code); % BETA
             
             % atomic density [g/cm3]
             mass_density = sum(uc.mass(uc.species)) / 6.02214E23 / det(uc.bas*0.1 * 1E-7);
             number_density = uc.natoms / det(uc.bas*0.1);
-            fprintf(', density=%.2fg/cm3(%.2fat/nm3)',mass_density,number_density);
 
-            fprintf(' (%.f secs)\n',toc);
+            % print relevant information
+            fprintf(' (%.3f s) \n',toc);
+            fprintf('     %-15s = %s\n','formula',get_formula(uc));
+            fprintf('     %-15s = %s\n','primitive',decode_bravais(bv_code));
+            fprintf('     %-15s = %s\n','holohodry',decode_holohodry(hg_code));
+            fprintf('     %-15s = %s\n','point group',decode_pg(pg_code));
+            fprintf('     %-15s = %s\n','space group',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
+            fprintf('     %-15s = %.3f [g/cm3] \n','mass density',mass_density);
+            fprintf('     %-15s = %.3f [atoms/nm3]\n','number density',number_density);
         end
 
         function [dc,idc]     = get_displaced_cell(pc,bvk,n,kpt,amp,mode,nsteps)
@@ -4215,7 +4216,7 @@ classdef am_dft
             %     symb = {'O','O','O','O','Fe','Bi','Bi'}; sg_code=185;
             %     % create cell
             %     [uc] = create_cell(bas,tau,symb,sg_code); [bragg] = get_bragg(uc);
-            %     plot_bragg(bragg); tablulate_bragg(bragg,10);
+            %     plot_bragg(bragg); tabulate_bragg(bragg,10);
             %     % save poscar
             %     write_poscar(uc,'BiFeO3_P63cm_dft.poscar');
             %
