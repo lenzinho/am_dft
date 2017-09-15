@@ -2125,7 +2125,7 @@ classdef am_dft
             if nargin < 2; tol = am_dft.tiny; end
             
             % time
-            fprintf(' ... getting cells and symmetries'); tic
+            fprintf(' ... getting cells'); tic
 
             % load poscar
             if contains(fposcar,'cif')
@@ -2156,16 +2156,24 @@ classdef am_dft
             % save bas2pc and tau2pc to convert [uc-frac] to [pc-frac]
             uc.bas2pc = pc.bas/uc.bas; uc.tau2pc = pc.bas\uc.bas;
 
+            % print formula
+            fprintf(', formula=%s',get_formula(uc));
+            
             % print basic symmetry info
             [~,H,~,R] = get_symmetries(pc,tol);
             bv_code = identify_bravais_lattice(pc.bas,tol); fprintf(', primitive=%s',decode_bravais(bv_code));
             % holohodry should give same info as bravais lattice
             hg_code = identify_pointgroup(H); fprintf(', holohodry=%s',decode_holohodry(hg_code));
-            pg_code = identify_pointgroup(R); fprintf(', pointgroup=%s',decode_pg(pg_code));
+            pg_code = identify_pointgroup(R); fprintf(', point=%s',decode_pg(pg_code));
 
             % beta (POSSIBLE SPACE GROUPS)
             sg_code = identify_spacegroup(pg_code);
-            fprintf(' (%s)',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
+            fprintf(', space=%s',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
+            
+            % atomic density [g/cm3]
+            mass_density = sum(uc.mass(uc.species)) / 6.02214E23 / det(uc.bas*0.1 * 1E-7);
+            number_density = uc.natoms / det(uc.bas*0.1);
+            fprintf(', density=%.2fg/cm3(%.2fat/nm3)',mass_density,number_density);
 
             fprintf(' (%.f secs)\n',toc);
         end
@@ -2349,7 +2357,6 @@ classdef am_dft
 
             % plot atoms
             h = scatter3_(pc.bas*pc.tau,50*sqrt(pc.mass(pc.species)),pc.species,'filled',varargin{:});
-
             % plot pc boundaries
             plothull_(pc.bas*[0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1]);
 
@@ -2503,7 +2510,6 @@ classdef am_dft
                 i=i+1; ii=ii+1;
             end
         end
-
 
         % brillouin zones
 
@@ -3258,8 +3264,7 @@ classdef am_dft
         function [bvk]        = interpolate_bvk(bvk_1,bvk_2,n)
             % interpolates force constants and masses from bvk_1 and bvk_2 on n points (includes end points)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             bvk_ = @(bvk,mass,fc) struct('units','cart','bas',bvk.bas,'recbas',bvk.recbas,'natoms',bvk.natoms,'mass',mass, ...
                 'nshells',bvk.nshells,'W',{bvk.W},'shell',{bvk.shell},'nbranches',bvk.nbranches,'D',bvk.D,'fc',{fc});
@@ -3303,8 +3308,7 @@ classdef am_dft
 
         function [T,KE,PE,q_sk] = plot_md_stats(uc,md,fbz,bvk)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % match uc to md
             uc = match_cell(uc,md);
