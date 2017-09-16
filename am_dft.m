@@ -196,46 +196,12 @@ classdef am_dft
             if length(angles)<3; angles = [90 90 90]; end
             bas = abc2bas([abc,angles]);
 
-            % get atomic species
-            symb_dataset={...
-                'He' ,'Li' ,'Be' ,'Ne' ,'Na' ,'Mg' ,'Al' ,'Si' ,'Cl' ,'Ar' ,'Ca' ,'Sc' ,'Ti' ,'Cr' ,'Mn' ,'Fe' ,'Co' ,'Ni' , ...
-                'Cu' ,'Zn' ,'Ga' ,'Ge' ,'As' ,'Se' ,'Br' ,'Kr' ,'Rb' ,'Sr' ,'Zr' ,'Nb' ,'Mo' ,'Tc' ,'Ru' ,'Rh' ,'Pd' ,'Ag' , ...
-                'Cd' ,'In' ,'Sn' ,'Sb' ,'Te' ,'Xe' ,'Cs' ,'Ba' ,'La' ,'Ce' ,'Pr' ,'Nd' ,'Pm' ,'Sm' ,'Eu' ,'Gd' ,'Tb' ,'Dy' , ...
-                'Ho' ,'Er' ,'Tm' ,'Yb' ,'Lu' ,'Hf' ,'Ta' ,'Re' ,'Os' ,'Ir' ,'Pt' ,'Au' ,'Hg' ,'Tl' ,'Pb' ,'Bi' ,'Po' ,'At' , ...
-                'Rn' ,'Fr' ,'Ra' ,'Ac' ,'Th' ,'Pa' ,'Np' ,'Pu' ,'Am' ,'Cm' ,'Bk' ,'Cf' ,'Es' ,'Fm' ,'Md' ,'No' ,'Lr' ,'Rf' , ...
-                'Db' ,'Sg' ,'Bh' ,'Hs' ,'Mt' ,'Ds' ,'Rg' ,'Uub','Uut','Uuq','Uup','Uuh','H'  ,'B'  ,'C'  ,'N'  ,'O'  ,'F'  , ...
-                'P'  ,'S'  ,'K'  ,'V'  ,'Y'  ,'I'  ,'W'  ,'U'  }; % NOTE: single letters last!
-            reindex = [...
-                   2,  3,  4, 10, 11, 12, 13, 14, 17, 18, 20, 21, 22, 24, 25, 26, 27, ...
-                  28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 40, 41, 42, 43, 44, 45, ...
-                  46, 47, 48, 49, 50, 51, 52, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, ...
-                  64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 75, 76, 77, 78, 79, 80, 81, ...
-                  82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, ...
-                 100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116, ...
-                   1,  5,  6,  7,  8,  9, 15, 16, 19, 23, 39, 53, 74, 92];
-            species_aliases = {...
-                '_atom_type_oxidation_number', ...
-                '_atom_site_U_iso_or_equiv'};
-            for alias = species_aliases
-                ex_ = contains(str,alias{:});
-                if any(ex_); j=find(ex_); i=1; species_list=[];
-                    while and(~any(strmatchi_(str{j+i},{'_','#','loop_'})),lt(i+j,nlines))
-                        t = strmatch_(str{j+i},symb_dataset);
-                        species_list(i) = t(find(t,1)); i=i+1;
-                    end
-                    if ~isempty(species_list); break; end
-                end
-            end
-            Z = reindex(species_list);
-
-            % remove redundancies
-            [~,i] = unique(species_list,'stable'); Z=Z(i); species_list=species_list(i); symb = symb_dataset(species_list);
-
             % get atomic positions
             position_aliases = {...
                 '_atom_site_attached_hydrogens',...
                 '_atom_site_calc_flag',...
-                '_atom_site_U_iso_or_equiv'};
+                '_atom_site_U_iso_or_equiv', ...
+                '_atom_site_fract_z'};
             for alias = position_aliases; ex_ = contains(str,alias{:}); if any(ex_)
                 j=find(ex_); i=1; tau=[];
                 while and(~any(strmatchi_(str{j+i},{'_','#','loop_'})),lt(i+j,nlines))
@@ -243,41 +209,70 @@ classdef am_dft
                     tau(1,i) = str2double(buffer{4});
                     tau(2,i) = str2double(buffer{5});
                     tau(3,i) = str2double(buffer{6});
-                    t = strmatchi_(buffer{1},symb);
-                    species(i) = t(find(t,1));
+                    species_symb{i} = buffer{2};
                     i=i+1;
                 end
                 if ~isempty(tau); break; end
             end; end
+            % replace symbolic species with a numerical value
+            [~,~,species]=unique(species_symb); species=species(:).'; 
             % make sure there is only one atom at each site
-            [~,i]=uniquecol_(tau); tau=tau(:,i); species=species(:,i);
+            [~,i]=uniquecol_(tau); tau=tau(:,i); species=species(i); symb=species_symb(i); Z=get_atomic_number(symb);
+
+%             % get atomic species
+%             symb_dataset={...
+%                 'He' ,'Li' ,'Be' ,'Ne' ,'Na' ,'Mg' ,'Al' ,'Si' ,'Cl' ,'Ar' ,'Ca' ,'Sc' ,'Ti' ,'Cr' ,'Mn' ,'Fe' ,'Co' ,'Ni' , ...
+%                 'Cu' ,'Zn' ,'Ga' ,'Ge' ,'As' ,'Se' ,'Br' ,'Kr' ,'Rb' ,'Sr' ,'Zr' ,'Nb' ,'Mo' ,'Tc' ,'Ru' ,'Rh' ,'Pd' ,'Ag' , ...
+%                 'Cd' ,'In' ,'Sn' ,'Sb' ,'Te' ,'Xe' ,'Cs' ,'Ba' ,'La' ,'Ce' ,'Pr' ,'Nd' ,'Pm' ,'Sm' ,'Eu' ,'Gd' ,'Tb' ,'Dy' , ...
+%                 'Ho' ,'Er' ,'Tm' ,'Yb' ,'Lu' ,'Hf' ,'Ta' ,'Re' ,'Os' ,'Ir' ,'Pt' ,'Au' ,'Hg' ,'Tl' ,'Pb' ,'Bi' ,'Po' ,'At' , ...
+%                 'Rn' ,'Fr' ,'Ra' ,'Ac' ,'Th' ,'Pa' ,'Np' ,'Pu' ,'Am' ,'Cm' ,'Bk' ,'Cf' ,'Es' ,'Fm' ,'Md' ,'No' ,'Lr' ,'Rf' , ...
+%                 'Db' ,'Sg' ,'Bh' ,'Hs' ,'Mt' ,'Ds' ,'Rg' ,'Uub','Uut','Uuq','Uup','Uuh','H'  ,'B'  ,'C'  ,'N'  ,'O'  ,'F'  , ...
+%                 'P'  ,'S'  ,'K'  ,'V'  ,'Y'  ,'I'  ,'W'  ,'U'  }; % NOTE: single letters last!
+%             reindex = [...
+%                    2,  3,  4, 10, 11, 12, 13, 14, 17, 18, 20, 21, 22, 24, 25, 26, 27, ...
+%                   28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 40, 41, 42, 43, 44, 45, ...
+%                   46, 47, 48, 49, 50, 51, 52, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, ...
+%                   64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 75, 76, 77, 78, 79, 80, 81, ...
+%                   82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, ...
+%                  100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116, ...
+%                    1,  5,  6,  7,  8,  9, 15, 16, 19, 23, 39, 53, 74, 92];
+%             species_aliases = {...
+%                 '_atom_type_oxidation_number', ...
+%                 '_atom_site_U_iso_or_equiv'};
+%             for alias = species_aliases
+%                 ex_ = contains(str,alias{:});
+%                 if any(ex_); j=find(ex_); i=1; species_list=[];
+%                     while and(~any(strmatchi_(str{j+i},{'_','#','loop_'})),lt(i+j,nlines))
+%                         t = strmatch_(str{j+i},symb_dataset);
+%                         species_list(i) = t(find(t,1)); i=i+1;
+%                     end
+%                     if ~isempty(species_list); break; end
+%                 end
+%             end
+%             Z = reindex(species_list);
+% 
+%             % remove redundancies
+%             [~,i] = unique(species_list,'stable'); Z=Z(i); species_list=species_list(i); symb = symb_dataset(species_list);
 
             % get space group symmetries
-            sg_id = extract_token_(str,'_symmetry_Int_Tables_number',true); S = generate_sg(sg_id); nSs=size(S,3);
-
-            % get space group symmetries directly
-            position_aliases = {...
-                '_symmetry_equiv_pos_as_xyz'};
-            for alias = position_aliases; ex_ = contains(str,alias{:}); if any(ex_)
-                j=find(ex_); i=1;
-                syms x y z;
-                while and(~any(strmatchi_(str{j+i},{'_','#','loop_'})),lt(i+j,nlines))
-                    buffer = strsplit( strrep(str{j+i},'''',''), ',');
-                    for k = 1:3
-                        M(k) = eval(buffer{k});
-                        T(k,:) = coeffs(M(k),'All');
-                    end
-                    SS(1:3,1:3,i) = double(equationsToMatrix(M));
-                    SS(1:3,  4,i) = double(T(:,2));
-                    SS(  4,  4,i) = 1;
+            if     any(contains(str,'_symmetry_equiv_pos_as_xyz'))
+                j=find(contains(str,'_symmetry_equiv_pos_as_xyz')); i=1; syms x y z;
+                while ~isempty(strtrim(str{j+i})) && ~any(strmatchi_(str{j+i},{'_','#','loop_'})) && lt(i+j,nlines)
+                    buffer = strsplit(strrep(str{j+i},'''',''),',');
+                    tmp=coeffs(eval(buffer{1}),'all'); T(1) = double(tmp(2));
+                    tmp=coeffs(eval(buffer{2}),'all'); T(2) = double(tmp(2));
+                    tmp=coeffs(eval(buffer{3}),'all'); T(3) = double(tmp(2));
+                    S(1:3,1:3,i) = double(equationsToMatrix(...
+                        [eval(buffer{1}),eval(buffer{2}),eval(buffer{3})] ));
+                    S(1:3,4:4,i) = T;
+                    S(4:4,1:3,i) = 0;
+                    S(4:4,4:4,i) = 1;
                     i=i+1;
                 end
-                if ~isempty(SS); break; end
-            end; end
-            nSSs = size(SS,3);
-
-            % take the space group with the most symmetries
-            if nSSs > nSs; S = SS; nSs = nSSs; end
+            elseif any(contains(str,'_symmetry_Int_Tables_number'))
+                sg_id = extract_token_(str,'_symmetry_Int_Tables_number',true); S = generate_sg(sg_id); nSs=size(S,3);
+            end
+            nSs = size(S,3);
 
             % generate all positions based on symmetry operations
             seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
@@ -505,7 +500,7 @@ classdef am_dft
             end
         end
 
-        function incar   = generate_incar(flag,nondefault_incar_opts_,uc)
+        function incar   = generate_incar(flag,nondefault_incar_opts_)
             
             import am_dft.*
             
@@ -523,7 +518,7 @@ classdef am_dft
                         incar = generate_incar('',opts_);
                     case 'rlx'
                         opts_ = { ...
-                        'istart' , '0'        , 'icharg' , '2'       , 'gga'    , 'am05'    , 'ispin'  , '1'       , ...
+                        'istart' , '0'        , 'icharg' , '2'       , 'gga'    , 'AM'      , 'ispin'  , '1'       , ...
                         'prec'   , 'accurate' , 'nelmdl' , '-12'     , 'algo'   , 'fast'    , 'ialgo'  , ''        , ...
                         'encut'  , '650'      , 'ismear' , '0'       , 'sigma'  , '0.2'     , 'ediff'  , '1e-9'    , ...
                         'tebeg'  , '0'        , 'ibrion' , '2'       , 'potim'  , '0.5'     , 'ediffg' , '1e-8'    , ...
@@ -542,14 +537,10 @@ classdef am_dft
                         opts_ = {...
                             'lwave'  ,'.FALSE.'   , 'lcharg' , '.FALSE.' , 'lvtot'  , '.FALSE.' };
                         incar = generate_incar('scf',opts_);
-                end
-            end
-            
-            % set defaults based on unit cell
-            if nargin > 2
-                % set default number of bands
-                if exist('POTCAR','file') == 2
-                    incar.nbands = sprintf('%i',ceil( (sum(uc.nspecies.*get_vasp('potcar:zval').')+uc.natoms)/2 * 1.2 /5) * 5);
+                    case 'aimd'
+                        opts_ = {...
+                            'ediff','1e-6','addgrid','.TRUE.', ...
+                            };
                 end
             end
 
@@ -658,7 +649,7 @@ classdef am_dft
                 case 'encut';  		c='cutoff';
                 case 'ismear'; 		c='(0) gauss (1) mp (-5) tetrah';
                 case 'sigma';  		c='maximize with entropy below 0.1 meV / atom';
-                case 'ediff';  		c='outcar:toten convergence';
+                case 'ediff';  		c='toten convergence';
                 % dft+U
                 case 'ldau'; 		c='Activates DFT+U calculation';
                 case 'ldautype'; 	c='(1) Liechtenstein (2) Dudarev Ueff = U - J (3) adds Ueff on the atomic sites';
@@ -696,17 +687,28 @@ classdef am_dft
         function           write_kpoints(bz,fkpoints)
             if nargin < 2; fkpoints='KPOINTS'; end
             if     isnumeric(bz)
-                % simple list [nx,ny,nz] kpoint point density
-                fid = fopen(fkpoints,'w');
-                    fprintf(fid,'%s \n','Automatically generated mesh');
-                    fprintf(fid,'%s \n','0');
-                    fprintf(fid,'%s \n','Monkhorst-Pack');
-                    fprintf(fid,' %i %i %i \n',ceil(bz));
-                    fprintf(fid,' %i %i %i \n',[0 0 0]);
-               fclose(fid);
+                if all(bz==1)
+                    % simple list [nx,ny,nz] kpoint point density
+                    fid = fopen(fkpoints,'w');
+                        fprintf(fid,'%s \n','Automatically generated mesh');
+                        fprintf(fid,'%s \n','0');
+                        fprintf(fid,'%s \n','Gamma');
+                        fprintf(fid,' %i %i %i \n',[1 1 1]);
+                        fprintf(fid,' %i %i %i \n',[0 0 0]);
+                   fclose(fid);
+                else
+                    % simple list [nx,ny,nz] kpoint point density
+                    fid = fopen(fkpoints,'w');
+                        fprintf(fid,'%s \n','Automatically generated mesh');
+                        fprintf(fid,'%s \n','0');
+                        fprintf(fid,'%s \n','Monkhorst-Pack');
+                        fprintf(fid,' %i %i %i \n',ceil(bz));
+                        fprintf(fid,' %i %i %i \n',[0 0 0]);
+                   fclose(fid);
+                end
             elseif isstruct(bz)
-            end
                 % still need to implement.
+            end
         end
 
         function           write_qsub(hardware,account,nnodes,hrs,job)
@@ -2512,6 +2514,7 @@ classdef am_dft
             end
         end
 
+        
         % brillouin zones
 
         function [fbz,ibz]    = get_zones(pc,n)
