@@ -1,6 +1,5 @@
 classdef am_dft
 
-
     properties (Constant)
         tiny      = 1E-4; % precision of atomic coordinates
         eps       = 1E-8; % numerical precision
@@ -11,6 +10,7 @@ classdef am_dft
         usemex    = false;
     end
 
+    
     % program level
 
     methods (Static)
@@ -118,6 +118,7 @@ classdef am_dft
 
     end
 
+    
     % core
 
     methods (Static)
@@ -325,117 +326,36 @@ classdef am_dft
             fprintf('(%.f secs)\n',toc);
         end
 
-        function [dft]   = load_procar(fprocar,Ef)
+        function [dft]   = load_procar(Ef)
 
             import am_dft.* am_lib.*
 
-            if nargin < 1; fprocar = 'PROCAR'; end
-            fprintf(' ... loading dft band structure from %s ',fprocar); tic;
-            
-            if nargin < 2; Ef = get_vasp('outcar:fermi'); fprintf(', Ef = %.2f ',Ef); end
-            if nargin < 3; dft.nspins = get_vasp('outcar:ispin'); end
-            
-            switch 2
-                case 1
-                    % ~ 3 x faster than case 2
-                    
-                    dft.nks    = get_vasp('procar:nkpts');
-                    dft.nbands = get_vasp('procar:nbands');
-                    dft.natoms = get_vasp('procar:natoms');
-                    dft.norbitals = get_vasp('procar:norbitals');
-                    dft.nspins = get_vasp('procar:ispin');
-                    dft.k = get_vasp('procar:kpoint');
-                    dft.w = get_vasp('procar:weight');
-                    dft.E = get_vasp('procar:energy');
-                    dft.f = get_vasp('procar:occupation');
-                    dft.f = get_vasp('procar:orbital');
-                    dft.lmproj = get_vasp('procar:lmproj');
-                    
-                case 2
-                    % slower but perhaps more robust?
-                    
-                    % load everything into memory and exclude empty lines
-                    str = load_file_(fprocar); 
-                    % exclude all empty lines
-                    ex_ = ~cellfun(@isempty,str); str = str(ex_); nlines = sum(ex_);
-                    
-                    x = 0;
-                    % PROCAR lm decomposed
-                    x = x+1; 
-                    % # of kpt-points:  160         # of bands:   8         # of ions:   2
-                    x = x+1; buffer = strsplit(str{x});
-                    dft.nks    = sscanf(buffer{4},'%f');
-                    dft.nbands = sscanf(buffer{8},'%f');
-                    dft.natoms = sscanf(buffer{12},'%f');
-                    % allocate
-                    dft.k = zeros(3,dft.nks);
-                    dft.w = zeros(1,dft.nks);
-                    dft.E = zeros(dft.nbands,dft.nks);
-                    for s = 1:dft.nspins
-                        for i = 1:dft.nks
-                            % kpt-point    1 :    0.50000000 0.50000000 0.50000000     weight = 0.00625000
-                            x = x+1; buffer = strsplit(strrep(str{x},'-',' -')); 
-                            if (s == 1)
-                                dft.k(1,i) = sscanf(buffer{5},'%f');
-                                dft.k(2,i) = sscanf(buffer{6},'%f');
-                                dft.k(3,i) = sscanf(buffer{7},'%f');
-                                dft.w(1,i) = sscanf(buffer{10},'%f');
-                            end
-                            for j = 1:dft.nbands
-                                % band   1 # energy   -3.91737559 # occ.  2.00000000
-                                x = x+1; buffer = strsplit(str{x}); 
-                                dft.E(j,i,s) = sscanf(buffer{5},'%f');
-                                dft.f(j,i,s) = sscanf(buffer{8},'%f'); % occupation
-                                % ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3    tot
-                                x = x+1; 
-                                % allocate space on first pass
-                                if (s==1 && i==1 && j==1)
-                                    buffer = strsplit(str{x});
-                                    dft.norbitals = numel(buffer)-2;
-                                    dft.orbital = {buffer{1+[1:dft.norbitals]}};
-                                    dft.lmproj = zeros(dft.nspins,dft.norbitals,dft.natoms,dft.nbands,dft.nks);
-                                end
-                                %   1  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000
-                                %   2  0.984  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.984
-                                %   ...
-                                for l = 1:dft.natoms
-                                    x = x+1; buffer = strsplit(str{x});
-                                for m = 1:dft.norbitals
-                                    % lmproj(nspins,norbitals,nions,nbands,nkpts) (spins not implemented yet%)
-                                    dft.lmproj(s,m,l,j,i) = sscanf(buffer{m+1},'%f');
-                                end
-                                end
-                                % skip: tot  0.985  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.985
-                                x = x+1; 
-                                % derail phase factor
-                                if (x < nlines) && contains(str{x+1},'ion')
-                                    % ion      s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3    tot
-                                    x = x+1;
-                                    % load phase factors (PROCAR generated with phase factors, LROBIT = 5 or 12)
-                                    if and(i==1,j==1)
-                                        dft.phase = zeros(dft.nspins,dft.norbitals,dft.natoms,dft.nbands,dft.nks);
-                                    end
-                                    % read phase factors
-                                    for l = 1:dft.natoms
-                                        % read real part of phase factors
-                                        x = x+1; buffer_real = strsplit(str{x});
-                                        x = x+1; buffer_imag = strsplit(str{x});
-                                        for m = 1:dft.norbitals
-                                            dft.phase(s,m,l,j,i) = sscanf(buffer_real{m+1},'%f') + 1i * sscanf(buffer_imag{m+1},'%f');
-                                        end
-                                    end % phase factor loop
-                                end % phase factor switch
-                            end % band
-                        end % nks
-                    end % nspins
-            end
-            
-            % zero fermi and sort bands in increasing order
-            dft.E = sort(dft.E - Ef);
+            if nargin < 1; Ef = get_vasp('outcar:fermi'); end
+
+            fprintf(' ... loading PROCAR'); tic;
+                dft.nks    = get_vasp('procar:nkpts');
+                dft.nbands = get_vasp('procar:nbands');
+                dft.natoms = get_vasp('procar:natoms');
+                dft.norbitals = get_vasp('procar:norbitals');
+                dft.nspins = get_vasp('procar:ispin');
+                dft.k = get_vasp('procar:kpoint').';
+                dft.w = get_vasp('procar:weight').';
+                dft.E = get_vasp('procar:energy'); dft.E = dft.E-Ef;
+                dft.f = get_vasp('procar:occupation');
+                dft.orbital = get_vasp('procar:orbital');
+                dft.lmproj = get_vasp('procar:lmproj');
+            fprintf('(%.f secs)\n',toc);
+
+            fprintf('     %-15s = %-8.3f [eV] \n','fermi energy',Ef);
+            fprintf('     %-15s = %i\n','nkpoints',dft.nks);
+            fprintf('     %-15s = %i\n','nbands',dft.nbands);
+            fprintf('     %-15s = %i\n','natoms',dft.natoms);
+            fprintf('     %-15s = %i\n','norbitals',dft.norbitals);
+            fprintf('     %-15s = %i\n','nspins',dft.nspins);
+
             % normalize projections by summing over atoms and characters?
             % dft.lmproj = dft.lmproj ./ sum(sum(dft.lmproj,2),3);
 
-            fprintf('(%.f secs)\n',toc);
         end
 
         function [md]    = load_md(uc,fforces,dt)
@@ -750,6 +670,23 @@ classdef am_dft
 
         function [x]  =    get_vasp(flag)
             import am_dft.*
+            
+            % check file is present
+            flist = {'PROCAR','OUTCAR'};
+            for i = 1:numel(flist)
+                if     contains(flag,lower(flist{i}))
+                    if exist(flist{i},'file')~=2
+                        fprintf('\n');
+                        fprintf('\n');
+                        fprintf('ERROR: Trying to read from %s when it does not exist',flist{i});
+                        fprintf('\n');
+                        fprintf('\n');
+                        x = [];
+                        return;
+                    end
+                end
+            end
+            
             switch flag
                 % OUTCAR
             	case 'outcar:site_occupancy' % for DFT+U
@@ -789,11 +726,11 @@ classdef am_dft
                 case 'procar:norbitals'
                     [~,x] = system('grep -m 1 py PROCAR'); x = numel(strsplit(strtrim(x))) - 2;
                 case 'procar:orbital'
-                    [~,x] = system('grep -m 1 py PROCAR'); x = strsplit(strtrim(x)); x=x{2:(end-1)};
+                    [~,x] = system('grep -m 1 py PROCAR'); x = strsplit(strtrim(x)); x=x(2:(end-1));
                 case 'procar:kpoint'
                     [~,x] = system('grep weight PROCAR | sed ''s/-/ -/g'' | awk ''{print $5 " " $6 " " $7}'''); x = sscanf(x,'%f'); x = reshape(x,3,[]).';
                 case 'procar:weight'
-                    [~,x] = system('grep weight PROCAR | awk ''/k-point/{print $9}'''); x = sscanf(x,'%f');
+                    [~,x] = system('grep weight PROCAR | grep ''k-point'' | sed ''s/-/ -/g'' | awk ''{print $10}''' ); x = sscanf(x,'%f');
                 case 'procar:energy'
                     nkpts     = get_vasp('procar:nkpts');
                     nbands    = get_vasp('procar:nbands');
@@ -826,9 +763,9 @@ classdef am_dft
             end
         end
             
-        function           vasp_fix_input(flags)
+        function [err]   = vasp_fix_input(flags)
             
-            import am_dft.*
+            import am_dft.* am_lib.*
             
             % no flag
             if nargin < 1; flags=''; end
@@ -836,52 +773,92 @@ classdef am_dft
             % defaults
             if contains(flags,'dryrun'); isdryrun = true; else; isdryrun=false; end
             
-            % check for not enough bands
-            [~,b]=system('grep ''Your highest band is occupied at some k-points!'' output');
-            if ~isempty(b)
-                nbands = get_vasp('outcar:nbands');
-                fprintf('ERROR: not enough bands (nbands = %g). \n',nbands);
-                fprintf('>>>>>> DIR: %s \n',pwd); 
-                % read incar
-                incar = load_incar('INCAR');
-                if isfield(incar,'ncore'); ncore = str2double(incar.ncore); else; ncore = 1; end
-                % update nbands
-                nbands = ceil(nbands*1.2); nbands = ncore-mod(nbands,ncore)+nbands;
-                fprintf('>>>>>> FIX: increase nbands by ~1.2x to %i\n',nbands)
-                % fix is to try a lower AMIX and set SCF algo to Normal
-                incar = generate_incar(incar,{'outcar:nbands',nbands});
-                if ~isdryrun
-                    write_incar(incar);
-                end
-                return;
+            % no error
+            err = 0;
+
+            while true
+                
+                % NOT ENOUGH BANDS
+                if grepcontains_('Your highest band is occupied at some k-points!','output'); err=1; break; end 
+                
+                % PRIMITIVE BASIS UNREASONABLY LARGE
+                uc = load_poscar('POSCAR');
+                if (uc.natoms)/abs(det(uc.bas*0.1))>200; err = 2; break; end
+                
+                    
+                % OSZICAR IS EMPTY
+                if count_lines_('OSZICAR')==0; err=3; break; end
+                
+                % SCF DIVERGED
+                [~,b]=system('tail -n+10 OSZICAR | awk ''{print $5}'''); b=sscanf(b,'%f'); b=b(end);
+                if abs(b)>1E6; err=4; break; end
+                
+                % NONHERMITIAN MATRIX
+                if grepcontains_('WARNING: Sub-Space-Matrix is not hermitian!','output'); err=5; break; end
+                
+            break; end
+
+            % FIXES
+            if err > 0
+            fprintf('DIR: %s \n',pwd); 
+            switch err
+                case 1 % NOT ENOUGH BANDS
+                    nbands = get_vasp('outcar:nbands');
+                    fprintf('       ERROR: not enough bands (nbands = %g). \n',nbands);
+                    % read incar
+                    incar = load_incar('INCAR');
+                    if isfield(incar,'ncore'); ncore = str2double(incar.ncore); else; ncore = 1; end
+                    % update nbands
+                    nbands = ceil(nbands*1.2); nbands = ncore-mod(nbands,ncore)+nbands;
+                    fprintf('       FIX: increase nbands by ~1.2x to %i\n',nbands)
+                    % fix is to try a lower AMIX and set SCF algo to Normal
+                    incar = generate_incar(incar,{'nbands',nbands});
+                    if ~isdryrun
+                        write_incar(incar);
+                    end
+                case 2 % PRIMITIVE BASIS UNREASONABLY LARGE
+                    uc = load_poscar('POSCAR');
+                    fprintf('       ERROR: at least of the lattice vectors is too long. \n');
+                    fprintf('       bas: %10.5f %10.5f %10.5f \n',uc.bas(:,1));
+                    fprintf('            %10.5f %10.5f %10.5f \n',uc.bas(:,2));
+                    fprintf('            %10.5f %10.5f %10.5f \n',uc.bas(:,3));
+                    % typical values for atomic number densities for solids
+                    % should be ~ 5E22 atoms/cm3, (50 atoms/nm^3)
+                    % linearly scale the basis vectors to get around this density
+                    d = uc.natoms/abs(det(uc.bas*0.1));
+                    target_density = 50; % [atoms/nm^3]
+                    uc.bas = (d/target_density)^(1/3)*uc.bas;
+                    fprintf('       FIX: scaling lattice vectors to get a reasonable density of ~ %i atoms/nm^3 \n',target_density)
+                    fprintf('       bas: %10.5f %10.5f %10.5f \n',uc.bas(:,1));
+                    fprintf('            %10.5f %10.5f %10.5f \n',uc.bas(:,2));
+                    fprintf('            %10.5f %10.5f %10.5f \n',uc.bas(:,3));
+                    if ~isdryrun
+                        write_poscar(uc);
+                    end
+                case 3 % OSZICAR IS EMPTY
+                    fprintf('       ERROR: OSZICAR is empty. Calculation did not start. Inspect stdout manually. \n');
+                case 4
+                    fprintf('       ERROR: electronic cycle failed to converge (d eps = %g). \n',b(end));
+                    % fix is to try a lower AMIX and set SCF algo to Normal
+                    incar = load_incar('INCAR');
+                    % reduce amix by 1/2
+                    if isfield(incar,'amix') && ~isempty(incar.amix); amix = str2num(incar.amix); else; amix = 0.4; end
+                    amix = amix .* 0.50;
+                    incar = generate_incar(incar,{'algo','Normal','amix',num2str(amix)});
+                    % print the fix
+                    fprintf('       FIX: set algo = normal and reduce amix to %0.2f\n',amix)
+                    if ~isdryrun
+                        write_incar(incar);
+                    end
+                case 5
+                    fprintf('       ERROR: Sub-Space-Matrix is not hermitian. \n');
+                    fprintf('       This is usually caused by some other problem. Investigate the output manually. \n')
+            end
             end
             
-            % check for convergent SCF
-            [~,b]=system('tail -n+2 OSZICAR | awk ''{print $5}'''); b=sscanf(b,'%f');
-            if abs(b(end)) > 1E6
-                fprintf('ERROR: electronic cycle failed to converge (d eps = %g). \n',b(end));
-                fprintf('>>>>>> DIR: %s \n',pwd);
-                % fix is to try a lower AMIX and set SCF algo to Normal
-                incar = load_incar('INCAR');
-                % find average value of gamma (optimal amix = current amix * gamma)
-                if isfield(incar,'amix'); amix = incar.amix; else; amix = 0.4; end
-                amix = amix * mean(get_vasp('outcar:gamma'));
-                incar = generate_incar(incar,{'algo','Normal','amix',num2str(amix)});
-                % print the fix
-                fprintf('>>>>>> FIX: set algo = normal and reduce amix to %0.2f\n',amix)
-                if ~isdryrun
-                    write_incar(incar);
-                end
-                return;
-            end
-            
-            % check for non-hermitian matrix
-            [~,b]=system('grep ''WARNING: Sub-Space-Matrix is not hermitian!'' output');
-            if ~isempty(b)
-                fprintf('ERROR: Sub-Space-Matrix is not hermitian. \n');
-                fprintf('>>>>>> DIR: %s \n',pwd); 
-                fprintf('>>>>>> This is usually caused by some other problem. Investigate the output manually. \n')
-            return;
+            function b = grepcontains_(str,file)
+                [~,b]=system(sprintf('grep ''%s'' %s',str,file));
+                b = ~isempty(b);
             end
         end
         
@@ -2172,6 +2149,7 @@ classdef am_dft
             % atomic density [g/cm3]
             mass_density = sum(uc.mass(uc.species)) / 6.02214E23 / det(uc.bas*0.1 * 1E-7);
             number_density = uc.natoms / det(uc.bas*0.1);
+            formula_density = number_density/(uc.natoms/gcd_(uc.nspecies));
 
             % print relevant information
             fprintf(' (%.3f s) \n',toc);
@@ -2180,8 +2158,9 @@ classdef am_dft
             fprintf('     %-15s = %s\n','holohodry',decode_holohodry(hg_code));
             fprintf('     %-15s = %s\n','point group',decode_pg(pg_code));
             fprintf('     %-15s = %s\n','space group',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
-            fprintf('     %-15s = %.3f [g/cm3] \n','mass density',mass_density);
-            fprintf('     %-15s = %.3f [atoms/nm3]\n','number density',number_density);
+            fprintf('     %-15s = %-8.3f [g/cm3] \n','mass density',mass_density);
+            fprintf('     %-15s = %-8.3f [atoms/nm3]\n','number density',number_density);
+            fprintf('     %-15s = %-8.3f [f.u./nm3]\n','formula density',formula_density);
         end
 
         function [dc,idc]     = get_displaced_cell(pc,bvk,n,kpt,amp,mode,nsteps)
