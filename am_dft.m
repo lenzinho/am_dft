@@ -358,6 +358,32 @@ classdef am_dft
 
         end
 
+        function [dos]   = load_doscar(Ef)
+            
+            import am_lib.*
+            
+            [str,~] = load_file_('DOSCAR');
+                % get energies, density of states, and integration DOS
+                t=sscanf(str{1},'%i'); natoms = t(1);
+                t=sscanf(str{6},'%f'); nEs = round(t(3)); if nargin<1; Ef = t(4); end; 
+                nspins = round((numel(strsplit(strtrim(str{7}),' '))-1)/2);
+                t=sscanf(sprintf('%s\n',str{6+[1:nEs]}),'%f'); t=reshape(t,2*nspins+1,nEs).';
+                dos.E = t(:,1)-Ef; dos.D = sum(t(:,2*[1:nspins]),2); dos.iD = sum(t(:,1+2*[1:nspins]),2);
+            % proj(nEs,nspins,norbitals,natoms) ==> proj(nspins,norbitals,natoms,nbands,nkpts,nEs)
+            norbitals = 9;
+            proj = zeros(nEs,nspins,norbitals,natoms);
+            for i = [1:natoms]
+                t = sscanf(sprintf('%s\n',str{6+i*(1+nEs)+[1:nEs]}),'%f');
+                t = reshape(t,1+nspins*9,nEs).'; % nEs x spin x orbitals
+                t = reshape(t(:,2:end),nEs,nspins,norbitals);
+                proj(:,:,:,i) = t;
+            end
+            % proj(nspins,norbitals,natoms,nbands,nkpts,nEs)
+            dos.proj = permute(proj,[2,3,4,5,6,1]);
+            % normalize projections
+            n = sum_(dos.proj,[1,2,3,4,5]); n(eq_(n,0))=1; dos.proj=dos.proj./n; 
+        end
+        
         function [md]    = load_md(uc,fforces,dt)
             %
             % Loads outcar preprocessed with outcar2fp.sh (generate_script).
@@ -396,8 +422,7 @@ classdef am_dft
             % Loads outcar preprocessed with outcar2en.sh (generate_script).
             %
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % count number of lines in file and check that all runs completed properly
             nlines = count_lines_(fbands); if mod(nlines,nbands)~=0; error('lines appear to be missing.'); end
@@ -432,47 +457,73 @@ classdef am_dft
             else
                 switch flag
                     case 'base'
+                        % lepsilon
                         opts_ = { ...
-                        'istart'   , '' , 'icharg' , '' , 'gga'    , '' , 'nelmdl' , '' , 'ispin'     , '' , 'prec'    , '' , 'ivdw'   , '' , ...
-                        'algo'     , '' , 'ialgo'  , '' , 'amix'   , '' , 'nbands' , '' , 'encut'     , '' , 'ismear'  , '' , 'sigma'  , '' , 'ediff'  , '' , 'ldau'   , '' , ...
-                        'ldautype' , '' , 'ldaul'  , '' , 'ldauu'  , '' , 'ldauj'  , '' , 'ldauprint' , '' , 'lmaxmix' , '' , 'ediffg' , '' , 'addgrid', '' , ...
-                        'tebeg'    , '' , 'ibrion' , '' , 'potim'  , '' , 'isif'   , '' , 'nblock'    , '' , 'nsw'     , '' , 'smass'  , '' , 'ncore'  , '' , ...
-                        'npar'     , '' , 'nsim'   , '' , 'lorbit' , '' , 'lreal'  , '' , 'lwave'     , '' , 'lcharg'  , '' , 'lvtot'  , '' };
+                        'istart'   , '' , 'icharg' , '' , ... % restarting
+                        'ispin'    , '' , 'gga'    , '' , 'ivdw'   , '' , ... % exchange correlations stuff
+                        'encut'    , '' , 'prec'   , '' , 'algo'   , '' , 'ialgo'  , '' , 'amix'   , '' , 'ediff'    , '' , 'nelmdl' , '' , ...  % precision/convergence stuff
+                        'nbands'   , '' , 'ismear' , '' , 'sigma'  , '' , 'lorbit' , '' , ...
+                        'ldau'     , '' ,'ldautype', '' , 'ldaul' , '' , 'ldauu'   , '' , 'ldauj'     , '' , 'ldauprint' , '' , 'lmaxmix'   , '' , ... ... % DFT+U stuff
+                        'ibrion'   , '' , 'isif'   , '' , 'ediffg', '' , 'potim'   , '' , 'tebeg'     , '' , 'nblock'    , '' , 'nsw'     , '' , 'smass'  , '' , 'addgrid' , '' , ... % aimd stuff
+                        'ncore'    , '' , 'npar'   , '' , 'nsim'   , '' , ... % cluster stuff 
+                        'lreal'    , '' , 'lwave'     , '' , 'lcharg'  , '' , 'lvtot'  , '' ... % save stuff
+                        };
                         incar = generate_incar('',opts_);
-                    case 'rlx'
+                    case 'defaults'
                         opts_ = { ...
-                        'istart' , '0'        , 'icharg' , '2'       , 'gga'    , 'AM'      , 'ispin'  , '1'       , ...
-                        'prec'   , 'accurate' , 'nelmdl' , '-12'     , 'algo'   , 'fast'    , 'ialgo'  , ''        , ...
-                        'encut'  , '650'      , 'ismear' , '0'       , 'sigma'  , '0.2'     , 'ediff'  , '1e-9'    , ...
-                        'tebeg'  , '0'        , 'ibrion' , '2'       , 'potim'  , '0.5'     , 'ediffg' , '1e-8'    , ...
-                        'isif'   , '3'        , 'nblock' , '1'       , 'nsw'    , '100'     , 'smass'  , '0'       , ...
-                        'ncore'  , ''         , 'npar'   , ''        , 'nsim'   , ''        , 'lorbit' , '0'       , ...
-                        'lreal'  , '.FALSE.'  , 'lwave'  , '.FALSE.' , 'lcharg' , '.FALSE.' , 'lvtot'  , '.FALSE.' };
+                        'istart' , '0'       , 'icharg'    , '2'       , 'gga'     , 'AM'      , 'prec'   , 'Accurate' , ...
+                        'ediff'  , '1e-9'    , 'algo'      , 'VeryFast', 'encut'  , '650'      , ...
+                        'ismear' , '0'       , 'sigma'     , '0.2'     , ...
+                        'isif'   , '3'       , 'lorbit'    , '11'      , 'nblock'  , '1'       , 'addgrid', '.TRUE.'   , ...
+                        'lreal'  , '.FALSE.' , 'lwave'     , '.FALSE.' , 'lcharg'  , '.FALSE.' , 'lvtot'  , '.FALSE.' };
                         incar = generate_incar('base',opts_);
+                    case 'rlx'
+                        % Setting the convergence criterion based on forces
+                        % being below < 0.005 eV/Ang (based on G. Kresse's
+                        % PHYSICAL REVIEW B 78, 104116 2008) works only if
+                        % there is at least one ionic degree of freedom.
+                        % For NaCl all ions are constrained at Wyckoff
+                        % positions; therefore, ediffg = 10*ediff is more
+                        % appropriate.
+                        opts_ = { ...
+                            'ediffg' , '1e-8'    , 'ibrion' , '2'       , 'potim'  , '0.5'    , ...
+                            'nsw'    , '100'     , 'smass'  , '0'       , ...
+                        };
+                        incar = generate_incar('defaults',opts_);
                     case 'scf'
-                        % just like rlx but do not update atomic positions and write charges and wavefunctions
                         opts_ = { ...
                             'ibrion' , '-1'       , 'nsw'    , '0'       , 'lorbit' , '11'      , ...
-                            'lwave'  , '.TRUE.'   , 'lcharg' , '.TRUE.'  , 'lvtot'  , '.TRUE.'  };
-                        incar = generate_incar('rlx',opts_);
-                    case 'evk'
-                        % just like scf but do not write charges and wave functions
-                        opts_ = {...
-                            'lwave'  ,'.FALSE.'   , 'lcharg' , '.FALSE.' , 'lvtot'  , '.FALSE.' };
+                            'addgrid', '.FALSE.'  , ... % takes too long with addgrid
+                            'lwave'  , '.TRUE.'   , 'lcharg' , '.TRUE.'  , 'lvtot'  , '.TRUE.'  , ...
+                            };
+                        incar = generate_incar('defaults',opts_);
+                    case {'nscf','evk'}
+                        opts_ = { ...
+                            'icharg' , '11'       ,  ...
+                            'lwave'  , '.FALSE.'  , 'lcharg' , '.FALSE.' , 'lvtot'  , '.FALSE.'  , ...
+                            };
                         incar = generate_incar('scf',opts_);
+                    case 'eps'
+                        opts_ = {'lepsilon', '.TRUE.'};
+                        incar = generate_incar('nscf',opts_);
+                    case 'opt'
+                        opts_ = {'loptics','.TRUE.','nedos','10000'};
+                        incar = generate_incar('nscf',opts_);
                     case 'aimd'
+                        % similar to rlx but with ibrion=0, a lower energy convergence, no convergence on ionic motion, nose thermostat, and more steps 
                         opts_ = {...
-                            'ediff','1e-6','addgrid','.TRUE.', ...
+                            'ibrion' , '0' , 'ediff','1e-6', 'ediffg', '', 'smass', '0', 'nsw', '1000', ...
                             };
                 end
             end
-
+            
             if nargin > 1
                 n = numel(nondefault_incar_opts_);
-                for i = 1:2:n
+                if n > 1; for i = 1:2:n
                     incar.(nondefault_incar_opts_{i})=nondefault_incar_opts_{i+1};
-                end
+                end; end
             end
+            
         end
 
         
@@ -672,9 +723,9 @@ classdef am_dft
             import am_dft.*
             
             % check file is present
-            flist = {'PROCAR','OUTCAR'};
+            flist = {'PROCAR','OUTCAR','vasprun.xml'};
             for i = 1:numel(flist)
-                if     contains(flag,lower(flist{i}))
+                if     contains(flag,lower(flist{i}(1:6)))
                     if exist(flist{i},'file')~=2
                         fprintf('\n');
                         fprintf('\n');
@@ -710,10 +761,21 @@ classdef am_dft
                     [~,x] = system('awk ''/Iteration/'' OUTCAR'); x = numel(strfind(x,'Iteration'));
                 case 'outcar:magnetization'
                     [~,x] = system('awk ''/magnetization/'' OUTCAR | awk ''/electron/ { print $6 }'''); x = sscanf(x,'%f');
+                case 'outcar:total_charge' % obtained when iorbit=11 is specified
+                    % x( natoms , {s,p,d,f} )
+                    natoms = get_vasp('vasprun:natoms');
+                    [~,x] = system(sprintf('grep -A %i ''total charge'' OUTCAR | tail -n %i | awk ''{print $2 " " $3 " " $4 " " $5}''',natoms+3,natoms)); x = sscanf(x,'%f'); x = reshape(x,[],natoms).';
+                    
                 % POTCAR
-                case 'potcar:zval' 
-                    % valence on each atom in potcar
+                case 'potcar:zval'  % valence on each atom in potcar
                     [~,x] = system('awk ''/ZVAL/{print $6}'' POTCAR'); x = sscanf(x,'%f');
+                case 'potcar:vrhfin:orbitals' % orbitals of each atom 
+                    [~,b] = system('grep ''VRHFIN'' POTCAR | sed -E ''s/([0-9])//g'' | sed -E ''s/ //g'' | sed -n -E ''s/^.*://p'' '); 
+                    b = strtrim(strsplit(strtrim(b),'\n'));
+                case 'potcar:vrhfin:orbitals' % ionic configuration of each atom (orbitals + occupation)
+                    [~,b] = system('grep ''VRHFIN'' POTCAR | sed -E ''s/([0-9])/\1,/g'' | sed -E ''s/ //g'' | sed -E ''s/,/ /g'' | sed -n -E ''s/^.*://p'' '); 
+                    b = strtrim(strsplit(strtrim(b),'\n'));
+                    
                 % PROCAR
                 case 'procar:ispin'
                     [~,x] = system('awk ''/# of k-points:/'' PROCAR'); x = numel(strfind(x,'ions'));
@@ -760,10 +822,15 @@ classdef am_dft
                     x = strrep(x,'--',''); x = sscanf(x,'%f'); x = reshape(x,norbitals,natoms,nbands,nkpts,nspins); % last is ispin
                     % lmproj(nspins,norbitals,nions,nbands,nkpts)
                     x = permute(x,[5,1,2,3,4]);
+                % VASPRUN
+                case 'vasprun:scf_energy'
+                    [~,x] = system('grep ''e_fr_energy'' vasprun.xml | sed ''s/\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*/ 1e8 /g'' | awk ''{print $3}'''); x = sscanf(x,'%f');
+                case 'vasprun:natoms'
+                    [~,x] = system('grep ''<atoms>'' vasprun.xml | awk ''{print $2}'''); x = sscanf(x,'%f');
             end
         end
             
-        function [err]   = vasp_fix_input(flags)
+        function           vasp_fix_input(flags)
             
             import am_dft.* am_lib.*
             
@@ -772,89 +839,70 @@ classdef am_dft
             
             % defaults
             if contains(flags,'dryrun'); isdryrun = true; else; isdryrun=false; end
+
+            % PRIMITIVE BASIS UNREASONABLY LARGE
+            uc = load_poscar('POSCAR'); d = uc.natoms/abs(det(uc.bas*0.1));
+            if d<0.001 
+                fprintf('DIR: %s \n',pwd); 
+                fprintf('       ERROR: at least of the lattice vectors is too long. \n');
+                fprintf('       bas: %10.5f %10.5f %10.5f \n',uc.bas(:,1));
+                fprintf('            %10.5f %10.5f %10.5f \n',uc.bas(:,2));
+                fprintf('            %10.5f %10.5f %10.5f \n',uc.bas(:,3));
+                target_density = 50; % [atoms/nm^3 ~ 5E22 atoms/cm3]
+                uc.bas = (d/target_density)^(1/3)*uc.bas;
+                fprintf('       FIX: scaling lattice vectors to get a reasonable density of ~ %i atoms/nm^3 \n',target_density)
+                fprintf('       bas: %10.5f %10.5f %10.5f \n',uc.bas(:,1));
+                fprintf('            %10.5f %10.5f %10.5f \n',uc.bas(:,2));
+                fprintf('            %10.5f %10.5f %10.5f \n',uc.bas(:,3));
+                if ~isdryrun
+                    write_poscar(uc);
+                end
+            end
+
+            % SCF DIVERGED
+            b = get_vasp('vasprun:scf_energy');
+            if ~isempty(b) && any(abs(b)>1E7)
+                fprintf('DIR: %s \n',pwd);
+                fprintf('       ERROR: electronic cycle divreged (d eps = %g). \n',b(end));
+                % fix is to try a lower AMIX and set SCF algo to Normal
+                incar = load_incar('INCAR');
+                % reduce amix by 1/2
+                if isfield(incar,'amix') && ~isempty(incar.amix); amix = str2num(incar.amix); else; amix = 0.4; end
+                amix = amix/2;
+                incar = generate_incar(incar,{'algo','Normal','amix',num2str(amix)});
+                % print the fix
+                fprintf('       FIX: set algo = normal and reduce amix to %0.2f\n',amix)
+                if ~isdryrun
+                    write_incar(incar);
+                end
+                return;
+            end
             
-            % no error
-            err = 0;
-
-            while true
-                
-                % NOT ENOUGH BANDS
-                if grepcontains_('Your highest band is occupied at some k-points!','output'); err=1; break; end 
-                
-                % PRIMITIVE BASIS UNREASONABLY LARGE
-                uc = load_poscar('POSCAR');
-                if (uc.natoms)/abs(det(uc.bas*0.1))>200; err = 2; break; end
-                
-                    
-                % OSZICAR IS EMPTY
-                if count_lines_('OSZICAR')==0; err=3; break; end
-                
-                % SCF DIVERGED
-                [~,b]=system('tail -n+10 OSZICAR | awk ''{print $5}'''); b=sscanf(b,'%f'); b=b(end);
-                if abs(b)>1E6; err=4; break; end
-                
-                % NONHERMITIAN MATRIX
-                if grepcontains_('WARNING: Sub-Space-Matrix is not hermitian!','output'); err=5; break; end
-                
-            break; end
-
-            % FIXES
-            if err > 0
-            fprintf('DIR: %s \n',pwd); 
-            switch err
-                case 1 % NOT ENOUGH BANDS
-                    nbands = get_vasp('outcar:nbands');
-                    fprintf('       ERROR: not enough bands (nbands = %g). \n',nbands);
-                    % read incar
-                    incar = load_incar('INCAR');
-                    if isfield(incar,'ncore'); ncore = str2double(incar.ncore); else; ncore = 1; end
-                    % update nbands
-                    nbands = ceil(nbands*1.2); nbands = ncore-mod(nbands,ncore)+nbands;
-                    fprintf('       FIX: increase nbands by ~1.2x to %i\n',nbands)
-                    % fix is to try a lower AMIX and set SCF algo to Normal
-                    incar = generate_incar(incar,{'nbands',nbands});
-                    if ~isdryrun
-                        write_incar(incar);
-                    end
-                case 2 % PRIMITIVE BASIS UNREASONABLY LARGE
-                    uc = load_poscar('POSCAR');
-                    fprintf('       ERROR: at least of the lattice vectors is too long. \n');
-                    fprintf('       bas: %10.5f %10.5f %10.5f \n',uc.bas(:,1));
-                    fprintf('            %10.5f %10.5f %10.5f \n',uc.bas(:,2));
-                    fprintf('            %10.5f %10.5f %10.5f \n',uc.bas(:,3));
-                    % typical values for atomic number densities for solids
-                    % should be ~ 5E22 atoms/cm3, (50 atoms/nm^3)
-                    % linearly scale the basis vectors to get around this density
-                    d = uc.natoms/abs(det(uc.bas*0.1));
-                    target_density = 50; % [atoms/nm^3]
-                    uc.bas = (d/target_density)^(1/3)*uc.bas;
-                    fprintf('       FIX: scaling lattice vectors to get a reasonable density of ~ %i atoms/nm^3 \n',target_density)
-                    fprintf('       bas: %10.5f %10.5f %10.5f \n',uc.bas(:,1));
-                    fprintf('            %10.5f %10.5f %10.5f \n',uc.bas(:,2));
-                    fprintf('            %10.5f %10.5f %10.5f \n',uc.bas(:,3));
-                    if ~isdryrun
-                        write_poscar(uc);
-                    end
-                case 3 % OSZICAR IS EMPTY
-                    fprintf('       ERROR: OSZICAR is empty. Calculation did not start. Inspect stdout manually. \n');
-                case 4
-                    fprintf('       ERROR: electronic cycle failed to converge (d eps = %g). \n',b(end));
-                    % fix is to try a lower AMIX and set SCF algo to Normal
-                    incar = load_incar('INCAR');
-                    % reduce amix by 1/2
-                    if isfield(incar,'amix') && ~isempty(incar.amix); amix = str2num(incar.amix); else; amix = 0.4; end
-                    amix = amix .* 0.50;
-                    incar = generate_incar(incar,{'algo','Normal','amix',num2str(amix)});
-                    % print the fix
-                    fprintf('       FIX: set algo = normal and reduce amix to %0.2f\n',amix)
-                    if ~isdryrun
-                        write_incar(incar);
-                    end
-                case 5
-                    fprintf('       ERROR: Sub-Space-Matrix is not hermitian. \n');
-                    fprintf('       This is usually caused by some other problem. Investigate the output manually. \n')
+            % NOT ENOUGH BANDS
+            if grepcontains_('Your highest band is occupied at some k-points!','output')
+                fprintf('DIR: %s \n',pwd); 
+                nbands = get_vasp('outcar:nbands');
+                fprintf('       ERROR: not enough bands (nbands = %g). \n',nbands);
+                % read incar
+                incar = load_incar('INCAR');
+                if isfield(incar,'ncore'); ncore = str2double(incar.ncore); else; ncore = 1; end
+                % update nbands
+                nbands = ceil(nbands*1.2); nbands = ncore-mod(nbands,ncore)+nbands;
+                fprintf('       FIX: increase nbands by ~1.2x to %i\n',nbands)
+                % fix is to try a lower AMIX and set SCF algo to Normal
+                incar = generate_incar(incar,{'nbands',nbands});
+                if ~isdryrun
+                    write_incar(incar);
+                end
             end
+
+            % NONHERMITIAN MATRIX
+            if grepcontains_('WARNING: Sub-Space-Matrix is not hermitian!','output')
+                fprintf('DIR: %s \n',pwd);
+                fprintf('       ERROR: Sub-Space-Matrix is not hermitian. \n');
+                fprintf('       This is usually caused by some other problem. Investigate the output manually. \n')
             end
+
             
             function b = grepcontains_(str,file)
                 [~,b]=system(sprintf('grep ''%s'' %s',str,file));
@@ -1213,29 +1261,75 @@ classdef am_dft
             end
         end
 
-        function bv_code      = identify_bravais_lattice(bas,tol)
-
+        function bv_code      = identify_bravais_lattice(bas,tol,algo)
+            % bv_code = identify_bravais_lattice(bas,tol,algo)
+            %
+            % Identifies the type of crystal system given a basis. 
+            %
+            % bas     : unit cell column basis vectors 
+            % tol     : numerical tolerence
+            % algo (1): de Graef p 86
+            %      (2): Tinkham  p 61
+            % 
+            % Antonio Mei Sep 20 2017
+            
+            import am_dft.bas2abc am_lib.eq_ am_dft.identify_bravais_lattice
+            
             % set default numerical tolerance
             if nargin < 2; tol = am_dft.tiny; end
+            if nargin < 3; algo = 2; end
             
-            % get metric tensor
-            M  = bas.'*bas;
-            ii = [M(1,1),M(2,2),M(3,3)];
-            ij = [M(1,2),M(1,3),M(2,3)];
-            t  = numel(uniquetol(ii,tol));
-            o  = numel(uniquetol(ij,tol));
-            z  = sum(abs(ij)<am_dft.tiny);
-            % de Graef p 86
-            if     all([t == 3, o == 3, z == 0]); bv_code = 1; % triclinic
-            elseif all([t == 2, o == 2, z == 2]); bv_code = 2; % hexagonal
-            elseif all([t == 3, o == 2, z == 2]); bv_code = 3; % monoclinic
-            elseif all([t == 2, o == 1, z == 3]); bv_code = 4; % tetragonal
-            elseif all([t == 3, o == 1, z == 3]); bv_code = 5; % orthorhombic
-            elseif all([t == 1, o == 1, z == 3]); bv_code = 6; % cubic
-            elseif all([t == 1, o == 1, z == 0]); bv_code = 7; % rhombahedral
-            else;                                 bv_code = 0; % unknown
+            bv_code = 0; 
+            % select the algorithm
+            switch algo
+                case 1
+                    % de Graef p 86
+                    M  = bas.'*bas;
+                    ii = [M(1,1),M(2,2),M(3,3)];
+                    ij = [M(1,2),M(1,3),M(2,3)];
+                    t  = numel(uniquetol(ii,tol));
+                    o  = numel(uniquetol(ij,tol));
+                    z  = sum(abs(ij)<am_dft.tiny);
+
+                    if     all([t == 3, o == 3, z == 0]); bv_code = 1; % triclinic
+                    elseif all([t == 2, o == 2, z == 2]); bv_code = 2; % hexagonal
+                    elseif all([t == 3, o == 2, z == 2]); bv_code = 3; % monoclinic
+                    elseif all([t == 2, o == 1, z == 3]); bv_code = 4; % tetragonal
+                    elseif all([t == 3, o == 1, z == 3]); bv_code = 5; % orthorhombic
+                    elseif all([t == 1, o == 1, z == 3]); bv_code = 6; % cubic
+                    elseif all([t == 1, o == 1, z == 0]); bv_code = 7; % rhombahedral
+                    else;                                 bv_code = 0; % unknown
+                    end
+                case 2
+                    % Tinkham p 61
+                    abc = bas2abc(bas);
+                    if      eq_(abc(1),abc(2),tol) &&  eq_(abc(1),abc(3),tol) &&  eq_(abc(2),abc(3),tol)
+                        if  eq_(abc(4),abc(5),tol) &&  eq_(abc(5),abc(6),tol) &&  eq_(abc(6),abc(4),tol) &&  eq_(abc(4),90,tol)
+                            bv_code = 6; % cubic        (a=b=c, alpha=beta=gamma=90)
+                        else
+                            bv_code = 7; % rhombohedral (a=b=c, alpha=beta=gamma!=90)
+                        end
+                    elseif ~eq_(abc(1),abc(2),tol) && ~eq_(abc(1),abc(3),tol) && ~eq_(abc(2),abc(3),tol)
+                        if ~eq_(abc(4),abc(5),tol) && ~eq_(abc(4),abc(6),tol) && ~eq_(abc(5),abc(6),tol)
+                            bv_code = 1; % triclinic    (a!=b!=c, alpha!=beta!=gamma!=90)
+                        else
+                            if  eq_(abc(4),abc(5),tol) &&  eq_(abc(4),abc(6),tol) &&  eq_(abc(5),abc(6),tol)
+                            bv_code = 5; % orthorhombic (a!=b!=c, alpha=beta=gamma=90)
+                            else
+                            bv_code = 3; % monoclinic   (a!=b!=c, gamma!=(alpha=beta=90))
+                            end
+                        end
+                    elseif ~eq_(abc(1),abc(2),tol) && ~eq_(abc(1),abc(3),tol) && ~eq_(abc(2),abc(3),tol)
+                            bv_code = 4; % tetragonal   (a=b!=c, alpha=beta=gamma!=90)
+                    else
+                            bv_code = 2; % hexagonal    (a=b!=c, alpha=beta=90,gamma=120)
+                    end
             end
             
+            % if an algo is not solicited, run both and check for match.
+            if nargin < 3; if identify_bravais_lattice(bas,tol,1)~=identify_bravais_lattice(bas,tol,2)
+                warning('Algorithm mismatch. \n')
+            end; end
         end
 
         function pg_code      = identify_pointgroup(R)
@@ -1967,8 +2061,8 @@ classdef am_dft
             bas(:,3) = [                                0.0,                                0.0, c              ];
         end
 
-        function [bjc,gen]    = find_multiplicationtable_bijection(G,H)
-            % bjc = find_isomorphic_bijection(g,h), g and h are multiplication tables
+        function [bjc,gen]    = find_isomorphic_bijection(g,h)
+            % bjc = find_isomorphic_bijection(g,h), g and h are either point or space symmetries
             % isomorphism: g <==> h(:,:,inds) , returns inds = [] if groups are not isomorphic
             % % check with:
             % G = get_multiplication_table(g);
@@ -1978,7 +2072,11 @@ classdef am_dft
             import am_lib.* am_dft.*
 
             % number of symmetries
-            nsyms = size(G,1);
+            nsyms = size(g,3);
+            
+            % get multiplication tables
+            G = get_multiplication_table(g);
+            H = get_multiplication_table(h);
 
             % sorting if desired (changes order of bjc but does not affect final result)
             Gfwd = [1:nsyms]; Hfwd = [1:nsyms];
@@ -1986,7 +2084,13 @@ classdef am_dft
             % get generators
             [gg,Gg] = get_generators(G); ngenerators = numel(gg);
             [hg,Hg] = get_generators_list(H,ngenerators);
-
+            
+            % to speed things up: identify point symmetry component and exclude hg
+            % generators that have different point symmetry types than gg 
+            gg_ps_id = identify_point_symmetries(g(:,:,gg)).';
+            for i = 1:size(hg,2); hg_ps_id(:,i) = identify_point_symmetries(h(:,:,hg(:,i))); end
+            ex_ = all(hg_ps_id==gg_ps_id,1); hg=hg(:,ex_); Hg=Hg(:,ex_);
+            
             % compare multiplication tables, looking for bijections between symmetries g and h, i.e. isomorphism between G and H
             j=0; bjc=[]; gen=[];
             for i = 1:size(Hg,2)
@@ -2012,34 +2116,27 @@ classdef am_dft
         end
 
         function [fwd,M]      = find_pointgroup_transformation(g,h)
-            % finds the permutation fwd and rotation M which transforms
-            % point group g into point group h:
-            % matmul_(matmul_(X(:,:,k),g(:,:,:)),invX(:,:,k)) == h(:,:,fwd)
+            % finds the permutation fwd and rotation M which transforms point group g into h:
+            % matmul_(matmul_(M(:,:,k),g(:,:,:)),inv(M(:,:,k))) == h(:,:,bjc(:,k)) for any k
 
             import am_dft.* am_lib.*
 
+            % get number if symmetries
+            nsyms = size(g,3);
+            
             % find bijection bjc: h -> g and generators for h
-            G = get_multiplication_table(g);
-            H = get_multiplication_table(h);
-            [bjc,gen] = find_multiplicationtable_bijection(G,H);
-            fwd = rankc_(bjc); bjc = bjc(:,fwd); gen = gen(:,fwd);
+            [bjc,gen] = find_isomorphic_bijection(g,h);
+            srt_ = rankc_(bjc); bjc = bjc(:,srt_); gen = gen(:,srt_);
 
-            % check diagonalize symmetry values to make sure the symmetries are of the correct type
-            % this removes the possibility that multiplication table may be obeyed with symmetries of differnet types
-            reim_ = @(x) [real(x);imag(x)]; nbjcs=size(bjc,2); ex_ = true(1,nbjcs); nsyms = size(g,3);
-            for j = 1:nbjcs
-                for i = 1:nsyms
-                    [A,a]=eig(g(:,:,i),'vector');        ind = rankc_(reim_(a.')); a=a(ind); A=A(:,ind);
-                    [B,b]=eig(h(:,:,bjc(i,j)),'vector'); ind = rankc_(reim_(b.')); b=b(ind); B=B(:,ind);
-                    if any(abs(a-b)>am_dft.tiny); ex_(i) = false; end
-                end
-            end
-            bjc = bjc(:,ex_); gen = gen(:,ex_); nbjcs=size(bjc,2);
-
-            % find integer transformation matrix (try all possible bijections and integer transformations with nonzero-determinants)
-            ngens = size(gen,1);
+            % find integer transformation matrix (try all possible bijections and
+            % integer transformations with nonzero-determinants); in reality, not all
+            % matrices are tried, instead: 
+            %       first try the identity
+            %       then try all matrices with elements in [-1,0,1] with determinant 1 
+            %       then try all matrices with elements in [-2,-1,0,1,2] with determinant 1 
+            q = 0; ngens = size(gen,1); nbjcs=size(bjc,2);
             for m = 0:1
-                % transformation matrix switch:
+                % generate the possible transformation matrices
                 switch m
                     case 0
                         % first try the identity
@@ -2055,10 +2152,9 @@ classdef am_dft
                 % get inverse elements
                 invX = zeros(3,3,nXs); for i = 1:nXs; invX(:,:,i) = inv(X(:,:,i)); end
 
-                % find similarity transform which converts all symmetries from g to h
-                for k = 1:nXs
-                % loop over possible bijections
-                for j = 1:nbjcs
+                % find similarity transform which converts all symmetries from g to h by
+                % checking each matrix generated above
+                for k = 1:nXs; for j = 1:nbjcs
                     gencheck_ = true;
                     % first pass check generators (for some reason this check isn't sufficient by itself...)
                     for i = 1:ngens
@@ -2066,35 +2162,31 @@ classdef am_dft
                             gencheck_ = false; break;
                         end
                     end
-                    % second pass: check all symmetries
+%                     % second pass: check all symmetries
+%                     if gencheck_
+%                         for i = 1:nsyms
+%                             if any(any( abs(X(:,:,k) * g(:,:,i) * invX(:,:,k) - h(:,:,bjc(i,j)))>am_lib.eps ))
+%                                 gencheck_ = false; break;
+%                             end
+%                         end
+%                     end
+                    % check whether a match has been found
                     if gencheck_
-                        for i = 1:nsyms
-                            if any(any( abs(X(:,:,k) * g(:,:,i) * invX(:,:,k) - h(:,:,bjc(i,j)))>am_lib.eps ))
-                                gencheck_ = false; break;
-                            end
-                        end
+                        % at this point a bijection permutation and transformation matrix have been
+                        % found such that: matmul_(matmul_(X(:,:,k),g(:,:,:)),invX(:,:,k)) == h(:,:,bjc(:,j))
+                        % save it 
+                        q = q+1;
+                        M(:,:,q) = X(:,:,k); 
+                        fwd(:,q) = bjc(:,j);
                     end
-                    % outer loop control:
-                    if gencheck_
-                        % at this point:
-                        % matmul_(matmul_(X(:,:,k),g(:,:,:)),invX(:,:,k)) == h(:,:,bjc(:,j))
-                        % also, X(:,:,k) should be proportional to the centering matrix?
-                        M = X(:,:,k); fwd = bjc(:,j);
-            %             all(all(all(matmul_(matmul_(X(:,:,k),g(:,:,:)),invX(:,:,k)) == h(:,:,bjc(:,j)))))
-            %             asdf
-                        % found!
-                        % break;
-                        return;
-                    end
-                end
-                end
+                end;end
             end
         end
 
 
         % unit cells
 
-        function [uc,pc,ic]   = get_cells(fposcar,tol)
+        function [uc,pc,ic]   = get_cells(fposcar, tol)
             % [uc,pc,ic]   = get_cells(fposcar)
             % fposcar can be a poscar or cif file
 
@@ -2354,8 +2446,7 @@ classdef am_dft
             % [~,md] = get_displaced_cell(pc,bvk,n,kpt,amp,mode,nsteps);
             % clf; [F]=plot_md_cell(md,'view',[0;1;0]); movie(F,3); % write_poscar(md,'POSCAR_test')
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             if varargin{1}=='view'; v_xyz = varargin{2}; else; v_xyz = 3; end
 
@@ -2383,19 +2474,19 @@ classdef am_dft
             end
         end
 
-        function [T]          = get_niggli_transformation(bas,tol)
+        function [T,bas]      = get_niggli_transformation(bas, tol)
 
+            import am_lib.lt_ am_lib.gt_ am_lib.eq_ am_dft.get_metric
+            
             % default tolerance
             if nargin<2; tol = am_dft.tiny; end
 
-            % numerical precision
-            lt_ = @(x,y) x<y-tol;
-            gt_ = @(x,y) lt_(y,x);
-            eq_ = @(x,y) not(lt_(x,y)||gt_(x,y));
-
             % initialize matrix S;
-            metric_ = @(M) [M(1,1),M(2,2),M(3,3),2*M(2,3),2*M(1,3),2*M(1,2)];
-            S = metric_(bas.'*bas);
+            S = get_metric(bas); S = [S(1,1),S(2,2),S(3,3),2*S(2,3),2*S(1,3),2*S(1,2)];
+
+            % test case in uses rounded numbers: I. K?iv˝ and B. Gruber, Acta Crystallographica Section A 32, 297 (1976).
+            % bas=abc2bas([3 5.196 2 103.55 109.28 134.53]);
+            % S = round(S); 
 
             % perform reduction
             i=0; ii=0; T = eye(3);
@@ -2403,12 +2494,12 @@ classdef am_dft
                 C = eye(3);
                 switch i
                     case 1
-                        if gt_(S(1), S(2)) || (eq_(S(1), S(2)) && gt_(abs(S(4)), abs(S(5))))
+                        if gt_(S(1), S(2), tol) || (eq_(S(1), S(2), tol) && gt_(abs(S(4)), abs(S(5)), tol))
                             C = [0,-1,0; -1,0,0; 0,0,-1];
                             S([1,2,4,5]) = S([2,1,5,4]);
                         end
                     case 2
-                        if gt_(S(2), S(3)) || (eq_(S(2), S(3)) && gt_(abs(S(5)), abs(S(6))))
+                        if gt_(S(2), S(3), tol) || (eq_(S(2), S(3), tol) && gt_(abs(S(5)), abs(S(6)), tol))
                             C = [-1,0,0; 0,0,-1; 0,-1,0];
                             S([2,3,5,6]) = S([3,2,6,5]);
                             i=0;
@@ -2416,29 +2507,29 @@ classdef am_dft
                     case {3,4}
                         n_zero = 0; n_positive = 0;
                         for m = [4:6]
-                            if        (lt_(0, S(m))); n_positive = n_positive + 1;
-                            elseif not(lt_(S(m), 0)); n_zero     = n_zero + 1;
+                            if      lt_(0, S(m), tol); n_positive = n_positive + 1;
+                            elseif ~lt_(S(m), 0, tol); n_zero     = n_zero + 1;
                             end
                         end
                         if n_positive == 3 || (n_zero == 0 && n_positive == 1)
                             [a,b,c] = deal(1,1,1);
-                            if lt_(S(4),0); a = -1; end
-                            if lt_(S(5),0); b = -1; end
-                            if lt_(S(6),0); c = -1; end
+                            if lt_(S(4),0, tol); a = -1; end
+                            if lt_(S(5),0, tol); b = -1; end
+                            if lt_(S(6),0, tol); c = -1; end
                             C = [a,0,0; 0,b,0; 0,0,c];
                             S(4:6) = abs(S(4:6));
                         else
                             f = [1,1,1]; z = -1;
-                            if gt(S(4), 0); f(1) = -1; elseif not(lt_(S(4), 0)); z = 1; end
-                            if gt(S(5), 0); f(2) = -1; elseif not(lt_(S(5), 0)); z = 2; end
-                            if gt(S(6), 0); f(3) = -1; elseif not(lt_(S(6), 0)); z = 3; end
+                            if gt_(S(4), 0, tol); f(1) = -1; elseif ~lt_(S(4), 0, tol); z = 1; end
+                            if gt_(S(5), 0, tol); f(2) = -1; elseif ~lt_(S(5), 0, tol); z = 2; end
+                            if gt_(S(6), 0, tol); f(3) = -1; elseif ~lt_(S(6), 0, tol); z = 3; end
                             if (f(1)*f(2)*f(3)<0); f(z) = -1; end
                             C = diag(f);
                             S(4:5) = -abs(S(4:5));
                         end
                     case 5
-                        if gt_(abs(S(4)), S(2)) || (eq_(S(4), S(2)) && lt_(S(5)+S(5), S(6))) || (eq_(S(4), -S(2)) && lt_(S(6), 0))
-                            if (S(4) > 0)
+                        if gt_(abs(S(4)), S(2), tol) || (eq_(S(4), S(2), tol) && lt_(S(5)+S(5), S(6), tol)) || (eq_(S(4), -S(2), tol) && lt_(S(6), 0, tol))
+                            if gt(S(4), 0)
                                 C = [1,0,0;0,1,-1;0,0,1];
                                 S(3) = S(3) + S(2) - S(4);
                                 S(4) = S(4) - (S(2) + S(2));
@@ -2452,8 +2543,8 @@ classdef am_dft
                             i=0;
                         end
                     case 6
-                        if gt_(abs(S(5)), S(1)) || (eq_(S(5), S(1)) && lt_(S(4)+S(4), S(6))) || (eq_(S(5), -S(1)) && lt_(S(6), 0))
-                            if (S(5) > 0)
+                        if gt_(abs(S(5)), S(1), tol) || (eq_(S(5), S(1), tol) && lt_(S(4)+S(4), S(6), tol)) || (eq_(S(5), -S(1), tol) && lt_(S(6), 0, tol))
+                            if gt(S(5), 0)
                                 C = [1,0,-1;0,1,0;0,0,1];
                                 S(3) = S(3) + S(1) - S(5);
                                 S(4) = S(4) - (S(6));
@@ -2467,8 +2558,8 @@ classdef am_dft
                             i=0;
                         end
                     case 7
-                        if gt_(abs(S(6)), S(1)) || (eq_(S(6), S(1)) && lt_(S(4)+S(4), S(5))) || (eq_(S(6), -S(1)) && lt_(S(5), 0))
-                            if (S(6) > 0)
+                        if gt_(abs(S(6)), S(1), tol) || (eq_(S(6), S(1), tol) && lt_(S(4)+S(4), S(5), tol)) || (eq_(S(6), -S(1), tol) && lt_(S(5), 0, tol))
+                            if gt(S(6), 0)
                                 C = [1,-1,0;0,1,0;0,0,1];
                                 S(2) = S(2) + S(1) - S(6);
                                 S(4) = S(4) - (S(5));
@@ -2482,7 +2573,7 @@ classdef am_dft
                             i=0;
                         end
                     case 8
-                        if lt_(S(4)+S(5)+S(6)+S(1)+S(2), 0) || (eq_(S(4)+S(5)+S(6)+S(1)+S(2), 0) && gt_(S(1)+S(1)+S(5)+S(5)+S(6), 0))
+                        if lt_(S(4)+S(5)+S(6)+S(1)+S(2), 0, tol) || (eq_(S(4)+S(5)+S(6)+S(1)+S(2), 0, tol) && gt_(S(1)+S(1)+S(5)+S(5)+S(6), 0, tol))
                             C = [1,0,1;0,1,1;0,0,1];
                             S(3) = S(3) + S(1)+S(2)+S(4)+S(5)+S(6);
                             S(4) = S(4) + S(2)+S(2)+S(6);
@@ -2491,11 +2582,129 @@ classdef am_dft
                         end
                 end
                 T = C*T;
-                % if any(any(C~=eye(3))); fprintf('%5i ',[S]); fprintf('\n'); end
+                if any(any(C~=eye(3))); fprintf('%7.2f ',round([S])); fprintf('\n'); end
                 i=i+1; ii=ii+1;
             end
         end
+        
+        function [T,bas]      = get_niggli_(bas, tol)
 
+            if nargin<2; tol=am_dft.tiny; end
+            
+            T = eye(3);
+            [x,y,z,a,b,c,l,m,n,bas] = update_(bas, eye(3), tol);
+           
+            for u = 1:200
+                if (a > b + tol || (~ abs(a - b) > tol && abs(x) >  abs(y) + tol))
+                    % Procedure A1
+                    A = [0, -1, 0; -1, 0, 0; 0, 0, -1];
+                    [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol); T = T * A;
+                end
+                if (b > c + tol || (~ abs(b - c) > tol && abs(y) >  abs(z) + tol))
+                    % Procedure A2
+                    A = [-1, 0, 0; 0, 0, -1; 0, -1, 0];
+                    [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol); T = T * A;
+                    continue
+                end
+
+                if l * m * n == 1
+                    % Procedure A3
+                    if l == -1; i = -1; else; i = 1; end
+                    if m == -1; j = -1; else; j = 1; end
+                    if n == -1; k = -1; else; k = 1; end
+                    A = [i, 0, 0; 0, j, 0; 0, 0, k];
+                    [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol); T = T * A;
+                else
+                    % Procedure A4
+                    if l == 1; i = -1; else; i = 1; end
+                    if m == 1; j = -1; else; j = 1; end
+                    if n == 1; k = -1; else; k = 1; end
+                    if i * j * k == -1
+                        if l == 0; i = -1; end
+                        if m == 0; j = -1; end
+                        if n == 0; k = -1; end
+                    end
+                    A = [i, 0, 0; 0, j, 0; 0, 0, k];
+                    [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol); T = T * A;
+                end
+
+                if ( abs(x) > b + tol || (~ abs(b - x) > tol && 2 * y < z - tol) || (~ abs(b + x) > tol && z < -tol))
+                    % Procedure A5
+                    A = [1, 0, 0; 0, 1, - sign(x); 0, 0, 1];
+                    [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol); T = T * A;
+                elseif ( abs(y) > a + tol || (~ abs(a - y) > tol && 2 * x < z - tol) || (~ abs(a + y) > tol && z < -tol))
+                    % Procedure A6
+                    A = [1, 0, - sign(y); 0, 1, 0; 0, 0, 1];
+                    [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol); T = T * A;
+                elseif ( abs(z) > a + tol || (~ abs(a - z) > tol && 2 * x < y - tol) || (~ abs(a + z) > tol && y < -tol))
+                    % Procedure A7
+                    A = [1, - sign(z), 0; 0, 1, 0; 0, 0, 1];
+                    [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol); T = T * A;
+                elseif (x + y + z + a + b < -tol || (~ abs(x + y + z + a + b) > tol && 2 * (a + y) + z > tol))
+                    % Procedure A8
+                    A = [1, 0, 1; 0, 1, 1; 0, 0, 1];
+                    [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol); T = T * A;
+                else
+                    break;
+                end
+            end
+            
+            if u == 2; error('unable to reduce cell'); end
+
+            function [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol)
+                bas = bas*A;
+                metric = bas.'*bas;
+                a = metric(1,1);
+                b = metric(2,2);
+                c = metric(3,3);
+                x = 2 * metric(2,3);
+                y = 2 * metric(1,3);
+                z = 2 * metric(1,2);
+
+                l = 0;
+                m = 0;
+                n = 0;
+                if x < -tol 
+                  l = -1; 
+                elseif x > tol 
+                  l = 1; 
+                end
+                if y < -tol 
+                  m = -1; 
+                elseif y > tol 
+                  m = 1; 
+                end
+                if z < -tol 
+                  n = -1; 
+                elseif z > tol 
+                  n = 1; 
+                end
+                %fprintf('%7.2f %7.2f %7.2f %7.2f %7.2f %7.2f\n',a,b,c,x,y,z);
+                fprintf('%7i  %7i  %7i  %7i  %7i  %7i \n',round(a),round(b),round(c),round(x),round(y),round(z));
+            end
+        end
+        
+        function [m]          = get_metric(bas, algo)
+            % metric = get_metric(bas)
+            % Compute metric tensors from unit cell column basis vector.
+            
+            if nargin < 2; algo = 2; end
+                
+            switch algo
+                case 1
+                    % explicit
+                    m = zeros(3,3);
+                    for i = 1:3
+                    for j = 1:i
+                        m(i,j)=dot(bas(:,i),bas(:,j)); m(j,i)=m(i,j);
+                    end
+                    end
+                case 2
+                    % matrix multiplication
+                    m = bas.'*bas;
+            end
+        end
+        
         
         % brillouin zones
 
