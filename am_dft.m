@@ -2477,6 +2477,10 @@ classdef am_dft
         function [T]          = coincidence_site_lattice(B1,B2,multiplicity,tol)
             % T is the matrix which transforms lattice B1 into B2 through: B2 == B1*T
             
+            import am_lib.rankc_ am_lib.matmul_ am_dft.get_niggli_basis am_dft.bas2abc
+            
+            fprintf(' ... getting coincidence site lattice'); tic
+            
             % determinant of upper triangular matrix
             det_up_tri_ = @(A) A(1,1)*A(2,2)*A(3,3);
 
@@ -2490,11 +2494,11 @@ classdef am_dft
             for i4 = 1:i3;for i5 = 1:i3;for i6 = 1:i2
                 k=k+1; 
                 Q(:,:,k) = [i1 i6 i5; 0 i2 i4; 0 0 i3];
-                x(k) = det_up_tri_(Q(:,:,k));
+                d(k) = det_up_tri_(Q(:,:,k));
             end; end; end
             end; end; end
-            ex_  = (x<=multiplicity); Q=Q(:,:,ex_); x=x(ex_);
-            inds = rankc_(x); Q=Q(:,:,inds); x=x(inds);
+            ex_  = (d<=multiplicity); Q=Q(:,:,ex_); d=d(ex_);
+            inds = rankc_(d); Q=Q(:,:,inds); d=d(inds);
 
             X1=matmul_(B1,Q); X2=matmul_(B2,Q); k=0;
             n1s=size(X1,3);n2s=size(X2,3); v=zeros(3,n1s*n2s);
@@ -2507,13 +2511,13 @@ classdef am_dft
                 k=k+1; v(:,k) = [sum(abs(M1-M2)),i1,i2];
             end
             end
-            % coincidence site lattice
-            inds = find( v(1,:) == min(v(1,:)) );
+            % sort coincidence site lattice based on mismatch
+            inds = rankc_( v(1,:) ); v = v(:,inds);
 
             % go back to the inds and recalculate the transformation to get from B1 to B2
             ninds=numel(inds); T=zeros(3,3,ninds);
-            for i = 1:ninds
-                i1 = v(2,inds(i)); i2 = v(3,inds(i));
+            for i = 1:5%ninds
+                i1 = v(2,i); i2 = v(3,i);
                 % get Niggli basis
                 [N1,T1]=get_niggli_basis(X1(:,:,i1));
                 [N2,T2]=get_niggli_basis(X2(:,:,i2));
@@ -2521,6 +2525,13 @@ classdef am_dft
                 % N1=B1*Q(:,:,i1)*T1, N2=B2*Q(:,:,i2)*T2, that is: B2*Q(:,:,i2)*T2 = B1*Q(:,:,i1)*T1 * T
                 % B2 == B1*T
                 T(:,:,i) = Q(:,:,i1)*T1*(N2\N1)/T2/Q(:,:,i2);
+            end
+
+            % print results
+            fprintf(' (%.3f s) \n',toc);
+            fprintf('     %-10s %-7s %-7s %5s %5s %5s %5s %5s %5s %5s %5s %5s  \n','mismatch','mult1','mult2','T11','T12','T13','T21','T22','T23','T31','T32','T33');
+            for i = 1:5%ninds
+            fprintf('     %-10.3f %-7i %-7i %5.2f %5.2f %5.2f %5.2f %5.2f %5.2f %5.2f %5.2f %5.2f \n',v(1,i),d(v(2,i)),d(v(3,i)),T(:,:,i));
             end
         end
         
