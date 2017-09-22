@@ -974,7 +974,7 @@ module am_vasp_io
                 read(unit=fid,fmt='(a)') buffer
                 word = strsplit(buffer,delimiter=' ')
                 read(word(1),*) E(i)
-                read(word(1),*) dos(i)
+                read(word(2),*) dos(i)
             enddo
             !
         close(fid)

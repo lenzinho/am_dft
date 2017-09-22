@@ -2484,7 +2484,7 @@ classdef am_dft
             % initialize matrix S;
             S = get_metric(bas); S = [S(1,1),S(2,2),S(3,3),2*S(2,3),2*S(1,3),2*S(1,2)];
 
-            % test case in uses rounded numbers: I. K?ivË and B. Gruber, Acta Crystallographica Section A 32, 297 (1976).
+            % test case in uses rounded numbers: I. K?ivı and B. Gruber, Acta Crystallographica Section A 32, 297 (1976).
             % bas=abc2bas([3 5.196 2 103.55 109.28 134.53]);
             % S = round(S); 
 
