@@ -912,10 +912,10 @@ classdef am_dft
         
         % symmetry
 
-%         function [sg,pg]      = get_groups(pc,tol)
+%         function [sg,pg]      = get_groups(pc, tol)
 %
 %             % getting point groups
-%             [T,H,S,R]    = get_symmetries(pc,tol)
+%             [T,H,S,R]    = get_symmetries(pc, tol)
 %
 %             fprintf(' ... getting group properties')
 %
@@ -935,7 +935,7 @@ classdef am_dft
 %
 %         end
 
-        function [T,H,S,R]    = get_symmetries(pc,tol)
+        function [T,H,S,R]    = get_symmetries(pc, tol)
             % [T,H,S,R] = get_symmetries(pc, tol=am_dft.tiny)
             % T = all possible translations which restore the crystal to iteself
             % H = holohogries (all possible rotations which restore the bravais lattice onto iteself)
@@ -954,7 +954,7 @@ classdef am_dft
             X_ = @(species,tau) sortc_([species;mod_(tau)]); X = X_(pc.species,pc.tau(:,:,1));
 
             % get vectors that preserve periodic boundary conditions
-            N = 1; V=mod_(pc.tau(:,pc.species==pc.species(N))-pc.tau(:,N),tol);  nVs=size(V,2); ex_=false(1,nVs);
+            N = 1; V=mod_(pc.tau(:,pc.species==pc.species(N))-pc.tau(:,N), tol);  nVs=size(V,2); ex_=false(1,nVs);
             for j = 1:nVs; ex_(j) = check_( X_(pc.species,pc.tau(1:3,:,1)-V(:,j))-X ); end
             T=[V(:,ex_),eye(3)]; T=T(:,rankc_(normc_(T)));
 
@@ -1261,8 +1261,8 @@ classdef am_dft
             end
         end
 
-        function bv_code      = identify_bravais_lattice(bas,tol,algo)
-            % bv_code = identify_bravais_lattice(bas,tol,algo)
+        function bv_code      = identify_bravais_lattice(bas, tol,algo)
+            % bv_code = identify_bravais_lattice(bas, tol,algo)
             %
             % Identifies the type of crystal system given a basis. 
             %
@@ -1287,8 +1287,8 @@ classdef am_dft
                     M  = bas.'*bas;
                     ii = [M(1,1),M(2,2),M(3,3)];
                     ij = [M(1,2),M(1,3),M(2,3)];
-                    t  = numel(uniquetol(ii,tol));
-                    o  = numel(uniquetol(ij,tol));
+                    t  = numel(uniquetol(ii, tol));
+                    o  = numel(uniquetol(ij, tol));
                     z  = sum(abs(ij)<am_dft.tiny);
 
                     if     all([t == 3, o == 3, z == 0]); bv_code = 1; % triclinic
@@ -1303,23 +1303,23 @@ classdef am_dft
                 case 2
                     % Tinkham p 61
                     abc = bas2abc(bas);
-                    if      eq_(abc(1),abc(2),tol) &&  eq_(abc(1),abc(3),tol) &&  eq_(abc(2),abc(3),tol)
-                        if  eq_(abc(4),abc(5),tol) &&  eq_(abc(5),abc(6),tol) &&  eq_(abc(6),abc(4),tol) &&  eq_(abc(4),90,tol)
+                    if      eq_(abc(1),abc(2), tol) &&  eq_(abc(1),abc(3), tol) &&  eq_(abc(2),abc(3), tol)
+                        if  eq_(abc(4),abc(5), tol) &&  eq_(abc(5),abc(6), tol) &&  eq_(abc(6),abc(4), tol) &&  eq_(abc(4),90, tol)
                             bv_code = 6; % cubic        (a=b=c, alpha=beta=gamma=90)
                         else
                             bv_code = 7; % rhombohedral (a=b=c, alpha=beta=gamma!=90)
                         end
-                    elseif ~eq_(abc(1),abc(2),tol) && ~eq_(abc(1),abc(3),tol) && ~eq_(abc(2),abc(3),tol)
-                        if ~eq_(abc(4),abc(5),tol) && ~eq_(abc(4),abc(6),tol) && ~eq_(abc(5),abc(6),tol)
+                    elseif ~eq_(abc(1),abc(2), tol) && ~eq_(abc(1),abc(3), tol) && ~eq_(abc(2),abc(3), tol)
+                        if ~eq_(abc(4),abc(5), tol) && ~eq_(abc(4),abc(6), tol) && ~eq_(abc(5),abc(6), tol)
                             bv_code = 1; % triclinic    (a!=b!=c, alpha!=beta!=gamma!=90)
                         else
-                            if  eq_(abc(4),abc(5),tol) &&  eq_(abc(4),abc(6),tol) &&  eq_(abc(5),abc(6),tol)
+                            if  eq_(abc(4),abc(5), tol) &&  eq_(abc(4),abc(6), tol) &&  eq_(abc(5),abc(6), tol)
                             bv_code = 5; % orthorhombic (a!=b!=c, alpha=beta=gamma=90)
                             else
                             bv_code = 3; % monoclinic   (a!=b!=c, gamma!=(alpha=beta=90))
                             end
                         end
-                    elseif ~eq_(abc(1),abc(2),tol) && ~eq_(abc(1),abc(3),tol) && ~eq_(abc(2),abc(3),tol)
+                    elseif ~eq_(abc(1),abc(2), tol) && ~eq_(abc(1),abc(3), tol) && ~eq_(abc(2),abc(3), tol)
                             bv_code = 4; % tetragonal   (a=b!=c, alpha=beta=gamma!=90)
                     else
                             bv_code = 2; % hexagonal    (a=b!=c, alpha=beta=90,gamma=120)
@@ -1327,7 +1327,7 @@ classdef am_dft
             end
             
             % if an algo is not solicited, run both and check for match.
-            if nargin < 3; if identify_bravais_lattice(bas,tol,1)~=identify_bravais_lattice(bas,tol,2)
+            if nargin < 3; if identify_bravais_lattice(bas, tol,1)~=identify_bravais_lattice(bas, tol,2)
                 warning('Algorithm mismatch. \n')
             end; end
         end
@@ -2209,10 +2209,10 @@ classdef am_dft
             end
 
             % get primitive cell
-            [pc,p2u,u2p] = get_primitive_cell(uc,tol);  % write_poscar(get_supercell(pc,eye(3)*2),'POSCAR.2x2')
+            [pc,p2u,u2p] = get_primitive_cell(uc, tol);  % write_poscar(get_supercell(pc,eye(3)*2),'POSCAR.2x2')
 
             % get irreducible cell
-            [ic,i2p,p2i] = get_irreducible_cell(pc,tol);
+            [ic,i2p,p2i] = get_irreducible_cell(pc, tol);
 
             % complete mapping
             u2i = round(p2i(u2p)); i2u = round(p2u(i2p));
@@ -2231,8 +2231,8 @@ classdef am_dft
             uc.bas2pc = pc.bas/uc.bas; uc.tau2pc = pc.bas\uc.bas;
 
             % print basic symmetry info
-            [~,H,~,R] = get_symmetries(pc,tol);
-            bv_code = identify_bravais_lattice(pc.bas,tol); 
+            [~,H,~,R] = get_symmetries(pc, tol);
+            bv_code = identify_bravais_lattice(pc.bas, tol); 
             % holohodry should give same info as bravais lattice
             hg_code = identify_pointgroup(H); 
             pg_code = identify_pointgroup(R); 
@@ -2424,7 +2424,7 @@ classdef am_dft
             end
         end
 
-        function [h]          = plot_cell(pc,varargin)
+        function [h]          = plot_cell(pc, varargin)
 
             import am_lib.*
             import am_dft.*
@@ -2433,7 +2433,7 @@ classdef am_dft
             set(gcf,'color','w'); hold on;
 
             % plot atoms
-            h = scatter3_(pc.bas*pc.tau,50*sqrt(pc.mass(pc.species)),pc.species,'filled',varargin{:});
+            h = scatter3_(pc.bas*pc.tau,50*sqrt(pc.mass(pc.species)),pc.species,'filled', varargin{:});
             % plot pc boundaries
             plothull_(pc.bas*[0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1]);
 
@@ -2441,7 +2441,7 @@ classdef am_dft
 
         end
 
-        function [F]          = plot_md_cell(md,varargin)
+        function [F]          = plot_md_cell(md, varargin)
             % n=[4;4;4]; kpt=[0;0;1/4]; amp=10; mode=6; nsteps=51;
             % [~,md] = get_displaced_cell(pc,bvk,n,kpt,amp,mode,nsteps);
             % clf; [F]=plot_md_cell(md,'view',[0;1;0]); movie(F,3); % write_poscar(md,'POSCAR_test')
@@ -2474,127 +2474,77 @@ classdef am_dft
             end
         end
 
-        function [T,bas]      = get_niggli_transformation(bas, tol)
-
-            import am_lib.lt_ am_lib.gt_ am_lib.eq_ am_dft.get_metric
+        function [T]          = coincidence_site_lattice(B1,B2,multiplicity,tol)
+            % T is the matrix which transforms lattice B1 into B2 through: B2 == B1*T
             
-            % default tolerance
-            if nargin<2; tol = am_dft.tiny; end
+            % determinant of upper triangular matrix
+            det_up_tri_ = @(A) A(1,1)*A(2,2)*A(3,3);
 
-            % initialize matrix S;
-            S = get_metric(bas); S = [S(1,1),S(2,2),S(3,3),2*S(2,3),2*S(1,3),2*S(1,2)];
+            % generate all possible transformation matrices Q
+            % requirepment 0 <= Qij < Qjj for i<j
+            %  i1 i6 i5      11 12 13
+            %  0  i2 i4      21 22 23
+            %  0  0  i3      31 32 33
+            m = multiplicity; k=0;
+            for i1 = 1:m; for i2 = 1:m; for i3 = 1:m
+            for i4 = 1:i3;for i5 = 1:i3;for i6 = 1:i2
+                k=k+1; 
+                Q(:,:,k) = [i1 i6 i5; 0 i2 i4; 0 0 i3];
+                x(k) = det_up_tri_(Q(:,:,k));
+            end; end; end
+            end; end; end
+            ex_  = (x<=multiplicity); Q=Q(:,:,ex_); x=x(ex_);
+            inds = rankc_(x); Q=Q(:,:,inds); x=x(inds);
 
-            % test case in uses rounded numbers: I. K?ivý and B. Gruber, Acta Crystallographica Section A 32, 297 (1976).
-            % bas=abc2bas([3 5.196 2 103.55 109.28 134.53]);
-            % S = round(S); 
+            X1=matmul_(B1,Q); X2=matmul_(B2,Q); k=0;
+            n1s=size(X1,3);n2s=size(X2,3); v=zeros(3,n1s*n2s);
+            % find metric tensors which match
+            for i1 = 1:n1s
+                M1 = bas2abc(get_niggli_basis(X1(:,:,i1)));
+            for i2 = 1:n2s
+                M2 = bas2abc(get_niggli_basis(X2(:,:,i2)));
+                % save info
+                k=k+1; v(:,k) = [sum(abs(M1-M2)),i1,i2];
+            end
+            end
+            % coincidence site lattice
+            inds = find( v(1,:) == min(v(1,:)) );
 
-            % perform reduction
-            i=0; ii=0; T = eye(3);
-            while i < 9 && ii < 100
-                C = eye(3);
-                switch i
-                    case 1
-                        if gt_(S(1), S(2), tol) || (eq_(S(1), S(2), tol) && gt_(abs(S(4)), abs(S(5)), tol))
-                            C = [0,-1,0; -1,0,0; 0,0,-1];
-                            S([1,2,4,5]) = S([2,1,5,4]);
-                        end
-                    case 2
-                        if gt_(S(2), S(3), tol) || (eq_(S(2), S(3), tol) && gt_(abs(S(5)), abs(S(6)), tol))
-                            C = [-1,0,0; 0,0,-1; 0,-1,0];
-                            S([2,3,5,6]) = S([3,2,6,5]);
-                            i=0;
-                        end
-                    case {3,4}
-                        n_zero = 0; n_positive = 0;
-                        for m = [4:6]
-                            if      lt_(0, S(m), tol); n_positive = n_positive + 1;
-                            elseif ~lt_(S(m), 0, tol); n_zero     = n_zero + 1;
-                            end
-                        end
-                        if n_positive == 3 || (n_zero == 0 && n_positive == 1)
-                            [a,b,c] = deal(1,1,1);
-                            if lt_(S(4),0, tol); a = -1; end
-                            if lt_(S(5),0, tol); b = -1; end
-                            if lt_(S(6),0, tol); c = -1; end
-                            C = [a,0,0; 0,b,0; 0,0,c];
-                            S(4:6) = abs(S(4:6));
-                        else
-                            f = [1,1,1]; z = -1;
-                            if gt_(S(4), 0, tol); f(1) = -1; elseif ~lt_(S(4), 0, tol); z = 1; end
-                            if gt_(S(5), 0, tol); f(2) = -1; elseif ~lt_(S(5), 0, tol); z = 2; end
-                            if gt_(S(6), 0, tol); f(3) = -1; elseif ~lt_(S(6), 0, tol); z = 3; end
-                            if (f(1)*f(2)*f(3)<0); f(z) = -1; end
-                            C = diag(f);
-                            S(4:5) = -abs(S(4:5));
-                        end
-                    case 5
-                        if gt_(abs(S(4)), S(2), tol) || (eq_(S(4), S(2), tol) && lt_(S(5)+S(5), S(6), tol)) || (eq_(S(4), -S(2), tol) && lt_(S(6), 0, tol))
-                            if gt(S(4), 0)
-                                C = [1,0,0;0,1,-1;0,0,1];
-                                S(3) = S(3) + S(2) - S(4);
-                                S(4) = S(4) - (S(2) + S(2));
-                                S(5) = S(5) - (S(6));
-                            else
-                                C = [1,0,0;0,1,1;0,0,1];
-                                S(3) = S(3) + S(2) + S(4);
-                                S(4) = S(4) + S(2) + S(2);
-                                S(5) = S(5) + S(6);
-                            end
-                            i=0;
-                        end
-                    case 6
-                        if gt_(abs(S(5)), S(1), tol) || (eq_(S(5), S(1), tol) && lt_(S(4)+S(4), S(6), tol)) || (eq_(S(5), -S(1), tol) && lt_(S(6), 0, tol))
-                            if gt(S(5), 0)
-                                C = [1,0,-1;0,1,0;0,0,1];
-                                S(3) = S(3) + S(1) - S(5);
-                                S(4) = S(4) - (S(6));
-                                S(5) = S(5) - (S(1) + S(1));
-                            else
-                                C = [1,0,1;0,1,0;0,0,1];
-                                S(3) = S(3) + S(1) + S(5);
-                                S(4) = S(4) + S(6);
-                                S(5) = S(5) + S(1) + S(1);
-                            end
-                            i=0;
-                        end
-                    case 7
-                        if gt_(abs(S(6)), S(1), tol) || (eq_(S(6), S(1), tol) && lt_(S(4)+S(4), S(5), tol)) || (eq_(S(6), -S(1), tol) && lt_(S(5), 0, tol))
-                            if gt(S(6), 0)
-                                C = [1,-1,0;0,1,0;0,0,1];
-                                S(2) = S(2) + S(1) - S(6);
-                                S(4) = S(4) - (S(5));
-                                S(6) = S(6) - (S(1) + S(1));
-                            else
-                                C = [1,1,0;0,1,0;0,0,1];
-                                S(2) = S(2) + S(1) + S(6);
-                                S(4) = S(4) + S(5);
-                                S(6) = S(6) + S(1) + S(1);
-                            end
-                            i=0;
-                        end
-                    case 8
-                        if lt_(S(4)+S(5)+S(6)+S(1)+S(2), 0, tol) || (eq_(S(4)+S(5)+S(6)+S(1)+S(2), 0, tol) && gt_(S(1)+S(1)+S(5)+S(5)+S(6), 0, tol))
-                            C = [1,0,1;0,1,1;0,0,1];
-                            S(3) = S(3) + S(1)+S(2)+S(4)+S(5)+S(6);
-                            S(4) = S(4) + S(2)+S(2)+S(6);
-                            S(5) = S(5) + S(1)+S(1)+S(6);
-                            i=0;
-                        end
-                end
-                T = C*T;
-                if any(any(C~=eye(3))); fprintf('%7.2f ',round([S])); fprintf('\n'); end
-                i=i+1; ii=ii+1;
+            % go back to the inds and recalculate the transformation to get from B1 to B2
+            ninds=numel(inds); T=zeros(3,3,ninds);
+            for i = 1:ninds
+                i1 = v(2,inds(i)); i2 = v(3,inds(i));
+                % get Niggli basis
+                [N1,T1]=get_niggli_basis(X1(:,:,i1));
+                [N2,T2]=get_niggli_basis(X2(:,:,i2));
+                % find transformation T which takes N1 to N2 (i.e., N1 = N2*T), using:
+                % N1=B1*Q(:,:,i1)*T1, N2=B2*Q(:,:,i2)*T2, that is: B2*Q(:,:,i2)*T2 = B1*Q(:,:,i1)*T1 * T
+                % B2 == B1*T
+                T(:,:,i) = Q(:,:,i1)*T1*(N2\N1)/T2/Q(:,:,i2);
             end
         end
         
-        function [T,bas]      = get_niggli_(bas, tol)
-
+        function [bas,T]      = get_niggli_basis(bas, tol)
+            % [niggli_bas,T]  = get_niggli_(bas); 
+            % niggli_bas == bas * T;
+            %
+            % Refs: I. Krivy and B. Gruber, Acta Crystallographica Section A 32, 297 (1976).
+            %   	R. W. Grosse-Kunstleve, N. K. Sauter, and P. D. Adams, Acta
+            %   	Crystallographica Section a Foundations of Crystallography 60, 1 (2004). 
+            % 
+            % Note: The exmaple in the first reference uses rounded numbers.
+            %       bas=abc2bas([3 5.196 2 103.55 109.28 134.53]);
+            %       M = get_metric(bas); 
+            %       S = [M(1,1),M(2,2),M(3,3),M(2,3),M(1,3),M(1,2)];
+            %       S = round(S); 
+            %
+            
             if nargin<2; tol=am_dft.tiny; end
             
-            T = eye(3);
-            [x,y,z,a,b,c,l,m,n,bas] = update_(bas, eye(3), tol);
+            T = eye(3); [x,y,z,a,b,c,l,m,n,bas] = update_(bas, eye(3), tol);
            
-            for u = 1:200
+            % begin reduction procedure
+            for counter = 1:100
                 if (a > b + tol || (~ abs(a - b) > tol && abs(x) >  abs(y) + tol))
                     % Procedure A1
                     A = [0, -1, 0; -1, 0, 0; 0, 0, -1];
@@ -2606,7 +2556,6 @@ classdef am_dft
                     [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol); T = T * A;
                     continue
                 end
-
                 if l * m * n == 1
                     % Procedure A3
                     if l == -1; i = -1; else; i = 1; end
@@ -2627,7 +2576,6 @@ classdef am_dft
                     A = [i, 0, 0; 0, j, 0; 0, 0, k];
                     [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol); T = T * A;
                 end
-
                 if ( abs(x) > b + tol || (~ abs(b - x) > tol && 2 * y < z - tol) || (~ abs(b + x) > tol && z < -tol))
                     % Procedure A5
                     A = [1, 0, 0; 0, 1, - sign(x); 0, 0, 1];
@@ -2649,38 +2597,18 @@ classdef am_dft
                 end
             end
             
-            if u == 2; error('unable to reduce cell'); end
-
+            % check for completion
+            if counter==100; error('Failed to reduce to Niggli cell. \n'); end
+            
             function [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol)
-                bas = bas*A;
-                metric = bas.'*bas;
-                a = metric(1,1);
-                b = metric(2,2);
-                c = metric(3,3);
-                x = 2 * metric(2,3);
-                y = 2 * metric(1,3);
-                z = 2 * metric(1,2);
-
-                l = 0;
-                m = 0;
-                n = 0;
-                if x < -tol 
-                  l = -1; 
-                elseif x > tol 
-                  l = 1; 
-                end
-                if y < -tol 
-                  m = -1; 
-                elseif y > tol 
-                  m = 1; 
-                end
-                if z < -tol 
-                  n = -1; 
-                elseif z > tol 
-                  n = 1; 
-                end
-                %fprintf('%7.2f %7.2f %7.2f %7.2f %7.2f %7.2f\n',a,b,c,x,y,z);
-                fprintf('%7i  %7i  %7i  %7i  %7i  %7i \n',round(a),round(b),round(c),round(x),round(y),round(z));
+                bas = bas*A; metric = bas.'*bas;
+                a = metric(1,1); x = 2 * metric(2,3); l = 0;
+                b = metric(2,2); y = 2 * metric(1,3); m = 0;
+                c = metric(3,3); z = 2 * metric(1,2); n = 0;
+                if x < -tol ; l = -1; elseif x > tol; l = 1; end
+                if y < -tol ; m = -1; elseif y > tol; m = 1; end
+                if z < -tol ; n = -1; elseif z > tol; n = 1; end
+                % fprintf('%7.2f %7.2f %7.2f %7.2f %7.2f %7.2f\n',a,b,c,x,y,z);
             end
         end
         
@@ -2935,7 +2863,7 @@ classdef am_dft
             end
         end
 
-        function plot_interpolated(fbz,bzp,x,varargin)
+        function plot_interpolated(fbz,bzp,x, varargin)
             % interpolate x, defined on the monkhorst-pack fbz, on [frac] path
             %
             % plot_interpolated(fbz,bzp, ibz2fbz(fbz,ibz,ibz.E) ,'-');
@@ -2950,11 +2878,11 @@ classdef am_dft
             fig_(gcf);
 
             % plot results
-            plot(bzp.x,fftinterp_(x,bzp.k,fbz.n),varargin{:});
+            plot(bzp.x,fftinterp_(x,bzp.k,fbz.n), varargin{:});
             axs_(gca,bzp.qt,bzp.ql); axis tight; xlabel('Wavevector k');
         end
 
-        function plot_dispersion(model,bzp,flag,varargin)
+        function plot_dispersion(model,bzp,flag, varargin)
             % model is either bvk or tb
 
             import am_lib.*
@@ -2970,13 +2898,13 @@ classdef am_dft
                     % get electron band structure along path
                     bzp = get_dispersion(model,bzp,flag);
                     % plot results
-                    plot(bzp.x,sort(bzp.E),varargin{:});
+                    plot(bzp.x,sort(bzp.E), varargin{:});
                     axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [eV]'); xlabel('Wavevector k');
                 case 'phonon'
                     % get phonon band structure along path
                     bzp = get_dispersion(model,bzp,flag);
                     % plot results
-                    plot(bzp.x,sort(real(bzp.hw)*1E3),'-k',bzp.x,-sort(abs(imag(bzp.hw))),varargin{:});
+                    plot(bzp.x,sort(real(bzp.hw)*1E3),'-k',bzp.x,-sort(abs(imag(bzp.hw))), varargin{:});
                     axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [meV]'); xlabel('Wavevector k');
             end
 
@@ -3074,13 +3002,13 @@ classdef am_dft
             set(h,'Ticks',cticks(inds),'TickLabels',character_labels(inds));
         end
 
-        function plot_nesting(ibz,fbz,bzp,degauss,Ep,varargin)
+        function plot_nesting(ibz,fbz,bzp,degauss,Ep, varargin)
 
             import am_lib.*
             import am_dft.*
 
             % plot results
-            plot_interpolated(fbz,bzp, ibz2fbz(fbz,ibz,get_nesting(fbz,ibz,degauss,Ep)) ,varargin{:})
+            plot_interpolated(fbz,bzp, ibz2fbz(fbz,ibz,get_nesting(fbz,ibz,degauss,Ep)) , varargin{:})
         end
 
         function plot_bz(fbz)
@@ -4444,8 +4372,8 @@ classdef am_dft
             uc = uc_(bas,tau,symb,species);
         end
 
-        function [pc,p2u,u2p] = get_primitive_cell(uc,tol)
-            % [pc,p2u,u2p] = get_primitive_cell(uc,tol)
+        function [pc,p2u,u2p] = get_primitive_cell(uc, tol)
+            % [pc,p2u,u2p] = get_primitive_cell(uc, tol)
             % NOTE: saves p2u entries which share a common closest
             % primitive lattice vector, not just the first primitive atoms
             % produced by the matrix A. When building shells, this property
@@ -4496,7 +4424,7 @@ classdef am_dft
 
                 % find basis which produces the highest symmetry
                 n = zeros(1,m);
-                for i = 1:m; n(i) = numel(uniquetol([30,60,90,120,bas2abc(T_cart(:,ijk(:,i)))],tol)); end
+                for i = 1:m; n(i) = numel(uniquetol([30,60,90,120,bas2abc(T_cart(:,ijk(:,i)))], tol)); end
                 nmin=min(n); inds_ = find(n==nmin); B = T(:,ijk(:,inds_(1)));
             end
 
@@ -4510,7 +4438,7 @@ classdef am_dft
             pc = pc_(uc,B,p2u);
         end
 
-        function [ic,i2p,p2i] = get_irreducible_cell(pc,tol)
+        function [ic,i2p,p2i] = get_irreducible_cell(pc, tol)
             % idenitifes irreducible atoms
 
             import am_lib.* am_dft.*
@@ -4522,10 +4450,10 @@ classdef am_dft
             [~,~,S] = get_symmetries(pc);
 
             % define function to apply symmetries to position vectors
-            seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:),tol);
+            seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:), tol);
 
             % get permutation matrix and construct a sparse binary representation
-            PM = member_(seitz_apply_(S,pc.tau),pc.tau,tol); A = get_connectivity(PM);
+            PM = member_(seitz_apply_(S,pc.tau),pc.tau, tol); A = get_connectivity(PM);
 
             % set identifiers
             i2p = round(findrow_(A)).'; p2i = round(([1:size(A,1)]*A));
