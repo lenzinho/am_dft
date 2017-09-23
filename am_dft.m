@@ -122,7 +122,7 @@ classdef am_dft
     % core
 
     methods (Static)
-
+ 
         % vasp
 
         function [uc]    = load_poscar(fposcar)
@@ -245,7 +245,7 @@ classdef am_dft
             % replace symbolic species with a numerical value
             [~,~,species]=unique(species_symb,'stable'); species=species(:).'; 
             % make sure there is only one atom at each site
-            [~,i]=uniquecol_(tau); tau=tau(:,i); species=species(i); symb=species_symb(i); Z=get_atomic_number(symb);
+            [~,i]=uniquec_(tau); tau=tau(:,i); species=species(i); symb=species_symb(i); Z=get_atomic_number(symb);
 
             % get space group symmetries
             position_aliases = {...
@@ -281,7 +281,7 @@ classdef am_dft
             % generate all positions based on symmetry operations
             seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
             tau = reshape(mod_(seitz_apply_(S,tau)),3,[]); species=repmat(species,1,nSs);
-            [tau, j] = uniquecol_(tau); species=species(j);
+            [tau, j] = uniquec_(tau); species=species(j);
             [species,i]=sort(species); tau=tau(:,i);
 
             % define primitive cell creation function and make structure
@@ -980,7 +980,7 @@ classdef am_dft
             if nargout == 3; return; end
 
             % get point symmetries
-            R  = reshape(uniquecol_( reshape(S(1:3,1:3,:),[9,nSs]) ),3,3,[]);
+            R  = reshape(uniquec_( reshape(S(1:3,1:3,:),[9,nSs]) ),3,3,[]);
 
             % set identity first
             id = member_(flatten_(eye(3)),reshape(R,3^2,[])); R(:,:,[1,id])=R(:,:,[id,1]);
@@ -1241,22 +1241,22 @@ classdef am_dft
             c_id = reindex_using_occurances(c_id);
         end
 
-        function ps_id        = identify_point_symmetries(R)
-            nsyms=size(R,3); ps_id = zeros(1,nsyms);
+        function [ps_id,tr,dt] = identify_point_symmetries(R)
+            nsyms=size(R,3); ps_id = zeros(1,nsyms); tr = zeros(1,nsyms); dt = zeros(1,nsyms);
             for i = 1:nsyms
                 % get trace and determinant (fractional)
-                tr = trace(R(1:3,1:3,i)); dt = det(R(1:3,1:3,i));
-                if     and(tr==+3,dt==+1); ps_id(i) = 1;  % 'e'
-                elseif and(tr==-1,dt==+1); ps_id(i) = 2;  % 'c_2'
-                elseif and(tr==+0,dt==+1); ps_id(i) = 3;  % 'c_3'
-                elseif and(tr==+1,dt==+1); ps_id(i) = 4;  % 'c_4'
-                elseif and(tr==+2,dt==+1); ps_id(i) = 5;  % 'c_6'
-                elseif and(tr==-3,dt==-1); ps_id(i) = 6;  % 'i'
-                elseif and(tr==+1,dt==-1); ps_id(i) = 7;  % 's_2'
-                elseif and(tr==+0,dt==-1); ps_id(i) = 8;  % 's_6'
-                elseif and(tr==-1,dt==-1); ps_id(i) = 9;  % 's_4'
-                elseif and(tr==-2,dt==-1); ps_id(i) = 10; % 's_3'
-                else;                      ps_id(i) = 0;  % unknown
+                tr(i) = trace(R(1:3,1:3,i)); dt(i) = det(R(1:3,1:3,i));
+                if     (tr(i)==+3 && dt(i)==+1); ps_id(i) = 1;  % 'e'
+                elseif (tr(i)==-1 && dt(i)==+1); ps_id(i) = 2;  % 'c_2'
+                elseif (tr(i)==+0 && dt(i)==+1); ps_id(i) = 3;  % 'c_3'
+                elseif (tr(i)==+1 && dt(i)==+1); ps_id(i) = 4;  % 'c_4'
+                elseif (tr(i)==+2 && dt(i)==+1); ps_id(i) = 5;  % 'c_6'
+                elseif (tr(i)==-3 && dt(i)==-1); ps_id(i) = 6;  % 'i'
+                elseif (tr(i)==+1 && dt(i)==-1); ps_id(i) = 7;  % 's_2'
+                elseif (tr(i)==+0 && dt(i)==-1); ps_id(i) = 8;  % 's_6'
+                elseif (tr(i)==-1 && dt(i)==-1); ps_id(i) = 9;  % 's_4'
+                elseif (tr(i)==-2 && dt(i)==-1); ps_id(i) = 10; % 's_3'
+                else;                            ps_id(i) = 0;  % unknown
                 end
             end
         end
@@ -1420,7 +1420,7 @@ classdef am_dft
             %     % generate space symmetries and multiplication table
             %     S{i} = generate_sg(i);
             %     % determine pg corresponding to each sgi %4i , ...\n',cell2mat(pg))
-            %     pg{i} = identify_pointgroup( reshape(uniquecol_( reshape(S{i}(1:3,1:3,:),9,[]) ),3,3,[]) );
+            %     pg{i} = identify_pointgroup( reshape(uniquec_( reshape(S{i}(1:3,1:3,:),9,[]) ),3,3,[]) );
             %     % count number of symmetries
             %     nsyms{i} = size(S{i},3);
             %     % indentify number of classes
@@ -2186,7 +2186,7 @@ classdef am_dft
 
         % unit cells
 
-        function [uc,pc,ic]   = get_cells(fposcar, tol)
+        function [uc,pc,ic,vc] = get_cells(fposcar, tol)
             % [uc,pc,ic]   = get_cells(fposcar)
             % fposcar can be a poscar or cif file
 
@@ -2209,30 +2209,42 @@ classdef am_dft
             end
 
             % get primitive cell
-            [pc,p2u,u2p] = get_primitive_cell(uc, tol);  % write_poscar(get_supercell(pc,eye(3)*2),'POSCAR.2x2')
+            [pc,p2u,u2p] = get_primitive_cell(uc, tol);
 
             % get irreducible cell
             [ic,i2p,p2i] = get_irreducible_cell(pc, tol);
 
+            % get conventional cell
+            [vc,v2p,p2v] = get_conventional_cell(pc,tol);
+
             % complete mapping
-            u2i = round(p2i(u2p)); i2u = round(p2u(i2p));
+            u2i = p2i(u2p); i2u = p2u(i2p);
+            u2v = p2v(u2p); v2u = p2u(v2p);
+            v2i = p2i(v2p); i2v = p2v(i2p);
 
             % save mapping to cells
-            pc.p2i = p2i; pc.i2p = i2p;
-            pc.p2u = p2u; pc.u2p = u2p;
+            pc.p2i = p2i; pc.p2u = p2u; pc.p2v = p2v;
+            pc.i2p = i2p; pc.u2p = u2p; pc.v2p = v2p; 
 
-            ic.i2p = i2p; ic.p2i = p2i;
-            ic.i2u = i2u; ic.u2i = u2i;
+            ic.i2p = i2p; ic.i2u = i2u; ic.i2v = i2v;
+            ic.p2i = p2i; ic.u2i = u2i; ic.u2i = v2i;
 
-            uc.u2p = u2p; uc.p2u = p2u;
-            uc.u2i = u2i; uc.i2u = i2u;
+            uc.u2p = u2p; uc.u2i = u2i; uc.u2v = u2v;
+            uc.p2u = p2u; uc.i2u = i2u; uc.v2u = v2u;
+
+            vc.v2i = v2i; vc.v2u = v2u; vc.v2p = v2p;
+            vc.i2v = i2v; vc.u2v = u2v; vc.p2v = p2v;
 
             % save bas2pc and tau2pc to convert [uc-frac] to [pc-frac]
             uc.bas2pc = pc.bas/uc.bas; uc.tau2pc = pc.bas\uc.bas;
+            
+            % save bas2pc and tau2pc to convert [uc-frac] to [vc-frac]
+            vc.bas2pc = pc.bas/vc.bas; vc.tau2pc = pc.bas\vc.bas;
 
             % print basic symmetry info
             [~,H,~,R] = get_symmetries(pc, tol);
-            bv_code = identify_bravais_lattice(pc.bas, tol); 
+            bv_code = identify_bravais_lattice(pc.bas, tol);
+            
             % holohodry should give same info as bravais lattice
             hg_code = identify_pointgroup(H); 
             pg_code = identify_pointgroup(R); 
@@ -3037,7 +3049,7 @@ classdef am_dft
             P = [-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1;...
                  -1,-1,-1,0,0,0,1,1,1,-1,-1,-1,0,0,1,1,1,-1,-1,-1,0,0,0,1,1,1;...
                  -1,0,1,-1,0,1,-1,0,1,-1,0,1,-1,1,-1,0,1,-1,0,1,-1,0,1,-1,0,1]/2;
-            P = uc2ws(fbz.recbas*P,fbz.recbas); P = uniquecol_(P);
+            P = uc2ws(fbz.recbas*P,fbz.recbas); P = uniquec_(P);
 
             % get the wigner-seitz planes corresponding to each point
             N = P./normc_(P); nplanes=size(P,2); NP=zeros(4,nplanes);
@@ -3052,7 +3064,7 @@ classdef am_dft
             for i = find(ex_); X(:,i) = NP(1:3,ijk(:,i)).'\NP(4,ijk(:,i)).'; end
 
             % shift to wigner seitz cell and get unique values [relax the edge by ~0.99999x]
-            X = uc2ws(X*0.999,fbz.recbas)/0.999; X = uniquecol_(X);
+            X = uc2ws(X*0.999,fbz.recbas)/0.999; X = uniquec_(X);
 
             % plot convex hull
             plothull_(X);
@@ -4370,7 +4382,7 @@ classdef am_dft
             tau = reshape(seitz_apply_(S,tau),3,[]); species = repmat(species(:),1,nSs); species=species(:).';
 
             % get unique species
-            [~,ind] = uniquecol_(tau); tau = tau(:,ind); species = species(ind); i2u = i2u(ind);
+            [~,ind] = uniquec_(tau); tau = tau(:,ind); species = species(ind); i2u = i2u(ind);
 
             % sort by species
             [~,ind] = sort(i2u);  tau = tau(:,ind); species = species(ind); i2u = i2u(ind);
@@ -4423,7 +4435,7 @@ classdef am_dft
                 grid_ =  [1, 0,1,1, 1,0,0, -1, 1, 1, 0, -1, 1,-1, 1, 0, 0, -1,-1, 1, -1, 0, 0, -1,-1, 0, -1; ...
                           1, 1,0,1, 0,1,0,  1,-1, 1, 0,  0, 0, 1,-1, 1,-1, -1, 1,-1,  0,-1, 0, -1, 0,-1, -1; ...
                           1, 1,1,0, 0,0,1,  1, 1,-1, 0,  1,-1, 0, 0,-1, 1,  1,-1,-1,  0, 0,-1,  0,-1,-1, -1];
-                T = osum_(T,grid_,2);  T = uniquecol_(T); T_cart = uc.bas*T;
+                T = osum_(T,grid_,2);  T = uniquec_(T); T_cart = uc.bas*T;
 
                 % (to speed things up) keep vectors whose norm are smaller than 2 times the largest norm in B the tentative basis
                 ex_ = normc_(T_cart)<2*max(normc_(uc.bas*B)); nTs = sum(ex_); T = T(:,ex_); T_cart = T_cart(:,ex_);
@@ -4476,7 +4488,7 @@ classdef am_dft
             ic = ic_(pc,i2p);
         end
 
-        function [xc,x2i,i2x] = get_expanded_cell(ic,S)
+        function [xc,x2i,i2x] = get_expanded_cell(ic, S)
             
             import am_lib.*
             
@@ -4485,7 +4497,7 @@ classdef am_dft
             % define function to apply symmetries to position vectors
             seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
             % expand atomic positions over symmetry basis
-            X = [repmat(1:ic.natoms,1,nSs);reshape(seitz_apply_(S,ic.tau),3,[])]; [~,~,jc] = uniquecol_(X); 
+            X = [repmat(1:ic.natoms,1,nSs);reshape(seitz_apply_(S,ic.tau),3,[])]; [~,~,jc] = uniquec_(X); 
             % symmeterize atomic positions
             natoms=max(jc); tau = zeros(3,natoms); x2i = zeros(1,natoms);
             for i = 1:natoms
@@ -4503,7 +4515,7 @@ classdef am_dft
             xc = xc_(ic,tau,x2i);
         end
 
-        function [uc,u2p,p2u] = get_supercell(pc,B)
+        function [uc,u2p,p2u] = get_supercell(pc, B)
             % Example: to make a cell pc have the same shape as a reference cell ref, do this:
             % [~,ref] = get_cells('185_P63cm.poscar');
             % [~,pc]  = get_cells('194_P63mmc.poscar');
@@ -4519,7 +4531,7 @@ classdef am_dft
             n=ceil(normc_(B.')); [Y{1:3}]=ndgrid(0:n(1),0:n(2),0:n(3)); nLs=prod(n+1); L=reshape(cat(3+1,Y{:})-1,[],3).';
 
             % expand atoms, coordinates supercell fractional, and reduce to primitive supercell
-            X = uniquecol_([ reshape(repmat([1:pc.natoms],nLs,1),1,[]); mod_(inv(B)*osum_(L,pc.tau,2)) ]);
+            X = uniquec_([ reshape(repmat([1:pc.natoms],nLs,1),1,[]); mod_(inv(B)*osum_(L,pc.tau,2)) ]);
 
             % create mapping
             u2p = X(1,:); [~,p2u]=unique(u2p); p2u=p2u(:).';
@@ -4535,6 +4547,52 @@ classdef am_dft
             % uc.p2u = p2u;
             % uc.u2i = pc.p2i(uc.u2p);
             % uc.i2u = uc.p2u(pc.i2p);
+        end
+        
+        function [vc,v2p,p2v] = get_conventional_cell(pc, tol)
+            % [vc,v2p,p2v] = get_conventional_cell(pc,tol)
+            
+            import am_dft.* am_lib.*
+
+            if nargin < 2; tol = am_dft.tiny; end
+
+            % get point symmetries
+            [~,~,~,R] = get_symmetries(pc);
+
+            % exclude improper rotations and identity
+            nRs = size(R,3); inds = [1:nRs]; 
+            [~,tr,dt] = identify_point_symmetries(R);
+            filter_ = @(tr,dt,inds,ex_) deal(tr(ex_),dt(ex_),inds(ex_));
+            [tr,dt,inds] = filter_(tr,dt,inds, dt  > 0 );
+            [tr,dt,inds] = filter_(tr,dt,inds, tr ~= 3 );
+
+            % get the rotation axis of each proper rotation
+            nTs = numel(inds); T = zeros(3,nTs);
+            for i = 1:numel(inds)
+                % get null space (axis of rotation)
+                T(:,i) = R_axis_(R(:,:,inds(i)));
+                % convert vector to all integers
+                while any(mod_(T(:,i))>tol); T(:,i) = T(:,i)./min(abs(T( ~eq_(T(:,i),0,tol) ,i))); end
+            end
+            T=round(T);
+
+            % sort rotation axes, by the order of rotation (higher symmetries first)
+            % break degeneracy by putting vectors in the positive octant first
+            vc_bas = pc.bas*T; 
+            fwd = rankc_([-tr;-max(sign(vc_bas));sign(vc_bas)]);
+            filter_ = @(tr,dt,T,vc_bas,inds,ex_) deal(tr(ex_),dt(ex_),T(:,ex_),vc_bas(:,ex_),inds(ex_));
+            [tr,dt,T,vc_bas,inds] = filter_(tr,dt,T,vc_bas,inds, fwd );
+
+            % find the three highest symmetry non-collinear vectors and centering
+            % transformation matrix from primitive to conventional cell basis  
+            % i.e. C = pc.bas -> vc_bas; absolute highest symmetry is z, then y, then x, hence [k,j,i] and not [i,j,k]
+            for i = (  1):nTs; X = vc_bas(:,i);                    if any(~eq_(X, 0, tol)); break; end; end
+            for j = (i+1):nTs; X = cross(vc_bas(:,i),vc_bas(:,j)); if any(~eq_(X, 0, tol)); break; end; end
+            for k = (j+1):nTs; X = det(vc_bas(:,[i,j,k]));         if any(~eq_(X, 0, tol)); break; end; end
+            if any([k,j,i]==0); error('Conventional basis not found!'); else; C = T(:,[k,j,i]); end
+
+            % construct conventional cell
+            [vc,v2p,p2v] = get_supercell(pc,C);
         end
         
         function [uc,inds]    = match_cell(uc,uc_ref)
