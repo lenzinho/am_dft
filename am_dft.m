@@ -2436,20 +2436,27 @@ classdef am_dft
             end
         end
 
-        function [h]          = plot_cell(pc, varargin)
+        function [h]          = plot_cell(pc)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % initialize figure
             set(gcf,'color','w'); hold on;
 
             % plot atoms
-            h = scatter3_(pc.bas*pc.tau,50*sqrt(pc.mass(pc.species)),pc.species,'filled', varargin{:});
+            clist=color_(max(pc.species));
+            for i = 1:max(pc.species)
+                ex_ = pc.species==i; radius = ones(1,sum(ex_)) * get_crystal_radius(get_atomic_number(pc.symb{i})) * 5000;
+                h(i) = scatter3_(pc.bas*pc.tau(:,ex_), radius,'MarkerEdgeColor','k','MarkerFaceColor',clist(i,:));
+            end
+            
             % plot pc boundaries
             plothull_(pc.bas*[0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1]);
-
+            
             hold off; daspect([1 1 1]); box on;
+
+            % legend
+            legend(h,pc.symb{:},'boxoff'); axis off;
 
         end
 
@@ -2486,7 +2493,7 @@ classdef am_dft
             end
         end
 
-        function [T]          = coincidence_site_lattice(B1,B2,multiplicity,tol)
+        function [T]          = coincidence_site_lattice(B1, B2, multiplicity, tol)
             % T is the matrix which transforms lattice B1 into B2 through: B2 == B1*T
             
             import am_lib.rankc_ am_lib.matmul_ am_dft.get_niggli_basis am_dft.bas2abc
@@ -3036,8 +3043,7 @@ classdef am_dft
 
         function plot_bz(fbz)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % initialize figure
             set(gcf,'color','w'); hold on;
@@ -5373,6 +5379,55 @@ classdef am_dft
             for i = 1:nZs; mass(i) = mass_database(Z(i)); end
         end
 
+        function [r]    = get_atomic_radius(Z)
+            % [nm]
+            % Vainshtein BK, Fridkin VM, Indenbom VL (1995) Structure of Crystals (3rd Edition). Springer Verlag, Berlin.
+            % Clementi E, Raimondi DL, Reinhardt WP (1963). Journal of Chemical Physics 38:2686-
+            database = [...
+                 0.053, 0.031, 0.167, 0.112, 0.087, 0.067, 0.056, 0.048, 0.042, 0.038, 0.190, 0.145, 0.118, 0.111, 0.098,  ...
+                 0.088, 0.079, 0.071, 0.243, 0.194, 0.184, 0.176, 0.171, 0.166, 0.161, 0.156, 0.152, 0.149, 0.145, 0.142,  ...
+                 0.136, 0.125, 0.114, 0.103, 0.094, 0.088, 0.265, 0.219, 0.212, 0.206, 0.198, 0.190, 0.183, 0.178, 0.173,  ...
+                 0.169, 0.165, 0.161, 0.156, 0.145, 0.133, 0.123, 0.115, 0.108, 0.298, 0.253, 0.195, 0.185, 0.247, 0.206,  ...
+                 0.205, 0.238, 0.231, 0.233, 0.225, 0.228, 0.226, 0.226, 0.222, 0.222, 0.217, 0.208, 0.200, 0.193, 0.188,  ...
+                 0.185, 0.180, 0.177, 0.174, 0.171, 0.156, 0.154, 0.143, 0.135, 0.127, 0.120, 0.1  , 0.1  , 0.195, 0.180,  ...
+                 0.180, 0.175, 0.175, 0.175, 0.175,     ];
+            nZs = numel(Z); r = zeros(1,nZs);
+            for i = 1:nZs; r(i) = database(Z(i)); end
+        end
+        
+        function [r]    = get_ionic_radius(Z)
+            % [nm]
+            % Slater JC (1964) Journal of Chemical Physics 39:3199-
+            database = [...
+                0.025, 0.031, 0.145, 0.105, 0.085, 0.070, 0.065, 0.060, 0.050, 0.038, 0.180, 0.150, 0.125,  ...
+                0.110, 0.100, 0.100, 0.100, 0.071, 0.220, 0.180, 0.160, 0.140, 0.135, 0.140, 0.140, 0.140,  ...
+                0.135, 0.135, 0.135, 0.135, 0.130, 0.125, 0.115, 0.115, 0.115, 0.088, 0.235, 0.200, 0.185,  ...
+                0.155, 0.145, 0.145, 0.135, 0.130, 0.135, 0.140, 0.160, 0.155, 0.155, 0.145, 0.145, 0.140,  ...
+                0.140, 0.108, 0.260, 0.215, 0.195, 0.185, 0.185, 0.185, 0.185, 0.185, 0.185, 0.180, 0.175,  ...
+                0.175, 0.175, 0.175, 0.175, 0.175, 0.175, 0.155, 0.145, 0.135, 0.135, 0.130, 0.135, 0.135,  ...
+                0.135, 0.150, 0.190, 0.180, 0.160, 0.190, 0.127, 0.120, 0.1  , 0.215, 0.195, 0.180, 0.180,  ...
+                0.175, 0.175, 0.175, 0.175, 0.1  ];
+            nZs = numel(Z); r = zeros(1,nZs);
+            for i = 1:nZs; r(i) = database(Z(i)); end
+        end
+        
+        function [r]    = get_crystal_radius(Z)
+            % [nm]
+            % Shannon RD Prewitt CT (1969) Acta Crystallographica B25:925-946
+            % Shannon RD (1976) Acta Crystallographica A23:751-761
+            database = [...
+                0.010, 0.1  , 0.090, 0.041, 0.025, 0.029, 0.030, 0.121, 0.119, 0.1  , 0.116, 0.086, ... 
+                0.053, 0.040, 0.031, 0.043, 0.167, 0.1  , 0.152, 0.114, 0.089, 0.075, 0.068, 0.076, ...
+                0.081, 0.069, 0.054, 0.070, 0.071, 0.074, 0.076, 0.053, 0.072, 0.056, 0.182, 0.1  , ... 
+                0.166, 0.132, 0.104, 0.086, 0.078, 0.079, 0.079, 0.082, 0.081, 0.078, 0.129, 0.092, ... 
+                0.094, 0.069, 0.090, 0.111, 0.206, 0.062, 0.181, 0.149, 0.136, 0.115, 0.132, 0.130, ... 
+                0.128, 0.110, 0.131, 0.108, 0.118, 0.105, 0.104, 0.103, 0.102, 0.113, 0.100, 0.085, ... 
+                0.078, 0.074, 0.077, 0.077, 0.077, 0.074, 0.151, 0.083, 0.103, 0.149, 0.117, 0.108, ... 
+                0.076, 0.1  , 0.194, 0.162, 0.126, 0.119, 0.109, 0.087, 0.1  , 0.100, 0.112, 0.111];
+            nZs = numel(Z); r = zeros(1,nZs);
+            for i = 1:nZs; r(i) = database(Z(i)); end
+        end
+        
     end
 
 
