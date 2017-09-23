@@ -986,39 +986,50 @@ classdef am_dft
             id = member_(flatten_(eye(3)),reshape(R,3^2,[])); R(:,:,[1,id])=R(:,:,[id,1]);
         end
 
-        function [MT,E,I]     = get_multiplication_table(S)
+        function [MT,E,I]     = get_multiplication_table(S,tol)
             % [MT,E,I] = get_multiplication_table(S)
             % get multiplication table: S(:,:,i)*S(:,:,j) = S(:,:,MT(i,j))
             import am_lib.* am_dft.*
 
-            if     size(S,1) == 4
+            if nargin<2; tol=am_dft.tiny; end
+            
+            s = size(S);
+            
+            if     s(1)==4 && s(2)==4
                 % seitz operator (applies mod to translational components)
-                md_ = @(X) [X(1:12,:);mod_(X(13:15,:));X(16:end,:)];
+                md_ = @(X) [X(1:12,:);mod_(X(13:15,:),tol);X(16:end,:)];
                 rs_ = @(X) md_(reshape(X,4^2,[]));
-                nSs = size(S,3);
 
-                MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))) , rs_(S) ) , nSs,nSs);
+                MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))), rs_(S), tol) , s(3), s(3));
 
-            elseif size(S,1) == 3
+            elseif s(1)==3 && s(2)==3
                 % point operator
                 rs_ = @(X) reshape(X,3^2,[]);
-                nSs = size(S,3);
 
-                MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))) , rs_(S) ) , nSs,nSs);
+                MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))), rs_(S), tol ) , s(3), s(3));
 
-            elseif size(S,1) == 1
+            elseif s(1)==3
+                % translation operator
+                S = mod_(S);
+                
+                MT = reshape( member_( mod_(reshape(osum_(S, S, 2),3,[]), tol), S, tol), s(2), s(2));
+
+            elseif s(1)==1
+                
+                s = size(S{1});
+                
                 % seitz operator combined with permutation (represented as a two-part cell)
-                if     size(S{1},1) == 4
+                if     s(1)==4 && s(2)==4
                     % seitz operator (applies mod to translational components)
-                    md_ = @(X) [X(1:12,:);mod_(X(13:15,:));X(16:end,:)];
+                    md_ = @(X) [X(1:12,:);mod_(X(13:15,:),tol);X(16:end,:)];
                     rs_ = @(X) md_(reshape(X,4^2,[]));
                     nSs = size(S{1},3);
 
                     ref = [rs_(S{1});reshape(S{2},size(S{2},1),[])];
                     opr = [rs_(matmulp_(S{1},permute(S{1},[1,2,4,3]))); reshape(operm_(S{2},S{2}),size(S{2},1),[])];
 
-                    MT = reshape( member_( opr , ref ) , nSs,nSs);
-                elseif size(S{1},1) == 3
+                    MT = reshape( member_( opr , ref, tol), s(3), s(3));
+                elseif s(1)==3 && s(2)==3
                     % point operator
                     rs_ = @(X) reshape(X,3^2,[]);
                     nSs = size(S{1},3);
@@ -1026,7 +1037,7 @@ classdef am_dft
                     ref = [rs_(S{1});reshape(S{2},size(S{2},1),[])];
                     opr = [rs_(matmulp_(S{1},permute(S{1},[1,2,4,3]))); reshape(operm_(S{2},S{2}),size(S{2},1),[])];
 
-                    MT = reshape( member_( opr , ref ) , nSs,nSs);
+                    MT = reshape( member_( opr , ref, tol), s(3), s(3));
                 end
             end
 
@@ -2061,8 +2072,8 @@ classdef am_dft
             bas(:,3) = [                                0.0,                                0.0, c              ];
         end
 
-        function [bjc,gen]    = find_isomorphic_bijection(g,h)
-            % bjc = find_isomorphic_bijection(g,h), g and h are either point or space symmetries
+        function [bjc,gen]    = find_isomorphic_bijection(G,H)
+            % bjc = find_isomorphic_bijection(g,h), g and h are multiplication tables 
             % isomorphism: g <==> h(:,:,inds) , returns inds = [] if groups are not isomorphic
             % % check with:
             % G = get_multiplication_table(g);
@@ -2072,24 +2083,14 @@ classdef am_dft
             import am_lib.* am_dft.*
 
             % number of symmetries
-            nsyms = size(g,3);
+            nsyms = size(G,1);
             
-            % get multiplication tables
-            G = get_multiplication_table(g);
-            H = get_multiplication_table(h);
-
             % sorting if desired (changes order of bjc but does not affect final result)
             Gfwd = [1:nsyms]; Hfwd = [1:nsyms];
 
             % get generators
             [gg,Gg] = get_generators(G); ngenerators = numel(gg);
             [hg,Hg] = get_generators_list(H,ngenerators);
-            
-            % to speed things up: identify point symmetry component and exclude hg
-            % generators that have different point symmetry types than gg 
-            gg_ps_id = identify_point_symmetries(g(:,:,gg)).';
-            for i = 1:size(hg,2); hg_ps_id(:,i) = identify_point_symmetries(h(:,:,hg(:,i))); end
-            ex_ = all(hg_ps_id==gg_ps_id,1); hg=hg(:,ex_); Hg=Hg(:,ex_);
             
             % compare multiplication tables, looking for bijections between symmetries g and h, i.e. isomorphism between G and H
             j=0; bjc=[]; gen=[];
@@ -2128,6 +2129,13 @@ classdef am_dft
             [bjc,gen] = find_isomorphic_bijection(g,h);
             srt_ = rankc_(bjc); bjc = bjc(:,srt_); gen = gen(:,srt_);
 
+            % RECOVER THIS FILTERING PART 
+            % RECOVER THIS FILTERING PART 
+            % RECOVER THIS FILTERING PART 
+            % RECOVER THIS FILTERING PART 
+            % RECOVER THIS FILTERING PART 
+            
+            
             % find integer transformation matrix (try all possible bijections and
             % integer transformations with nonzero-determinants); in reality, not all
             % matrices are tried, instead: 
@@ -2186,8 +2194,8 @@ classdef am_dft
 
         % unit cells
 
-        function [uc,pc,ic,vc] = get_cells(fposcar, tol)
-            % [uc,pc,ic]   = get_cells(fposcar)
+        function [uc,pc,ic,cc] = get_cells(fposcar, tol)
+            % [uc,pc,ic,cc]   = get_cells(fposcar)
             % fposcar can be a poscar or cif file
 
             import am_lib.* am_dft.*
@@ -2215,31 +2223,31 @@ classdef am_dft
             [ic,i2p,p2i] = get_irreducible_cell(pc, tol);
 
             % get conventional cell
-            [vc,v2p,p2v] = get_conventional_cell(pc,tol);
+            [cc,c2p,p2c] = get_conventional_cell(pc,tol);
 
             % complete mapping
             u2i = p2i(u2p); i2u = p2u(i2p);
-            u2v = p2v(u2p); v2u = p2u(v2p);
-            v2i = p2i(v2p); i2v = p2v(i2p);
+            u2c = p2c(u2p); c2u = p2u(c2p);
+            c2i = p2i(c2p); i2c = p2c(i2p);
 
-            % save mapping to cells
-            pc.p2i = p2i; pc.p2u = p2u; pc.p2v = p2v;
-            pc.i2p = i2p; pc.u2p = u2p; pc.v2p = v2p; 
+            % sace mapping to cells
+            pc.p2i = p2i; pc.p2u = p2u; pc.p2c = p2c;
+            pc.i2p = i2p; pc.u2p = u2p; pc.c2p = c2p; 
 
-            ic.i2p = i2p; ic.i2u = i2u; ic.i2v = i2v;
-            ic.p2i = p2i; ic.u2i = u2i; ic.u2i = v2i;
+            ic.i2p = i2p; ic.i2u = i2u; ic.i2c = i2c;
+            ic.p2i = p2i; ic.u2i = u2i; ic.u2i = c2i;
 
-            uc.u2p = u2p; uc.u2i = u2i; uc.u2v = u2v;
-            uc.p2u = p2u; uc.i2u = i2u; uc.v2u = v2u;
+            uc.u2p = u2p; uc.u2i = u2i; uc.u2c = u2c;
+            uc.p2u = p2u; uc.i2u = i2u; uc.c2u = c2u;
 
-            vc.v2i = v2i; vc.v2u = v2u; vc.v2p = v2p;
-            vc.i2v = i2v; vc.u2v = u2v; vc.p2v = p2v;
+            cc.c2i = c2i; cc.c2u = c2u; cc.c2p = c2p;
+            cc.i2c = i2c; cc.u2c = u2c; cc.p2c = p2c;
 
             % save bas2pc and tau2pc to convert [uc-frac] to [pc-frac]
             uc.bas2pc = pc.bas/uc.bas; uc.tau2pc = pc.bas\uc.bas;
             
             % save bas2pc and tau2pc to convert [uc-frac] to [vc-frac]
-            vc.bas2pc = pc.bas/vc.bas; vc.tau2pc = pc.bas\vc.bas;
+            cc.bas2pc = pc.bas/cc.bas; cc.tau2pc = pc.bas\cc.bas;
 
             % print basic symmetry info
             [~,H,~,R] = get_symmetries(pc, tol);
