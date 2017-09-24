@@ -118,6 +118,7 @@ classdef am_dft
 
     end
     
+    
     % vasp
     
     methods (Static)
@@ -778,6 +779,7 @@ classdef am_dft
         
         
     end
+    
     
     % core
 
@@ -4530,8 +4532,9 @@ classdef am_dft
             fprintf('%10.5f %10.5f %10.5f  %10.5f %10.5f %10.5f   %4i   %3i-%3i-%3i   %3i-%3i-%3i   %4i\n', Z(2:end,rankc_(Z(1,:))));
         end
 
-        end
+    end
 
+        
     % aux library
 
     methods (Static)
@@ -4750,7 +4753,6 @@ classdef am_dft
 
             if nargin < 2; tol = am_dft.tiny; end
             if nargin < 3; algo = 2; end 
-            % neither algorithm is good, and don't work all the time...
             % 2 seems more robust, at least for VN, Fe2O3, and Al2O3
             
             % get point symmetries
@@ -4774,13 +4776,18 @@ classdef am_dft
                     C = inv(M); while any(~eq_(mod_(C(:)),0)); C=C./abs(min(C(:))); end; C = round(C);
                     
                 case 2
-                    % sets the non-collinear triplet of highest rotation axes as edges of the cell
+                    % Sets the non-collinear triplet of highest rotation axes as edges of the
+                    % cell. The algorithm is based on:
+                    %
+                    % Refs: V. L. Himes and A. D. Mighell, Acta Crystallographica Section a
+                    %         Foundations of Crystallography 43, 375 (1987). 
+                    % 
                     
-                    % exclude improper rotations and identity
+                    % exclude identity and pure inversion
                     nRs = size(R,3); inds = [1:nRs]; 
                     [~,tr,dt] = identify_point_symmetries(R);
                     filter_ = @(tr,dt,inds,ex_) deal(tr(ex_),dt(ex_),inds(ex_));
-                    [tr,dt,inds] = filter_(tr,dt,inds, dt  > 0 );
+                    [tr,dt,inds] = filter_(tr,dt,inds, tr ~=-3 );
                     [tr,dt,inds] = filter_(tr,dt,inds, tr ~= 3 );
 
                     % get the rotation axis of each proper rotation
@@ -4793,13 +4800,18 @@ classdef am_dft
                     end
                     T=round(T);
 
-                    % sort rotation axes, by the order of rotation (higher symmetries first)
-                    % break degeneracy by putting vectors in the positive octant first
+                    % sort rotation axes:
+                    %   1) proper rotation axes first
+                    %   1) higher order rotation axes first
+                    %   2) vectors in positive octant first
                     cc_bas = pc.bas*T; 
-                    fwd = rankc_([-tr;-max(sign(cc_bas));sign(cc_bas)]);
+                    fwd = rankc_([-sign(dt);-tr;-max(sign(cc_bas));sign(cc_bas)]);
                     filter_ = @(tr,dt,T,vc_bas,inds,ex_) deal(tr(ex_),dt(ex_),T(:,ex_),vc_bas(:,ex_),inds(ex_));
                     [tr,dt,T,cc_bas,inds] = filter_(tr,dt,T,cc_bas,inds, fwd );
 
+                    % append identity
+                    T = [T,eye(3)]; cc_bas = pc.bas*T; nTs=nTs+3;
+                    
                     % find the three highest symmetry non-collinear vectors and centering
                     % transformation matrix from primitive to conventional cell basis  
                     % i.e. C = pc.bas -> vc_bas; absolute highest symmetry is z, then y, then x, hence [k,j,i] and not [i,j,k]
