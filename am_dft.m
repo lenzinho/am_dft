@@ -1052,6 +1052,11 @@ classdef am_dft
             if nargout>2; I = [MT==E]*[1:nSs].'; end
         end
 
+        function [MT]         = relabel_multiplication_table(MT,fwd)
+            % relabel multiplication table
+            rev(fwd) = [1:size(MT,1)]; MT = rev(MT(fwd,fwd));
+        end
+        
         function [G,u]        = get_generators(MT)
             % [G,u] = get_generators(MT)
             % u reindexes symmetries based on the generators
@@ -1252,7 +1257,7 @@ classdef am_dft
             c_id = reindex_using_occurances(c_id);
         end
 
-        function [ps_id,tr,dt] = identify_point_symmetries(R)
+        function [ps_id,tr,dt]= identify_point_symmetries(R)
             nsyms=size(R,3); ps_id = zeros(1,nsyms); tr = zeros(1,nsyms); dt = zeros(1,nsyms);
             for i = 1:nsyms
                 % get trace and determinant (fractional)
@@ -1365,8 +1370,7 @@ classdef am_dft
             %  Flow Chart.? Journal of Chemical Education 64, no. 3 (March 1, 1987):
             %  216. doi:10.1021/ed064p216.
             %
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
             %
             nsyms = size(R,3);
             % identify point symmetries
@@ -1380,39 +1384,39 @@ classdef am_dft
             ns2 = sum(ps_id==7);  % 's_2'
             ns4 = sum(ps_id==9);  % 's_4'
             % identify point group by comparing number and types of symmetries
-            if         nsyms==1         ; pg_code=1 ;
-            elseif     nsyms==48        ; pg_code=32;
-            elseif     nsyms==16        ; pg_code=20;
-            elseif     nsyms==3         ; pg_code=9 ;
-            elseif and(nsyms==2 , ni==1); pg_code=2 ;
-            elseif and(nsyms==2 ,nc2==1); pg_code=3 ;
-            elseif and(nsyms==2 ,ns2==1); pg_code=4 ;
-            elseif and(nsyms==4 , ni==1); pg_code=5 ;
-            elseif and(nsyms==4 ,nc2==3); pg_code=6 ;
-            elseif and(nsyms==4 ,ns2==2); pg_code=7 ;
-            elseif and(nsyms==4 ,nc4==2); pg_code=14; % nc4 == 2 is correct, rather than nc4 == 1.
-            elseif and(nsyms==4 ,ns4==2); pg_code=15;
-            elseif and(nsyms==6 , ni==1); pg_code=10;
-            elseif and(nsyms==6 ,nc2==3); pg_code=11;
-            elseif and(nsyms==6 ,ns2==3); pg_code=12;
-            elseif and(nsyms==6 ,nc2==1); pg_code=21;
-            elseif and(nsyms==6 ,ns2==1); pg_code=22;
-            elseif and(nsyms==8 ,ns2==3); pg_code=8 ;
-            elseif and(nsyms==8 ,ns2==1); pg_code=16;
-            elseif and(nsyms==8 ,ns2==0); pg_code=17;
-            elseif and(nsyms==8 ,ns2==4); pg_code=18;
-            elseif and(nsyms==8 ,ns2==2); pg_code=19;
-            elseif and(nsyms==12,ns2==3); pg_code=13;
-            elseif and(nsyms==12,ns2==1); pg_code=23;
-            elseif and(nsyms==12,nc2==7); pg_code=24;
-            elseif and(nsyms==12,ns2==6); pg_code=25;
-            elseif and(nsyms==12,ns2==4); pg_code=26;
-            elseif and(nsyms==12,nc3==8); pg_code=28;
-            elseif and(nsyms==24,nc6==2); pg_code=27;
-            elseif and(nsyms==24, ni==1); pg_code=29;
-            elseif and(nsyms==24,nc4==6); pg_code=30;
-            elseif and(nsyms==24,ns4==6); pg_code=31;
-            else;                         pg_code=0 ;
+            if         nsyms==1         ; pg_code=1 ; % c_1  
+            elseif     nsyms==48        ; pg_code=32; % s_2  
+            elseif     nsyms==16        ; pg_code=20; % c_2  
+            elseif     nsyms==3         ; pg_code=9 ; % c_1h  
+            elseif and(nsyms==2 , ni==1); pg_code=2 ; % c_2h  
+            elseif and(nsyms==2 ,nc2==1); pg_code=3 ; % d_2  
+            elseif and(nsyms==2 ,ns2==1); pg_code=4 ; % c_2v  
+            elseif and(nsyms==4 , ni==1); pg_code=5 ; % d_2h  
+            elseif and(nsyms==4 ,nc2==3); pg_code=6 ; % c_3  
+            elseif and(nsyms==4 ,ns2==2); pg_code=7 ; % s_6  
+            elseif and(nsyms==4 ,nc4==2); pg_code=14; % d_3    nc4 == 2 is correct, rather than nc4 == 1.
+            elseif and(nsyms==4 ,ns4==2); pg_code=15; % c_3v  
+            elseif and(nsyms==6 , ni==1); pg_code=10; % d_3d  
+            elseif and(nsyms==6 ,nc2==3); pg_code=11; % c_4  
+            elseif and(nsyms==6 ,ns2==3); pg_code=12; % s_4  
+            elseif and(nsyms==6 ,nc2==1); pg_code=21; % c_4h  
+            elseif and(nsyms==6 ,ns2==1); pg_code=22; % d_4  
+            elseif and(nsyms==8 ,ns2==3); pg_code=8 ; % c_4v  
+            elseif and(nsyms==8 ,ns2==1); pg_code=16; % d_2d  
+            elseif and(nsyms==8 ,ns2==0); pg_code=17; % d_4h  
+            elseif and(nsyms==8 ,ns2==4); pg_code=18; % c_6  
+            elseif and(nsyms==8 ,ns2==2); pg_code=19; % c_3h  
+            elseif and(nsyms==12,ns2==3); pg_code=13; % c_6h  
+            elseif and(nsyms==12,ns2==1); pg_code=23; % d_6  
+            elseif and(nsyms==12,nc2==7); pg_code=24; % c_6v  
+            elseif and(nsyms==12,ns2==6); pg_code=25; % d_3h  
+            elseif and(nsyms==12,ns2==4); pg_code=26; % d_6h  
+            elseif and(nsyms==12,nc3==8); pg_code=28; % t  
+            elseif and(nsyms==24,nc6==2); pg_code=27; % t_h  
+            elseif and(nsyms==24, ni==1); pg_code=29; % o  
+            elseif and(nsyms==24,nc4==6); pg_code=30; % t_d  
+            elseif and(nsyms==24,ns4==6); pg_code=31; % o_h  
+            else;                         pg_code=0 ; 
             end
         end
 
@@ -1628,10 +1632,9 @@ classdef am_dft
 
         function S            = generate_sg(sg_code,from_memory)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
-            if nargin == 1; from_memory=true; end
+            if nargin<2; from_memory=true; end
 
             if from_memory
                 % ~ 500x faster for large space groups
@@ -2045,6 +2048,109 @@ classdef am_dft
             end
         end
 
+        function R            = generate_pg(pg_code,from_memory)
+            
+            import am_lib.*
+            
+            if nargin<2; from_memory=true; end
+
+            if from_memory
+                switch pg_code
+                    case 1; R = [1,0,0,0,1,0,0,0,1];
+                    case 2; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,-1];
+                    case 3; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,1,0,0,0,-1];
+                    case 4; R = [1,0,0,0,1,0,0,0,1,1,0,0,0,-1,0,0,0,1];
+                    case 5; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,-1,0,0,0,-1,0,0,0,-1,1,0,0,0,-1,0,0,0,1];
+                    case 6; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,1,0,0,0,-1,0,0,0,-1];
+                    case 7; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,1,1,0,0,0,-1,0,0,0,1,-1,0,0,0,1,0,0,0,1];
+                    case 8; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,-1,0,0,0,-1,0,0,0,-1,1,0,0,0,-1,0,0,0,-1,1,0,0,0,1,0,0,0,-1,1,0,0,0,-1,0,0,0,1,-1,0,0,0,1,0,0,0,1];
+                    case 9; R = [1,0,0,0,1,0,0,0,1,0,1,0,-1,0,0,0,0,1,-1,0,0,0,-1,0,0,0,1,0,-1,0,1,0,0,0,0,1];
+                    case 10; R = [1,0,0,0,1,0,0,0,1,0,-1,0,1,0,0,0,0,-1,-1,0,0,0,-1,0,0,0,1,0,1,0,-1,0,0,0,0,-1];
+                    case 11; R = [1,0,0,0,1,0,0,0,1,0,1,0,-1,0,0,0,0,1,-1,0,0,0,-1,0,0,0,-1,-1,0,0,0,-1,0,0,0,1,0,-1,0,1,0,0,0,0,-1,0,-1,0,1,0,0,0,0,1,1,0,0,0,1,0,0,0,-1,0,1,0,-1,0,0,0,0,-1];
+                    case 12; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,0,1,0,-1,0,0,0,0,1,0,1,0,1,0,0,0,0,-1,0,-1,0,-1,0,0,0,0,-1,-1,0,0,0,-1,0,0,0,1,0,-1,0,1,0,0,0,0,1,1,0,0,0,-1,0,0,0,-1];
+                    case 13; R = [1,0,0,0,1,0,0,0,1,0,1,0,-1,0,0,0,0,1,1,0,0,0,-1,0,0,0,1,-1,0,0,0,-1,0,0,0,1,0,1,0,1,0,0,0,0,1,0,-1,0,-1,0,0,0,0,1,0,-1,0,1,0,0,0,0,1,-1,0,0,0,1,0,0,0,1];
+                    case 14; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,0,-1,0,1,0,0,0,0,-1,0,-1,0,-1,0,0,0,0,1,0,1,0,1,0,0,0,0,1,-1,0,0,0,-1,0,0,0,1,0,1,0,-1,0,0,0,0,-1,1,0,0,0,-1,0,0,0,-1];
+                    case 15; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,0,1,0,-1,0,0,0,0,1,-1,0,0,0,-1,0,0,0,-1,0,1,0,1,0,0,0,0,-1,1,0,0,0,-1,0,0,0,1,0,-1,0,-1,0,0,0,0,-1,-1,0,0,0,-1,0,0,0,1,0,-1,0,1,0,0,0,0,-1,0,-1,0,1,0,0,0,0,1,1,0,0,0,-1,0,0,0,-1,0,-1,0,-1,0,0,0,0,1,0,1,0,1,0,0,0,0,1,1,0,0,0,1,0,0,0,-1,0,1,0,-1,0,0,0,0,-1,-1,0,0,0,1,0,0,0,1];
+                    case 16; R = [1,0,0,0,1,0,0,0,1,0,1,0,-1,-1,0,0,0,1,-1,-1,0,1,0,0,0,0,1];
+                    case 17; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,-1,0,1,0,-1,-1,0,0,0,1,0,-1,0,1,1,0,0,0,-1,-1,-1,0,1,0,0,0,0,1,1,1,0,-1,0,0,0,0,-1];
+                    case 18; R = [1,0,0,0,1,0,0,0,1,0,1,0,1,0,0,0,0,-1,0,1,0,-1,-1,0,0,0,1,1,0,0,-1,-1,0,0,0,-1,-1,-1,0,0,1,0,0,0,-1,-1,-1,0,1,0,0,0,0,1];
+                    case 19; R = [1,0,0,0,1,0,0,0,1,0,-1,0,-1,0,0,0,0,1,0,1,0,-1,-1,0,0,0,1,-1,0,0,1,1,0,0,0,1,1,1,0,0,-1,0,0,0,1,-1,-1,0,1,0,0,0,0,1];
+                    case 20; R = [1,0,0,0,1,0,0,0,1,0,-1,0,-1,0,0,0,0,-1,-1,0,0,0,-1,0,0,0,-1,0,1,0,-1,-1,0,0,0,1,0,1,0,1,0,0,0,0,1,-1,0,0,1,1,0,0,0,-1,0,-1,0,1,1,0,0,0,-1,1,1,0,0,-1,0,0,0,-1,-1,-1,0,1,0,0,0,0,1,1,0,0,-1,-1,0,0,0,1,-1,-1,0,0,1,0,0,0,1,1,1,0,-1,0,0,0,0,-1];
+                    case 21; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,1,0,1,0,-1,-1,0,0,0,1,0,-1,0,1,1,0,0,0,1,-1,-1,0,1,0,0,0,0,1,1,1,0,-1,0,0,0,0,1];
+                    case 22; R = [1,0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,-1,0,1,0,-1,-1,0,0,0,1,0,1,0,-1,-1,0,0,0,-1,-1,-1,0,1,0,0,0,0,1,-1,-1,0,1,0,0,0,0,-1];
+                    case 23; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,1,-1,0,0,0,-1,0,0,0,-1,0,1,0,-1,-1,0,0,0,1,1,0,0,0,1,0,0,0,-1,0,-1,0,1,1,0,0,0,1,0,-1,0,1,1,0,0,0,-1,-1,-1,0,1,0,0,0,0,1,0,1,0,-1,-1,0,0,0,-1,1,1,0,-1,0,0,0,0,1,1,1,0,-1,0,0,0,0,-1,-1,-1,0,1,0,0,0,0,-1];
+                    case 24; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,1,0,1,0,1,0,0,0,0,-1,0,1,0,-1,-1,0,0,0,1,0,-1,0,-1,0,0,0,0,-1,0,-1,0,1,1,0,0,0,1,1,0,0,-1,-1,0,0,0,-1,-1,-1,0,0,1,0,0,0,-1,-1,-1,0,1,0,0,0,0,1,-1,0,0,1,1,0,0,0,-1,1,1,0,0,-1,0,0,0,-1,1,1,0,-1,0,0,0,0,1];
+                    case 25; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,1,0,-1,0,-1,0,0,0,0,1,0,1,0,-1,-1,0,0,0,1,0,1,0,1,0,0,0,0,1,0,-1,0,1,1,0,0,0,1,-1,0,0,1,1,0,0,0,1,1,1,0,0,-1,0,0,0,1,-1,-1,0,1,0,0,0,0,1,1,0,0,-1,-1,0,0,0,1,-1,-1,0,0,1,0,0,0,1,1,1,0,-1,0,0,0,0,1];
+                    case 26; R = [1,0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,-1,0,-1,0,-1,0,0,0,0,1,0,1,0,-1,-1,0,0,0,1,0,-1,0,-1,0,0,0,0,-1,0,1,0,-1,-1,0,0,0,-1,-1,0,0,1,1,0,0,0,1,1,1,0,0,-1,0,0,0,1,-1,-1,0,1,0,0,0,0,1,-1,0,0,1,1,0,0,0,-1,1,1,0,0,-1,0,0,0,-1,-1,-1,0,1,0,0,0,0,-1];
+                    case 27; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,1,0,1,0,1,0,0,0,0,-1,0,1,0,-1,-1,0,0,0,1,-1,0,0,0,-1,0,0,0,-1,0,-1,0,-1,0,0,0,0,-1,0,-1,0,1,1,0,0,0,1,1,0,0,0,1,0,0,0,-1,1,0,0,-1,-1,0,0,0,-1,0,-1,0,-1,0,0,0,0,1,-1,-1,0,0,1,0,0,0,-1,-1,-1,0,1,0,0,0,0,1,0,-1,0,1,1,0,0,0,-1,-1,0,0,1,1,0,0,0,-1,0,1,0,1,0,0,0,0,1,1,1,0,0,-1,0,0,0,-1,1,1,0,-1,0,0,0,0,1,0,1,0,-1,-1,0,0,0,-1,-1,0,0,1,1,0,0,0,1,1,1,0,0,-1,0,0,0,1,1,1,0,-1,0,0,0,0,-1,1,0,0,-1,-1,0,0,0,1,-1,-1,0,0,1,0,0,0,1,-1,-1,0,1,0,0,0,0,-1];
+                    case 28; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,0,1,0,0,0,1,1,0,0,0,1,0,0,0,-1,-1,0,0,0,-1,0,0,0,1,-1,0,0,0,0,1,1,0,0,0,1,0,0,-1,0,0,0,-1,1,0,0,0,0,-1,-1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,-1,1,0,0,0,-1,0,-1,0,0,0,-1,0,0,0,1,1,0,0,0,-1,0,0,0,-1];
+                    case 29; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,0,1,0,0,0,1,1,0,0,-1,0,0,0,-1,0,0,0,-1,0,1,0,0,0,-1,-1,0,0,1,0,0,0,-1,0,0,0,1,0,-1,0,0,0,1,-1,0,0,0,0,1,1,0,0,0,1,0,0,-1,0,0,0,-1,-1,0,0,0,-1,0,0,0,-1,1,0,0,0,0,-1,-1,0,0,0,1,0,0,-1,0,0,0,1,1,0,0,0,0,1,-1,0,0,0,-1,0,0,1,0,0,0,-1,1,0,0,0,0,-1,1,0,0,0,-1,0,0,0,-1,-1,0,0,0,-1,0,0,1,0,0,0,1,-1,0,0,0,0,1,1,0,0,0,-1,0,-1,0,0,0,-1,0,0,0,1,0,0,-1,1,0,0,0,1,0,1,0,0,0,-1,0,0,0,-1,0,0,1,-1,0,0,0,1,0,1,0,0,0,1,0,0,0,-1,-1,0,0,0,1,0,0,0,1];
+                    case 30; R = [1,0,0,0,1,0,0,0,1,0,1,0,0,0,1,1,0,0,0,1,0,-1,0,0,0,0,1,0,0,1,1,0,0,0,1,0,0,0,1,0,-1,0,1,0,0,-1,0,0,0,0,1,0,1,0,-1,0,0,0,-1,0,0,0,1,1,0,0,0,0,-1,0,1,0,0,-1,0,1,0,0,0,0,1,0,-1,0,0,0,-1,1,0,0,0,0,1,0,1,0,-1,0,0,0,-1,0,0,0,1,-1,0,0,0,0,-1,0,1,0,1,0,0,0,0,-1,-1,0,0,0,1,0,1,0,0,0,0,1,0,-1,0,0,0,-1,1,0,0,0,-1,0,0,1,0,0,0,-1,-1,0,0,0,0,1,-1,0,0,0,-1,0,0,1,0,1,0,0,0,0,-1,-1,0,0,0,1,0,0,0,-1,1,0,0,0,-1,0,0,0,-1,0,0,-1,0,-1,0,-1,0,0,-1,0,0,0,0,-1,0,-1,0,0,-1,0,-1,0,0,0,0,-1];
+                    case 31; R = [1,0,0,0,1,0,0,0,1,0,1,0,-1,0,0,0,0,1,0,-1,0,1,0,0,0,0,-1,-1,0,0,0,-1,0,0,0,1,1,0,0,0,1,0,0,0,-1,0,-1,0,1,0,0,0,0,1,0,1,0,-1,0,0,0,0,-1,-1,0,0,0,-1,0,0,0,-1];
+                    case 32; R = [1,0,0,0,1,0,0,0,1,0,1,0,0,0,1,1,0,0,0,1,0,-1,0,0,0,0,1,-1,0,0,0,-1,0,0,0,-1,0,0,1,1,0,0,0,1,0,0,0,1,0,-1,0,1,0,0,0,-1,0,0,0,-1,-1,0,0,-1,0,0,0,0,1,0,1,0,-1,0,0,0,-1,0,0,0,1,0,-1,0,1,0,0,0,0,-1,1,0,0,0,0,-1,0,1,0,0,0,-1,-1,0,0,0,-1,0,0,-1,0,1,0,0,0,0,1,0,-1,0,0,0,-1,1,0,0,0,0,-1,0,1,0,-1,0,0,0,0,1,0,1,0,-1,0,0,1,0,0,0,0,-1,0,-1,0,0,-1,0,0,0,1,-1,0,0,1,0,0,0,1,0,0,0,-1,0,0,-1,0,1,0,1,0,0,0,0,-1,-1,0,0,0,1,0,-1,0,0,0,0,1,0,-1,0,1,0,0,0,0,1,0,-1,0,0,1,0,-1,0,0,0,0,-1,0,0,-1,1,0,0,0,-1,0,0,1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,-1,0,0,0,0,-1,0,-1,0,1,0,0,0,0,1,-1,0,0,0,-1,0,0,1,0,0,0,-1,1,0,0,0,1,0,1,0,0,0,0,-1,0,0,1,0,-1,0,-1,0,0,-1,0,0,0,1,0,0,0,-1,0,0,1,1,0,0,0,-1,0,-1,0,0,0,0,-1,0,1,0,1,0,0,0,-1,0,0,0,-1,0,0,1,-1,0,0,0,1,0,0,0,-1,0,-1,0,-1,0,0,0,-1,0,0,0,1,1,0,0,-1,0,0,0,0,-1,0,-1,0,0,0,-1,1,0,0,0,1,0,0,-1,0,-1,0,0,0,0,1,1,0,0,0,-1,0,0,0,1,0,-1,0,-1,0,0,0,0,-1,-1,0,0,0,1,0,0,0,1,0,0,1,0,1,0,1,0,0,1,0,0,0,0,1,0,1,0,0,1,0,1,0,0,0,0,1];
+                end
+                R = reshape(R,3,3,[]);
+            else
+
+                % initialize
+                R = zeros(3,3,48);
+                % load recipe
+                recipe = get_recipe(pg_code);
+                % make generators
+                nsyms = 0;
+                nsyms = nsyms+1; R(:,:,nsyms) = eye(3);
+                for k = 1:numel(recipe)
+                    nsyms=nsyms+1; R(:,:,nsyms) = decode_R(recipe(k)); 
+                end
+                % add elements until no new elements are generated
+                nsyms_last=0; MT = zeros(48,48);
+                while nsyms ~= nsyms_last
+                    nsyms_last=nsyms;
+                    for i = 1:nsyms_last
+                    for j = 1:nsyms_last
+                        if MT(i,j)==0
+                            A = R(:,:,i)*R(:,:,j);
+                            A_id = member_(A(:),reshape(R(:,:,1:nsyms),9,[]),am_dft.eps);
+                            if A_id == 0
+                                nsyms = nsyms+1; R(:,:,nsyms) = A; MT(i,j) = nsyms;
+                            else
+                                MT(i,j) = A_id;
+                            end
+                        end
+                    end
+                    end
+                end
+
+                MT = MT(1:nsyms,1:nsyms);
+                R  = R(:,:,1:nsyms);
+            end
+
+            function recipe  = get_recipe(sg_id)
+                pg_recipe_database = {...
+                     '','h','c','j','ch','bc','bj','bch','n','hn','en','kn','fhn','g','m','gh','cg',...
+                    'gj','cm','cgh','bn','in','bhn','ben','bkn','ikn','benh','cd','cdh','dg','bcld','dgh'};
+                recipe = pg_recipe_database{sg_id};
+            end
+            function R       = decode_R(str_r)
+                switch str_r
+                case 'a'; R = [  1  0  0;  0  1  0;  0  0  1]; % a
+                case 'b'; R = [ -1  0  0;  0 -1  0;  0  0  1]; % b
+                case 'c'; R = [ -1  0  0;  0  1  0;  0  0 -1]; % c
+                case 'd'; R = [  0  0  1;  1  0  0;  0  1  0]; % d
+                case 'e'; R = [  0  1  0;  1  0  0;  0  0 -1]; % e
+                case 'f'; R = [  0 -1  0; -1  0  0;  0  0 -1]; % f
+                case 'g'; R = [  0 -1  0;  1  0  0;  0  0  1]; % g
+                case 'h'; R = [ -1  0  0;  0 -1  0;  0  0 -1]; % h
+                case 'i'; R = [  1  0  0;  0  1  0;  0  0 -1]; % i
+                case 'j'; R = [  1  0  0;  0 -1  0;  0  0  1]; % j
+                case 'k'; R = [  0 -1  0; -1  0  0;  0  0  1]; % k
+                case 'l'; R = [  0  1  0;  1  0  0;  0  0  1]; % l
+                case 'm'; R = [  0  1  0; -1  0  0;  0  0 -1]; % m
+                case 'n'; R = [  0 -1  0;  1 -1  0;  0  0  1]; % n
+                end
+            end 
+        end
+        
         function abc_angles   = bas2abc(bas)
             % [a,b,c,alpha,beta,gamma] = bas2abc(bas)
             M = bas.' * bas;
@@ -2110,10 +2216,6 @@ classdef am_dft
                 bak(bjc(:,j)) = [1:nsyms]; gen(:,j) = bak(gen(:,j));
             end
 
-            % relabel multiplication table
-            function [MT] = relabel_multiplication_table(MT,fwd)
-                rev(fwd) = [1:size(MT,1)]; MT = rev(MT(fwd,fwd));
-            end
         end
 
         function [fwd,M]      = find_pointgroup_transformation(g,h)
@@ -2122,27 +2224,27 @@ classdef am_dft
 
             import am_dft.* am_lib.*
 
-            % get number if symmetries
-            nsyms = size(g,3);
-            
             % find bijection bjc: h -> g and generators for h
-            [bjc,gen] = find_isomorphic_bijection(g,h);
+            G=get_multiplication_table(g);
+            H=get_multiplication_table(h);
+            [bjc,gen] = find_isomorphic_bijection(G,H);
             srt_ = rankc_(bjc); bjc = bjc(:,srt_); gen = gen(:,srt_);
 
-            % RECOVER THIS FILTERING PART 
-            % RECOVER THIS FILTERING PART 
-            % RECOVER THIS FILTERING PART 
-            % RECOVER THIS FILTERING PART 
-            % RECOVER THIS FILTERING PART 
-            
-            
+            % check diagonalize symmetry values to make sure the symmetries are of the correct type
+            % this removes the possibility that multiplication table may be obeyed with symmetries of differnet types
+            nbjcs=size(bjc,2); ex_ = true(1,nbjcs); 
+            g_ps_id = identify_point_symmetries(g); 
+            h_ps_id = identify_point_symmetries(h);
+            for j = 1:nbjcs;   ex_ = all(h_ps_id(bjc(:,j))==g_ps_id,1); end
+            bjc = bjc(:,ex_); gen = gen(:,ex_); nbjcs=size(bjc,2);
+
             % find integer transformation matrix (try all possible bijections and
             % integer transformations with nonzero-determinants); in reality, not all
             % matrices are tried, instead: 
             %       first try the identity
             %       then try all matrices with elements in [-1,0,1] with determinant 1 
             %       then try all matrices with elements in [-2,-1,0,1,2] with determinant 1 
-            q = 0; ngens = size(gen,1); nbjcs=size(bjc,2);
+            q = 0; ngens = size(gen,1); 
             for m = 0:1
                 % generate the possible transformation matrices
                 switch m
@@ -2164,20 +2266,12 @@ classdef am_dft
                 % checking each matrix generated above
                 for k = 1:nXs; for j = 1:nbjcs
                     gencheck_ = true;
-                    % first pass check generators (for some reason this check isn't sufficient by itself...)
+                    % check generators
                     for i = 1:ngens
                         if any(any(abs( X(:,:,k) * g(:,:,gen(i,j)) * inv(X(:,:,k)) - h(:,:,bjc(gen(i,j),j)) )>am_lib.eps ))
                             gencheck_ = false; break;
                         end
                     end
-%                     % second pass: check all symmetries
-%                     if gencheck_
-%                         for i = 1:nsyms
-%                             if any(any( abs(X(:,:,k) * g(:,:,i) * invX(:,:,k) - h(:,:,bjc(i,j)))>am_lib.eps ))
-%                                 gencheck_ = false; break;
-%                             end
-%                         end
-%                     end
                     % check whether a match has been found
                     if gencheck_
                         % at this point a bijection permutation and transformation matrix have been
@@ -2191,6 +2285,27 @@ classdef am_dft
             end
         end
 
+        
+        % DEVELOPMENT
+        
+            function MT = get_mt_(r_mt,t_mt,rt)
+                
+                import am_lib.*
+                 
+                % define multiplication
+                mult_ = @(a,b) [r_mt(a(1),b(1));t_mt(a(2),b(2))];
+                %
+                nsyms=size(rt,2);
+                % construct multiplication table
+                for j1 = 1:nsyms
+                for j2 = 1:nsyms
+                    MT(j1,j2) = member_(mult_(rt(:,j1),rt(:,j2)),rt);
+                end
+                end
+            end
+
+        % DEVELOPMENT
+        
 
         % unit cells
 
@@ -4473,6 +4588,9 @@ classdef am_dft
                 'symb',{uc.symb},'mass',uc.mass,'nspecies',sum(unique(uc.species(p2u)).'==uc.species(p2u),2).', ...
                 'natoms',numel(p2u),'tau',mod_(B\uc.tau(:,p2u)),'species',uc.species(p2u) );
             pc = pc_(uc,B,p2u);
+            
+            % set first atom to 0 position, important for symmetries
+            pc.tau=mod_(pc.tau-pc.tau(:,1));
         end
 
         function [ic,i2p,p2i] = get_irreducible_cell(pc, tol)
@@ -4563,7 +4681,7 @@ classdef am_dft
             % uc.i2u = uc.p2u(pc.i2p);
         end
         
-        function [vc,v2p,p2v] = get_conventional_cell(pc, tol)
+        function [cc,c2p,p2c] = get_conventional_cell(pc, tol)
             % [vc,v2p,p2v] = get_conventional_cell(pc,tol)
             
             import am_dft.* am_lib.*
@@ -4579,6 +4697,9 @@ classdef am_dft
             filter_ = @(tr,dt,inds,ex_) deal(tr(ex_),dt(ex_),inds(ex_));
             [tr,dt,inds] = filter_(tr,dt,inds, dt  > 0 );
             [tr,dt,inds] = filter_(tr,dt,inds, tr ~= 3 );
+            
+            % relabel trace to get this order: e. c3, c2, c4, c6
+            tr = changem_(tr,[1,2,3,4,5],[3,0,-1,1,2]);
 
             % get the rotation axis of each proper rotation
             nTs = numel(inds); T = zeros(3,nTs);
@@ -4592,21 +4713,21 @@ classdef am_dft
 
             % sort rotation axes, by the order of rotation (higher symmetries first)
             % break degeneracy by putting vectors in the positive octant first
-            vc_bas = pc.bas*T; 
-            fwd = rankc_([-tr;-max(sign(vc_bas));sign(vc_bas)]);
+            cc_bas = pc.bas*T; 
+            fwd = rankc_([-tr;-max(sign(cc_bas));sign(cc_bas)]);
             filter_ = @(tr,dt,T,vc_bas,inds,ex_) deal(tr(ex_),dt(ex_),T(:,ex_),vc_bas(:,ex_),inds(ex_));
-            [tr,dt,T,vc_bas,inds] = filter_(tr,dt,T,vc_bas,inds, fwd );
+            [tr,dt,T,cc_bas,inds] = filter_(tr,dt,T,cc_bas,inds, fwd );
 
             % find the three highest symmetry non-collinear vectors and centering
             % transformation matrix from primitive to conventional cell basis  
             % i.e. C = pc.bas -> vc_bas; absolute highest symmetry is z, then y, then x, hence [k,j,i] and not [i,j,k]
-            for i = (  1):nTs; X = vc_bas(:,i);                    if any(~eq_(X, 0, tol)); break; end; end
-            for j = (i+1):nTs; X = cross(vc_bas(:,i),vc_bas(:,j)); if any(~eq_(X, 0, tol)); break; end; end
-            for k = (j+1):nTs; X = det(vc_bas(:,[i,j,k]));         if any(~eq_(X, 0, tol)); break; end; end
+            for i = (  1):nTs; X = cc_bas(:,i);                    if any(~eq_(X, 0, tol)); break; end; end
+            for j = (i+1):nTs; X = cross(cc_bas(:,i),cc_bas(:,j)); if any(~eq_(X, 0, tol)); break; end; end
+            for k = (j+1):nTs; X = det(cc_bas(:,[i,j,k]));         if any(~eq_(X, 0, tol)); break; end; end
             if any([k,j,i]==0); error('Conventional basis not found!'); else; C = T(:,[k,j,i]); end
 
             % construct conventional cell
-            [vc,v2p,p2v] = get_supercell(pc,C);
+            [cc,c2p,p2c] = get_supercell(pc,C);
         end
         
         function [uc,inds]    = match_cell(uc,uc_ref)
