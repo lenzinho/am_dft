@@ -117,24 +117,13 @@ classdef am_dft
         end
 
     end
-
     
-    % core
-
+    % vasp
+    
     methods (Static)
-        
-        % materials database
 
-        function uc = load_material(material)
-            switch material
-                case 'VN'; uc = create_cell(abc2bas(4.1340,'cubic'),[[0;0;0], [1;1;1]/2], {'V','N'}, 225);
-                otherwise; error('load_material: unknown material');
-            end
-        end
- 
+        % io
         
-        % vasp
-
         function [uc]    = load_poscar(fposcar)
             import am_lib.* am_dft.*
             fid=fopen(fposcar,'r');            % open file
@@ -166,139 +155,6 @@ classdef am_dft
                 end
                 if ~strcmp(coordtype(1),'d'); uc.tau=uc.bas\uc.tau*latpar; end
             fclose(fid);
-        end
-
-        function [uc]    = load_cif(fcif)
-
-            % NEED TO CONFIRM THAT THIS WORKS!
-            % NEED TO CONFIRM THAT THIS WORKS!
-            % NEED TO CONFIRM THAT THIS WORKS!
-            % MAY NOT WORK FOR ALL CASES!
-
-            import am_dft.* am_lib.*
-
-            % load file into memory
-            str = load_file_(fcif);
-
-            % exclude blank lines
-            ex_=strcmp(strtrim(str),''); str=strtrim(str(~ex_)); nlines=numel(str);
-
-            % get name
-            name_aliases = {...
-                '_chemical_name_mineral',...
-                '_chemical_name_systematic',...
-                '_chemical_formula_structural',...
-                '_chemical_formula_sum'};
-            for alias = name_aliases
-                mineral = extract_token_(str,alias{:});
-                if ~isempty(mineral), break; end
-            end
-
-            % get lattice basis
-            abc = [...
-                   extract_token_(str,'_cell_length_a',true) ...
-                   extract_token_(str,'_cell_length_b',true) ...
-                   extract_token_(str,'_cell_length_c',true)];
-            angles = [...
-                   extract_token_(str,'_cell_angle_alpha',true) ...
-                   extract_token_(str,'_cell_angle_beta' ,true) ...
-                   extract_token_(str,'_cell_angle_gamma',true)];
-            if length(abc)<3;    abc    = [1 1 1]; end
-            if length(angles)<3; angles = [90 90 90]; end
-            bas = abc2bas([abc,angles]);
-
-            % get atomic positions and species
-            symb_dataset={...
-                'He' ,'Li' ,'Be' ,'Ne' ,'Na' ,'Mg' ,'Al' ,'Si' ,'Cl' ,'Ar' ,'Ca' ,'Sc' ,'Ti' ,'Cr' ,'Mn' ,'Fe' ,'Co' ,'Ni' , ...
-                'Cu' ,'Zn' ,'Ga' ,'Ge' ,'As' ,'Se' ,'Br' ,'Kr' ,'Rb' ,'Sr' ,'Zr' ,'Nb' ,'Mo' ,'Tc' ,'Ru' ,'Rh' ,'Pd' ,'Ag' , ...
-                'Cd' ,'In' ,'Sn' ,'Sb' ,'Te' ,'Xe' ,'Cs' ,'Ba' ,'La' ,'Ce' ,'Pr' ,'Nd' ,'Pm' ,'Sm' ,'Eu' ,'Gd' ,'Tb' ,'Dy' , ...
-                'Ho' ,'Er' ,'Tm' ,'Yb' ,'Lu' ,'Hf' ,'Ta' ,'Re' ,'Os' ,'Ir' ,'Pt' ,'Au' ,'Hg' ,'Tl' ,'Pb' ,'Bi' ,'Po' ,'At' , ...
-                'Rn' ,'Fr' ,'Ra' ,'Ac' ,'Th' ,'Pa' ,'Np' ,'Pu' ,'Am' ,'Cm' ,'Bk' ,'Cf' ,'Es' ,'Fm' ,'Md' ,'No' ,'Lr' ,'Rf' , ...
-                'Db' ,'Sg' ,'Bh' ,'Hs' ,'Mt' ,'Ds' ,'Rg' ,'Uub','Uut','Uuq','Uup','Uuh','H'  ,'B'  ,'C'  ,'N'  ,'O'  ,'F'  , ...
-                'P'  ,'S'  ,'K'  ,'V'  ,'Y'  ,'I'  ,'W'  ,'U'  }; nelements = numel(symb_dataset); % NOTE: single letters last!
-            position_aliases = {...
-                '_atom_site_attached_hydrogens', ... % icsd
-                '_atom_site_U_iso_or_equiv', ... % crystal maker
-                '_atom_site_fract_z'};
-            for alias = position_aliases; ex_ = contains(str,alias{:}); if any(ex_)
-                j=find(ex_); i=1; tau=[];
-                switch alias{:}
-                    case {'_atom_site_fract_z','_atom_site_U_iso_or_equiv'}
-                        while and(~any(strmatchi_(str{j+i},{'_','#','loop_'})),lt(i+j,nlines))
-                            buffer = strsplit(str{j+i},' ');
-                            tau(1,i) = sscanf(buffer{4},'%f');
-                            tau(2,i) = sscanf(buffer{5},'%f');
-                            tau(3,i) = sscanf(buffer{6},'%f');
-                            for k = 1:nelements
-                                if contains(buffer{2},symb_dataset{k})
-                                    species_symb{i}=symb_dataset{k}; break;
-                                end
-                            end
-                            i=i+1;
-                        end
-                    case '_atom_site_attached_hydrogens'
-                        while lt(i+j-1,nlines) && ~any(strmatchi_(str{j+i},{'_','#','loop_'}))
-                            buffer = strsplit(str{j+i},' ');
-                            tau(1,i) = sscanf(buffer{5},'%f');
-                            tau(2,i) = sscanf(buffer{6},'%f');
-                            tau(3,i) = sscanf(buffer{7},'%f');
-                            for k = 1:nelements
-                                if contains(buffer{2},symb_dataset{k})
-                                    species_symb{i}=symb_dataset{k}; break;
-                                end
-                            end
-                            i=i+1;
-                        end
-                end
-                if ~isempty(tau); break; end
-            end; end
-            % replace symbolic species with a numerical value
-            [~,~,species]=unique(species_symb,'stable'); species=species(:).'; 
-            % make sure there is only one atom at each site
-            [~,i]=uniquec_(tau); tau=tau(:,i); species=species(i); symb=species_symb(i); Z=get_atomic_number(symb);
-
-            % get space group symmetries
-            position_aliases = {...
-                '_symmetry_Int_Tables_number', ... % icsd
-                '_symmetry_equiv_pos_as_xyz', ... % crystal maker
-                };
-            for alias = position_aliases; ex_ = contains(str,alias{:}); if any(ex_)
-                switch alias{:}
-                    case '_symmetry_equiv_pos_as_xyz'
-                        j=find(ex_); i=1; syms x y z;
-                        while ~isempty(strtrim(str{j+i})) && ~any(strmatchi_(str{j+i},{'_','#','loop_'})) && lt(i+j,nlines)
-                            buffer = strsplit(str{j+i},'''');
-                            buffer = strsplit(buffer{2},','); 
-                            tmp=coeffs(eval(buffer{1}),'all'); T(1) = double(tmp(end));
-                            tmp=coeffs(eval(buffer{2}),'all'); T(2) = double(tmp(end));
-                            tmp=coeffs(eval(buffer{3}),'all'); T(3) = double(tmp(end));
-                            S(1:3,1:3,i) = double(equationsToMatrix(...
-                                [eval(buffer{1}),eval(buffer{2}),eval(buffer{3})] ));
-                            S(1:3,4:4,i) = mod_(T(:));
-                            S(4:4,1:3,i) = 0;
-                            S(4:4,4:4,i) = 1;
-                            i=i+1;
-                        end
-                        break;
-                    case '_symmetry_Int_Tables_number'
-                        % true == generate from memory
-                        sg_id = extract_token_(str,'_symmetry_Int_Tables_number',true); S = generate_sg(sg_id,true);
-                        break;
-                end
-            end; end
-            nSs = size(S,3);
-
-            % generate all positions based on symmetry operations
-            seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
-            tau = reshape(mod_(seitz_apply_(S,tau)),3,[]); species=repmat(species,1,nSs);
-            [tau, j] = uniquec_(tau); species=species(j);
-            [species,i]=sort(species); tau=tau(:,i);
-
-            % define primitive cell creation function and make structure
-            uc_ = @(bas,symb,Z,species) struct('units','frac','bas',bas, ...
-                'symb',{symb},'mass',get_atomic_mass(Z),'nspecies',sum(unique(species).'==species,2).', ...
-                'natoms',numel(species),'tau',tau,'species',species);
-            uc = uc_(bas,symb,Z,species);
         end
 
         function [dft]   = load_eigenval(feigenval,Ef)
@@ -920,6 +776,156 @@ classdef am_dft
             end
         end
         
+        
+    end
+    
+    % core
+
+    methods (Static)
+        
+        % materials
+
+        function [uc]    = load_material(material)
+            switch material
+                case 'VN'; uc = create_cell(abc2bas(4.1340,'cubic'),[[0;0;0], [1;1;1]/2], {'V','N'}, 225);
+                otherwise; error('load_material: unknown material');
+            end
+        end
+ 
+        function [uc]    = load_cif(fcif)
+
+            % NEED TO CONFIRM THAT THIS WORKS!
+            % NEED TO CONFIRM THAT THIS WORKS!
+            % NEED TO CONFIRM THAT THIS WORKS!
+            % MAY NOT WORK FOR ALL CASES!
+
+            import am_dft.* am_lib.*
+
+            % load file into memory
+            str = load_file_(fcif);
+
+            % exclude blank lines
+            ex_=strcmp(strtrim(str),''); str=strtrim(str(~ex_)); nlines=numel(str);
+
+            % get name
+            name_aliases = {...
+                '_chemical_name_mineral',...
+                '_chemical_name_systematic',...
+                '_chemical_formula_structural',...
+                '_chemical_formula_sum'};
+            for alias = name_aliases
+                mineral = extract_token_(str,alias{:});
+                if ~isempty(mineral), break; end
+            end
+
+            % get lattice basis
+            abc = [...
+                   extract_token_(str,'_cell_length_a',true) ...
+                   extract_token_(str,'_cell_length_b',true) ...
+                   extract_token_(str,'_cell_length_c',true)];
+            angles = [...
+                   extract_token_(str,'_cell_angle_alpha',true) ...
+                   extract_token_(str,'_cell_angle_beta' ,true) ...
+                   extract_token_(str,'_cell_angle_gamma',true)];
+            if length(abc)<3;    abc    = [1 1 1]; end
+            if length(angles)<3; angles = [90 90 90]; end
+            bas = abc2bas([abc,angles]);
+
+            % get atomic positions and species
+            symb_dataset={...
+                'He' ,'Li' ,'Be' ,'Ne' ,'Na' ,'Mg' ,'Al' ,'Si' ,'Cl' ,'Ar' ,'Ca' ,'Sc' ,'Ti' ,'Cr' ,'Mn' ,'Fe' ,'Co' ,'Ni' , ...
+                'Cu' ,'Zn' ,'Ga' ,'Ge' ,'As' ,'Se' ,'Br' ,'Kr' ,'Rb' ,'Sr' ,'Zr' ,'Nb' ,'Mo' ,'Tc' ,'Ru' ,'Rh' ,'Pd' ,'Ag' , ...
+                'Cd' ,'In' ,'Sn' ,'Sb' ,'Te' ,'Xe' ,'Cs' ,'Ba' ,'La' ,'Ce' ,'Pr' ,'Nd' ,'Pm' ,'Sm' ,'Eu' ,'Gd' ,'Tb' ,'Dy' , ...
+                'Ho' ,'Er' ,'Tm' ,'Yb' ,'Lu' ,'Hf' ,'Ta' ,'Re' ,'Os' ,'Ir' ,'Pt' ,'Au' ,'Hg' ,'Tl' ,'Pb' ,'Bi' ,'Po' ,'At' , ...
+                'Rn' ,'Fr' ,'Ra' ,'Ac' ,'Th' ,'Pa' ,'Np' ,'Pu' ,'Am' ,'Cm' ,'Bk' ,'Cf' ,'Es' ,'Fm' ,'Md' ,'No' ,'Lr' ,'Rf' , ...
+                'Db' ,'Sg' ,'Bh' ,'Hs' ,'Mt' ,'Ds' ,'Rg' ,'Uub','Uut','Uuq','Uup','Uuh','H'  ,'B'  ,'C'  ,'N'  ,'O'  ,'F'  , ...
+                'P'  ,'S'  ,'K'  ,'V'  ,'Y'  ,'I'  ,'W'  ,'U'  }; nelements = numel(symb_dataset); % NOTE: single letters last!
+            position_aliases = {...
+                '_atom_site_attached_hydrogens', ... % icsd
+                '_atom_site_U_iso_or_equiv', ... % crystal maker
+                '_atom_site_fract_z'};
+            for alias = position_aliases; ex_ = contains(str,alias{:}); if any(ex_)
+                j=find(ex_); i=1; tau=[];
+                switch alias{:}
+                    case {'_atom_site_fract_z','_atom_site_U_iso_or_equiv'}
+                        while and(~any(strmatchi_(str{j+i},{'_','#','loop_'})),lt(i+j,nlines))
+                            buffer = strsplit(str{j+i},' ');
+                            tau(1,i) = sscanf(buffer{4},'%f');
+                            tau(2,i) = sscanf(buffer{5},'%f');
+                            tau(3,i) = sscanf(buffer{6},'%f');
+                            for k = 1:nelements
+                                if contains(buffer{2},symb_dataset{k})
+                                    species_symb{i}=symb_dataset{k}; break;
+                                end
+                            end
+                            i=i+1;
+                        end
+                    case '_atom_site_attached_hydrogens'
+                        while lt(i+j-1,nlines) && ~any(strmatchi_(str{j+i},{'_','#','loop_'}))
+                            buffer = strsplit(str{j+i},' ');
+                            tau(1,i) = sscanf(buffer{5},'%f');
+                            tau(2,i) = sscanf(buffer{6},'%f');
+                            tau(3,i) = sscanf(buffer{7},'%f');
+                            for k = 1:nelements
+                                if contains(buffer{2},symb_dataset{k})
+                                    species_symb{i}=symb_dataset{k}; break;
+                                end
+                            end
+                            i=i+1;
+                        end
+                end
+                if ~isempty(tau); break; end
+            end; end
+            % replace symbolic species with a numerical value
+            [~,~,species]=unique(species_symb,'stable'); species=species(:).'; 
+            % make sure there is only one atom at each site
+            [~,i]=uniquec_(tau); tau=tau(:,i); species=species(i); symb=species_symb(i); Z=get_atomic_number(symb);
+
+            % get space group symmetries
+            position_aliases = {...
+                '_symmetry_Int_Tables_number', ... % icsd
+                '_symmetry_equiv_pos_as_xyz', ... % crystal maker
+                };
+            for alias = position_aliases; ex_ = contains(str,alias{:}); if any(ex_)
+                switch alias{:}
+                    case '_symmetry_equiv_pos_as_xyz'
+                        j=find(ex_); i=1; syms x y z;
+                        while ~isempty(strtrim(str{j+i})) && ~any(strmatchi_(str{j+i},{'_','#','loop_'})) && lt(i+j,nlines)
+                            buffer = strsplit(str{j+i},'''');
+                            buffer = strsplit(buffer{2},','); 
+                            tmp=coeffs(eval(buffer{1}),'all'); T(1) = double(tmp(end));
+                            tmp=coeffs(eval(buffer{2}),'all'); T(2) = double(tmp(end));
+                            tmp=coeffs(eval(buffer{3}),'all'); T(3) = double(tmp(end));
+                            S(1:3,1:3,i) = double(equationsToMatrix(...
+                                [eval(buffer{1}),eval(buffer{2}),eval(buffer{3})] ));
+                            S(1:3,4:4,i) = mod_(T(:));
+                            S(4:4,1:3,i) = 0;
+                            S(4:4,4:4,i) = 1;
+                            i=i+1;
+                        end
+                        break;
+                    case '_symmetry_Int_Tables_number'
+                        % true == generate from memory
+                        sg_id = extract_token_(str,'_symmetry_Int_Tables_number',true); S = generate_sg(sg_id,true);
+                        break;
+                end
+            end; end
+            nSs = size(S,3);
+
+            % generate all positions based on symmetry operations
+            seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
+            tau = reshape(mod_(seitz_apply_(S,tau)),3,[]); species=repmat(species,1,nSs);
+            [tau, j] = uniquec_(tau); species=species(j);
+            [species,i]=sort(species); tau=tau(:,i);
+
+            % define primitive cell creation function and make structure
+            uc_ = @(bas,symb,Z,species) struct('units','frac','bas',bas, ...
+                'symb',{symb},'mass',get_atomic_mass(Z),'nspecies',sum(unique(species).'==species,2).', ...
+                'natoms',numel(species),'tau',tau,'species',species);
+            uc = uc_(bas,symb,Z,species);
+        end
+
+
         % symmetry
 
 %         function [sg,pg]      = get_groups(pc, tol)
