@@ -85,12 +85,21 @@ classdef am_dft
             % NOTE: correlation coefficient for a good fit should exceed
             % 0.99. For VN with pd orbitals and a pair cutoff of 3 Ang
             % (second neighbor), R^2 = 0.998.
+            %
+            % defaults that should work for almost anything:
+            % opts.continue=true;
+            % opts.fposcar='POSCAR';
+            % opts.feigenval='EIGENVAL';
+            % opts.spdf=get_vasp('potcar:vrhfin:orbital');
+            % opts.nskips=0;
+            % opts.Ef=get_vasp('outcar:fermi');
+            % opts.cutoff2=3;
+            %
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % check inputs
-            for f = {opts.fposcar}
+            for f = {opts.fposcar,opts.feigenval}
             if ~exist(f{:},'file'); error('File not found: %s',f{:}); end
             end
 
@@ -636,12 +645,12 @@ classdef am_dft
                 % POTCAR
                 case 'potcar:zval'  % valence on each atom in potcar
                     [~,x] = system('awk ''/ZVAL/{print $6}'' POTCAR'); x = sscanf(x,'%f');
-                case 'potcar:vrhfin:orbitals' % orbitals of each atom 
-                    [~,b] = system('grep ''VRHFIN'' POTCAR | sed -E ''s/([0-9])//g'' | sed -E ''s/ //g'' | sed -n -E ''s/^.*://p'' '); 
-                    b = strtrim(strsplit(strtrim(b),'\n'));
-                case 'potcar:vrhfin:orbitals' % ionic configuration of each atom (orbitals + occupation)
-                    [~,b] = system('grep ''VRHFIN'' POTCAR | sed -E ''s/([0-9])/\1,/g'' | sed -E ''s/ //g'' | sed -E ''s/,/ /g'' | sed -n -E ''s/^.*://p'' '); 
-                    b = strtrim(strsplit(strtrim(b),'\n'));
+                case 'potcar:vrhfin:configuration' % ionic configuration of each atom (orbitals + occupation)
+                    [~,x] = system('grep ''VRHFIN'' POTCAR | sed -E ''s/([0-9])/\1,/g'' | sed -E ''s/ //g'' | sed -E ''s/,/ /g'' | sed -n -E ''s/^.*://p'' '); 
+                    x = strtrim(strsplit(strtrim(x),'\n'));
+                case 'potcar:vrhfin:orbital' % orbitals of each atom 
+                    [~,x] = system('grep ''VRHFIN'' POTCAR | sed -E ''s/([0-9])//g'' | sed -E ''s/ //g'' | sed -n -E ''s/^.*://p'' '); 
+                    x = strtrim(strsplit(strtrim(x),'\n'));
                     
                 % PROCAR
                 case 'procar:ispin'
@@ -4004,9 +4013,7 @@ classdef am_dft
 
         function [tb,pp]      = get_tb(pc,uc,dft,cutoff,spdf,nskips)
 
-
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % get irreducible shells
             fprintf(' ... identifying pairs'); tic;
@@ -4031,8 +4038,8 @@ classdef am_dft
         function [tb,H]       = get_tb_model(ip,pp,uc,spdf)
             % set oribtals per irreducible atom: spdf = {'d','p'};
             % may wish to do this to set it per species: x={'p','d'}; spdf={x{ic.species}};
-            import am_lib.*
-            import am_dft.*
+            
+            import am_lib.* am_dft.*
 
             % set sym digits
             digits(10);
@@ -4072,7 +4079,7 @@ classdef am_dft
             % create bvk structure
             tb_ = @(pp,ip,sav,nbands) struct('units','cart','bas',pp.bas2pc*pp.bas, ...
                 'symb',{pp.symb},'mass',pp.mass,'species',pp.species(pp.p2u),'cutoff',pp.cutoff,'natoms',pp.pc_natoms,...
-                'outcar:nbands',nbands,'nshells',size(sav.W,2),'W',{sav.W},'vsk',{sav.vsk},'d',ip.d,'v',ip.v,'xy',ip.xy);
+                'nbands',nbands,'nshells',size(sav.W,2),'W',{sav.W},'vsk',{sav.vsk},'d',ip.d,'v',ip.v,'xy',ip.xy);
             tb = tb_(pp,ip,sav,nbands);
 
             % define function to get bond vector
@@ -4118,8 +4125,7 @@ classdef am_dft
         function [tb]         = get_tb_matrix_elements(tb,dft,nskips)
             % nskips : number of dft bands to skip (e.g. 5)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % copy number of bands to skip
             tb.nskips = nskips;
@@ -4129,7 +4135,7 @@ classdef am_dft
             d=unique(rnd_(d4fc)); d=conv([d,Inf],[1 1]/2,'valid'); nds = numel(d); r_best = Inf;
 
             % set simulated annealing temeprature and optimization options
-            kT = 20; kT_decay_ = @(kT,i) kT .* exp(-i/10); rand_ = @(x) (0.5-rand(size(x))).*abs(x./max(x));
+            kT = 20; kT_decay_ = @(kT,i) kT .* exp(-i/5); rand_ = @(x) (0.5-rand(size(x))).*abs(x./max(x));
             opts = optimoptions('lsqnonlin','Display','None','MaxIter',7);
 
             % select bands
@@ -4216,8 +4222,7 @@ classdef am_dft
             %         % translate to wigner-seitz cell
             %         UR = reshape(uc2ws_mex(UR,uc.bas,am_dft.tiny),size(UR));
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % readjust cutoff based on unitcell
             cutoff = min([normc_(uc.bas)/2,cutoff]);
@@ -4228,7 +4233,7 @@ classdef am_dft
                 [~,~,S] = get_symmetries(pc); nSs = size(S,3);
 
                 % save space symmetry combined with permutation of atomic positions as Q
-                M = perms([2:-1:1]).'; Q{1} = repmat(S,1,1,size(M,2)); Q{2} = repelem(M,1,nSs);
+               M = perms([2:-1:1]).'; Q{1} = repmat(S,1,1,size(M,2)); Q{2} = repelem(M,1,nSs);
 
                 % get multiplication table, list of inverse elements, and identity
                 [MT,E,I]= get_multiplication_table(Q); nQs = size(MT,1);
@@ -4247,18 +4252,24 @@ classdef am_dft
                 tau(:,:,:,2) = seitz_apply_(Q{1},pc_tau(:,x(2,ex_)));
                 for iq = 1:nQs; tau(:,:,iq,Q{2}(:,iq)) = tau(1:3,:,iq,:); end
 
-                % [uc-frac] shift reference atom to primitive cell and record uc index
+                % [pc-frac] define function to find the closest primitive cell vector
+                % and shift reference atom to primitive cell 
+                G_ = @(tau) round(tau - mod_(tau)); 
+                tau = tau-G_(tau(:,:,:,1));
+                
+                % [uc-frac] record uc index of atoms
                 %     relax matching criteria here by a factor of 10;
                 %     solves a problem for systems with atoms are at 1/3
                 %     position where one of the coordinates may be -0.6666
                 %     and the other 0.3334. Applying mod takes -0.6666 to
                 %     0.3334 causing a difference of 0.001.
-                G_ = @(tau) tau - mod_(tau); tau = mod_(matmul_(inv(uc.tau2pc),tau-G_(tau(:,:,:,1))));
+                tau = mod_(matmul_( inv(uc.tau2pc), tau ));
                 P1 = member_(tau(:,:,:,1)/10,uc.tau/10);
                 P2 = member_(tau(:,:,:,2)/10,uc.tau/10);
 
-                % create a unique pair label
-                [V,~,V_p2i]=unique([P1(:),P2(:)],'rows'); V=V.';
+                % create a unique pair label (it is very important to request 'stable' here
+                % since the position of elements in the PM table also encode information).
+                [V,~,V_p2i]=unique([P1(:),P2(:)],'rows','stable'); V=V.';
 
                 % get permutation representation (entries are unique pair indicies)
                 PM = reshape(V_p2i,size(P1)); A = get_connectivity(PM);
@@ -4300,6 +4311,9 @@ classdef am_dft
                         % [uc-frac] shift atom n to the primitive cell
                         tau = mod_(uc.tau - G);
                         % find orbits around c_id{m}(n)
+                        % => if this next line fails, check that the first occurance 
+                        %    of species m in uc is in the primitive cell (as close to 
+                        %    the origin as possible) 
                         ex_ = member_(uc.tau(:,xy(1,:)),tau).'==c_id{m}(n);
                         % record uc id for the pairing atom for each orbit
                         o_id{m}(:,n) = member_(uc.tau(:,xy(2,ex_)),tau).';
@@ -4339,8 +4353,7 @@ classdef am_dft
 
         function [it,pt]      = get_triplets(pc,uc,cutoff)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % readjust cutoff based on unitcell
             cutoff = min([normc_(uc.bas)/2,cutoff]);
@@ -4380,7 +4393,7 @@ classdef am_dft
                 P3 = member_(tau(:,:,:,3)/10,uc.tau/10);
 
                 % create a unique pair label
-                [V,~,V_p2i]=unique([P1(:),P2(:),P3(:)],'rows'); V=V.';
+                [V,~,V_p2i]=unique([P1(:),P2(:),P3(:)],'rows','stable'); V=V.';
 
                 % get permutation representation (entries are unique pair indicies)
                 PM = reshape(V_p2i,size(P1)); A = get_connectivity(PM);
@@ -4728,7 +4741,11 @@ classdef am_dft
             n=ceil(normc_(B.')); [Y{1:3}]=ndgrid(0:n(1),0:n(2),0:n(3)); nLs=prod(n+1); L=reshape(cat(3+1,Y{:})-1,[],3).';
 
             % expand atoms, coordinates supercell fractional, and reduce to primitive supercell
-            X = uniquec_([ reshape(repmat([1:pc.natoms],nLs,1),1,[]); mod_(inv(B)*osum_(L,pc.tau,2)) ]);
+            % Here, uniquec_ should not use 'stable', since atoms in the primitive cell should go first
+            % uniquec_ without stable has an inherent sort; alternatively, use uniquec_ (with 
+            % 'stable' built-in and then sort after); this is important later when getting pairs and triplets
+            X = uniquec_( [reshape(repmat([1:pc.natoms],nLs,1),1,[]); mod_(inv(B)*osum_(L,pc.tau,2))] );
+            X = X(:,rankc_(X));
 
             % create mapping
             u2p = X(1,:); [~,p2u]=unique(u2p); p2u=p2u(:).';
@@ -5506,36 +5523,6 @@ classdef am_dft
         end
 
 
-        % aux pairs and triplets
-
-        function [C]     = get_connectivity(PM)
-
-            import am_lib.*
-            import am_dft.*
-
-            % binary
-            [natoms,nRs] = size(PM);
-
-            % exclude all rows containing all zeros
-            PM = PM(~all(PM==0,2),:);
-
-            % construct sparse vectors
-            m = size(PM,1); t = zeros(1,m); for i = [1:m]; t(i) = PM(i,find(PM(i,:),1)); end
-            v = [ repmat(t(:),nRs,1), PM(:) ];
-
-            % exlcude zeros, make symmetric, ensure diagonals, and remove repeat
-            v = v(~any(v==0,2),:); v=[v;[v(:,2),v(:,1)]]; v=[v;[v(:,1),v(:,1)]]; v = unique(v,'rows');
-
-            % construct a sparse binary representation
-            C = sparse(v(:,1),v(:,2),ones(size(v,1),1),natoms,natoms); % A = double((A'*A)~=0);
-
-            % merge and reduce binary rep
-            C = merge_(C); C(abs(C)<am_dft.tiny)=0; C(abs(C)>am_dft.tiny)=1; C=full(C(any(C~=0,2),:));
-
-            % convert to logical
-            C = logical(C);
-        end
-
     end
 
 
@@ -5605,9 +5592,15 @@ classdef am_dft
         end
 
         function [r]    = get_atomic_radius(Z)
-            % [nm]
-            % Vainshtein BK, Fridkin VM, Indenbom VL (1995) Structure of Crystals (3rd Edition). Springer Verlag, Berlin.
-            % Clementi E, Raimondi DL, Reinhardt WP (1963). Journal of Chemical Physics 38:2686-
+            % [r] = get_atomic_radius(Z)
+            % Gives the radii of free atoms [nm].
+            %
+            % Refs: Vainshtein BK, Fridkin VM, Indenbom VL (1995) Structure of Crystals
+            %         (3rd Edition). Springer Verlag, Berlin. 
+            %       Clementi E, Raimondi DL, Reinhardt WP (1963). Journal of Chemical
+            %         Physics 38:2686
+            %    	M. De Graef and M. E. McHenry, Structure of Materials (Cambridge
+            %    	  University Press, 2012), p 655.
             database = [...
                  0.053, 0.031, 0.167, 0.112, 0.087, 0.067, 0.056, 0.048, 0.042, 0.038, 0.190, 0.145, 0.118, 0.111, 0.098,  ...
                  0.088, 0.079, 0.071, 0.243, 0.194, 0.184, 0.176, 0.171, 0.166, 0.161, 0.156, 0.152, 0.149, 0.145, 0.142,  ...
@@ -5621,8 +5614,11 @@ classdef am_dft
         end
         
         function [r]    = get_ionic_radius(Z)
-            % [nm]
-            % Slater JC (1964) Journal of Chemical Physics 39:3199-
+            % [r] = get_ionic_radius(Z)
+            % Gives the ionic atomic radis [nm].
+            %
+            % Refs: Slater JC (1964) Journal of Chemical Physics 39:3199
+            % 
             database = [...
                 0.025, 0.031, 0.145, 0.105, 0.085, 0.070, 0.065, 0.060, 0.050, 0.038, 0.180, 0.150, 0.125,  ...
                 0.110, 0.100, 0.100, 0.100, 0.071, 0.220, 0.180, 0.160, 0.140, 0.135, 0.140, 0.140, 0.140,  ...
@@ -5637,9 +5633,14 @@ classdef am_dft
         end
         
         function [r]    = get_crystal_radius(Z)
-            % [nm]
-            % Shannon RD Prewitt CT (1969) Acta Crystallographica B25:925-946
-            % Shannon RD (1976) Acta Crystallographica A23:751-761
+            % [r] = get_crystal_radius(Z)
+            % Gives the radis [nm] of neutral atoms in a closely-packed crystal, since
+            % increasing the coordination causes an increase in radius.
+            %
+            % Refs: M. De Graef and M. E. McHenry, Structure of Materials (Cambridge
+            %    	  University Press, 2012), p 655.
+            %       Shannon RD Prewitt CT (1969) Acta Crystallographica B25:925-946
+            %       Shannon RD (1976) Acta Crystallographica A23:751-761
             database = [...
                 0.010, 0.1  , 0.090, 0.041, 0.025, 0.029, 0.030, 0.121, 0.119, 0.1  , 0.116, 0.086, ... 
                 0.053, 0.040, 0.031, 0.043, 0.167, 0.1  , 0.152, 0.114, 0.089, 0.075, 0.068, 0.076, ...
