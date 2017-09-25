@@ -70,7 +70,9 @@ classdef am_dft
             % clear;clc
             %
             % import am_lib.*
+            
             import am_dft.*
+            
             %
             % opts.continue=true;
             % opts.fposcar='POSCAR';
@@ -113,8 +115,10 @@ classdef am_dft
                 [uc,pc] = get_cells(opts.fposcar);
                 % load dft
                 [dft]   = load_eigenval(opts.feigenval,opts.Ef);
+                % construct sc
+                [sc,sc.u2p,sc.p2u] = get_supercell(pc,diag([5,5,5])); sc.i2u = sc.p2u(pc.i2p); sc.u2i = pc.p2i(sc.u2p); 
                 % get tb
-                [tb,pp] = get_tb(pc,get_supercell(pc,diag([5,5,5])),dft,opts.cutoff2,opts.spdf,opts.nskips);
+                [tb,pp] = get_tb(pc,sc,dft,opts.cutoff2,opts.spdf,opts.nskips);
                 % save results
                 save(sname,'uc','pc','dft','tb','pp');
 
@@ -1026,20 +1030,23 @@ classdef am_dft
                 % seitz operator (applies mod to translational components)
                 md_ = @(X) [X(1:12,:);mod_(X(13:15,:),tol);X(16:end,:)];
                 rs_ = @(X) md_(reshape(X,4^2,[]));
-
-                MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))), rs_(S), tol) , s(3), s(3));
+                nSs = s(3);
+                
+                MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))), rs_(S), tol) , nSs, nSs);
 
             elseif s(1)==3 && s(2)==3
                 % point operator
                 rs_ = @(X) reshape(X,3^2,[]);
+                nSs = s(3);
 
-                MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))), rs_(S), tol ) , s(3), s(3));
+                MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))), rs_(S), tol ) , nSs, nSs);
 
             elseif s(1)==3
                 % translation operator
                 S = mod_(S);
+                nSs = s(2);
                 
-                MT = reshape( member_( mod_(reshape(osum_(S, S, 2),3,[]), tol), S, tol), s(2), s(2));
+                MT = reshape( member_( mod_(reshape(osum_(S, S, 2),3,[]), tol), S, tol), nSs, nSs);
 
             elseif s(1)==1
                 
@@ -1050,7 +1057,7 @@ classdef am_dft
                     % seitz operator (applies mod to translational components)
                     md_ = @(X) [X(1:12,:);mod_(X(13:15,:),tol);X(16:end,:)];
                     rs_ = @(X) md_(reshape(X,4^2,[]));
-                    nSs = size(S{1},3);
+                    nSs = s(3);
 
                     ref = [rs_(S{1});reshape(S{2},size(S{2},1),[])];
                     opr = [rs_(matmulp_(S{1},permute(S{1},[1,2,4,3]))); reshape(operm_(S{2},S{2}),size(S{2},1),[])];
@@ -1059,7 +1066,7 @@ classdef am_dft
                 elseif s(1)==3 && s(2)==3
                     % point operator
                     rs_ = @(X) reshape(X,3^2,[]);
-                    nSs = size(S{1},3);
+                    nSs = s(3);
 
                     ref = [rs_(S{1});reshape(S{2},size(S{2},1),[])];
                     opr = [rs_(matmulp_(S{1},permute(S{1},[1,2,4,3]))); reshape(operm_(S{2},S{2}),size(S{2},1),[])];
@@ -1250,6 +1257,50 @@ classdef am_dft
             end
         end
 
+        function print_character_table(CT,c_id)
+            % clear;clc
+            % [~,pc]=get_cells('POSCAR');
+            % [~,~,~,R]=get_symmetries(pc);
+            % [CT,c_id,irr]= get_irreps(R);
+
+            tol = am_lib.eps;
+            
+            % identify the prototypical symmetries
+            [~,unique_c_id]=unique(c_id);
+
+            % get number of classes
+            nclasses=numel(unique_c_id);
+
+            fprintf('      '); fprintf('%9s',repmat('---------',1,nclasses)); fprintf('\n');
+            % print class elements
+            cl_size = sum(c_id.'==c_id(unique_c_id),1);
+            fprintf('      '); for i = 1:nclasses; fprintf('%9i',cl_size(i)); end; fprintf('\n');
+            % print class name 
+            ps_name = decode_ps(identify_point_symmetries(R(:,:,unique_c_id)));
+            fprintf('      '); for i = 1:nclasses; fprintf('%9s',ps_name{i}); end; fprintf('\n');
+            % print rotation axis (intger)
+            ax = R_axis_( matmul_(matmul_((pc.bas),R(:,:,unique_c_id)),inv(pc.bas)) );
+            for i = 1:nclasses; while any(mod_(ax(:,i))>tol); ax(:,i) = ax(:,i)./min(abs(ax( ~eq_(ax(:,i),0,tol) ,i))); end; end; ax = round(ax);
+            fprintf('      '); fprintf(' [%2i%2i%2i]',ax); fprintf('\n');
+            % bar
+            fprintf('      '); fprintf('%9s',repmat(' --------',1,nclasses)); fprintf('\n');
+            % print character table
+            for l = 1:size(CT,1)
+                chi = CT(l,:); chi(eq_(chi,0,tol))=0;
+                fprintf('      '); fprintf('%9.3g',chi); fprintf('\n');
+            end
+            % bar
+            fprintf('      '); fprintf('%9s',repmat(' --------',1,nclasses)); fprintf('\n');
+            % print SO(3) and SU(2) characters single and double groups
+            character_ = @(l,alpha) sin((l+1/2)*alpha)./sin(alpha/2);
+            alpha = 2*pi./get_order(R);
+            for l = [0:.5:4]
+                chi = character_(l,alpha(:,unique_c_id)); chi(eq_(chi,0,tol))=0;
+                fprintf('      '); fprintf('%9.3g',chi); fprintf('\n');
+            end
+            fprintf('      '); fprintf('%9s',repmat('---------',1,nclasses)); fprintf('\n');
+        end
+        
         function c_id         = identify_classes(MT)
             %
             % for AX = XB, if elements A and B are conjugate pairs for some other element X in the group,  they are in the same class
@@ -1637,24 +1688,54 @@ classdef am_dft
             end
         end
 
-        function order        = get_order(S)
-
-            import am_lib.*
-            import am_dft.*
-
-            check_ = @(x) any(abs(x(:))>am_lib.eps);
-
-            if size(S,1)==3
-                order = 1; X=S(1:3,1:3);
-                while check_(X - eye(3))
-                    order = order + 1;
-                    X = X*S;
+        function ps_name      = decode_ps(ps_code)
+            nsyms = numel(ps_code);ps_name=cell(1,nsyms);
+            for i = 1:nsyms
+                switch ps_code(i)
+                    case 1;   ps_name{i}='e';
+                    case 2;   ps_name{i}='c_2';
+                    case 3;   ps_name{i}='c_3';
+                    case 4;   ps_name{i}='c_4';
+                    case 5;   ps_name{i}='c_6';
+                    case 6;   ps_name{i}='i';
+                    case 7;   ps_name{i}='s_2';
+                    case 8;   ps_name{i}='s_6';
+                    case 9;   ps_name{i}='s_4';
+                    case 10;  ps_name{i}='s_3';
+                    otherwise;ps_name{i}='';
                 end
-            elseif size(S,1) == 4
-                order = 1; X=S(1:4,1:4);
-                while check_(X - eye(4))
-                    order = order + 1;
-                    X = X*S; X(1:3,4)=mod_(X(1:3,4));
+            end
+        end
+        
+        function order        = get_order(S, tol)
+
+            import am_lib.* am_dft.*
+
+            if nargin<2; tol = am_dft.tiny; end
+            
+            % define comparison function
+            check_ = @(x) any(~eq_(x(:),0,tol));
+
+            % get sizes
+            s = size(S); nSs = s(3);
+
+            if     s(1) == 3 && s(2) == 3       % point symmetry
+                order = ones(1,nSs); 
+                for i = 1:nSs
+                    X=S(1:3,1:3,i);
+                    while check_(X - eye(3))
+                        order(i) = order(i) + 1;
+                        X = X*S(:,:,i);
+                    end
+                end
+            elseif s(1) == 4 && s(2) == 4       % space symmetry
+                order = ones(1,nSs); 
+                for i = 1:nSs
+                    X=S(1:4,1:4,i);
+                    while check_(X - eye(4))
+                        order(i) = order(i) + 1;
+                        X = X*S(:,:,i); X(1:3,4)=mod_(X(1:3,4));
+                    end
                 end
             end
         end
@@ -4046,7 +4127,7 @@ classdef am_dft
 
             % initialize irreducible atom properties: for each irreducible atom,
             % set azimuthal quantum numbers J{:}, symmetries D{:}, and parity-transpose F{:}
-            [J,D,F] = get_tb_model_initialize_atoms(spdf,pp.Q{1}(1:3,1:3,:));
+            [J,D,F] = get_tb_symmetry_representation(spdf,pp.Q{1}(1:3,1:3,:));
 
             % primitive cell atoms define hamiltonian blocks dimensions and start/end sections
             p2i=uc.u2i(uc.p2u); for p=[1:pp.pc_natoms]; d(p)=sum(J{p2i(p)}*2+1); end; E=cumsum(d); S=E-d+1; nbands=E(end);
@@ -4726,6 +4807,7 @@ classdef am_dft
         end
 
         function [uc,u2p,p2u] = get_supercell(pc, B)
+            % [uc,u2p,p2u] = get_supercell(pc, B)
             % Example: to make a cell pc have the same shape as a reference cell ref, do this:
             % [~,ref] = get_cells('185_P63cm.poscar');
             % [~,pc]  = get_cells('194_P63mmc.poscar');
@@ -5464,13 +5546,12 @@ classdef am_dft
 
         % aux electrons
 
-        function [J,D,F] = get_tb_model_initialize_atoms(spdf,R)
+        function [J,D,F] = get_tb_symmetry_representation(spdf,R)
             % set symmetries D{:}, and parity-transpose F{:} for each
             % irreducible atom given a list of orbitals for each
             % irreducible atom, spdf = {'sp','d'}
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % get symmetries
             nRs=size(R,3);
@@ -5521,7 +5602,6 @@ classdef am_dft
             % sort values
             E = sort(E);
         end
-
 
     end
 
@@ -5652,6 +5732,56 @@ classdef am_dft
                 0.076, 0.1  , 0.194, 0.162, 0.126, 0.119, 0.109, 0.087, 0.1  , 0.100, 0.112, 0.111];
             nZs = numel(Z); r = zeros(1,nZs);
             for i = 1:nZs; r(i) = database(Z(i)); end
+        end
+        
+        function [c]    = get_atomic_configuration(Z)
+            %
+            database = {...
+                '1s1                                ', '1s2                                ', '[He] 2s1                           ', '[He] 2s2                           ', ...
+                '[He] 2s2 2p1                       ', '[He] 2s2 2p2                       ', '[He] 2s2 2p3                       ', '[He] 2s2 2p4                       ', ...
+                '[He] 2s2 2p5                       ', '[He] 2s2 2p6                       ', '[Ne] 3s1                           ', '[Ne] 3s2                           ', ...
+                '[Ne] 3s2 3p1                       ', '[Ne] 3s2 3p2                       ', '[Ne] 3s2 3p3                       ', '[Ne] 3s2 3p4                       ', ...
+                '[Ne] 3s2 3p5                       ', '[Ne] 3s2 3p6                       ', '[Ar] 4s1                           ', '[Ar] 4s2                           ', ...
+                '[Ar] 3d1 4s2                       ', '[Ar] 3d2 4s2                       ', '[Ar] 3d3 4s2                       ', '[Ar] 3d5 4s1                       ', ...
+                '[Ar] 3d5 4s2                       ', '[Ar] 3d6 4s2                       ', '[Ar] 3d7 4s2                       ', '[Ar] 3d8 4s2                       ', ...
+                '[Ar] 3d10 4s1                      ', '[Ar] 3d10 4s2                      ', '[Ar] 3d10 4s2 4p1                  ', '[Ar] 3d10 4s2 4p2                  ', ...
+                '[Ar] 3d10 4s2 4p3                  ', '[Ar] 3d10 4s2 4p4                  ', '[Ar] 3d10 4s2 4p5                  ', '[Ar] 3d10 4s2 4p6                  ', ...
+                '[Kr] 5s1                           ', '[Kr] 5s2                           ', '[Kr] 4d1 5s2                       ', '[Kr] 4d2 5s2                       ', ...
+                '[Kr] 4d4 5s1                       ', '[Kr] 4d5 5s1                       ', '[Kr] 4d5 5s2                       ', '[Kr] 4d7 5s1                       ', ...
+                '[Kr] 4d8 5s1                       ', '[Kr] 4d10                          ', '[Kr] 4d10 5s1                      ', '[Kr] 4d10 5s2                      ', ...
+                '[Kr] 4d10 5s2 5p1                  ', '[Kr] 4d10 5s2 5p2                  ', '[Kr] 4d10 5s2 5p3                  ', '[Kr] 4d10 5s2 5p4                  ', ...
+                '[Kr] 4d10 5s2 5p5                  ', '[Kr] 4d10 5s2 5p6                  ', '[Xe] 6s1                           ', '[Xe] 6s2                           ', ...
+                '[Xe] 5d1 6s2                       ', '[Xe] 4f1 5d1 6s2                   ', '[Xe] 4f3 6s2                       ', '[Xe] 4f4 6s2                       ', ...
+                '[Xe] 4f5 6s2                       ', '[Xe] 4f6 6s2                       ', '[Xe] 4f7 6s2                       ', '[Xe] 4f7 5d1 6s2                   ', ...
+                '[Xe] 4f9 6s2                       ', '[Xe] 4f10 6s2                      ', '[Xe] 4f11 6s2                      ', '[Xe] 4f12 6s2                      ', ...
+                '[Xe] 4f13 6s2                      ', '[Xe] 4f14 6s2                      ', '[Xe] 4f14 5d1 6s2                  ', '[Xe] 4f14 5d2 6s2                  ', ...
+                '[Xe] 4f14 5d3 6s2                  ', '[Xe] 4f14 5d4 6s2                  ', '[Xe] 4f14 5d5 6s2                  ', '[Xe] 4f14 5d6 6s2                  ', ...
+                '[Xe] 4f14 5d7 6s2                  ', '[Xe] 4f14 5d9 6s1                  ', '[Xe] 4f14 5d10 6s1                 ', '[Xe] 4f14 5d10 6s2                 ', ...
+                '[Xe] 4f14 5d10 6s2 6p1             ', '[Xe] 4f14 5d10 6s2 6p2             ', '[Xe] 4f14 5d10 6s2 6p3             ', '[Xe] 4f14 5d10 6s2 6p4             ', ...
+                '[Xe] 4f14 5d10 6s2 6p5             ', '[Xe] 4f14 5d10 6s2 6p6             ', '[Rn] 7s1                           ', '[Rn] 7s22                          ', ...
+                '[Rn] 6d1 7s2                       ', '[Rn] 6d2 7s2                       ', '[Rn] 5f2 6d1 7s2                   ', '[Rn] 5f3 6d1 7s2                   ', ...
+                '[Rn] 5f4 6d1 7s2                   ', '[Rn] 5f6 7s2                       ', '[Rn] 5f7 7s2                       ', '[Rn] 5f7 6d1 7s2                   ', ...
+                '[Rn] 5f9 7s2                       ', '[Rn] 5f10 7s2                      ', '[Rn] 5f11 7s2                      ', '[Rn] 5f12 7s2                      ', ...
+                '[Rn] 5f13 7s2                      ', '[Rn] 5f14 7s2                      ', '[Rn] 5f14 7s2 7p1                  ', '[Rn] 5f14 6d2 7s2                  ', ...
+                '[Rn] 5f14 6d3 7s2                  ', '[Rn] 5f14 6d4 7s2                  ', '[Rn] 5f14 6d5 7s2                  ', '[Rn] 5f14 6d6 7s2                  ', ...
+                '[Rn] 5f14 6d7 7s2                  ', '[Rn] 5f14 6d8 7s2                  ', '[Rn] 5f14 6d9 7s2                  ', '[Rn] 5f14 6d10 7s2                 ', ...
+                '[Rn] 5f14 6d10 7s2 7p1             ', '[Rn] 5f14 6d10 7s2 7p2             ', '[Rn] 5f14 6d10 7s2 7p3             ', '[Rn] 5f14 6d10 7s2 7p4             ', ...
+                '[Rn] 5f14 6d10 7s2 7p5             ', '[Rn] 5f14 6d10 7s2 7p6             ', '[Og] 8s1                           ', '[Og] 8s2                           ', ...
+                '[Og] 8s2 8p1                       ', '[Og] 7d1 8s2 8p1                   ', '[Og] 6f1 7d1 8s2 8p1               ', '[Og] 6f3 8s2 8p1                   ', ...
+                '[Og] 5g1 6f3 8s2 8p1               ', '[Og] 5g2 6f2 7d1 8s2 8p1           ', '[Og] 5g3 6f2 8s2 8p2               ', '[Og] 5g4 6f2 8s2 8p2               ', ...
+                '[Og] 5g5 6f2 8s2 8p2               ', '[Og] 5g6 6f2 8s2 8p2               ', '[Og] 5g7 6f2 8s2 8p2               ', '[Og] 5g8 6f2 8s2 8p2               ', ...
+                '[Og] 5g8 6f3 8s2 8p2               ', '[Og] 5g8 6f4 8s2 8p2               ', '[Og] 5g9 6f4 8s2 8p2               ', '[Og] 5g10 6f4 8s2 8p2              ', ...
+                '[Og] 5g11 6f3 7d1 8s2 8p2          ', '[Og] 5g12 6f3 7d1 8s2 8p2          ', '[Og] 5g13 6f2 7d2 8s2 8p2          ', '[Og] 5g14 6f3 7d1 8s2 8p2          ', ...
+                '[Og] 5g15 6f2 7d2 8s2 8p2          ', '[Og] 5g16 6f2 7d2 8s2 8p2          ', '[Og] 5g17 6f2 7d2 8s2 8p2          ', '[Og] 5g18 6f1 7d3 8s2 8p2          ', ...
+                '[Og] 5g18 6f3 7d2 8s2 8p2          ', '[Og] 5g18 6f4 7d2 8s2 8p2          ', '[Og] 5g18 6f5 7d2 8s2 8p2          ', '[Og] 5g18 6f6 7d2 8s2 8p2          ', ...
+                '[Og] 5g18 6f6 7d3 8s2 8p2          ', '[Og] 5g18 6f6 7d4 8s2 8p2          ', '[Og] 5g18 6f8 7d3 8s2 8p2          ', '[Og] 5g18 6f9 7d3 8s2 8p2          ', ...
+                '[Og] 5g18 6f11 7d2 8s2 8p2         ', '[Og] 5g18 6f12 7d2 8s2 8p2         ', '[Og] 5g18 6f13 7d2 8s2 8p2         ', '[Og] 5g18 6f14 7d2 8s2 8p2         ', ...
+                '[Og] 5g18 6f14 7d3 8s2 8p2         ', '[Og] 5g18 6f14 7d4 8s2 8p2         ', '[Og] 5g18 6f14 7d4 8s2 8p2 9s1     ', '[Og] 5g18 6f14 7d5 8s2 8p2 9s1     ', ...
+                '[Og] 5g18 6f14 7d6 8s2 8p2 9s1     ', '[Og] 5g18 6f14 7d8 8s2 8p2         ', '[Og] 5g18 6f14 7d9 8s2 8p2         ', '[Og] 5g18 6f14 7d10 8s2 8p2        ', ...
+                '[Og] 5g18 6f14 7d10 8s2 8p2 9s1    ', '[Og] 5g18 6f14 7d10 8s2 8p2 9s2    ', '[Og] 5g18 6f14 7d10 8s2 8p2 9s2 9p1', '[Og] 5g18 6f14 7d10 8s2 8p2 9s2 9p2', ...
+                '[Og] 5g18 6f14 7d10 8s2 8p3 9s2 9p2', '[Og] 5g18 6f14 7d10 8s2 8p4 9s2 9p2', '[Og] 5g18 6f14 7d10 8s2 8p5 9s2 9p2', '[Og] 5g18 6f14 7d10 8s2 8p6 9s2 9p2'};
+            nZs = numel(Z); c = cell(1,nZs);
+            for i = 1:nZs; c(i) = strtrim(database(Z(i))); end
         end
         
     end
