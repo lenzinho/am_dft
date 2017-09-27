@@ -629,6 +629,8 @@ classdef am_dft
                     [~,x] = system('awk ''/E-fermi/ { print $3 }'' OUTCAR');  x = sscanf(x,'%f');
                 case 'outcar:pressure'
                     [~,x] = system('awk ''/pressure/ { print $4 }'' OUTCAR'); x = sscanf(x,'%f');
+                case 'outcar:temperature'
+                    [~,x] = system('awk ''/EKIN_LAT/ { print $6 }'' OUTCAR'); x = sscanf(x,'%f');
                 case 'outcar:ispin'
                     [~,x] = system('awk ''/ISPIN/ { print $3 }'' OUTCAR'); x = sscanf(x,'%f');
                 case 'outcar:nbands'
@@ -1070,7 +1072,7 @@ classdef am_dft
                     % seitz operator (applies mod to translational components)
                     md_ = @(X) [X(1:12,:);mod_(X(13:15,:),tol);X(16:end,:)];
                     rs_ = @(X) md_(reshape(X,s(1)*s(2),[]));
-                    nSs = s(3);
+                    nsyms = s(3);
 
                     ref = [rs_(S{1});reshape(S{2},size(S{2},1),[])];
                     opr = [rs_(matmulp_(S{1},permute(S{1},[1,2,4,3]))); reshape(operm_(S{2},S{2}),size(S{2},1),[])];
@@ -1079,7 +1081,7 @@ classdef am_dft
                 elseif s(1)==3 && s(2)==3
                     % point operator
                     rs_ = @(X) reshape(X,s(1)*s(2),[]);
-                    nSs = s(3);
+                    nsyms = s(3);
 
                     ref = [rs_(S{1});reshape(S{2},size(S{2},1),[])];
                     opr = [rs_(matmulp_(S{1},permute(S{1},[1,2,4,3]))); reshape(operm_(S{2},S{2}),size(S{2},1),[])];
@@ -1092,35 +1094,35 @@ classdef am_dft
                 % seitz operator (applies mod to translational components)
                 md_ = @(X) [X(1:12,:);mod_(X(13:15,:),tol);X(16:end,:)];
                 rs_ = @(X) md_(reshape(X,s(1)*s(2),[]));
-                nSs = s(3);
+                nsyms = s(3);
                 
-                MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))), rs_(S), tol) , nSs, nSs);
+                MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))), rs_(S), tol) , nsyms, nsyms);
 
             elseif s(1)==3 && s(3)==1
                 % translation operator
                 S = mod_(S);
-                nSs = s(2);
+                nsyms = s(2);
                 
-                MT = reshape( member_( mod_(reshape(osum_(S, S, 2),3,[]), tol), S, tol), nSs, nSs);
+                MT = reshape( member_( mod_(reshape(osum_(S, S, 2),3,[]), tol), S, tol), nsyms, nsyms);
             else
                 % point operator
                 % s(1)==3 && s(2)==3
                 % but also others...
                 rs_ = @(X) reshape(X,s(1)*s(2),[]);
-                nSs = s(3);
+                nsyms = s(3);
 
-                MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))), rs_(S), tol ) , nSs, nSs);
+                MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))), rs_(S), tol ) , nsyms, nsyms);
             end
 
-            if any(MT(:)==0)
+            if any(sum(MT,1)~=sum([1:nsyms])) || any(sum(MT,2)~=sum([1:nsyms]))
                 error('MT is incorrect. Check for mistakes in the symmetry and ensure that the symmetry is in the primitive basis');
             end
 
             % find identity
-            if nargout>1; E = find(all(MT==[1:nSs].',1)); end
+            if nargout>1; E = find(all(MT==[1:nsyms].',1)); end
 
             % get inverse indicies
-            if nargout>2; I = [MT==E]*[1:nSs].'; end
+            if nargout>2; I = [MT==E]*[1:nsyms].'; end
         end
         
         function [MT]         = relabel_multiplication_table(MT,fwd)
@@ -1212,36 +1214,40 @@ classdef am_dft
             % s2c = identifies the class to which symmetries belong
             % CT = character table
             % irreps
+            %
+            % MATHEMATICS OF COMPUTATION, VOLUME 24, NUMBER 111, JULY, 1970
+            % Computing Irreducible Representations of Groups
+            % By John D. Dixon
 
             import am_lib.* am_dft.*
 
             % get regular rep G by putting identity along diagonal of multiplciation table
-            [MT,~,I] = get_multiplication_table(S); nGs = size(MT,2);
-            G = double(accessc_(MT,I)==permute([1:nGs],[1,3,2]));
-
+            [MT,~,I] = get_multiplication_table(S); nSs = size(MT,2);
+            RR = double(accessc_(MT,I)==permute([1:nSs],[1,3,2]));
+            
             % initialize decomposition loop
-            U = eye(nGs); inds = ones(nGs,1); ninds = 1;
+            [d,~,nSs] = size(RR); U = eye(nSs); inds = ones(nSs,1); ninds = 1;
 
             % loop until irreps are fully decomposed
             while true
                 % loop over cycle structures
                 for j = 1:max(inds)
                     ex_ = inds==j;
-                    H = dixon_decomposition_( G(ex_,ex_,:) );
+                    H = dixon_decomposition_( RR(ex_,ex_,:) );
                     [Vp,E] = eig(H,'vector'); [Vp] = orth_(Vp,E);
-                    for ig = 1:nGs
-                        G(ex_,ex_,ig) = Vp\G(ex_,ex_,ig)*Vp;
+                    for ig = 1:nSs
+                        RR(ex_,ex_,ig) = Vp\RR(ex_,ex_,ig)*Vp;
                     end
                     U(:,ex_) = (U(:,ex_)*Vp);
                 end
-                inds = [1:nGs]*merge_(double(sum(abs(G),3)>am_lib.eps));
+                inds = [1:d]*merge_(double(sum(abs(RR),3)>am_lib.eps));
                 if ninds == max(inds); break; else; ninds = max(inds); end
             end
             
             % get irreducible representations
             nirreps = max(inds); IR = cell(1,nirreps);
             for i = 1:nirreps
-                IR{i} = G(inds==i,inds==i,1:nGs);
+                IR{i} = RR(inds==i,inds==i,1:nSs);
             end
 
             function H = dixon_decomposition_(rr)
@@ -1275,16 +1281,20 @@ classdef am_dft
         end
 
         function [CT,cc_id,ir_id] = get_character_table(IR)
-
+            % R=generate_pg(32,true);
+            % IR = get_irreducible_representations(R);
+            % [CT,cc_id,ir_id] = get_character_table(IR);
+            % print_character_table(R,CT,cc_id)
+            
             import am_lib.*
             
             %
             nirreps = numel(IR);
-            nclasses= nirreps;
+            nsyms   = size(IR{1},3);
             
             % get character table
-            CT = zeros(nirreps,nclasses);
-            for i = 1:nclasses; for j = 1:nirreps
+            CT = zeros(nirreps,nsyms);
+            for i = 1:nsyms; for j = 1:nirreps
                 CT(j,i) = trace(IR{j}(:,:,i));
             end; end
         
@@ -1292,22 +1302,22 @@ classdef am_dft
             CT = wdv_(CT);
 
             % get irreducible irreps
-            [CT,ir_id]=uniquec_(CT);
+            [CT,~,cc_id]=uniquec_(CT);
 
             % get irreducible classes
-            [CT,cc_id]=uniquec_(CT.'); CT=CT.';
+            [CT,~,ir_id]=uniquec_(CT.'); CT=CT.';
         
         end
         
-        function                print_character_table(pc,R,CT,cc_id)
+        function                print_character_table(R,CT,cc_id)
             % clear;clc
-            % [~,pc]=get_cells('POSCAR');
-            % [~,~,~,R]=get_symmetries(pc);
-            % [CT,c_id,irr]= get_irreps(R);
+            % R=generate_pg(32,true);
+            % RR = get_regular_representation(R);
+            % IR = get_irreducible_representations(RR);
+            % [CT,cc_id,ir_id] = get_character_table(IR);
+            % print_character_table(R,CT,cc_id)
 
             import am_dft.* am_lib.*
-            
-            tol = am_lib.eps;
             
             % identify the prototypical symmetries
             [~,unique_c_id]=unique(cc_id);
@@ -1316,16 +1326,15 @@ classdef am_dft
             nclasses=numel(unique_c_id);
 
             fprintf('      '); fprintf('%9s',repmat('---------',1,nclasses)); fprintf('\n');
-            % print class elements
-            cl_size = sum(cc_id.'==cc_id(unique_c_id),1);
-            fprintf('      '); for i = 1:nclasses; fprintf('%9i',cl_size(i)); end; fprintf('\n');
+            % class label 
+            fprintf('      '); for i = 1:nclasses; fprintf('%9s',['#',num2str(i)]); end; fprintf('\n');
+            fprintf('      '); fprintf('%9s',repmat(' --------',1,nclasses)); fprintf('\n');
             % print class name 
             ps_name = decode_ps(identify_point_symmetries(R(:,:,unique_c_id)));
             fprintf('      '); for i = 1:nclasses; fprintf('%9s',ps_name{i}); end; fprintf('\n');
-            % print rotation axis (intger)
-            ax = R_axis_( matmul_(matmul_((pc.bas),R(:,:,unique_c_id)),inv(pc.bas)) );
-            for i = 1:nclasses; while any(mod_(ax(:,i))>tol); ax(:,i) = ax(:,i)./min(abs(ax( ~eq_(ax(:,i),0,tol) ,i))); end; end; ax = round(ax);
-            fprintf('      '); fprintf(' [%2i%2i%2i]',ax); fprintf('\n');
+            % print class elements
+            cl_size = sum(cc_id.'==cc_id(unique_c_id),2);
+            fprintf('      '); for i = 1:nclasses; fprintf('%9i',cl_size(i)); end; fprintf('\n');
             % bar
             fprintf('      '); fprintf('%9s',repmat(' --------',1,nclasses)); fprintf('\n');
             % print character table
@@ -1343,9 +1352,16 @@ classdef am_dft
                 fprintf('      '); fprintf('%9.4g',chi); fprintf('\n');
             end
             fprintf('      '); fprintf('%9s',repmat('---------',1,nclasses)); fprintf('\n');
+            
+            % symmetries in each class
+            fprintf('Symmetries in each classes:\n')
+            ps_name_long = get_long_ps_name(R);
+            for i = 1:numel(unique_c_id)
+                fprintf('%9s:%s\n',['#',num2str(i)], sprintf(' %-12s',ps_name_long{cc_id==i}));
+            end
         end
 
-        function c_id         = identify_classes(MT)
+        function cc_id        = identify_classes(MT)
             %
             % for AX = XB, if elements A and B are conjugate pairs for some other element X in the group,  they are in the same class
             %
@@ -1353,7 +1369,7 @@ classdef am_dft
 
             nsyms = size(MT,2);
             % allocate space for conjugacy class
-            c_id = zeros(nsyms,1);
+            cc_id = zeros(nsyms,1);
             % allocate space for conjugate elements
             conjugates = zeros(nsyms,1);
             % get inverse indicies
@@ -1361,7 +1377,7 @@ classdef am_dft
             % determine conjugacy classes
             k = 0;
             for i = 1:nsyms
-            if c_id(i)==0
+            if cc_id(i)==0
                 k=k+1;
                 % conjugate each element with all other group elements
                 % A = X(j) * B * X(j)^-1
@@ -1371,12 +1387,12 @@ classdef am_dft
                 % for each subgroup element created by conjugation find the corresponding index of the element in the group
                 % in order to save the class class_id number
                 for j = 1:nsyms
-                    c_id( conjugates(j) ) = k;
+                    cc_id( conjugates(j) ) = k;
                 end
             end
             end
             % relabel classes based on how many elements each class has
-            c_id = reindex_using_occurances(c_id);
+            cc_id = reindex_using_occurances(cc_id);
         end
 
         function [ps_id,tr,dt]= identify_point_symmetries(R)
@@ -1471,8 +1487,11 @@ classdef am_dft
         end
 
         function pg_code      = identify_pointgroup(R)
+            % pg_code = identify_pointgroup(R)
             %
-            % Point symmetries in fractional coordinates so that they are nice integers which can be easily classified.
+            % Point symmetries in fractional coordinates so that they are nice integers
+            % which can be easily classified.
+            %
             %    element:         e    i  c_2  c_3  c_4  c_6  s_2  s_6  s_4  s_3
             %    trace:          +3   -3   -1    0   +1   +2   +1    0   -1   -2
             %    determinant:    +1   -1   +1   +1   +1   +1   -1   -1   -1   -1
@@ -1491,6 +1510,16 @@ classdef am_dft
             %  Breneman, G. L. ?Crystallographic Symmetry Point Group Notation
             %  Flow Chart.? Journal of Chemical Education 64, no. 3 (March 1, 1987):
             %  216. doi:10.1021/ed064p216.
+            %
+            %   pg_code --> point_group_name
+            %     1 --> c_1       9 --> c_3      17 --> d_4      25 --> c_6v
+            %     2 --> s_2      10 --> s_6      18 --> c_4v     26 --> d_3h
+            %     3 --> c_2      11 --> d_3      19 --> d_2d     27 --> d_6h
+            %     4 --> c_1h     12 --> c_3v     20 --> d_4h     28 --> t
+            %     5 --> c_2h     13 --> d_3d     21 --> c_6      29 --> t_h
+            %     6 --> d_2      14 --> c_4      22 --> c_3h     30 --> o
+            %     7 --> c_2v     15 --> s_4      23 --> c_6h     31 --> t_d
+            %     8 --> d_2h     16 --> c_4h     24 --> d_6      32 --> o_h
             %
             import am_lib.* am_dft.*
             %
@@ -3062,8 +3091,7 @@ classdef am_dft
 
         function [bzp]        = get_bz_path(pc,n,brav)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % define kpoint path
             if     contains( lower(brav), 'fcc-short' )
@@ -3293,8 +3321,7 @@ classdef am_dft
         function plot_dispersion(model,bzp,flag, varargin)
             % model is either bvk or tb
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % define figure properties
             fig_ = @(h)       set(h,'color','white');
@@ -3508,8 +3535,7 @@ classdef am_dft
 
         function [bvk,pp]     = get_bvk(pc,uc,md,cutoff2,flags)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             if nargin<5; flags='-identify -model -fit -enforce'; end
 
@@ -3519,6 +3545,9 @@ classdef am_dft
                 [bvk,pp] = get_pairs(pc,uc,cutoff2);
                 fprintf('(%.f secs)\n',toc);
             else; fprintf('(skipped)\n'); end
+            
+            % [cart] print shell results
+            print_pairs(uc,pp)
 
             % force constant model
             fprintf(' ... determining harmonic force constant interdependancies and dynamical matrix ');
@@ -3543,20 +3572,73 @@ classdef am_dft
         end
 
         function [bvk,D,Dasr] = get_bvk_model(ip,pp,uc)
+            % [bvk,D,Dasr] = get_bvk_model(ip,pp,uc)
+            %
+            % Example for Si:
+            %
+            %     >> bvk.phi{1} (zeroth neighbor) ==> [0.00000    0.00000    0.00000]
+            % 
+            %     [ c01_11,      0,      0]
+            %     [      0, c01_11,      0]
+            %     [      0,      0, c01_11]
+            % 
+            %     >> bvk.phi{3} (first neighbor)  ==> [1.36750    1.36750    1.36750]
+            % 
+            %     [ c03_11, c03_21, c03_21]
+            %     [ c03_21, c03_11, c03_21]
+            %     [ c03_21, c03_21, c03_11]
+            % 
+            %     >> bvk.phi{2} (second neighbor) ==> [2.73500    2.73500    0.00000]
+            % 
+            %            (INCORRECT)	        (CORRECT, see MELVIN LAX p 264)
+            %     [ c02_11, c02_21,      0]  ==>  [ c02_11, c02_21, c02_31]
+            %     [ c02_21, c02_11,      0]  ==>  [ c02_21, c02_11, c02_31]
+            %     [      0,      0, c02_33]  ==>  [-c02_31,-c02_31, c02_33]
+            %
+            %     This erroneous version of the force constant matrix was also
+            %     published in 
+            %
+            %       H. M. J. Smith, Philosophical Transactions of the Royal Society a:
+            %       Mathematical, Physical and Engineering Sciences 241, 105 (1948).  
+            %
+            %     as pointed out in
+            %
+            %   	M. Lax, Symmetry Principles in Solid State and Molecular Physics
+            %   	(Dover Publications, 2012), p 264.
+            %
+            %     Also correct in 
+            %
+            %       R. Tubino and J. L. Birman, Phys. Rev. B 15, 5843 (1977).
+            %
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % set sym digits
             digits(10);
+                
+            % construct transpose super operator
+            T_superop = full(sparse([1:9],reshape(reshape([1:9],3,3).',1,[]),ones(9,1),9,9));
 
             % get form of force constants for irreducible prototypical bonds
             for i = 1:ip.nshells
+                sym_list = find(ip.s_ck(:,i)); 
+                W = kron_( pp.Q{1}(1:3,1:3,sym_list) , pp.Q{1}(1:3,1:3,sym_list));
+                for j = 1:numel(sym_list)
+                    if     all(pp.Q{2}(:,sym_list(j))==[1;2])
+                        % do nothing.
+                    elseif all(pp.Q{2}(:,sym_list(j))==[2;1])
+                        % flipp operator
+                        W(:,:,j) = W(:,:,j)*T_superop;
+                    end
+                end
+                
                 % use stabilzer group to determine crystallographic symmetry relations; A*B*C' equals kron(C,A)*B(:)
-                W = sum(kron_( pp.Q{1}(1:3,1:3,ip.s_ck(:,i)) , pp.Q{1}(1:3,1:3,ip.s_ck(:,i)))-eye(9),3);
+                W = sum(W-eye(9),3);
 
                 % enforce intrinsic symmetry (immaterial order of differentiation: c == c.')
-                F = zeros(9,9); F(sub2ind([9,9],[1:9],[1,4,7,2,5,8,3,6,9])) = 1; W = W + F-eye(9);
+                %    This doesn't seem to be a correct symmetry since the example in Lax p. 264
+                %    shows a force constant matrix which is anti-symmetric.
+                % F = zeros(9,9); F(sub2ind([9,9],[1:9],[1,4,7,2,5,8,3,6,9])) = 1; W = W + F-eye(9);
 
                 % get linearly-independent nullspace and normalize to first nonzero element
                 W=real(null(W)); W=frref_(W.').'; W(abs(W)<am_lib.eps)=0; W(abs(W-1)<am_lib.eps)=1; W=W./accessc_(W,findrow_(W.').');
@@ -3620,7 +3702,7 @@ classdef am_dft
             end
         end
 
-        function [bvk]        = get_bvk_force_constants(uc,md,bvk,pp)
+        function [bvk]        = get_bvk_force_constants(uc,md,bvk,pp,algo)
             % Extracts symmetry adapted force constants.
             %
             % Q: What is the difference of these methods?
@@ -3635,15 +3717,15 @@ classdef am_dft
             %          TIME [s]    0.322       0.031
             %      TIMES SLOWER    10x         1x
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
+            
+            if nargin<5; algo=1; end
 
             % [cart] get displacements and forces
             u = matmul_( md.bas, mod_( md.tau-uc.tau +.5 )-.5 );
             f = matmul_( md.bas, md.force );
 
             % select a method (method 1 is the most accurate)
-            algo = 1;
             switch algo
                 case 1
                     % Method incorporating full intrinsic and crystalographic symmetries
@@ -4653,18 +4735,17 @@ classdef am_dft
 
         end
 
-        function print_pairs(uc,pp)
+        function                print_pairs(uc,pp)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             vec_ = @(xy) uc2ws(uc.bas*(uc.tau(:,xy(2,:))-uc.tau(:,xy(1,:))),uc.bas); Z=[];
-            bar_ = @(x) repmat('-',[1,x]); fprintf('%s primitive shells %s\n', bar_(30), bar_(30) );
+            bar_ = @(x) repmat('-',[1,x]); fprintf('     %s primitive shells %s\n', bar_(30), bar_(30) );
             for m = 1:pp.pc_natoms
                 Y=[]; ex_ = uniquemask_(pp.i{m});
-                fprintf('atom %i: %i shells\n', m, sum(ex_));
-                fprintf('%-10s    %-30s   %-4s   %-7s   %-7s   %-4s\n', 'd [cart]','bond [cart]','#','ic(i,j)','pc(m,n)','irr.');
-                fprintf('%-10s    %-30s   %-4s   %-7s   %-7s   %-4s\n', bar_(10),bar_(30),bar_(4),bar_(7),bar_(7),bar_(4));
+                fprintf('     atom %i: %i shells\n', m, sum(ex_));
+                fprintf('     %-10s    %-30s   %-4s   %-7s   %-7s   %-4s\n', 'd [cart]','bond [cart]','#','ic(i,j)','pc(m,n)','irr.');
+                fprintf('     %-10s    %-30s   %-4s   %-7s   %-7s   %-4s\n', bar_(10),bar_(30),bar_(4),bar_(7),bar_(7),bar_(4));
             for i = 1:pp.npairs(m)
                 if ex_(i)
                     % record basic info
@@ -4678,28 +4759,27 @@ classdef am_dft
                     Y = [Y,[d;v;w;ij;mn;ir]];
                 end
             end
-                fprintf('%10.5f  %10.5f %10.5f %10.5f   %4i   %-3i-%3i   %-3i-%3i   %4i\n', Y(:,rankc_(Y(1,:))) ); fprintf('\n');
+                fprintf('     %10.5f  %10.5f %10.5f %10.5f   %4i   %-3i-%3i   %-3i-%3i   %4i\n', Y(:,rankc_(Y(1,:))) ); fprintf('\n');
                 Z=[Z,Y];
             end
             w = accumarray(Z(end,:).',Z(5,:).',[],@sum); Z = Z(:,uniquemask_(Z(end,:).')); Z(5,:) = w;
-            fprintf('%s irreducible shells %s\n', bar_(29), bar_(29) );
-            fprintf('%-10s    %-30s   %-4s   %-7s   %-7s   %-4s\n', 'd [cart]','bond [cart]','#','ic(i,j)','pc(m,n)','irr.');
-            fprintf('%-10s    %-30s   %-4s   %-7s   %-7s   %-4s\n', bar_(10),bar_(30),bar_(4),bar_(7),bar_(7),bar_(4));
-            fprintf('%10.5f  %10.5f %10.5f %10.5f   %4i   %-3i-%3i   %-3i-%3i   %4i\n', Z(:,rankc_(Z(1,:))) );
+            fprintf('     %s irreducible shells %s\n', bar_(29), bar_(29) );
+            fprintf('     %-10s    %-30s   %-4s   %-7s   %-7s   %-4s\n', 'd [cart]','bond [cart]','#','ic(i,j)','pc(m,n)','irr.');
+            fprintf('     %-10s    %-30s   %-4s   %-7s   %-7s   %-4s\n', bar_(10),bar_(30),bar_(4),bar_(7),bar_(7),bar_(4));
+            fprintf('     %10.5f  %10.5f %10.5f %10.5f   %4i   %-3i-%3i   %-3i-%3i   %4i\n', Z(:,rankc_(Z(1,:))) );
         end
 
-        function print_triplets(uc,pt)
+        function                print_triplets(uc,pt)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             vec_ = @(xy) uc2ws(pt.tau(:,xy(2,:)) - pt.tau(:,xy(1,:)),pt.bas); Z=[];
-            bar_ = @(x) repmat('-',[1,x]); fprintf('%s primitive shells %s\n', bar_(30), bar_(30) );
+            bar_ = @(x) repmat('-',[1,x]); fprintf('     %s primitive shells %s\n', bar_(30), bar_(30) );
             for m = 1:pt.pc_natoms
                 Y=[]; ex_ = uniquemask_(pt.i{m});
-                fprintf('atom %i: %i shells\n', m, sum(ex_));
-                fprintf('  %-30s    %-30s   %-4s   %-11s   %-11s   %-4s\n','tau_1 [cart]','tau_2 [cart]','#','ic(i,j,k)','pc(m,n,o)','irr.');
-                fprintf('  %-30s    %-30s   %-4s   %-11s   %-11s   %-4s\n',      bar_(30),      bar_(30),bar_(4),bar_(11),bar_(11),bar_(4));
+                fprintf('     atom %i: %i shells\n', m, sum(ex_));
+                fprintf('       %-30s    %-30s   %-4s   %-11s   %-11s   %-4s\n','tau_1 [cart]','tau_2 [cart]','#','ic(i,j,k)','pc(m,n,o)','irr.');
+                fprintf('       %-30s    %-30s   %-4s   %-11s   %-11s   %-4s\n',      bar_(30),      bar_(30),bar_(4),bar_(11),bar_(11),bar_(4));
             for i = 1:pt.npairs(m)
                 if ex_(i)
                     % record basic info
@@ -4715,15 +4795,15 @@ classdef am_dft
                     Y = [Y,[d;v1;v2;w;ijk;mno;ir]];
                 end
             end
-                fprintf('%10.5f %10.5f %10.5f  %10.5f %10.5f %10.5f   %4i   %3i-%3i-%3i   %3i-%3i-%3i   %4i\n', Y(2:end,rankc_(Y(1,:)))); fprintf('\n');
+                fprintf('     %10.5f %10.5f %10.5f  %10.5f %10.5f %10.5f   %4i   %3i-%3i-%3i   %3i-%3i-%3i   %4i\n', Y(2:end,rankc_(Y(1,:)))); fprintf('\n');
                 Z=[Z,Y];
             end
 
             w = accumarray(Z(end,:).',Z(8,:).',[],@sum); Z = Z(:,uniquemask_(Z(end,:).')); Z(8,:) = w;
-            fprintf('%s irreducible shells %s\n', bar_(29), bar_(29) );
-            fprintf('  %-30s    %-30s   %-4s   %-11s   %-11s   %-4s\n','tau_1 [cart]','tau_2 [cart]','#','ic(i,j,k)','pc(m,n,o)','irr.');
-            fprintf('  %-30s    %-30s   %-4s   %-11s   %-11s   %-4s\n',      bar_(30),      bar_(30),bar_(4),bar_(11),bar_(11),bar_(4));
-            fprintf('%10.5f %10.5f %10.5f  %10.5f %10.5f %10.5f   %4i   %3i-%3i-%3i   %3i-%3i-%3i   %4i\n', Z(2:end,rankc_(Z(1,:))));
+            fprintf('     %s irreducible shells %s\n', bar_(29), bar_(29) );
+            fprintf('       %-30s    %-30s   %-4s   %-11s   %-11s   %-4s\n','tau_1 [cart]','tau_2 [cart]','#','ic(i,j,k)','pc(m,n,o)','irr.');
+            fprintf('       %-30s    %-30s   %-4s   %-11s   %-11s   %-4s\n',      bar_(30),      bar_(30),bar_(4),bar_(11),bar_(11),bar_(4));
+            fprintf('     %10.5f %10.5f %10.5f  %10.5f %10.5f %10.5f   %4i   %3i-%3i-%3i   %3i-%3i-%3i   %4i\n', Z(2:end,rankc_(Z(1,:))));
         end
 
     end
