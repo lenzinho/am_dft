@@ -8,6 +8,7 @@ classdef am_dft
         units_GHz = 98229.06;   % sqrt( [eV/Ang^2] * [1/amu] ) --> 98229.06 [GHz=1/fs]
 
         usemex    = false;
+        potdir    = '/Users/lenzinho/Linux/vasp.5.4/potcars/PBE.54/';
     end
 
     
@@ -42,7 +43,7 @@ classdef am_dft
             if and(exist(sname,'file'),opts.continue); load(sname); else
 
                 % get cells
-                [uc,pc] = get_cells(opts.fposcar);
+                [uc,pc] = get_cell('poscar',opts.fposcar);
                 % load md
                 [md] = load_md(uc,opts.fforce_position,opts.dt);
                 % get both pairs and triplets?
@@ -112,7 +113,7 @@ classdef am_dft
             if and(exist(sname,'file'),opts.continue); load(sname); else
 
                 % get cells
-                [uc,pc] = get_cells(opts.fposcar);
+                [uc,pc] = get_cell('poscar',opts.fposcar);
                 % load dft
                 [dft]   = load_eigenval(opts.feigenval,opts.Ef);
                 % construct sc
@@ -321,7 +322,7 @@ classdef am_dft
                         'istart' , '0'       , 'icharg'    , '2'       , 'gga'     , 'AM'      , 'prec'   , 'Accurate' , ...
                         'ediff'  , '1e-9'    , 'algo'      , 'VeryFast', 'encut'  , '650'      , ...
                         'ismear' , '0'       , 'sigma'     , '0.2'     , ...
-                        'isif'   , '3'       , 'lorbit'    , '11'      , 'nblock'  , '1'       , 'addgrid', '.TRUE.'   , ...
+                        'isif'   , '3'       , 'lorbit'    , '11'      , 'nblock'  , '1'       , 'addgrid', '.FALSE.'   , ...
                         'lreal'  , '.FALSE.' , 'lwave'     , '.FALSE.' , 'lcharg'  , '.FALSE.' , 'lvtot'  , '.FALSE.' };
                         incar = generate_incar('base',opts_);
                     case 'rlx'
@@ -334,7 +335,7 @@ classdef am_dft
                         % appropriate.
                         opts_ = { ...
                             'ediffg' , '1e-8'    , 'ibrion' , '2'       , 'potim'  , '0.5'    , ...
-                            'nsw'    , '100'     , 'smass'  , '0'       , ...
+                            'nsw'    , '100'     , 'smass'  , '0'       , 'addgrid', '.TRUE.' , ...
                         };
                         incar = generate_incar('defaults',opts_);
                     case 'scf'
@@ -411,9 +412,13 @@ classdef am_dft
 
         function           write_potcar(uc,potdir)
             import am_dft.*
+
+            % default
+            if nargin<2;potdir=am_dft.potdir; end
+            % database
             potcar_database = {...
                 '  ' ,'  ' ,'Li_sv' ,'Be_sv' ,'  ' ,'  ' ,'  ' ,'O_s_GW' , ... %  h     he    li    be    b     c     n     o
-                '  ' ,'  ' ,'Na_pv' ,'Mg_pv' ,'Al_GW' ,'  ' ,'  ' ,'  ' , ... %  f     ne    na    mg    al    si    p     s
+                '  ' ,'  ' ,'Na_pv' ,'Mg_pv' ,'Al_GW' ,'Si' ,'  ' ,'  ' , ... %  f     ne    na    mg    al    si    p     s
                 '  ' ,'  ' ,'K_sv' ,'Ca_sv' ,'Sc_sv_GW' ,'Ti_pv' ,'  ' ,'  ' , ... %  cl    ar    k     ca    sc    ti    v     cr
                 'Mn_GW' ,'Fe_GW' ,'  ' ,'Ni_sv_GW' ,'  ' ,'  ' ,'Ga_sv_GW' ,'  ' , ... %  mn    fe    co    ni    cu    zn    ga    ge
                 '  ' ,'  ' ,'  ' ,'  ' ,'Rb_sv' ,'Sr_sv' ,'Y_sv' ,'  ' , ... %  as    se    br    kr    rb    sr    y     zr
