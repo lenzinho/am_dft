@@ -138,39 +138,6 @@ classdef am_dft
 
         % io
         
-        function [uc]    = load_poscar(fposcar)
-            import am_lib.* am_dft.*
-            fid=fopen(fposcar,'r');            % open file
-                header=fgetl(fid); uc.units='frac';% read header (often times contains atomic symbols)
-                latpar=sscanf(fgetl(fid),'%f');    % read lattice parameter
-                a1=sscanf(fgetl(fid),'%f %f %f');  % first basis vector
-                a2=sscanf(fgetl(fid),'%f %f %f');  % second basis vector
-                a3=sscanf(fgetl(fid),'%f %f %f');  % third basis vector
-                uc.bas=latpar*[a1,a2,a3];          % construct the basis (column vectors)
-                buffer=fgetl(fid);                 % check vasp format
-                if ~isempty(sscanf(buffer,'%f'))
-                    % vasp 4 format (symbols are missing, jumps straight to species)
-                    uc.symb=regexp(header, '([^ \s][^\s]*)', 'match');
-                    uc.nspecies=sscanf(buffer,repmat('%f' ,1,length(uc.symb)))';
-                else
-                    % vasp 5 format (symbols are present)
-                    uc.symb=regexp(buffer, '([^ \s][^\s]*)', 'match');
-                    uc.nspecies=sscanf(fgetl(fid),repmat('%f' ,1,length(uc.symb)))';
-                end
-                for i=1:length(uc.nspecies); uc.mass(i)=get_atomic_mass(get_atomic_number(uc.symb{i})); end
-                uc.natoms=sum(uc.nspecies);
-                coordtype=lower(strtrim(fgetl(fid)));
-                l=0;
-                for i=1:length(uc.nspecies)
-                    for j=1:uc.nspecies(i); l=l+1;
-                        uc.tau(:,l)=sscanf(fgetl(fid),'%f %f %f');
-                        uc.species(l)=i;
-                    end
-                end
-                if ~strcmp(coordtype(1),'d'); uc.tau=uc.bas\uc.tau*latpar; end
-            fclose(fid);
-        end
-
         function [dft]   = load_eigenval(feigenval,Ef)
             % load dispersion [frac-recp] and shift Fermi energy to zero
 
@@ -833,148 +800,6 @@ classdef am_dft
             end
         end
         
-        
-        % materials
-
-        function [uc]    = load_material(material)
-            switch material
-                case 'VN'; uc = create_cell(abc2bas(4.1340,'cubic'),[[0;0;0], [1;1;1]/2], {'V','N'}, 225);
-                otherwise; error('load_material: unknown material');
-            end
-        end
- 
-        function [uc]    = load_cif(fcif)
-
-            % NEED TO CONFIRM THAT THIS WORKS!
-            % NEED TO CONFIRM THAT THIS WORKS!
-            % NEED TO CONFIRM THAT THIS WORKS!
-            % MAY NOT WORK FOR ALL CASES!
-
-            import am_dft.* am_lib.*
-
-            % load file into memory
-            str = load_file_(fcif);
-
-            % exclude blank lines
-            ex_=strcmp(strtrim(str),''); str=strtrim(str(~ex_)); nlines=numel(str);
-
-            % get name
-            name_aliases = {...
-                '_chemical_name_mineral',...
-                '_chemical_name_systematic',...
-                '_chemical_formula_structural',...
-                '_chemical_formula_sum'};
-            for alias = name_aliases
-                mineral = extract_token_(str,alias{:});
-                if ~isempty(mineral), break; end
-            end
-
-            % get lattice basis
-            abc = [...
-                   extract_token_(str,'_cell_length_a',true) ...
-                   extract_token_(str,'_cell_length_b',true) ...
-                   extract_token_(str,'_cell_length_c',true)];
-            angles = [...
-                   extract_token_(str,'_cell_angle_alpha',true) ...
-                   extract_token_(str,'_cell_angle_beta' ,true) ...
-                   extract_token_(str,'_cell_angle_gamma',true)];
-            if length(abc)<3;    abc    = [1 1 1]; end
-            if length(angles)<3; angles = [90 90 90]; end
-            bas = abc2bas([abc,angles]);
-
-            % get atomic positions and species
-            symb_dataset={...
-                'He' ,'Li' ,'Be' ,'Ne' ,'Na' ,'Mg' ,'Al' ,'Si' ,'Cl' ,'Ar' ,'Ca' ,'Sc' ,'Ti' ,'Cr' ,'Mn' ,'Fe' ,'Co' ,'Ni' , ...
-                'Cu' ,'Zn' ,'Ga' ,'Ge' ,'As' ,'Se' ,'Br' ,'Kr' ,'Rb' ,'Sr' ,'Zr' ,'Nb' ,'Mo' ,'Tc' ,'Ru' ,'Rh' ,'Pd' ,'Ag' , ...
-                'Cd' ,'In' ,'Sn' ,'Sb' ,'Te' ,'Xe' ,'Cs' ,'Ba' ,'La' ,'Ce' ,'Pr' ,'Nd' ,'Pm' ,'Sm' ,'Eu' ,'Gd' ,'Tb' ,'Dy' , ...
-                'Ho' ,'Er' ,'Tm' ,'Yb' ,'Lu' ,'Hf' ,'Ta' ,'Re' ,'Os' ,'Ir' ,'Pt' ,'Au' ,'Hg' ,'Tl' ,'Pb' ,'Bi' ,'Po' ,'At' , ...
-                'Rn' ,'Fr' ,'Ra' ,'Ac' ,'Th' ,'Pa' ,'Np' ,'Pu' ,'Am' ,'Cm' ,'Bk' ,'Cf' ,'Es' ,'Fm' ,'Md' ,'No' ,'Lr' ,'Rf' , ...
-                'Db' ,'Sg' ,'Bh' ,'Hs' ,'Mt' ,'Ds' ,'Rg' ,'Uub','Uut','Uuq','Uup','Uuh','H'  ,'B'  ,'C'  ,'N'  ,'O'  ,'F'  , ...
-                'P'  ,'S'  ,'K'  ,'V'  ,'Y'  ,'I'  ,'W'  ,'U'  }; nelements = numel(symb_dataset); % NOTE: single letters last!
-            position_aliases = {...
-                '_atom_site_attached_hydrogens', ... % icsd
-                '_atom_site_U_iso_or_equiv', ... % crystal maker
-                '_atom_site_fract_z'};
-            for alias = position_aliases; ex_ = contains(str,alias{:}); if any(ex_)
-                j=find(ex_); i=1; tau=[];
-                switch alias{:}
-                    case {'_atom_site_fract_z','_atom_site_U_iso_or_equiv'}
-                        while and(~any(strmatchi_(str{j+i},{'_','#','loop_'})),lt(i+j,nlines))
-                            buffer = strsplit(str{j+i},' ');
-                            tau(1,i) = sscanf(buffer{4},'%f');
-                            tau(2,i) = sscanf(buffer{5},'%f');
-                            tau(3,i) = sscanf(buffer{6},'%f');
-                            for k = 1:nelements
-                                if contains(buffer{2},symb_dataset{k})
-                                    species_symb{i}=symb_dataset{k}; break;
-                                end
-                            end
-                            i=i+1;
-                        end
-                    case '_atom_site_attached_hydrogens'
-                        while lt(i+j-1,nlines) && ~any(strmatchi_(str{j+i},{'_','#','loop_'}))
-                            buffer = strsplit(str{j+i},' ');
-                            tau(1,i) = sscanf(buffer{5},'%f');
-                            tau(2,i) = sscanf(buffer{6},'%f');
-                            tau(3,i) = sscanf(buffer{7},'%f');
-                            for k = 1:nelements
-                                if contains(buffer{2},symb_dataset{k})
-                                    species_symb{i}=symb_dataset{k}; break;
-                                end
-                            end
-                            i=i+1;
-                        end
-                end
-                if ~isempty(tau); break; end
-            end; end
-            % replace symbolic species with a numerical value
-            [~,~,species]=unique(species_symb,'stable'); species=species(:).'; 
-            % make sure there is only one atom at each site
-            [~,i]=uniquec_(tau); tau=tau(:,i); species=species(i); symb=species_symb(i); Z=get_atomic_number(symb);
-
-            % get space group symmetries
-            position_aliases = {...
-                '_symmetry_Int_Tables_number', ... % icsd
-                '_symmetry_equiv_pos_as_xyz', ... % crystal maker
-                };
-            for alias = position_aliases; ex_ = contains(str,alias{:}); if any(ex_)
-                switch alias{:}
-                    case '_symmetry_equiv_pos_as_xyz'
-                        j=find(ex_); i=1; syms x y z;
-                        while ~isempty(strtrim(str{j+i})) && ~any(strmatchi_(str{j+i},{'_','#','loop_'})) && lt(i+j,nlines)
-                            buffer = strsplit(str{j+i},'''');
-                            buffer = strsplit(buffer{2},','); 
-                            tmp=coeffs(eval(buffer{1}),'all'); T(1) = double(tmp(end));
-                            tmp=coeffs(eval(buffer{2}),'all'); T(2) = double(tmp(end));
-                            tmp=coeffs(eval(buffer{3}),'all'); T(3) = double(tmp(end));
-                            S(1:3,1:3,i) = double(equationsToMatrix(...
-                                [eval(buffer{1}),eval(buffer{2}),eval(buffer{3})] ));
-                            S(1:3,4:4,i) = mod_(T(:));
-                            S(4:4,1:3,i) = 0;
-                            S(4:4,4:4,i) = 1;
-                            i=i+1;
-                        end
-                        break;
-                    case '_symmetry_Int_Tables_number'
-                        % true == generate from memory
-                        sg_id = extract_token_(str,'_symmetry_Int_Tables_number',true); S = generate_sg(sg_id,true);
-                        break;
-                end
-            end; end
-            nSs = size(S,3);
-
-            % generate all positions based on symmetry operations
-            seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
-            tau = reshape(mod_(seitz_apply_(S,tau)),3,[]); species=repmat(species,1,nSs);
-            [tau, j] = uniquec_(tau); species=species(j);
-            [species,i]=sort(species); tau=tau(:,i);
-
-            % define primitive cell creation function and make structure
-            uc_ = @(bas,symb,Z,species) struct('units','frac','bas',bas, ...
-                'symb',{symb},'mass',get_atomic_mass(Z),'nspecies',sum(unique(species).'==species,2).', ...
-                'natoms',numel(species),'tau',tau,'species',species);
-            uc = uc_(bas,symb,Z,species);
-        end
 
 
         % symmetry
@@ -2592,28 +2417,30 @@ classdef am_dft
         
 
         % unit cells
-
-        function [uc,pc,ic,cc] = get_cells(fposcar, tol)
-            % [uc,pc,ic,cc]   = get_cells(fposcar)
+        
+        function [uc,pc,ic,cc]= get_cell(flag, arg, tol)
+            % [uc,pc,ic,cc]   = get_cell(fposcar)
             % fposcar can be a poscar or cif file
 
             import am_lib.* am_dft.*
-
-            % default poscar file
-            if nargin < 1; fposcar = 'POSCAR'; end
-            
-            % set default numerical tolerance
-            if nargin < 2; tol = am_dft.tiny; end
             
             % time
-            fprintf(' ... getting cells'); tic
-
-            % load poscar
-            if contains(fposcar,'cif')
-                uc = load_cif(fposcar);
-            else
-                uc = load_poscar(fposcar);
+            fprintf(' ... getting cell'); tic
+            
+            % validate input
+            validatestring(flag,{'poscar','cif','material'});
+            switch flag
+                case {'poscar','cif'};  if exist(arg,'file')~=2; fprintf('\n'); error('File does not exist: %s',arg); end
             end
+            switch flag
+                case 'poscar';   uc = load_poscar(arg);
+                case 'cif';      uc = load_cif(arg);
+                case 'material'; uc = load_material(arg);
+                case 'create';   uc = am_dft.create_cell(arg{:});
+            end
+            
+            % set default numerical tolerance
+            if nargin < 3; tol = am_dft.tiny; end
 
             % get primitive cell
             [pc,p2u,u2p] = get_primitive_cell(uc, tol);
@@ -2663,15 +2490,188 @@ classdef am_dft
             formula_density = number_density/(uc.natoms/gcd_(uc.nspecies));
 
             % print relevant information
-            fprintf(' (%.3f s) \n',toc);
-            fprintf('     %-15s = %s\n','formula',get_formula(uc));
-            fprintf('     %-15s = %s\n','primitive',decode_bravais(bv_code));
-            fprintf('     %-15s = %s\n','holohodry',decode_holohodry(hg_code));
-            fprintf('     %-15s = %s\n','point group',decode_pg(pg_code));
-            fprintf('     %-15s = %s\n','space group',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
-            fprintf('     %-15s = %-8.3f [g/cm3] \n','mass density',mass_density);
-            fprintf('     %-15s = %-8.3f [atoms/nm3]\n','number density',number_density);
-            fprintf('     %-15s = %-8.3f [f.u./nm3]\n','formula density',formula_density);
+            verbose = true;
+            if verbose
+                fprintf(' (%.3f s) \n',toc);
+                fprintf('     %-15s = %s\n','formula',get_formula(uc));
+                fprintf('     %-15s = %s\n','primitive',decode_bravais(bv_code));
+                fprintf('     %-15s = %s\n','holohodry',decode_holohodry(hg_code));
+                fprintf('     %-15s = %s\n','point group',decode_pg(pg_code));
+                fprintf('     %-15s = %s\n','space group',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
+                fprintf('     %-15s = %-8.3f [g/cm3] \n','mass density',mass_density);
+                fprintf('     %-15s = %-8.3f [atoms/nm3]\n','number density',number_density);
+                fprintf('     %-15s = %-8.3f [f.u./nm3]\n','formula density',formula_density);
+            end
+            
+            % sub functions
+            
+            function [uc]    = load_cif(fcif)
+
+                % load file into memory
+                str = am_lib.load_file_(fcif);
+
+                % exclude blank lines
+                ex_=strcmp(strtrim(str),''); str=strtrim(str(~ex_)); nlines=numel(str);
+
+                % get name
+                name_aliases = {...
+                    '_chemical_name_mineral',...
+                    '_chemical_name_systematic',...
+                    '_chemical_formula_structural',...
+                    '_chemical_formula_sum'};
+                for alias = name_aliases
+                    mineral = am_lib.extract_token_(str,alias{:});
+                    if ~isempty(mineral), break; end
+                end
+
+                % get lattice basis
+                abc = [...
+                       am_lib.extract_token_(str,'_cell_length_a',true) ...
+                       am_lib.extract_token_(str,'_cell_length_b',true) ...
+                       am_lib.extract_token_(str,'_cell_length_c',true)];
+                angles = [...
+                       am_lib.extract_token_(str,'_cell_angle_alpha',true) ...
+                       am_lib.extract_token_(str,'_cell_angle_beta' ,true) ...
+                       am_lib.extract_token_(str,'_cell_angle_gamma',true)];
+                if length(abc)<3;    abc    = [1 1 1]; end
+                if length(angles)<3; angles = [90 90 90]; end
+                bas = am_dft.abc2bas([abc,angles]);
+
+                % get atomic positions and species
+                symb_dataset={...
+                    'He' ,'Li' ,'Be' ,'Ne' ,'Na' ,'Mg' ,'Al' ,'Si' ,'Cl' ,'Ar' ,'Ca' ,'Sc' ,'Ti' ,'Cr' ,'Mn' ,'Fe' ,'Co' ,'Ni' , ...
+                    'Cu' ,'Zn' ,'Ga' ,'Ge' ,'As' ,'Se' ,'Br' ,'Kr' ,'Rb' ,'Sr' ,'Zr' ,'Nb' ,'Mo' ,'Tc' ,'Ru' ,'Rh' ,'Pd' ,'Ag' , ...
+                    'Cd' ,'In' ,'Sn' ,'Sb' ,'Te' ,'Xe' ,'Cs' ,'Ba' ,'La' ,'Ce' ,'Pr' ,'Nd' ,'Pm' ,'Sm' ,'Eu' ,'Gd' ,'Tb' ,'Dy' , ...
+                    'Ho' ,'Er' ,'Tm' ,'Yb' ,'Lu' ,'Hf' ,'Ta' ,'Re' ,'Os' ,'Ir' ,'Pt' ,'Au' ,'Hg' ,'Tl' ,'Pb' ,'Bi' ,'Po' ,'At' , ...
+                    'Rn' ,'Fr' ,'Ra' ,'Ac' ,'Th' ,'Pa' ,'Np' ,'Pu' ,'Am' ,'Cm' ,'Bk' ,'Cf' ,'Es' ,'Fm' ,'Md' ,'No' ,'Lr' ,'Rf' , ...
+                    'Db' ,'Sg' ,'Bh' ,'Hs' ,'Mt' ,'Ds' ,'Rg' ,'Uub','Uut','Uuq','Uup','Uuh','H'  ,'B'  ,'C'  ,'N'  ,'O'  ,'F'  , ...
+                    'P'  ,'S'  ,'K'  ,'V'  ,'Y'  ,'I'  ,'W'  ,'U'  }; nelements = numel(symb_dataset); % NOTE: single letters last!
+                position_aliases = {...
+                    '_atom_site_attached_hydrogens', ... % icsd
+                    '_atom_site_U_iso_or_equiv', ... % crystal maker
+                    '_atom_site_fract_z'};
+                for alias = position_aliases; ex_ = contains(str,alias{:}); if any(ex_)
+                    j=find(ex_); i=1; tau=[];
+                    switch alias{:}
+                        case {'_atom_site_fract_z','_atom_site_U_iso_or_equiv'}
+                            while and(~any(strmatchi_(str{j+i},{'_','#','loop_'})),lt(i+j,nlines))
+                                buffer = strsplit(str{j+i},' ');
+                                tau(1,i) = sscanf(buffer{4},'%f');
+                                tau(2,i) = sscanf(buffer{5},'%f');
+                                tau(3,i) = sscanf(buffer{6},'%f');
+                                for k = 1:nelements
+                                    if contains(buffer{2},symb_dataset{k})
+                                        species_symb{i}=symb_dataset{k}; break;
+                                    end
+                                end
+                                i=i+1;
+                            end
+                        case '_atom_site_attached_hydrogens'
+                            while lt(i+j-1,nlines) && ~any(am_lib.strmatchi_(str{j+i},{'_','#','loop_'}))
+                                buffer = strsplit(str{j+i},' ');
+                                tau(1,i) = sscanf(buffer{5},'%f');
+                                tau(2,i) = sscanf(buffer{6},'%f');
+                                tau(3,i) = sscanf(buffer{7},'%f');
+                                for k = 1:nelements
+                                    if contains(buffer{2},symb_dataset{k})
+                                        species_symb{i}=symb_dataset{k}; break;
+                                    end
+                                end
+                                i=i+1;
+                            end
+                    end
+                    if ~isempty(tau); break; end
+                end; end
+                % replace symbolic species with a numerical value
+                [~,~,species]=unique(species_symb,'stable'); species=species(:).'; 
+                % make sure there is only one atom at each site
+                [~,i]=am_lib.uniquec_(tau); tau=tau(:,i); species=species(i); symb=species_symb(i); Z=am_dft.get_atomic_number(symb);
+
+                % get space group symmetries
+                position_aliases = {...
+                    '_symmetry_Int_Tables_number', ... % icsd
+                    '_symmetry_equiv_pos_as_xyz', ... % crystal maker
+                    };
+                for alias = position_aliases; ex_ = contains(str,alias{:}); if any(ex_)
+                    switch alias{:}
+                        case '_symmetry_equiv_pos_as_xyz'
+                            j=find(ex_); i=1; syms x y z;
+                            while ~isempty(strtrim(str{j+i})) && ~any(strmatchi_(str{j+i},{'_','#','loop_'})) && lt(i+j,nlines)
+                                buffer = strsplit(str{j+i},'''');
+                                buffer = strsplit(buffer{2},','); 
+                                tmp=coeffs(eval(buffer{1}),'all'); T(1) = double(tmp(end));
+                                tmp=coeffs(eval(buffer{2}),'all'); T(2) = double(tmp(end));
+                                tmp=coeffs(eval(buffer{3}),'all'); T(3) = double(tmp(end));
+                                S(1:3,1:3,i) = double(equationsToMatrix(...
+                                    [eval(buffer{1}),eval(buffer{2}),eval(buffer{3})] ));
+                                S(1:3,4:4,i) = mod_(T(:));
+                                S(4:4,1:3,i) = 0;
+                                S(4:4,4:4,i) = 1;
+                                i=i+1;
+                            end
+                            break;
+                        case '_symmetry_Int_Tables_number'
+                            % true == generate from memory
+                            sg_id = am_lib.extract_token_(str,'_symmetry_Int_Tables_number',true); S = am_dft.generate_sg(sg_id,true);
+                            break;
+                    end
+                end; end
+                nSs = size(S,3);
+
+                % generate all positions based on symmetry operations
+                seitz_apply_ = @(S,tau) am_lib.mod_(reshape(am_lib.matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
+                tau = reshape(am_lib.mod_(seitz_apply_(S,tau)),3,[]); species=repmat(species,1,nSs);
+                [tau, j] = am_lib.uniquec_(tau); species=species(j);
+                [species,i]=sort(species); tau=tau(:,i);
+
+                % define primitive cell creation function and make structure
+                uc_ = @(bas,symb,Z,species) struct('units','frac','bas',bas, ...
+                    'symb',{symb},'mass',am_dft.get_atomic_mass(Z),'nspecies',sum(unique(species).'==species,2).', ...
+                    'natoms',numel(species),'tau',tau,'species',species);
+                uc = uc_(bas,symb,Z,species);
+            end
+            
+            function [uc]    = load_poscar(fposcar)
+                fid=fopen(fposcar,'r');                % open file
+                    header=fgetl(fid); uc.units='frac';% read header (often times contains atomic symbols)
+                    latpar=sscanf(fgetl(fid),'%f');    % read lattice parameter
+                    a1=sscanf(fgetl(fid),'%f %f %f');  % first basis vector
+                    a2=sscanf(fgetl(fid),'%f %f %f');  % second basis vector
+                    a3=sscanf(fgetl(fid),'%f %f %f');  % third basis vector
+                    uc.bas=latpar*[a1,a2,a3];          % construct the basis (column vectors)
+                    buffer=fgetl(fid);                 % check vasp format
+                    if ~isempty(sscanf(buffer,'%f'))
+                        % vasp 4 format (symbols are missing, jumps straight to species)
+                        uc.symb=regexp(header, '([^ \s][^\s]*)', 'match');
+                        uc.nspecies=sscanf(buffer,repmat('%f' ,1,length(uc.symb)))';
+                    else
+                        % vasp 5 format (symbols are present)
+                        uc.symb=regexp(buffer, '([^ \s][^\s]*)', 'match');
+                        uc.nspecies=sscanf(fgetl(fid),repmat('%f' ,1,length(uc.symb)))';
+                    end
+                    for i=1:length(uc.nspecies); uc.mass(i)=am_dft.get_atomic_mass(am_dft.get_atomic_number(uc.symb{i})); end
+                    uc.natoms=sum(uc.nspecies);
+                    coordtype=lower(strtrim(fgetl(fid)));
+                    l=0;
+                    for i=1:length(uc.nspecies)
+                        for j=1:uc.nspecies(i); l=l+1;
+                            uc.tau(:,l)=sscanf(fgetl(fid),'%f %f %f');
+                            uc.species(l)=i;
+                        end
+                    end
+                    if ~strcmp(coordtype(1),'d'); uc.tau=uc.bas\uc.tau*latpar; end
+                fclose(fid);
+            end
+
+            function [uc]    = load_material(material)
+                % conventional cell
+                switch material
+                    case 'VN'; uc = am_dft.create_cell(am_dft.abc2bas(4.1340,'cubic'),[[0;0;0], [1;1;1]/2], {'V','N'}, 225);
+                    case 'Si'; uc = am_dft.create_cell(am_dft.abc2bas(5.4209,'cubic'),[0;0;0], {'Si'}, 227);
+                    otherwise; error('load_material: unknown material');
+                end
+            end
+            
         end
 
         function [dc,idc]     = get_displaced_cell(pc,bvk,n,kpt,amp,mode,nsteps)
@@ -3075,8 +3075,7 @@ classdef am_dft
 
         function [fbz,ibz]    = get_zones(pc,n)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % get full brillouin zone
             [fbz] = get_fbz(pc,n);
@@ -3509,8 +3508,7 @@ classdef am_dft
             % bzs=get_bvk_dispersion(bvk,bzs);
             % plot_bz_surf(bzs,1)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % initialize figure
             set(gcf,'color','w'); hold on;
@@ -3542,20 +3540,23 @@ classdef am_dft
             % get irreducible shells
             fprintf(' ... identifying pairs ');
             if contains(flags,'-identify'); tic;
-                [bvk,pp] = get_pairs(pc,uc,cutoff2);
+                [ip,pp] = get_pairs(pc,uc,cutoff2);
                 fprintf('(%.f secs)\n',toc);
             else; fprintf('(skipped)\n'); end
             
             % [cart] print shell results
             print_pairs(uc,pp)
+            
+            % [cart] print shell results
+            print_ip_symmetries(ip,pp);
 
             % force constant model
             fprintf(' ... determining harmonic force constant interdependancies and dynamical matrix ');
             if contains(flags,'-model'); tic;
-                bvk = get_bvk_model(bvk,pp,uc);
+                bvk = get_bvk_model(ip,pp,uc);
                 fprintf('(%.f secs)\n',toc);
             else; fprintf('(skipped)\n'); end
-
+            
             % get force constants
             fprintf(' ... solving for harmonic force constants ');
             if contains(flags,'-fit'); tic;
@@ -3569,6 +3570,36 @@ classdef am_dft
                 bvk = set_bvk_acoustic_sum_rules(bvk,pp);
                 fprintf('(%.f secs)\n',toc);
             else; fprintf('(skipped)\n'); end
+            
+            function print_ip_symmetries(ip,pp)
+                bar_ = @(x) repmat('-',[1,x]); fprintf('     %s irreducible pair symmetries %s\n', bar_(25), bar_(25) );
+                for i = 1:ip.nshells
+                    ex_=ip.s_ck(:,i);
+                    ex_bond_group_ = ex_; ex_bond_group_(ex_) = all(pp.Q{2}(:,ex_)==[1;2],1); BG=am_dft.get_long_ss_name(pp.Q{1}(:,:,ex_bond_group_)); % bound group
+                    ex_revr_group_ = ex_; ex_revr_group_(ex_) = all(pp.Q{2}(:,ex_)==[2;1],1); RG=am_dft.get_long_ss_name(pp.Q{1}(:,:,ex_revr_group_)); % reversal group
+                    fprintf('     irreducible pair %i\n', i);
+                    fprintf('       %-10s: ','stabilizer');      
+                    for i = 1:numel(BG)
+                        fprintf(' %20s',BG{i}); 
+                        if mod(i,3)==0 && i~=numel(BG)
+                            fprintf('\n'); 
+                            fprintf('       %-10s  ',' '); 
+                        end
+                    end
+                    fprintf('\n');
+                    fprintf('\n');
+                    fprintf('       %-10s: ','reversal');  
+                    for i = 1:numel(RG)
+                        fprintf(' %20s',RG{i}); 
+                        if mod(i,3)==0 && i~=numel(RG)
+                            fprintf('\n'); 
+                            fprintf('       %-10s  ',' '); 
+                        end
+                    end
+                    fprintf('\n');
+                    fprintf('\n');
+                end
+            end
         end
 
         function [bvk,D,Dasr] = get_bvk_model(ip,pp,uc)
@@ -3610,34 +3641,36 @@ classdef am_dft
             %
             %       R. Tubino and J. L. Birman, Phys. Rev. B 15, 5843 (1977).
             %
+            %     Interestingly, the fact that second-neighbor force constant is
+            %     anti-symmetric implies that the order of differentiation matters and
+            %     the intrinsic transpositional symmetry does not apply.
+            %
+            
 
             import am_lib.* am_dft.*
 
             % set sym digits
             digits(10);
                 
-            % construct transpose super operator
-            T_superop = full(sparse([1:9],reshape(reshape([1:9],3,3).',1,[]),ones(9,1),9,9));
+            % construct transpose super operator (flip symmetry)
+            F = zeros(9,9); F(sub2ind([9,9],[1:9],[1,4,7,2,5,8,3,6,9])) = 1;
 
             % get form of force constants for irreducible prototypical bonds
             for i = 1:ip.nshells
                 sym_list = find(ip.s_ck(:,i)); 
-                W = kron_( pp.Q{1}(1:3,1:3,sym_list) , pp.Q{1}(1:3,1:3,sym_list));
+                W = kron_( pp.Q{1}(1:3,1:3,sym_list), pp.Q{1}(1:3,1:3,sym_list) );
                 for j = 1:numel(sym_list)
-                    if     all(pp.Q{2}(:,sym_list(j))==[1;2])
-                        % do nothing.
-                    elseif all(pp.Q{2}(:,sym_list(j))==[2;1])
-                        % flipp operator
-                        W(:,:,j) = W(:,:,j)*T_superop;
-                    end
+                    if all(pp.Q{2}(:,sym_list(j))==[2;1]); W(:,:,j) = F*W(:,:,j); end
                 end
                 
                 % use stabilzer group to determine crystallographic symmetry relations; A*B*C' equals kron(C,A)*B(:)
                 W = sum(W-eye(9),3);
 
-                % enforce intrinsic symmetry (immaterial order of differentiation: c == c.')
+                %
                 %    This doesn't seem to be a correct symmetry since the example in Lax p. 264
                 %    shows a force constant matrix which is anti-symmetric.
+                %
+                % enforce intrinsic symmetry (immaterial order of differentiation: c == c.')
                 % F = zeros(9,9); F(sub2ind([9,9],[1:9],[1,4,7,2,5,8,3,6,9])) = 1; W = W + F-eye(9);
 
                 % get linearly-independent nullspace and normalize to first nonzero element
@@ -3656,7 +3689,7 @@ classdef am_dft
             % create bvk structure
             bvk_ = @(pp,ip,sav) struct('units','cart','bas',pp.bas2pc*pp.bas, ...
                 'symb',{pp.symb},'mass',pp.mass,'species',pp.species(pp.p2u),'cutoff',pp.cutoff,'natoms',pp.pc_natoms,...
-                'nbranches',3*pp.pc_natoms,'nshells',size(sav.W,2),'W',{sav.W},'phi',{sav.phi},'d',ip.d,'v',ip.v,'xy',ip.xy);
+                'nbranches',3*pp.pc_natoms,'nshells',size(sav.W,2),'s_ck',ip.s_ck,'W',{sav.W},'phi',{sav.phi},'d',ip.d,'v',ip.v,'xy',ip.xy);
             bvk = bvk_(pp,ip,sav);
 
             % [cart] define function to get bond vector
@@ -4320,8 +4353,22 @@ classdef am_dft
                 x = ip.xy(1,p); i = uc.u2i(x); m = uc.u2p(x); dm = d(m);
                 y = ip.xy(2,p); j = uc.u2i(y); n = pp.u2p(y); dn = d(n);
 
-                % use stabilzer group to determine crystallographic symmetry relations; A*B*C' equals kron(C,A)*B(:)
-                W = sum(kron_( D{j}(:,:,ip.s_ck(:,p)) , D{i}(:,:,ip.s_ck(:,p)) ) - eye(dm*dn),3);
+                % have not tested algo 2 yet!!!! try it with Si first...
+                algo=2;
+                switch algo
+                    case 1
+                        % original version
+                        % use stabilzer group to determine crystallographic symmetry relations; A*B*C' equals kron(C,A)*B(:)
+                        W = sum(kron_( D{j}(:,:,ip.s_ck(:,p)) , D{i}(:,:,ip.s_ck(:,p)) ) - eye(dm*dn),3);
+                    case 2
+                        % incoprorating flip symmetry (need to test still)
+                        sym_list = find(ip.s_ck(:,i)); 
+                        W = kron_( D{j}(:,:,sym_list) , D{i}(:,:,sym_list) );
+                        if (i==j); for j = 1:numel(sym_list) % maybe F{i} should multiply the other right hand side of W?
+                            if all(pp.Q{2}(:,sym_list(j))==[2;1]); W(:,:,j) = F{i}*W(:,:,j); end
+                        end; end
+                        W = sum( W - eye(dm*dn), 3);
+                end
 
                 % partity transpose
                 if (i==j); W = W + F{i}-eye(dm*dn); end
@@ -4443,7 +4490,7 @@ classdef am_dft
 
         end
 
-        function plot_tb_vs_dft(tb,dft)
+        function                plot_tb_vs_dft(tb,dft)
 
             import am_lib.*
             import am_dft.*
@@ -4496,7 +4543,7 @@ classdef am_dft
                 [~,~,S] = get_symmetries(pc); nSs = size(S,3);
 
                 % save space symmetry combined with permutation of atomic positions as Q
-               M = perms([2:-1:1]).'; Q{1} = repmat(S,1,1,size(M,2)); Q{2} = repelem(M,1,nSs);
+                M = perms([2:-1:1]).'; Q{1} = repmat(S,1,1,size(M,2)); Q{2} = repelem(M,1,nSs);
 
                 % get multiplication table, list of inverse elements, and identity
                 [MT,E,I]= get_multiplication_table(Q); nQs = size(MT,1);
@@ -4606,9 +4653,7 @@ classdef am_dft
             Q{1} = sym_rebase_(uc.bas2pc*uc.bas,Q{1});
 
             % correct rounding errors in cart
-            for i = 1:numel(Q{1}); for wdv = [0,1,.5,sqrt(3)/2]
-                if abs(abs(Q{1}(i))-wdv)<am_dft.tiny; Q{1}(i)=wdv*sign(Q{1}(i)); end
-            end;end
+            Q{1} = wdv_(Q{1});
 
             % save "primitive" pairs
             pp = pp_(uc,c_id,o_id,i_id,q_id,iq_id,Q);
@@ -4725,10 +4770,9 @@ classdef am_dft
             sym_rebase_ = @(B,S) [[ matmul_(matmul_(B,S(1:3,1:3,:)),inv(B)), ...
                 reshape(matmul_(B,S(1:3,4,:)),3,[],size(S,3))]; S(4,1:4,:)];
             Q{1} = sym_rebase_(uc.bas2pc*uc.bas,Q{1});
+
             % correct rounding errors in cart
-            for i = 1:numel(Q{1}); for wdv = [0,1,.5,sqrt(3)/2]
-                if abs(abs(Q{1}(i))-wdv)<am_dft.tiny; Q{1}(i)=wdv*sign(Q{1}(i)); end
-            end;end
+            Q{1} = wdv_(Q{1});
 
             % save "primitive" pairs
             pt = pt_(uc,c_id,o_id,i_id,q_id,iq_id,Q);
@@ -4767,6 +4811,8 @@ classdef am_dft
             fprintf('     %-10s    %-30s   %-4s   %-7s   %-7s   %-4s\n', 'd [cart]','bond [cart]','#','ic(i,j)','pc(m,n)','irr.');
             fprintf('     %-10s    %-30s   %-4s   %-7s   %-7s   %-4s\n', bar_(10),bar_(30),bar_(4),bar_(7),bar_(7),bar_(4));
             fprintf('     %10.5f  %10.5f %10.5f %10.5f   %4i   %-3i-%3i   %-3i-%3i   %4i\n', Z(:,rankc_(Z(1,:))) );
+            fprintf('     %s symmetry info %s\n', bar_(29), bar_(29) );
+
         end
 
         function                print_triplets(uc,pt)
@@ -4808,7 +4854,7 @@ classdef am_dft
 
     end
 
-        
+
     % aux library
 
     methods (Static)
@@ -4908,15 +4954,21 @@ classdef am_dft
                 % (to speed things up) keep vectors whose norm are smaller than 2 times the largest norm in B the tentative basis
                 ex_ = normc_(T_cart)<2*max(normc_(uc.bas*B)); nTs = sum(ex_); T = T(:,ex_); T_cart = T_cart(:,ex_);
 
-                % find all combination of unit vectors that have volume equal to the smallest volume determined above
+                % find all combination of unit vectors that the smallest volume possible
                 ijk = nchoosek_(nTs,3); m = size(ijk,2);
-                v = zeros(1,m); for i = 1:m; v(i) = det(T_cart(:,ijk(:,i))); end
-                ex_ = v>0; ex_(ex_) = abs(v(ex_)-vol)<am_dft.tiny; ijk = ijk(:,ex_); m = size(ijk,2);
+                v = zeros(1,m); for i = 1:m; v(i) = det(T_cart(:,ijk(:,i)));  if v(i)<0; ijk(:,i)=flipud(ijk(:,i)); v(i)=abs(v(i)); end; end
+                ex_ = ~eq_(v,0); ex_(ex_) = eq_(v(ex_),vol); ijk = ijk(:,ex_); m = size(ijk,2);
 
                 % find basis which produces the highest symmetry
                 n = zeros(1,m);
-                for i = 1:m; n(i) = numel(uniquetol([30,60,90,120,bas2abc(T_cart(:,ijk(:,i)))], tol)); end
-                nmin=min(n); inds_ = find(n==nmin); B = T(:,ijk(:,inds_(1)));
+                for i = 1:m
+                    % get lattice with most symmetric metric tensor
+                    M=T_cart(:,ijk(:,i));M=M.'*M.*[1 2 2; 2 1 2; 2 2 1]; n(1,i) = numel(uniquetol(M(:), tol));
+                    % for metric tensors with equal symmetries, get the one which has the
+                    % most number of angles at 30,60,90,120 deg.
+                    n(2,i) = numel(uniquetol([30,60,90,120,bas2abc(T_cart(:,ijk(:,i)))], tol));
+                end
+                inds_=rankc_(n); B = T(:,ijk(:,inds_(1)));
             end
 
             % set identifiers (see NOTE: cannot simply use p2u = findrow_(A)!)
