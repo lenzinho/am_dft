@@ -798,6 +798,40 @@ classdef am_dft
 
     methods (Static)
         
+        % test suite
+        
+        function test
+            
+            import am_dft.* am_lib.*
+            
+            % generate and test point groups
+            for i = 1:32; pg_id(i) = identify_pointgroup(generate_pg(i,false)); end
+            criteria = pg_id==[1:32];
+            test_(all(criteria),'point group generation',sprintf('failed to generate pointgroups:%s',sprintf(' %i',find(criteria))))
+            
+            % test winger j=1 rotation matrices
+            R = generate_pg(32,false);
+            W = get_wigner(1,R,'tesseral');
+            criteria = squeeze(all(all(eq_(W,R),1),2));
+            test_(all(criteria),'wigner SO(3)',sprintf('failed to generate consistent SO(3) rotations:%s',sprintf(' %i',find(criteria))))
+            
+%             % test winger rotation axes
+%             R = generate_pg(32,false);
+%             W = get_wigner(1,R,'spherical');
+%             (get_wigner_axis(DG)~=0)-(round_(R_axis_(R))~=0)
+%             criteria = squeeze(all(all(eq_(W,R),1),2));
+%             test_(all(criteria),'wigner SO(3)',sprintf('failed to generate consistent SO(3) rotations:%s',sprintf(' %i',find(criteria))))
+            
+            function test_(logical,test_name,fail_msg)
+                if logical
+                    fprintf('      %s: pass\n',test_name);
+                else
+                    fprintf('      %s: %s\n',test_name,fail_msg);
+                end 
+            end
+        end
+        
+        
         % materials
 
         function [uc]    = load_material(material)
@@ -1020,52 +1054,31 @@ classdef am_dft
         function [MT,E,I]     = get_multiplication_table(S,tol)
             % [MT,E,I] = get_multiplication_table(S)
             % get multiplication table: S(:,:,i)*S(:,:,j) = S(:,:,MT(i,j))
+            
             import am_lib.* am_dft.*
 
             if nargin<2; tol=am_dft.tiny; end
             
             s = size(S);
             
-            if     s(1)==4 && s(2)==4
-                % seitz operator (applies mod to translational components)
-                md_ = @(X) [X(1:12,:);mod_(X(13:15,:),tol);X(16:end,:)];
-                rs_ = @(X) md_(reshape(X,4^2,[]));
-                nSs = s(3);
-                
-                MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))), rs_(S), tol) , nSs, nSs);
-
-            elseif s(1)==3 && s(2)==3
-                % point operator
-                rs_ = @(X) reshape(X,3^2,[]);
-                nSs = s(3);
-
-                MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))), rs_(S), tol ) , nSs, nSs);
-
-            elseif s(1)==3
-                % translation operator
-                S = mod_(S);
-                nSs = s(2);
-                
-                MT = reshape( member_( mod_(reshape(osum_(S, S, 2),3,[]), tol), S, tol), nSs, nSs);
-
-            elseif s(1)==1
+            if   s(1)==1
+                % seitz operator combined with permutation (represented as a two-part cell)
                 
                 s = size(S{1});
                 
-                % seitz operator combined with permutation (represented as a two-part cell)
                 if     s(1)==4 && s(2)==4
                     % seitz operator (applies mod to translational components)
                     md_ = @(X) [X(1:12,:);mod_(X(13:15,:),tol);X(16:end,:)];
-                    rs_ = @(X) md_(reshape(X,4^2,[]));
+                    rs_ = @(X) md_(reshape(X,s(1)*s(2),[]));
                     nSs = s(3);
 
                     ref = [rs_(S{1});reshape(S{2},size(S{2},1),[])];
                     opr = [rs_(matmulp_(S{1},permute(S{1},[1,2,4,3]))); reshape(operm_(S{2},S{2}),size(S{2},1),[])];
 
-                    MT = reshape( member_( opr , ref, tol), s(3), s(3));
+                    MT = reshape( member_( opr , ref, tol), s(3), s(3)); 
                 elseif s(1)==3 && s(2)==3
                     % point operator
-                    rs_ = @(X) reshape(X,3^2,[]);
+                    rs_ = @(X) reshape(X,s(1)*s(2),[]);
                     nSs = s(3);
 
                     ref = [rs_(S{1});reshape(S{2},size(S{2},1),[])];
@@ -1073,6 +1086,30 @@ classdef am_dft
 
                     MT = reshape( member_( opr , ref, tol), s(3), s(3));
                 end
+                
+                
+            elseif s(1)==4 && s(2)==4
+                % seitz operator (applies mod to translational components)
+                md_ = @(X) [X(1:12,:);mod_(X(13:15,:),tol);X(16:end,:)];
+                rs_ = @(X) md_(reshape(X,s(1)*s(2),[]));
+                nSs = s(3);
+                
+                MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))), rs_(S), tol) , nSs, nSs);
+
+            elseif s(1)==3 && s(3)==1
+                % translation operator
+                S = mod_(S);
+                nSs = s(2);
+                
+                MT = reshape( member_( mod_(reshape(osum_(S, S, 2),3,[]), tol), S, tol), nSs, nSs);
+            else
+                % point operator
+                % s(1)==3 && s(2)==3
+                % but also others...
+                rs_ = @(X) reshape(X,s(1)*s(2),[]);
+                nSs = s(3);
+
+                MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))), rs_(S), tol ) , nSs, nSs);
             end
 
             if any(MT(:)==0)
@@ -1085,7 +1122,7 @@ classdef am_dft
             % get inverse indicies
             if nargout>2; I = [MT==E]*[1:nSs].'; end
         end
-
+        
         function [MT]         = relabel_multiplication_table(MT,fwd)
             % relabel multiplication table
             rev(fwd) = [1:size(MT,1)]; MT = rev(MT(fwd,fwd));
@@ -1171,7 +1208,7 @@ classdef am_dft
             plot(digraph(i,j));
         end
 
-        function [CT,c_id,irr]= get_irreps(S)
+        function [IR]         = get_irreducible_representations(S)
             % s2c = identifies the class to which symmetries belong
             % CT = character table
             % irreps
@@ -1190,7 +1227,6 @@ classdef am_dft
                 % loop over cycle structures
                 for j = 1:max(inds)
                     ex_ = inds==j;
-
                     H = dixon_decomposition_( G(ex_,ex_,:) );
                     [Vp,E] = eig(H,'vector'); [Vp] = orth_(Vp,E);
                     for ig = 1:nGs
@@ -1198,33 +1234,14 @@ classdef am_dft
                     end
                     U(:,ex_) = (U(:,ex_)*Vp);
                 end
-
                 inds = [1:nGs]*merge_(double(sum(abs(G),3)>am_lib.eps));
-                if ninds == max(inds); break; else
-                    ninds = max(inds);
-                end
+                if ninds == max(inds); break; else; ninds = max(inds); end
             end
-
-            % get character table
-            CT = zeros(nGs,max(inds));
-            for i = 1:max(inds); for j = 1:nGs
-                CT(j,i) = trace(G(inds==i,inds==i,j));
-            end; end
-
-            % get irreducible irreps
-            [CT,ir] = unique(round(CT).','rows'); CT=CT.';
-
-            % get irreducible classes
-            [CT,~,c_id] = unique(round(CT),'rows','stable'); CT=CT.'; c_id=c_id(:).';
-
+            
             % get irreducible representations
-            nirreps = numel(ir); irr = cell(1,nirreps);
+            nirreps = max(inds); IR = cell(1,nirreps);
             for i = 1:nirreps
-                irr{i} = G(inds==ir(i),inds==ir(i),1:nGs);
-                % this makes them look nice but multiplcation table is not preserved
-                % for j = 1:nGs
-                %     irrep{i}(:,:,j) = diag(sort(eig(irrep{i}(:,:,j))));
-                % end
+                IR{i} = G(inds==i,inds==i,1:nGs);
             end
 
             function H = dixon_decomposition_(rr)
@@ -1257,23 +1274,50 @@ classdef am_dft
             end
         end
 
-        function print_character_table(CT,c_id)
+        function [CT,cc_id,ir_id] = get_character_table(IR)
+
+            import am_lib.*
+            
+            %
+            nirreps = numel(IR);
+            nclasses= nirreps;
+            
+            % get character table
+            CT = zeros(nirreps,nclasses);
+            for i = 1:nclasses; for j = 1:nirreps
+                CT(j,i) = trace(IR{j}(:,:,i));
+            end; end
+        
+            % correct numerical error
+            CT = wdv_(CT);
+
+            % get irreducible irreps
+            [CT,ir_id]=uniquec_(CT);
+
+            % get irreducible classes
+            [CT,cc_id]=uniquec_(CT.'); CT=CT.';
+        
+        end
+        
+        function                print_character_table(pc,R,CT,cc_id)
             % clear;clc
             % [~,pc]=get_cells('POSCAR');
             % [~,~,~,R]=get_symmetries(pc);
             % [CT,c_id,irr]= get_irreps(R);
 
+            import am_dft.* am_lib.*
+            
             tol = am_lib.eps;
             
             % identify the prototypical symmetries
-            [~,unique_c_id]=unique(c_id);
+            [~,unique_c_id]=unique(cc_id);
 
             % get number of classes
             nclasses=numel(unique_c_id);
 
             fprintf('      '); fprintf('%9s',repmat('---------',1,nclasses)); fprintf('\n');
             % print class elements
-            cl_size = sum(c_id.'==c_id(unique_c_id),1);
+            cl_size = sum(cc_id.'==cc_id(unique_c_id),1);
             fprintf('      '); for i = 1:nclasses; fprintf('%9i',cl_size(i)); end; fprintf('\n');
             % print class name 
             ps_name = decode_ps(identify_point_symmetries(R(:,:,unique_c_id)));
@@ -1286,8 +1330,8 @@ classdef am_dft
             fprintf('      '); fprintf('%9s',repmat(' --------',1,nclasses)); fprintf('\n');
             % print character table
             for l = 1:size(CT,1)
-                chi = CT(l,:); chi(eq_(chi,0,tol))=0;
-                fprintf('      '); fprintf('%9.3g',chi); fprintf('\n');
+                chi = CT(l,:); chi = wdv_(chi);
+                fprintf('      '); fprintf('%9.4g',chi); fprintf('\n');
             end
             % bar
             fprintf('      '); fprintf('%9s',repmat(' --------',1,nclasses)); fprintf('\n');
@@ -1295,12 +1339,12 @@ classdef am_dft
             character_ = @(l,alpha) sin((l+1/2)*alpha)./sin(alpha/2);
             alpha = 2*pi./get_order(R);
             for l = [0:.5:4]
-                chi = character_(l,alpha(:,unique_c_id)); chi(eq_(chi,0,tol))=0;
-                fprintf('      '); fprintf('%9.3g',chi); fprintf('\n');
+                chi = character_(l,alpha(:,unique_c_id)); chi = wdv_(chi);
+                fprintf('      '); fprintf('%9.4g',chi); fprintf('\n');
             end
             fprintf('      '); fprintf('%9s',repmat('---------',1,nclasses)); fprintf('\n');
         end
-        
+
         function c_id         = identify_classes(MT)
             %
             % for AX = XB, if elements A and B are conjugate pairs for some other element X in the group,  they are in the same class
@@ -1707,6 +1751,35 @@ classdef am_dft
             end
         end
         
+        function ps_name_long = get_long_ps_name(R)
+            import am_dft.* am_lib.*
+            nsyms=size(R,3); 
+            ps_id=identify_point_symmetries(R);
+            ps_name=decode_ps(ps_id);
+            ps_axis=round_(R_axis_(R));
+            syms x y z
+            for i = 1:nsyms
+                ps_name_long{i} = sprintf('%s',strtrim(ps_name{i}));
+                if ps_id(i)~=1 && ps_id(i)~=6
+                    ax = ps_axis(:,i).'; if sum(lt_(ax,0))>sum(gt_(ax,0)); ax=-ax; end
+                    ax_name = sprintf('%s',ax*[x;y;z]); ax_name=strrep(ax_name,' ',''); ax_name=strrep(ax_name,'+',''); 
+                    ps_name_long{i} = sprintf('%s(%s)',ps_name_long{i}, ax_name );
+                end
+            end
+        end
+        
+        function ss_name_long = get_long_ss_name(S)
+            import am_dft.* am_lib.*
+            ss_name_long = get_long_ps_name(S(1:3,1:3,:));
+            nsyms=size(S,3); E = find(all(all(eq_(S,eye(4)),1),2));
+            for i = 1:nsyms
+                if i==E; continue; end
+                t = S(1:3,4,i);
+                t_name = sprintf('%s,',sym(t)); t_name=strrep(t_name,' ',''); t_name=t_name(1:(end-1)); 
+                ss_name_long{i} = sprintf('%s [%s]',ss_name_long{i}, t_name );
+            end
+        end
+            
         function order        = get_order(S, tol)
 
             import am_lib.* am_dft.*
@@ -1989,11 +2062,11 @@ classdef am_dft
                 end
                 S = reshape(S,4,4,[]);
             else
-                % initialize
-                S = zeros(4,4,192);
-
+                
                 % load recipe
                 recipe = get_recipe(sg_code);
+                % allocate space
+                S = zeros(4,4,sscanf(recipe(2),'%i')+double(recipe(1)=='1'));
 
                 % mix ingredients
                 nsyms = 0; k = 0;
@@ -2017,27 +2090,7 @@ classdef am_dft
                 end
                 end
 
-                % bake the cake (add elements until no new elements are generated)
-                nsyms_last=0; MT = zeros(192,192);
-                while nsyms ~= nsyms_last
-                    nsyms_last=nsyms;
-                    for i = 1:nsyms_last
-                    for j = 1:nsyms_last
-                        if MT(i,j)==0
-                            A = S(:,:,i)*S(:,:,j); A(1:3,4)=mod_(A(1:3,4));
-                            A_id = member_(A(:),reshape(S(:,:,1:nsyms),16,[]),am_dft.eps);
-                            if A_id == 0
-                                nsyms = nsyms+1; S(:,:,nsyms) = A; MT(i,j) = nsyms;
-                            else
-                                MT(i,j) = A_id;
-                            end
-                        end
-                    end
-                    end
-                end
-
-                MT = MT(1:nsyms,1:nsyms);
-                S  = S(:,:,1:nsyms);
+                S = complete_group(S);
             end
 
             function recipe  = get_recipe(sg_id)
@@ -2160,7 +2213,7 @@ classdef am_dft
 
         function R            = generate_pg(pg_code,from_memory)
             
-            import am_lib.*
+            import am_lib.* am_dft.*
             
             if nargin<2; from_memory=true; end
 
@@ -2211,37 +2264,20 @@ classdef am_dft
                 R = reshape(R,3,3,[]);
             else
 
-                % initialize
-                R = zeros(3,3,48);
                 % load recipe
                 recipe = get_recipe(pg_code);
+                % initialize
+                R = zeros(3,3,numel(recipe)+1);
                 % make generators
                 nsyms = 0;
                 nsyms = nsyms+1; R(:,:,nsyms) = eye(3);
                 for k = 1:numel(recipe)
                     nsyms=nsyms+1; R(:,:,nsyms) = decode_R(recipe(k)); 
                 end
+                
                 % add elements until no new elements are generated
-                nsyms_last=0; MT = zeros(48,48);
-                while nsyms ~= nsyms_last
-                    nsyms_last=nsyms;
-                    for i = 1:nsyms_last
-                    for j = 1:nsyms_last
-                        if MT(i,j)==0
-                            A = R(:,:,i)*R(:,:,j);
-                            A_id = member_(A(:),reshape(R(:,:,1:nsyms),9,[]),am_dft.eps);
-                            if A_id == 0
-                                nsyms = nsyms+1; R(:,:,nsyms) = A; MT(i,j) = nsyms;
-                            else
-                                MT(i,j) = A_id;
-                            end
-                        end
-                    end
-                    end
-                end
+                R = complete_group(R);
 
-                MT = MT(1:nsyms,1:nsyms);
-                R  = R(:,:,1:nsyms);
             end
 
             function recipe  = get_recipe(sg_id)
@@ -2269,7 +2305,71 @@ classdef am_dft
                 end
             end 
         end
-        
+
+        function [S,MT]       = complete_group(S,tol)
+
+            import am_lib.*
+            
+            % set tolernece
+            if nargin<2; tol=am_dft.tiny; end
+
+            % get size
+            s=size(S); d=s(1)*s(2);
+            
+            % switch
+            if s(1)==4 && s(2)==4
+                algo = 2; % seitz symmetry
+            else
+                algo = 1; % point symmetry
+            end
+
+            % exclude empty symmetries
+            S = S(:,:,any(reshape(S,d,[])~=0,1)); 
+            
+            % add identity if not present 
+            E = eye(s(1),s(2)); if ~any(all(all(S==E))); S = cat(3,E,S); end
+            
+            % get number of symmetries at this point
+            nsyms=size(S,3);
+
+            % allocate space
+            S=cat(3,S,zeros(size(S,1),size(S,1),2*192-nsyms));
+
+            % add symmetry until no new symmetry is generated
+            nsyms_last=0; MT = zeros(2*192,2*192);
+            while nsyms ~= nsyms_last
+                nsyms_last=nsyms;
+                for i = 1:nsyms_last
+                for j = 1:nsyms_last
+                    if MT(i,j)==0
+                        A = symmul_(S(:,:,i),S(:,:,j),algo,tol);
+                        A_id = member_(A(:),reshape(S(:,:,1:nsyms),d,[]),tol);
+                        if A_id == 0
+                            nsyms = nsyms+1; S(:,:,nsyms) = A; MT(i,j) = nsyms;
+                        else
+                            MT(i,j) = A_id;
+                        end
+                    end
+                end
+                end
+            end
+            
+            % trim output
+            S  = S(:,:,1:nsyms);
+            MT = MT(1:nsyms,1:nsyms);
+            
+            function C = symmul_(A,B,algo,tol)
+                switch algo
+                    case 1
+                        % point symmetry
+                        C = A*B;
+                    case 2
+                        % seitz symmetry
+                        C = A*B; C(1:3,4)=mod(C(1:3,4)+tol,1)-tol;
+                end
+            end
+        end
+
         function abc_angles   = bas2abc(bas)
             % [a,b,c,alpha,beta,gamma] = bas2abc(bas)
             M = bas.' * bas;
@@ -4872,7 +4972,7 @@ classdef am_dft
                     % find a transformation matrix which takes g to the standard setting h
                     [~,M] = find_pointgroup_transformation(R,generate_pg(identify_pointgroup(R)),1);
                     % get integer inverse matrices
-                    C = inv(M); while any(~eq_(mod_(C(:)),0)); C=C./abs(min(C(:))); end; C = round(C);
+                    C = inv(M); round_(C);
                     
                 case 2
                     % Sets the non-collinear triplet of highest rotation axes as edges of the
@@ -4895,9 +4995,8 @@ classdef am_dft
                         % get null space (axis of rotation)
                         T(:,i) = R_axis_(R(:,:,inds(i)));
                         % convert vector to all integers
-                        while any(mod_(T(:,i))>tol); T(:,i) = T(:,i)./min(abs(T( ~eq_(T(:,i),0,tol) ,i))); end
+                        T(:,i) = round_(T(:,i));
                     end
-                    T=round(T);
 
                     % sort rotation axes:
                     %   1) proper rotation axes first
