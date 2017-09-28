@@ -530,13 +530,18 @@ classdef am_dft
                    fclose(fid);
                 end
             elseif isstruct(bz)
+                if field(bz,'w')
+                    weights = bz.w;
+                else
+                    weights = zeros(1,bz.nks);
+                end
                 % explicit kpoints based
                     fid = fopen(fkpoints,'w');
                         fprintf(fid,'%s\n','KPOINTS');
                         fprintf(fid,'%i\n',bz.nks);
                         fprintf(fid,'%s\n',bz.units);
                         for i = 1:bz.nks
-                            fprintf(fid,' %12.8f %12.8f %12.8f    1\n',bz.k(:,i));
+                            fprintf(fid,' %20.18f %20.18f %20.18f    %i\n',bz.k(:,i),weights(i));
                         end
                    fclose(fid);
             end
@@ -3096,6 +3101,129 @@ classdef am_dft
             % save mapping to zones
             fbz.f2i = f2i; fbz.i2f = i2f;
             ibz.i2f = i2f; ibz.f2i = f2i;
+            
+            function [fbz]         = get_fbz(pc,n)
+
+                import am_lib.*
+                import am_dft.*
+
+                % check
+                if any(mod(n,1)~=0); error('n must be integers'); end
+                if numel(n)~=3; error('n must be three integers'); end
+
+                % generate primitive lattice vectors
+                Q_ = @(i) [0:(n(i)-1)]./n(i); [Y{1:3}]=ndgrid(Q_(1),Q_(2),Q_(3)); k=reshape(cat(3+1,Y{:}),[],3).';
+
+                % define irreducible cell creation function and make structure
+                fbz_ = @(uc,n,k) struct('units','frac-recp','recbas',inv(uc.bas).',...
+                    'n',n,'nks',size(k,2),'k',k,'w',ones([1,size(k,2)]));
+                fbz = fbz_(pc,n,k);
+
+            end
+
+            function [ibz,i2f,f2i] = get_ibz(fbz,pc)
+
+                import am_lib.* am_dft.*
+
+                % get point symmetries [real-frac --> rec-frac] by transposing R
+                [~,~,~,R] = am_dft.get_symmetries(pc); R = permute(R,[2,1,3]);
+
+                % build permutation matrix for kpoints related by point symmetries
+                PM = am_lib.member_(am_lib.mod_(am_lib.matmul_(R,fbz.k)),fbz.k); A = am_lib.get_connectivity(PM);
+
+                % set identifiers
+                i2f = round(am_lib.findrow_(A)).'; f2i = round(([1:size(A,1)]*A)); w=sum(A,2).';
+                if abs(sum(w)-prod(fbz.n))>am_lib.eps; error('mismatch: kpoint mesh and point group symmetry'); end
+
+                % get irreducible tetrahedra
+                [tet,~,tet_f2i] = unique(sort(f2i(get_tetrahedra(fbz.recbas,fbz.n))).','rows'); tet=tet.'; tetw = hist(tet_f2i,[1:size(tet,2)].'-.5);
+
+                % define irreducible cell creation function and make structure
+                ibz_ = @(fbz,i2f,w,tet,tetw) struct('units','frac-recp','recbas',fbz.recbas,...
+                    'n',fbz.n,'nks',numel(i2f),'k',fbz.k(:,i2f),'w',w,'ntets',size(tet,2),'tet',tet,'tetw',tetw);
+                ibz = ibz_(fbz,i2f,w,tet,tetw);
+
+                % subfunctions
+                function tet           = get_tetrahedra(recbas,n)
+                    % divide mesh into boxes
+                    box = grid2box(n); nboxes = size(box,2);
+                    % divide a single box into six tetrahedron
+                    tetrahedron = box2tetrahedron(recbas);
+                    % loop over boxes
+                    tet = zeros(4,6*nboxes); t = 0;
+                    for b = 1:nboxes
+                        % loop over tetrahedron/box
+                        for j = 1:6
+                            % augment tetrahedron counter
+                            t = t + 1;
+                            % define tetrahedra corners using indices of kpoints
+                            tet(:,t) = box(tetrahedron(:,j),b);
+                        end
+                    end
+
+                    % subfunctions
+                    function box           = grid2box(n)
+                        % get mesh
+                        [Z{1:3}]=ndgrid([1:n(1)],[1:n(2)],[1:n(3)]); ki = reshape(cat(3+1,Z{:}),[],3).';
+                        % get box vertices
+                        boxv = [0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1];
+                        % there will be 1 box per kpoint and 8 vertices per box
+                        nks = prod(n); box = zeros(8,nks);
+                        % get boxes for each kpoint
+                        box_ = @(d,i) mod(boxv(d,:)+ki(d,i)-1,n(d))+1;
+                        for m = 1:nks; box(:,m) = sub2ind(n,box_(1,m),box_(2,m),box_(3,m)); end
+                    end
+                    function tetrahedron   = box2tetrahedron(recbas)
+                        %     7-------8
+                        %    /|      /|
+                        %   / |     / |
+                        %  5-------6  |
+                        %  |  3----|--4
+                        %  | /     | /
+                        %  |/      |/
+                        %  1-------2
+                        %
+                        boxvc = recbas*[0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1];
+                        % get indices of diagonal pairs
+                        diags=[1,2,3,4;8,7,6,5];
+                        % get distances across diagonals
+                        d=zeros(1,4); for m = 1:4; d(m) = norm(boxvc(:,diags(2,m))-boxvc(:,diags(1,m))); end
+                        % record smallest diagonal
+                        [~,si]=min(d);
+                        % create connectivity list defining tetrahedra
+                        switch si
+                            case (1)
+                            tetrahedron(:,1) = [1,8,2,4];
+                            tetrahedron(:,2) = [1,8,2,6];
+                            tetrahedron(:,3) = [1,8,3,4];
+                            tetrahedron(:,4) = [1,8,3,7];
+                            tetrahedron(:,5) = [1,8,5,6];
+                            tetrahedron(:,6) = [1,8,5,7];
+                            case (2)
+                            tetrahedron(:,1) = [2,7,1,3];
+                            tetrahedron(:,2) = [2,7,1,5];
+                            tetrahedron(:,3) = [2,7,3,4];
+                            tetrahedron(:,4) = [2,7,4,8];
+                            tetrahedron(:,5) = [2,7,5,6];
+                            tetrahedron(:,6) = [2,7,6,8];
+                            case (3)
+                            tetrahedron(:,1) = [3,6,1,2];
+                            tetrahedron(:,2) = [3,6,1,5];
+                            tetrahedron(:,3) = [3,6,2,4];
+                            tetrahedron(:,4) = [3,6,4,8];
+                            tetrahedron(:,5) = [3,6,5,7];
+                            tetrahedron(:,6) = [3,6,7,8];
+                            case (4)
+                            tetrahedron(:,1) = [4,5,1,2];
+                            tetrahedron(:,2) = [4,5,1,3];
+                            tetrahedron(:,3) = [4,5,2,6];
+                            tetrahedron(:,4) = [4,5,3,7];
+                            tetrahedron(:,5) = [4,5,6,8];
+                            tetrahedron(:,6) = [4,5,7,8];
+                        end
+                    end
+                end
+            end
         end
 
         function [bzp]        = get_bz_path(pc,n,brav)
@@ -3284,8 +3412,7 @@ classdef am_dft
             % get nesting function on ibz at probing energies Ep using smearing degauss
             % degauss, degauss = 0.04 61x61x61 kpoint mesh
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % number of probing energies
             nEps = numel(Ep);
@@ -3448,8 +3575,7 @@ classdef am_dft
 
         function plot_nesting(ibz,fbz,bzp,degauss,Ep, varargin)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % plot results
             plot_interpolated(fbz,bzp, ibz2fbz(fbz,ibz,get_nesting(fbz,ibz,degauss,Ep)) , varargin{:})
@@ -5214,129 +5340,6 @@ classdef am_dft
 
         % aux brillouin zones
 
-        function [fbz]         = get_fbz(pc,n)
-
-            import am_lib.*
-            import am_dft.*
-
-            % check
-            if any(mod(n,1)~=0); error('n must be integers'); end
-            if numel(n)~=3; error('n must be three integers'); end
-
-            % generate primitive lattice vectors
-            Q_ = @(i) [0:(n(i)-1)]./n(i); [Y{1:3}]=ndgrid(Q_(1),Q_(2),Q_(3)); k=reshape(cat(3+1,Y{:}),[],3).';
-
-            % define irreducible cell creation function and make structure
-            fbz_ = @(uc,n,k) struct('units','frac-recp','recbas',inv(uc.bas).',...
-                'n',n,'nks',size(k,2),'k',k,'w',ones([1,size(k,2)]));
-            fbz = fbz_(pc,n,k);
-
-        end
-
-        function [ibz,i2f,f2i] = get_ibz(fbz,pc)
-
-            import am_lib.*
-            import am_dft.*
-
-            % get point symmetries [real-frac --> rec-frac] by transposing R
-            [~,~,~,R] = get_symmetries(pc); R = permute(R,[2,1,3]);
-
-            % build permutation matrix for kpoints related by point symmetries
-            PM = member_(mod_(matmul_(R,fbz.k)),fbz.k); A = get_connectivity(PM);
-
-            % set identifiers
-            i2f = round(findrow_(A)).'; f2i = round(([1:size(A,1)]*A)); w=sum(A,2).';
-            if abs(sum(w)-prod(fbz.n))>am_lib.eps; error('mismatch: kpoint mesh and point group symmetry'); end
-
-            % get irreducible tetrahedra
-            [tet,~,tet_f2i] = unique(sort(f2i(get_tetrahedra(fbz.recbas,fbz.n))).','rows'); tet=tet.'; tetw = hist(tet_f2i,[1:size(tet,2)].'-.5);
-
-            % define irreducible cell creation function and make structure
-            ibz_ = @(fbz,i2f,w,tet,tetw) struct('units','frac-recp','recbas',fbz.recbas,...
-                'n',fbz.n,'nks',numel(i2f),'k',fbz.k(:,i2f),'w',w,'ntets',size(tet,2),'tet',tet,'tetw',tetw);
-            ibz = ibz_(fbz,i2f,w,tet,tetw);
-        end
-
-        function tet           = get_tetrahedra(recbas,n)
-            % divide mesh into boxes
-            box = am_lib.grid2box(n); nboxes = size(box,2);
-            % divide a single box into six tetrahedron
-            tetrahedron = am_lib.box2tetrahedron(recbas);
-            % loop over boxes
-            tet = zeros(4,6*nboxes); t = 0;
-            for b = 1:nboxes
-                % loop over tetrahedron/box
-                for j = 1:6
-                    % augment tetrahedron counter
-                    t = t + 1;
-                    % define tetrahedra corners using indices of kpoints
-                    tet(:,t) = box(tetrahedron(:,j),b);
-                end
-            end
-        end
-
-        function box           = grid2box(n)
-            % get mesh
-            [Z{1:3}]=ndgrid([1:n(1)],[1:n(2)],[1:n(3)]); ki = reshape(cat(3+1,Z{:}),[],3).';
-            % get box vertices
-            boxv = [0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1];
-            % there will be 1 box per kpoint and 8 vertices per box
-            nks = prod(n); box = zeros(8,nks);
-            % get boxes for each kpoint
-            box_ = @(d,i) mod(boxv(d,:)+ki(d,i)-1,n(d))+1;
-            for m = 1:nks; box(:,m) = sub2ind(n,box_(1,m),box_(2,m),box_(3,m)); end
-        end
-
-        function tetrahedron   = box2tetrahedron(recbas)
-            %     7-------8
-            %    /|      /|
-            %   / |     / |
-            %  5-------6  |
-            %  |  3----|--4
-            %  | /     | /
-            %  |/      |/
-            %  1-------2
-            %
-            boxvc = recbas*[0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1];
-            % get indices of diagonal pairs
-            diags=[1,2,3,4;8,7,6,5];
-            % get distances across diagonals
-            d=zeros(1,4); for m = 1:4; d(m) = norm(boxvc(:,diags(2,m))-boxvc(:,diags(1,m))); end
-            % record smallest diagonal
-            [~,si]=min(d);
-            % create connectivity list defining tetrahedra
-            switch si
-                case (1)
-                tetrahedron(:,1) = [1,8,2,4];
-                tetrahedron(:,2) = [1,8,2,6];
-                tetrahedron(:,3) = [1,8,3,4];
-                tetrahedron(:,4) = [1,8,3,7];
-                tetrahedron(:,5) = [1,8,5,6];
-                tetrahedron(:,6) = [1,8,5,7];
-                case (2)
-                tetrahedron(:,1) = [2,7,1,3];
-                tetrahedron(:,2) = [2,7,1,5];
-                tetrahedron(:,3) = [2,7,3,4];
-                tetrahedron(:,4) = [2,7,4,8];
-                tetrahedron(:,5) = [2,7,5,6];
-                tetrahedron(:,6) = [2,7,6,8];
-                case (3)
-                tetrahedron(:,1) = [3,6,1,2];
-                tetrahedron(:,2) = [3,6,1,5];
-                tetrahedron(:,3) = [3,6,2,4];
-                tetrahedron(:,4) = [3,6,4,8];
-                tetrahedron(:,5) = [3,6,5,7];
-                tetrahedron(:,6) = [3,6,7,8];
-                case (4)
-                tetrahedron(:,1) = [4,5,1,2];
-                tetrahedron(:,2) = [4,5,1,3];
-                tetrahedron(:,3) = [4,5,2,6];
-                tetrahedron(:,4) = [4,5,3,7];
-                tetrahedron(:,5) = [4,5,6,8];
-                tetrahedron(:,6) = [4,5,7,8];
-            end
-        end
-
         function [y]           = ibz2fbz(fbz,ibz,x)
             % copy ibz values on fbz grid
             %
@@ -5346,9 +5349,8 @@ classdef am_dft
             %
             y = zeros(size(x,1),fbz.nks);
             for i = [1:ibz.nks]; y(:,fbz.f2i==i) = repmat( x(:,i) , [1,sum(fbz.f2i==i)] ); end
-
         end
-
+        
         function [qqq]         = get_qqq(fbz,ibz)
             % get all possible wavevector triplets which conserve momentum
             %        q1 + q2 = q3 (absorbtion) and q1 = q2 + q3 (emission)
