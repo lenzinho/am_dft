@@ -513,27 +513,32 @@ classdef am_dft
         function           write_kpoints(bz,fkpoints)
             if nargin < 2; fkpoints='KPOINTS'; end
             if     isnumeric(bz)
-                if all(bz==1)
-                    % simple list [nx,ny,nz] kpoint point density
+                if     ndims(bz)==1
+                    % still need to implement k-point density
+                elseif ndims(bz)==3
+                    % [nx,ny,nz] kpoint point density along each direction
                     fid = fopen(fkpoints,'w');
-                        fprintf(fid,'%s \n','Automatically generated mesh');
+                        fprintf(fid,'%s \n','KPOINTS');
                         fprintf(fid,'%s \n','0');
-                        fprintf(fid,'%s \n','Gamma');
-                        fprintf(fid,' %i %i %i \n',[1 1 1]);
-                        fprintf(fid,' %i %i %i \n',[0 0 0]);
-                   fclose(fid);
-                else
-                    % simple list [nx,ny,nz] kpoint point density
-                    fid = fopen(fkpoints,'w');
-                        fprintf(fid,'%s \n','Automatically generated mesh');
-                        fprintf(fid,'%s \n','0');
-                        fprintf(fid,'%s \n','Monkhorst-Pack');
+                        if all(bz==1)
+                            fprintf(fid,'%s \n','Gamma');
+                        else
+                            fprintf(fid,'%s \n','Monkhorst-Pack');
+                        end
                         fprintf(fid,' %i %i %i \n',ceil(bz));
                         fprintf(fid,' %i %i %i \n',[0 0 0]);
                    fclose(fid);
                 end
             elseif isstruct(bz)
-                % still need to implement.
+                % explicit kpoints based
+                    fid = fopen(fkpoints,'w');
+                        fprintf(fid,'%s\n','KPOINTS');
+                        fprintf(fid,'%i\n',bz.nks);
+                        fprintf(fid,'%s\n',bz.units);
+                        for i = 1:bz.nks
+                            fprintf(fid,' %12.8f %12.8f %12.8f    1\n',bz.k(:,i));
+                        end
+                   fclose(fid);
             end
         end
 
@@ -3489,8 +3494,7 @@ classdef am_dft
 
         function plot_bz_path(bzp)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % initialize figure
             set(gcf,'color','w'); hold on;
@@ -4312,7 +4316,7 @@ classdef am_dft
 
         % electrons
 
-        function [tb,pp]      = get_tb(pc,uc,dft,cutoff,spdf,nskips)
+        function [tb,pp,H]    = get_tb(pc,uc,dft,cutoff,spdf,nskips)
 
             import am_lib.* am_dft.*
 
@@ -4326,7 +4330,7 @@ classdef am_dft
 
             % tight binding model
             fprintf(' ... solving for symbolic matrix elements and hamiltonian'); tic;
-            tb = get_tb_model(tb,pp,uc,spdf);
+            [tb,H] = get_tb_model(tb,pp,uc,spdf);
             fprintf(' (%.f secs)\n',toc);
 
             % get tight binding matrix elements
@@ -4359,7 +4363,7 @@ classdef am_dft
                 y = ip.xy(2,p); j = uc.u2i(y); n = pp.u2p(y); dn = d(n);
 
                 % have not tested algo 2 yet!!!! try it with Si first...
-                algo=2;
+                algo=1;
                 switch algo
                     case 1
                         % original version
@@ -4367,11 +4371,13 @@ classdef am_dft
                         W = sum(kron_( D{j}(:,:,ip.s_ck(:,p)) , D{i}(:,:,ip.s_ck(:,p)) ) - eye(dm*dn),3);
                     case 2
                         % incoprorating flip symmetry (need to test still)
-                        sym_list = find(ip.s_ck(:,i)); 
+                        sym_list = find(ip.s_ck(:,i)); sym_list=sym_list(sym_list<24); 
                         W = kron_( D{j}(:,:,sym_list) , D{i}(:,:,sym_list) );
-                        if (i==j); for j = 1:numel(sym_list) % maybe F{i} should multiply the other right hand side of W?
-                            if all(pp.Q{2}(:,sym_list(j))==[2;1]); W(:,:,j) = F{i}*W(:,:,j); end
-                        end; end
+                        for wi = 1:numel(sym_list) % maybe F{i} should multiply the other right hand side of W?
+                            if all(pp.Q{2}(:,sym_list(wi))==[2;1])
+                                W(:,:,wi) = W(:,:,wi)*F{i}; 
+                            end
+                        end
                         W = sum( W - eye(dm*dn), 3);
                 end
 
@@ -4379,7 +4385,7 @@ classdef am_dft
                 if (i==j); W = W + F{i}-eye(dm*dn); end
 
                 % get linearly-independent nullspace and normalize to first nonzero element
-                W=real(null(W)); W=frref_(W.').'; W(abs(W)<am_lib.eps)=0; W(abs(W-1)<am_lib.eps)=1; W=W./accessc_(W,findrow_(W.').');
+                W=null(W); W=frref_(W.').'; W=W./accessc_(W,findrow_(W.').'); W=wdv_(W); 
 
                 % define parameters
                 c = sym(sprintf('c%02i_%%d%%d',p),[dm,dn],'real'); c = c(findrow_(W.'));
@@ -4463,13 +4469,13 @@ classdef am_dft
 
             % poor man's simulated annealing: loop over distances, incorporating each shell at a time
             % it appears that ignoring the loop over distance is better, at least for cases with small pair cutoffs
-            for j = nds % 2:nds
+            for j = 2:nds
                 for i = 1:30
                     % simulated annealing
                     if i ~= 1; x = x_best + rand_(x_best) * kT_decay_(kT,i); end
 
                     % optimize
-                    [x,r] = lsqnonlin_(cost_,x,[d4fc>d(j)],[],[],opts);
+                    [x,r] = lsqnonlin_(cost_, x, [d4fc>d(j)], [], [], opts);
 
                     % save r_best parameter
                     if r < r_best; r_best = r; x_best = x;
@@ -4497,8 +4503,7 @@ classdef am_dft
 
         function                plot_tb_vs_dft(tb,dft)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % plot correlation
             plotcorr_( flatten_( dft.E([1:tb.nbands]+tb.nskips,:)        ) , ...
@@ -5821,9 +5826,7 @@ classdef am_dft
             end
 
             % correct rounding errors in sym (non-exauhstive)
-            for i = 1:numel(D); for j = 1:numel(D{i}); for wdv = [0,1,.5,sqrt(3)/2]
-                if abs(abs(D{i}(j))-wdv)<am_lib.eps; D{i}(j)=wdv*sign(real(D{i}(j))); end
-            end;end;end
+            for i = 1:numel(D); D{i} = wdv_(D{i}); end
         end
 
         function E       = eval_energies_(tb,x,k)
