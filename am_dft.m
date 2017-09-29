@@ -5029,11 +5029,6 @@ classdef am_dft
             
             import am_lib.* am_dft.*
 
-            % NOT WORKING YET...
-            % NOT WORKING YET...
-            % NOT WORKING YET...
-            % NOT WORKING YET...
-            
             % construct concrete supercell for detemrining pairs
             [uc,uc.u2p,uc.p2u] = get_supercell(pc, diag(ceil(2*cutoff./normc_(pc.bas))) ); 
             
@@ -5041,7 +5036,7 @@ classdef am_dft
             [~,~,S] = get_symmetries(pc); nSs = size(S,3);
 
             % combine space symmetry with permutation of atomic positions
-            M = perms([2:-1:1]).'; Q{1} = repmat(S,1,1,size(M,2)); Q{2}=repelem(M,1,nSs);
+            M = perms([2:-1:1]).'; Q{1} = repmat(S,1,1,size(M,2)); Q{2}=repelem(M,1,nSs); nQs=size(Q{1},3);
 
             % get all possible pairs
             [Y{1:2}] = ndgrid(1:uc.natoms,uc.p2u); x = [Y{2}(:),Y{1}(:)].';
@@ -5066,12 +5061,11 @@ classdef am_dft
             tau(1:3,:,:,:) = matmul_(uc.tau2pc, mod_(matmul_( inv(uc.tau2pc), tau(1:3,:,:,:) )));
 
             % assign clusters unique labels
-            P1 = member_(tau(:,:,1,:)./10,X./10);
-            P2 = member_(tau(:,:,2,:)./10,X./10);
-            [V,~,V_p2i]=uniquec_([P1(:),P2(:)].');
+            for i = 1:natoms; V(i,:) = reshape(member_(tau(:,:,i,:)./10,X./10),1,[]); end
+            [V,~,V_p2i]=uniquec_(V);
 
             % get irreducible cluster indicies by conencting symmetryically equivalent clusters 
-            [~,ip2pp,pp2ip] = get_connectivity( reshape(V_p2i,size(P1)) ); V = V(:,ip2pp);
+            [~,ip2pp,pp2ip] = get_connectivity( reshape(V_p2i,[nclusters,nQs]) );  V = V(:,ip2pp);
 
             % get unique positions
             tau_u = uniquec_(X(:,V(:)));
