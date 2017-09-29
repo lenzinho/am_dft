@@ -4675,7 +4675,7 @@ classdef am_dft
         % pairs and triplets
 
         % function [ip,pp]      = get_pairs(pc,uc,cutoff)
-        function [ip,pp]      = get_pairs(pc,uc,cutoff)
+        function [ip,pp]      = get_pairs(pc,cutoff)
             %
             % IMPORTANT:
             %    clc; X=PM(A(3,:),:)
@@ -4705,9 +4705,9 @@ classdef am_dft
 
             import am_lib.* am_dft.*
 
-            % readjust cutoff based on unitcell
-%             cutoff = min([normc_(uc.bas)/2,cutoff]);
-
+            % construct concrete supercell for detemrining pairs
+            [uc,uc.u2p,uc.p2u] = get_supercell(pc, diag(ceil(2*cutoff./normc_(pc.bas))) ); 
+            
             % step 1: get pair symmetries symmetries [pc-frac]
 
                 % get space symmetries
@@ -4753,15 +4753,12 @@ classdef am_dft
                 [V,~,V_p2i]=unique([P1(:),P2(:)],'rows','stable'); V=V.';
                 
                 % get permutation representation (entries are unique pair indicies)
-                PM = reshape(V_p2i,size(P1)); A = get_connectivity(PM);
+                PM = reshape(V_p2i,size(P1)); [A,ip2pp,pp2ip] = get_connectivity(PM);
 
-                % get map
-                ip2pp = findrow_(A); pp2ip = [1:size(A,1)]*A;
-                
             % step 3: [xy, qi, iqi]
 
                 % get symmetry which takes irrep to orbit
-                qi = findrow_(PM==PM(ip2pp(pp2ip),E)); iqi = I(qi);
+                % qi = findrow_(PM==PM(ip2pp(pp2ip),E)); iqi = I(qi);
 
                 % get uc indicies, vectors, and stabilizers
                 xy = V(:,PM(:,E)); v = uc2ws(uc.bas*(uc.tau(:,xy(2,:))-uc.tau(:,xy(1,:))),uc.bas); s_ck = [PM==PM(:,E)].';
@@ -5025,7 +5022,7 @@ classdef am_dft
 
         % new pairs
         
-        function [ip] = get_irreducible_cluster(pc,natoms,cutoff)
+        function [ip]         = get_irreducible_cluster(pc,natoms,cutoff)
             
             import am_lib.* am_dft.*
 
@@ -5036,17 +5033,19 @@ classdef am_dft
             [~,~,S] = get_symmetries(pc); nSs = size(S,3);
 
             % combine space symmetry with permutation of atomic positions
-            M = perms([natoms:-1:1]).'; Q{1} = repmat(S,1,1,size(M,2)); Q{2}=repelem(M,1,nSs); nQs=size(Q{1},3);
+            M = perms([natoms:-1:1]).'; Q{1} = repmat(S,1,1,size(M,2)); Q{2} = repelem(M,1,nSs); nQs=size(Q{1},3);
 
             % get all possible clusters with natoms
-            [L{1:(natoms-1)}]=deal([1:uc.natoms]);
-            [Y{natoms:-1:1}] = ndgrid(L{:},uc.p2u); x = reshape(cat(natoms+1,Y{1:natoms}),[],natoms).';
+            [L{1:(natoms-1)}]=deal([1:uc.natoms]); 
+            [Y{natoms:-1:1}] = ndgrid(L{:},uc.p2u); 
+            x = reshape(cat(natoms+1,Y{1:natoms}),[],natoms).';
             
             % [uc-cart] exclude any cluster with a bond length longer than the cutoff
-            d_cart_ = @(dX) normc_(uc2ws(uc.bas*dX,uc.bas)); 
+% IGNORING PBC: % d_cart_ = @(dX) normc_(uc2ws(uc.bas*dX,uc.bas)); 
+            d_cart_ = @(dX) normc_(uc.bas*dX); 
             bond_ij = nchoosek_(natoms,2); nbonds = size(bond_ij,2); ex_=true(1,size(x,2));            
             for i = 1:nbonds
-                ex_(ex_) = d_cart_(uc.tau(:,x(bond_ij(1,i),ex_))-uc.tau(:,x(bond_ij(2,i),ex_)))<cutoff;
+                ex_(ex_) = d_cart_( uc.tau(:,x(bond_ij(1,i),ex_)) - uc.tau(:,x(bond_ij(2,i),ex_)) )<cutoff;
             end
             
             % [pc-frac] create cluster tau = [X, natoms, nclusters]
@@ -5058,35 +5057,37 @@ classdef am_dft
             tau = apply_symmetry(Q,tau);
 
             % [pc-frac] shift reference atom to primitive cell 
-            G_ = @(tau) round(tau - mod_(tau)); 
-            tau(1:3,:,:,:) = tau(1:3,:,:,:) - G_(tau(1:3,1,:,:));
+            G_ = @(tau) round(tau - mod_(tau));  tau(1:3,:,:,:) = tau(1:3,:,:,:) - G_(tau(1:3,1,:,:));
             
-            % [this is a problem] 
-            % [this is a problem] 
-            % [this is a problem] 
             % shift atoms to positive octant so that they are comparable to X
             tau_positive(1:3,:,:,:) = matmul_(uc.tau2pc, mod_(matmul_( inv(uc.tau2pc), tau(1:3,:,:,:) )));
             tau_positive = cat(1, tau_positive, reshape(tau(4,:),[1,natoms,nclusters,nQs]) );
             
             % assign clusters unique labels
             for i = 1:natoms; V(i,:) = reshape(member_(tau_positive(:,i,:,:)./10, X./10),1,[]); end
-            [V,V_i2p,V_p2i]=uniquec_(V);
-
+            [V,V_i2p,V_p2i]=uniquec_(V); % matched up to here
+            
             % get irreducible cluster indicies by connecting symmetrically equivalent clusters with a graph
-            [~,i2p,~] = get_connectivity( reshape(V_p2i,[nclusters,nQs]) );  V = V(:,i2p);
+            [~,i2p,p2i] = get_connectivity( reshape(V_p2i,[nclusters,nQs]) ); V = V(:,i2p);
 
-            % reassign position indices [should assign X based on positive octant
-            % positions, but original tau positions)
-            [Z,~,IC] = uniquec_(V(:).'); V = reshape(IC,size(V)); X=X(:,Z);
+            % reassign position indices and recenter
+            [Z,~,IC] = uniquec_(V(:).'); V = reshape(IC,size(V));
+% IGNORING PBC: % X(1:3,:) = pc.bas\uc2ws(pc.bas*X(1:3,:),uc.bas); 
+            X=X(:,Z);
 
             % create structure
             ip_ = @(pc,X,V,cutoff,Q) struct('units','frac-pc','bas',pc.bas, ...
                 'symb',{pc.symb},'mass',pc.mass,'species',X(4,:),'tau',X(1:3,:), ...
                 'cluster',V,'nclusters',size(V,2),'natoms',size(V,1),'cutoff',cutoff,'Q',{Q},'nQs',size(Q{1},3));
             ip = ip_(pc, X,V,cutoff,Q);
+            
+            % now is the time to sort based on distances
+            REF = repmat(ip.bas*ip.tau(:,ip.cluster(1,:)),ip.natoms,1);
+            POS = reshape(ip.bas*ip.tau(:,ip.cluster),[3*ip.natoms,ip.nclusters]);
+            d = normc_(POS-REF); ip.cluster = ip.cluster(:,rankc_( [d;min(sign(POS));min(sign(POS))] ));
         end
         
-        function [pp] = get_primitive_pair(ip)
+        function [pp]         = get_primitive_pair(ip)
         
             import am_lib.* am_dft.*
 
@@ -5097,8 +5098,7 @@ classdef am_dft
             tau = apply_symmetry(ip.Q,tau);
 
             % [pc-frac] shift reference atom to primitive cell 
-            G_ = @(tau) round(tau - mod_(tau)); 
-            tau(1:3,:,:,:) = tau(1:3,:,:,:) - G_(tau(1:3,1,:,:));
+            G_ = @(tau) round(tau - mod_(tau));  tau(1:3,:,:,:) = tau(1:3,:,:,:) - G_(tau(1:3,1,:,:));
 
             % [pc-frac] make a list of unique positions and assign each a number (rank by species then by position)
             tau_u = uniquec_( reshape(tau,size(tau,1),[]) );
@@ -5120,32 +5120,57 @@ classdef am_dft
             pp.nclusters = size(pp.cluster,2);
             pp.natoms = size(pp.cluster,1);
             pp.cutoff = ip.cutoff;
-            pp.ip2pp = i2p;
-            pp.pp2ip = p2i;
+            pp.i2p = i2p;
+            pp.p2i = p2i;
         end
         
-        function                print_irreducible_cluster(ip)
+        function                print_irreducible_cluster(ip,flags)
 
             import am_lib.*
             
-            fprintf(' ... irreducible %i-atom clusters:\n', ip.natoms);
+            if nargin<2; flags=''; end
+            
+            if isfield(ip,'p2i')
+                isprimitive=true; str_type='primitive';
+            else
+                isprimitive=false; str_type='irreducible';
+            end
+            
+            str_sort = '';
+            if contains(flags,'sort')
+                if isprimitive
+                    [~,inds]=sort(ip.p2i);
+                    ip.cluster = ip.cluster(:,inds);
+                    ip.p2i = ip.p2i(:,inds);
+                    str_sort = ' (sorted)';
+                end
+            end
+            
+            fprintf(' ... %s %i-atom clusters%s:\n', str_type, ip.natoms, str_sort);
 
             % fprintf('     atom %i: %i shells\n', m, sum(ex_));
             fprintf('     '); 
                 fprintf(['%-',num2str(4+3*ip.natoms),'s'],'cluster');
+                if isprimitive; fprintf('%5s','p2i'); end
                 fprintf('%24s',sprintf('atom #%i',1)); for i = 2:ip.natoms; fprintf('%24s',sprintf('bond (1-%i)',i)); end
                 fprintf('%8s','length'); 
             fprintf('\n');  
             % bar
             fprintf('     '); 
                 fprintf(['%-',num2str(4+3*ip.natoms),'s'],repmat('-',4+3*ip.natoms,1));
+                if isprimitive; fprintf('%5s','----'); end
                 for i = 1:ip.natoms; fprintf('%8s%8s%8s','-------','--------','--------'); end
                 fprintf('%8s','-------'); 
             fprintf('\n');  
             for i = 1:ip.nclusters
             fprintf('     '); 
+                % cluster number and symbols
                 fprintf('%-3i %2s ',i,ip.symb{ip.species(ip.cluster(1,i))}); fprintf('-%2s',ip.symb{ip.species(ip.cluster(2:end,i))}); 
+                % irreducible index if primitive
+                if isprimitive; fprintf('%5i', ip.p2i(i)); end
+                % center and bonds
                 fprintf(' %7.3f',ip.bas*ip.tau(:,ip.cluster(1,i))); fprintf(' %7.3f',ip.bas*(ip.tau(:,ip.cluster(2:end,i))-ip.tau(:,ip.cluster(1,i)))); 
+                % length
                 fprintf(' %7.3f',normc_(ip.bas*(ip.tau(:,ip.cluster(2:end,i))-ip.tau(:,ip.cluster(1,i))))); 
             fprintf('\n');
             end
@@ -5299,7 +5324,7 @@ classdef am_dft
             seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:), tol);
 
             % get permutation matrix and construct a sparse binary representation
-            PM = member_(seitz_apply_(S,pc.tau),pc.tau, tol); [A,i2p,p2i] = get_connectivity(PM)
+            PM = member_(seitz_apply_(S,pc.tau),pc.tau, tol); [A,i2p,p2i] = get_connectivity(PM);
 
             % define irreducible cell creation function and make structure
             ic_ = @(uc,i2p) struct('units','frac','bas',uc.bas, ...
