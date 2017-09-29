@@ -773,7 +773,7 @@ classdef am_dft
                 b = ~isempty(b);
             end
         end
-        
+
         
     end
     
@@ -841,6 +841,41 @@ classdef am_dft
 %             % character table
 %
 %         end
+
+        function taup         = apply_symmetry(S,tau)
+            %
+            % tau(1:3,:) = atomic coordinates
+            % tau(4:end) [optional] = anything associated with tau that you want to transfer 
+            
+            import am_lib.*
+
+            % get symmetry type from shape
+            s = size(S);
+            if     s(1)==3 && s(2)==3 % point symmetry
+                apply_ = @(R,tau) cat(1, ...
+                    reshape(matmul_(R(1:3,1:3,:),tau),3,[],size(R,3))                  , repmat(tau(4:end,:),1,1,size(S,3)) );
+            elseif s(1)==4 && s(2)==4 % seitz symmetry
+                apply_ = @(S,tau) cat(1, ...
+                    reshape(matmul_(S(1:3,1:3,:),tau(1:3,:)),3,[],size(S,3))+S(1:3,4,:), repmat(tau(4:end,:),1,1,size(S,3)) );
+            elseif s(1)==1 && s(2)==2 % composit symmetry Q
+                apply_ = @(Q,tau) apply_composite_symmetry_(Q,tau);
+                s = size(S{1});
+            end
+                
+            taup = apply_(S,tau);
+            taup = reshape(taup,[size(tau),s(end)]);
+
+            function taup = apply_composite_symmetry_(Q,tau)
+                % apply symmetry
+                for i = 1:size(tau,3)
+                    taup(:,:,i,:) = am_dft.apply_symmetry(Q{1},tau(:,:,i)); 
+                end
+                % apply permutation
+                for iq = 1:size(Q{1},3)
+                    taup(:,:,Q{2}(:,iq),iq) = taup(:,:,:,iq); 
+                end
+            end
+        end
 
         function [T,H,S,R]    = get_symmetries(pc, tol)
             % [T,H,S,R] = get_symmetries(pc, tol=am_dft.tiny)
@@ -3781,7 +3816,6 @@ classdef am_dft
             %     the intrinsic transpositional symmetry does not apply.
             %
             
-
             import am_lib.* am_dft.*
 
             % set sym digits
@@ -4640,6 +4674,7 @@ classdef am_dft
 
         % pairs and triplets
 
+        % function [ip,pp]      = get_pairs(pc,uc,cutoff)
         function [ip,pp]      = get_pairs(pc,uc,cutoff)
             %
             % IMPORTANT:
@@ -4671,7 +4706,7 @@ classdef am_dft
             import am_lib.* am_dft.*
 
             % readjust cutoff based on unitcell
-            cutoff = min([normc_(uc.bas)/2,cutoff]);
+%             cutoff = min([normc_(uc.bas)/2,cutoff]);
 
             % step 1: get pair symmetries symmetries [pc-frac]
 
@@ -4690,14 +4725,14 @@ classdef am_dft
                 d_cart_ = @(dX) normc_(uc2ws(uc.bas*dX,uc.bas));
                 [Y{1:2}]=ndgrid(1:uc.natoms,uc.p2u); x=[Y{2}(:),Y{1}(:)].';
                 ex_ = d_cart_(uc.tau(:,x(2,:))-uc.tau(:,x(1,:)))<cutoff;
-
+                
                 % [pc-frac] compute action of space symmetries on pair positions
                 seitz_apply_ = @(S,tau) reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:);
                 pc_tau = uc.tau2pc*mod_(uc.tau);
                 tau(:,:,:,1) = seitz_apply_(Q{1},pc_tau(:,x(1,ex_)));
                 tau(:,:,:,2) = seitz_apply_(Q{1},pc_tau(:,x(2,ex_)));
                 for iq = 1:nQs; tau(:,:,iq,Q{2}(:,iq)) = tau(1:3,:,iq,:); end
-
+                
                 % [pc-frac] define function to find the closest primitive cell vector
                 % and shift reference atom to primitive cell 
                 G_ = @(tau) round(tau - mod_(tau)); 
@@ -4716,13 +4751,13 @@ classdef am_dft
                 % create a unique pair label (it is very important to request 'stable' here
                 % since the position of elements in the PM table also encode information).
                 [V,~,V_p2i]=unique([P1(:),P2(:)],'rows','stable'); V=V.';
-
+                
                 % get permutation representation (entries are unique pair indicies)
                 PM = reshape(V_p2i,size(P1)); A = get_connectivity(PM);
 
                 % get map
                 ip2pp = findrow_(A); pp2ip = [1:size(A,1)]*A;
-
+                
             % step 3: [xy, qi, iqi]
 
                 % get symmetry which takes irrep to orbit
@@ -4988,6 +5023,114 @@ classdef am_dft
             fprintf('     %10.5f %10.5f %10.5f  %10.5f %10.5f %10.5f   %4i   %3i-%3i-%3i   %3i-%3i-%3i   %4i\n', Z(2:end,rankc_(Z(1,:))));
         end
 
+        % new pairs
+        
+        function [ip] = get_irreducible_pair(pc,cutoff)
+            
+            import am_lib.* am_dft.*
+
+            % NOT WORKING YET...
+            % NOT WORKING YET...
+            % NOT WORKING YET...
+            % NOT WORKING YET...
+            
+            % construct concrete supercell for detemrining pairs
+            [uc,uc.u2p,uc.p2u] = get_supercell(pc, diag(ceil(2*cutoff./normc_(pc.bas))) ); 
+            
+            % [pc-frac] get symmetries
+            [~,~,S] = get_symmetries(pc); nSs = size(S,3);
+
+            % combine space symmetry with permutation of atomic positions
+            M = perms([2:-1:1]).'; Q{1} = repmat(S,1,1,size(M,2)); Q{2}=repelem(M,1,nSs);
+
+            % get all possible pairs
+            [Y{1:2}] = ndgrid(1:uc.natoms,uc.p2u); x = [Y{2}(:),Y{1}(:)].';
+            
+            % exclude pairs with bond legnths above the cutoff
+            d_cart_ = @(dX) normc_(uc2ws(uc.bas*dX,uc.bas)); 
+            ex_ = d_cart_(uc.tau(:,x(2,:))-uc.tau(:,x(1,:)))<cutoff;
+            
+            % [pc-frac] create cluster tau = [X, nclusters, natoms]
+            [natoms,nclusters] = size(x(:,ex_)); 
+            X = [uc.tau2pc*uc.tau;uc.species]; 
+            tau = reshape(X(:,x(:,ex_).'),[],nclusters,natoms);
+
+            % [pc-frac] apply transformation tau = [X, nclusters, natoms, nsymmetries]
+            tau = apply_symmetry(Q,tau);
+
+            % [pc-frac] shift reference atom to primitive cell 
+            G_ = @(tau) round(tau - mod_(tau)); 
+            tau(1:3,:,:,:) = tau(1:3,:,:,:) - G_(tau(1:3,:,1,:));
+            
+            % shift atoms to positive octant so that they are comparable to X
+            tau(1:3,:,:,:) = matmul_(uc.tau2pc, mod_(matmul_( inv(uc.tau2pc), tau(1:3,:,:,:) )));
+
+            % assign clusters unique labels
+            P1 = member_(tau(:,:,1,:)./10,X./10);
+            P2 = member_(tau(:,:,2,:)./10,X./10);
+            [V,~,V_p2i]=uniquec_([P1(:),P2(:)].');
+
+            % get irreducible cluster indicies by conencting symmetryically equivalent clusters 
+            [~,ip2pp,pp2ip] = get_connectivity( reshape(V_p2i,size(P1)) ); V = V(:,ip2pp);
+
+            % get unique positions
+            tau_u = uniquec_(X(:,V(:)));
+            
+            % ip = prototypes[pc-frac]
+            ip.units = 'frac-pc';
+            ip.bas = pc.bas;
+            ip.symb = pc.symb;
+            ip.mass = pc.mass;
+            ip.species = tau_u(4,:);
+            ip.tau = tau_u(1:3,:);
+            ip.cluster = V;
+            ip.nclusters = size(ip.cluster,2);
+            ip.natoms = size(ip.cluster,1);
+            ip.cutoff = cutoff;
+        end
+        
+        function [pp] = get_primitive_pair(ip)
+        
+            import am_lib.* am_dft.*
+
+            % create cluster tau = [X, nclusters, natoms]
+            X = [ip.tau;ip.species]; tau = reshape(X(:,ip.cluster.'),[],ip.nclusters,ip.nelements);
+
+            % apply transformation tau = [X, nclusters, natoms, nsymmetries]
+            tau = apply_symmetry(ip.Q,tau);
+
+            % [pc-frac] shift reference atom to primitive cell 
+            G_ = @(tau) round(tau - mod_(tau));  tau(1:3,:,:,:) = tau(1:3,:,:,:) - G_(tau(1:3,:,1,:));
+
+            % [pc-frac] make a list of unique positions and assign each a number (rank by species then by position)
+            tau_u = uniquec_( reshape(tau,size(tau,1),[]) );
+
+            % designate a cluster by two unique atomic positions
+            P1 = member_(tau(:,:,1,:)/10,tau_u/10);
+            P2 = member_(tau(:,:,2,:)/10,tau_u/10);
+
+            % create a unique pair label (it is very important to request 'stable' here
+            % since the position of elements in the PM table also encode information).
+            [V,~,V_p2i]=uniquec_([P1(:),P2(:)].');
+
+            % get connectivity
+            PM = reshape(V_p2i,size(P1)); [~,ip2pp,pp2ip] = get_connectivity(PM);
+
+            pp.units = 'frac-pc';
+            pp.bas = ip.bas;
+            pp.symb = ip.symb;
+            pp.mass = ip.mass;
+            pp.species = tau_u(4,:);
+            pp.tau = tau_u(1:3,:);
+            pp.cluster = V;
+            pp.nclusters = size(pp.cluster,2);
+            pp.natoms = size(pp.cluster,1);
+            pp.cutoff = ip.cutoff;
+            pp.ip2pp = ip2pp;
+            pp.pp2ip = pp2ip;
+        end
+        
+        
     end
 
 
@@ -5135,10 +5278,7 @@ classdef am_dft
             seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:), tol);
 
             % get permutation matrix and construct a sparse binary representation
-            PM = member_(seitz_apply_(S,pc.tau),pc.tau, tol); A = get_connectivity(PM);
-
-            % set identifiers
-            i2p = round(findrow_(A)).'; p2i = round(([1:size(A,1)]*A));
+            PM = member_(seitz_apply_(S,pc.tau),pc.tau, tol); [A,i2p,p2i] = get_connectivity(PM)
 
             % define irreducible cell creation function and make structure
             ic_ = @(uc,i2p) struct('units','frac','bas',uc.bas, ...
