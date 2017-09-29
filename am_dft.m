@@ -1674,13 +1674,14 @@ classdef am_dft
         
         function ss_name_long = get_long_ss_name(S)
             import am_dft.* am_lib.*
+            if isempty(S); ss_name_long=[]; return; end
             ss_name_long = get_long_ps_name(S(1:3,1:3,:));
             nsyms=size(S,3); E = find(all(all(eq_(S,eye(4)),1),2));
             for i = 1:nsyms
                 if i==E; continue; end
                 t = S(1:3,4,i);
-                t_name = sprintf('%s,',sym(t)); t_name=strrep(t_name,' ',''); t_name=t_name(1:(end-1)); 
-                ss_name_long{i} = sprintf('%s [%s]',ss_name_long{i}, t_name );
+                t_name = sprintf('[%3.2f %3.2f %3.2f]',t);
+                ss_name_long{i} = sprintf('%10s %s',ss_name_long{i}, t_name );
             end
         end
             
@@ -3717,9 +3718,6 @@ classdef am_dft
             % [cart] print shell results
             print_pairs(uc,pp)
             
-            % [cart] print shell results
-            print_ip_symmetries(ip,pp);
-
             % force constant model
             fprintf(' ... determining harmonic force constant interdependancies and dynamical matrix ');
             if contains(flags,'-model'); tic;
@@ -3741,35 +3739,7 @@ classdef am_dft
                 fprintf('(%.f secs)\n',toc);
             else; fprintf('(skipped)\n'); end
             
-            function print_ip_symmetries(ip,pp)
-                bar_ = @(x) repmat('-',[1,x]); fprintf('     %s irreducible pair symmetries %s\n', bar_(25), bar_(25) );
-                for i = 1:ip.nshells
-                    ex_=ip.s_ck(:,i);
-                    ex_bond_group_ = ex_; ex_bond_group_(ex_) = all(pp.Q{2}(:,ex_)==[1;2],1); BG=am_dft.get_long_ss_name(pp.Q{1}(:,:,ex_bond_group_)); % bound group
-                    ex_revr_group_ = ex_; ex_revr_group_(ex_) = all(pp.Q{2}(:,ex_)==[2;1],1); RG=am_dft.get_long_ss_name(pp.Q{1}(:,:,ex_revr_group_)); % reversal group
-                    fprintf('     irreducible pair %i\n', i);
-                    fprintf('       %-10s: ','stabilizer');      
-                    for i = 1:numel(BG)
-                        fprintf(' %20s',BG{i}); 
-                        if mod(i,3)==0 && i~=numel(BG)
-                            fprintf('\n'); 
-                            fprintf('       %-10s  ',' '); 
-                        end
-                    end
-                    fprintf('\n');
-                    fprintf('\n');
-                    fprintf('       %-10s: ','reversal');  
-                    for i = 1:numel(RG)
-                        fprintf(' %20s',RG{i}); 
-                        if mod(i,3)==0 && i~=numel(RG)
-                            fprintf('\n'); 
-                            fprintf('       %-10s  ',' '); 
-                        end
-                    end
-                    fprintf('\n');
-                    fprintf('\n');
-                end
-            end
+
         end
 
         function [bvk,D,Dasr] = get_bvk_model(ip,pp,uc)
@@ -5041,7 +5011,6 @@ classdef am_dft
             x = reshape(cat(natoms+1,Y{1:natoms}),[],natoms).';
             
             % [uc-cart] exclude any cluster with a bond length longer than the cutoff
-% IGNORING PBC: % d_cart_ = @(dX) normc_(uc2ws(uc.bas*dX,uc.bas)); 
             d_cart_ = @(dX) normc_(uc.bas*dX); 
             bond_ij = nchoosek_(natoms,2); nbonds = size(bond_ij,2); ex_=true(1,size(x,2));            
             for i = 1:nbonds
@@ -5053,7 +5022,7 @@ classdef am_dft
             X = [uc.tau2pc*uc.tau;uc.species]; 
             tau = reshape(X(:,x(:,ex_)),[],natoms,nclusters);
 
-            % [pc-frac] apply transformation tau = [X, natoms, nclusters, nsymmetries]
+            % [pc-frac] apply transformation tau = [X, natoms, nclusters, nQs]
             tau = apply_symmetry(Q,tau);
 
             % [pc-frac] shift reference atom to primitive cell 
@@ -5065,29 +5034,37 @@ classdef am_dft
             
             % assign clusters unique labels
             for i = 1:natoms; V(i,:) = reshape(member_(tau_positive(:,i,:,:)./10, X./10),1,[]); end
-            [V,V_i2p,V_p2i]=uniquec_(V); % matched up to here
+            [V,~,V_p2i]=uniquec_(V); 
             
             % get irreducible cluster indicies by connecting symmetrically equivalent clusters with a graph
-            [~,i2p,p2i] = get_connectivity( reshape(V_p2i,[nclusters,nQs]) ); V = V(:,i2p);
-
+            PM = reshape(V_p2i,[nclusters,nQs]); [~,i2p,~] = get_connectivity( PM ); V = V(:,i2p);
+            
+            % save stabilizers and generators[nQs, nclusters]
+            s_ck = [PM(i2p,:)==PM(i2p,1)].';
+            for i = 1:numel(i2p)
+                [~,a,~]=unique(PM(i2p(i),:)); g_ck(a,i)=true;
+            end
+            
             % reassign position indices and recenter
-            [Z,~,IC] = uniquec_(V(:).'); V = reshape(IC,size(V));
-% IGNORING PBC: % X(1:3,:) = pc.bas\uc2ws(pc.bas*X(1:3,:),uc.bas); 
-            X=X(:,Z);
+            [Z,~,IC] = uniquec_(V(:).'); V = reshape(IC,size(V)); X=X(:,Z);
 
             % create structure
-            ip_ = @(pc,X,V,cutoff,Q) struct('units','frac-pc','bas',pc.bas, ...
+            ip_ = @(pc,X,V,cutoff,Q,s_ck,g_ck) struct('units','frac-pc','bas',pc.bas, ...
                 'symb',{pc.symb},'mass',pc.mass,'species',X(4,:),'tau',X(1:3,:), ...
-                'cluster',V,'nclusters',size(V,2),'natoms',size(V,1),'cutoff',cutoff,'Q',{Q},'nQs',size(Q{1},3));
-            ip = ip_(pc, X,V,cutoff,Q);
+                'cluster',V,'nclusters',size(V,2),'natoms',size(V,1),'cutoff',cutoff,...
+                'Q',{Q},'nQs',size(Q{1},3),'s_ck',s_ck,'g_ck',g_ck);
+            ip = ip_(pc, X, V, cutoff, Q, s_ck, g_ck);
             
             % now is the time to sort based on distances
-            REF = repmat(ip.bas*ip.tau(:,ip.cluster(1,:)),ip.natoms,1);
-            POS = reshape(ip.bas*ip.tau(:,ip.cluster),[3*ip.natoms,ip.nclusters]);
-            d = normc_(POS-REF); ip.cluster = ip.cluster(:,rankc_( [d;min(sign(POS));min(sign(POS))] ));
+            REF = reshape(ip.bas*ip.tau(:,circshift(ip.cluster,1,1)),[3*ip.natoms,ip.nclusters]);
+            POS = reshape(ip.bas*ip.tau(:,          ip.cluster     ),[3*ip.natoms,ip.nclusters]);
+            d = normc_(REF-POS)/sqrt(ip.natoms); fwd = rankc_([d;min(sign(POS));min(sign(POS))]);
+            ip.cluster = ip.cluster(:,fwd);
+            ip.s_ck = ip.s_ck(:,fwd);
+            ip.g_ck = ip.g_ck(:,fwd);
         end
         
-        function [pp]         = get_primitive_pair(ip)
+        function [pp]         = get_primitive_cluster(ip)
         
             import am_lib.* am_dft.*
 
@@ -5108,20 +5085,20 @@ classdef am_dft
             [V,~,V_p2i]=uniquec_(V);
 
             % get irreducible cluster indicies by connecting symmetrically equivalent clusters with a graph
-            [~,i2p,p2i] = get_connectivity( reshape(V_p2i,[ip.nclusters,ip.nQs]) ); 
+            PM = reshape(V_p2i,[ip.nclusters,ip.nQs]); [~,i2p,p2i] = get_connectivity( PM ); 
 
-            pp.units = 'frac-pc';
-            pp.bas = ip.bas;
-            pp.symb = ip.symb;
-            pp.mass = ip.mass;
-            pp.species = tau_u(4,:);
-            pp.tau = tau_u(1:3,:);
-            pp.cluster = V;
-            pp.nclusters = size(pp.cluster,2);
-            pp.natoms = size(pp.cluster,1);
-            pp.cutoff = ip.cutoff;
-            pp.i2p = i2p;
-            pp.p2i = p2i;
+            % create structure
+            pp_ = @(ip,tau_u,V,p2i,i2p) struct('units','frac-pc','bas',ip.bas, ...
+                'symb',{ip.symb},'mass',ip.mass,'species',tau_u(4,:),'tau',tau_u(1:3,:), ...
+                'cluster',V,'nclusters',size(V,2),'natoms',size(V,1),'cutoff',ip.cutoff,'Q',{ip.Q},'nQs',ip.nQs,...
+                'p2i',p2i,'i2p',i2p);
+            pp = pp_(ip,tau_u,V,p2i,i2p);
+            
+            % now is the time to sort based on irreducible pairs
+            fwd = rankc_(pp.p2i);
+            pp.cluster = pp.cluster(:,fwd);
+            pp.p2i = pp.p2i(:,fwd);
+            pp.i2p = findrow_(pp.i2p.'==pp.p2i).';
         end
         
         function                print_irreducible_cluster(ip,flags)
@@ -5136,45 +5113,94 @@ classdef am_dft
                 isprimitive=false; str_type='irreducible';
             end
             
-            str_sort = '';
-            if contains(flags,'sort')
-                if isprimitive
-                    [~,inds]=sort(ip.p2i);
-                    ip.cluster = ip.cluster(:,inds);
-                    ip.p2i = ip.p2i(:,inds);
-                    str_sort = ' (sorted)';
-                end
+            if contains(flags,'frac')
+                ip.bas=eye(3);
             end
             
-            fprintf(' ... %s %i-atom clusters%s:\n', str_type, ip.natoms, str_sort);
+            fprintf(' ... %s %i-atom clusters:\n', str_type, ip.natoms);
 
             % fprintf('     atom %i: %i shells\n', m, sum(ex_));
             fprintf('     '); 
                 fprintf(['%-',num2str(4+3*ip.natoms),'s'],'cluster');
-                if isprimitive; fprintf('%5s','p2i'); end
-                fprintf('%24s',sprintf('atom #%i',1)); for i = 2:ip.natoms; fprintf('%24s',sprintf('bond (1-%i)',i)); end
+                if contains(flags,'bond')
+                    fprintf('%24s',sprintf('atom #%i',1)); for i = 2:ip.natoms; fprintf('%24s',sprintf('bond (1-%i)',i)); end
+                else
+                    for i = 1:ip.natoms; fprintf('%24s',sprintf('atom #%i',i)); end
+                end
                 fprintf('%8s','length'); 
+                if isprimitive; fprintf('%5s','p2i'); end
             fprintf('\n');  
+            
             % bar
             fprintf('     '); 
                 fprintf(['%-',num2str(4+3*ip.natoms),'s'],repmat('-',4+3*ip.natoms,1));
-                if isprimitive; fprintf('%5s','----'); end
                 for i = 1:ip.natoms; fprintf('%8s%8s%8s','-------','--------','--------'); end
                 fprintf('%8s','-------'); 
+                if isprimitive; fprintf('%5s','----'); end
             fprintf('\n');  
+            
+            % table entries
+            REF = reshape(ip.bas*ip.tau(:,circshift(ip.cluster,1,1)),[3*ip.natoms,ip.nclusters]);
+            POS = reshape(ip.bas*ip.tau(:,          ip.cluster     ),[3*ip.natoms,ip.nclusters]);
+            d = normc_(REF-POS)/sqrt(ip.natoms); 
+            
             for i = 1:ip.nclusters
             fprintf('     '); 
                 % cluster number and symbols
-                fprintf('%-3i %2s ',i,ip.symb{ip.species(ip.cluster(1,i))}); fprintf('-%2s',ip.symb{ip.species(ip.cluster(2:end,i))}); 
+                fprintf('%-4i %2s',i,ip.symb{ip.species(ip.cluster(1,i))}); fprintf('-%2s',ip.symb{ip.species(ip.cluster(2:end,i))}); 
+                % center and bonds
+                if contains(flags,'bond')
+                    fprintf(' %7.3f',REF(1:3,i)); fprintf(' %7.3f',POS(4:end,i)-REF(4:end,i)); 
+                else
+                    fprintf(' %7.3f',POS(:,i));
+                end
+                % length
+                fprintf(' %7.3f',d(i)); 
                 % irreducible index if primitive
                 if isprimitive; fprintf('%5i', ip.p2i(i)); end
-                % center and bonds
-                fprintf(' %7.3f',ip.bas*ip.tau(:,ip.cluster(1,i))); fprintf(' %7.3f',ip.bas*(ip.tau(:,ip.cluster(2:end,i))-ip.tau(:,ip.cluster(1,i)))); 
-                % length
-                fprintf(' %7.3f',normc_(ip.bas*(ip.tau(:,ip.cluster(2:end,i))-ip.tau(:,ip.cluster(1,i))))); 
             fprintf('\n');
             end
-
+            
+            % print stabilizers
+            if ~isprimitive
+                % covert symmetries if necessary
+                sym_rebase_ = @(B,S) [[ matmul_(matmul_(B,S(1:3,1:3,:)),inv(B)), ...
+                    reshape(matmul_(B,S(1:3,4,:)),3,[],size(S,3))]; S(4,1:4,:)];
+                ip.Q{1} = sym_rebase_(ip.bas,ip.Q{1});
+                % get names
+                sym_name = am_dft.get_long_ss_name(ip.Q{1});
+                
+                % print generators and stabilizers (bond group + reversal group)
+                for i = 1:ip.nclusters; if gt_(d(i),0)
+                    ex_ = ip.s_ck(:,i);
+                    ex_bond_group_ = ex_; ex_bond_group_(ex_) = all(ip.Q{2}(:,ex_)==[1:ip.natoms].',1); 
+                    ex_revr_group_ = ex_; ex_revr_group_(ex_) = all(ip.Q{2}(:,ex_)~=[1:ip.natoms].',1); 
+                    ex_generators_ = ip.g_ck(:,i);
+    
+                    fprintf('     ----------------------------------------------------- cluster #%-3i\n', i);
+                    print_helper_(sym_name,'generators',ex_generators_);
+                    print_helper_(sym_name,'stabilizer',ex_bond_group_);
+                    print_helper_(sym_name,'reversal',ex_revr_group_);
+                    
+                    fprintf('\n');
+                end;end
+            end
+            
+            function print_helper_(sym_name,name,x_)
+                nGs = sum(x_); nentries_ = 2; 
+                if nGs>0
+                fprintf('     %-12s',[name,':']);
+                    for j = 1:nGs
+                        G=sym_name(x_);
+                        fprintf('%30s',G{j}); 
+                        if mod(j,nentries_)==0 && j~=numel(G)
+                            fprintf('\n'); 
+                            fprintf('     %-10s  ',' '); 
+                        end
+                    end
+                    fprintf('\n');
+                end
+            end
         end
         
     end
