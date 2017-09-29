@@ -3797,11 +3797,11 @@ classdef am_dft
             % get form of force constants for irreducible prototypical bonds
             for i = 1:ip.nshells
                 sym_list = find(ip.s_ck(:,i)); 
-                W = kron_( pp.Q{1}(1:3,1:3,sym_list), pp.Q{1}(1:3,1:3,sym_list) );
+                W = kron_( ip.Q{1}(1:3,1:3,sym_list), ip.Q{1}(1:3,1:3,sym_list) );
                 for j = 1:numel(sym_list)
-                    if all(pp.Q{2}(:,sym_list(j))==[2;1]); W(:,:,j) = F*W(:,:,j); end
+                    if all(ip.Q{2}(:,sym_list(j))==[2;1]); W(:,:,j) = F*W(:,:,j); end
                 end
-                
+
                 % use stabilzer group to determine crystallographic symmetry relations; A*B*C' equals kron(C,A)*B(:)
                 W = sum(W-eye(9),3);
 
@@ -4917,78 +4917,6 @@ classdef am_dft
 
         end
 
-        function                print_pairs(uc,pp)
-
-            import am_lib.* am_dft.*
-
-            vec_ = @(xy) uc2ws(uc.bas*(uc.tau(:,xy(2,:))-uc.tau(:,xy(1,:))),uc.bas); Z=[];
-            bar_ = @(x) repmat('-',[1,x]); fprintf('     %s primitive shells %s\n', bar_(30), bar_(30) );
-            for m = 1:pp.pc_natoms
-                Y=[]; ex_ = uniquemask_(pp.i{m});
-                fprintf('     atom %i: %i shells\n', m, sum(ex_));
-                fprintf('     %-10s    %-30s   %-4s   %-7s   %-7s   %-4s\n', 'd [cart]','bond [cart]','#','ic(i,j)','pc(m,n)','irr.');
-                fprintf('     %-10s    %-30s   %-4s   %-7s   %-7s   %-4s\n', bar_(10),bar_(30),bar_(4),bar_(7),bar_(7),bar_(4));
-            for i = 1:pp.npairs(m)
-                if ex_(i)
-                    % record basic info
-                    xyp = [pp.c{m}(1);pp.o{m}(i,1)]; % uc indicies
-                    mn  = uc.u2p(xyp).'; % pc indicies
-                    ij  = uc.u2i(xyp).'; % ic indicies
-                    v   = vec_(xyp); d = normc_(v);
-                    ir  = pp.i{m}(i); % irreducible index
-                    w   = sum(pp.i{m}==ir); % number of points in orbit
-                    % save stuff [ d(1), r(2,3,4), w(5), ij(6,7), mn(8,9), irres(10)]
-                    Y = [Y,[d;v;w;ij;mn;ir]];
-                end
-            end
-                fprintf('     %10.5f  %10.5f %10.5f %10.5f   %4i   %-3i-%3i   %-3i-%3i   %4i\n', Y(:,rankc_(Y(1,:))) ); fprintf('\n');
-                Z=[Z,Y];
-            end
-            w = accumarray(Z(end,:).',Z(5,:).',[],@sum); Z = Z(:,uniquemask_(Z(end,:).')); Z(5,:) = w;
-            fprintf('     %s irreducible shells %s\n', bar_(29), bar_(29) );
-            fprintf('     %-10s    %-30s   %-4s   %-7s   %-7s   %-4s\n', 'd [cart]','bond [cart]','#','ic(i,j)','pc(m,n)','irr.');
-            fprintf('     %-10s    %-30s   %-4s   %-7s   %-7s   %-4s\n', bar_(10),bar_(30),bar_(4),bar_(7),bar_(7),bar_(4));
-            fprintf('     %10.5f  %10.5f %10.5f %10.5f   %4i   %-3i-%3i   %-3i-%3i   %4i\n', Z(:,rankc_(Z(1,:))) );
-            fprintf('     %s symmetry info %s\n', bar_(29), bar_(29) );
-
-        end
-
-        function                print_triplets(uc,pt)
-
-            import am_lib.* am_dft.*
-
-            vec_ = @(xy) uc2ws(pt.tau(:,xy(2,:)) - pt.tau(:,xy(1,:)),pt.bas); Z=[];
-            bar_ = @(x) repmat('-',[1,x]); fprintf('     %s primitive shells %s\n', bar_(30), bar_(30) );
-            for m = 1:pt.pc_natoms
-                Y=[]; ex_ = uniquemask_(pt.i{m});
-                fprintf('     atom %i: %i shells\n', m, sum(ex_));
-                fprintf('       %-30s    %-30s   %-4s   %-11s   %-11s   %-4s\n','tau_1 [cart]','tau_2 [cart]','#','ic(i,j,k)','pc(m,n,o)','irr.');
-                fprintf('       %-30s    %-30s   %-4s   %-11s   %-11s   %-4s\n',      bar_(30),      bar_(30),bar_(4),bar_(11),bar_(11),bar_(4));
-            for i = 1:pt.npairs(m)
-                if ex_(i)
-                    % record basic info
-                    xyzp = [pt.c{m}(1);pt.o{m}(i,1,1);pt.o{m}(i,1,2)]; % uc indicies
-                    mno  = uc.u2p(xyzp).'; % pc indicies
-                    ijk  = uc.u2i(xyzp).'; % ic indicies
-                    ir   = pt.i{m}(i); % irreducible index
-                    v1   = vec_(xyzp([1,2]));
-                    v2   = vec_(xyzp([1,3]));
-                    d    = normc_(v1)+normc_(v2);
-                    w    = sum(pt.i{m}==ir); % number of points in orbit
-                    % save stuff [ d(1), r(2,3,4), r(5,6,7), w(8), ij(9,10), mn(11,12), irres(13)]
-                    Y = [Y,[d;v1;v2;w;ijk;mno;ir]];
-                end
-            end
-                fprintf('     %10.5f %10.5f %10.5f  %10.5f %10.5f %10.5f   %4i   %3i-%3i-%3i   %3i-%3i-%3i   %4i\n', Y(2:end,rankc_(Y(1,:)))); fprintf('\n');
-                Z=[Z,Y];
-            end
-
-            w = accumarray(Z(end,:).',Z(8,:).',[],@sum); Z = Z(:,uniquemask_(Z(end,:).')); Z(8,:) = w;
-            fprintf('     %s irreducible shells %s\n', bar_(29), bar_(29) );
-            fprintf('       %-30s    %-30s   %-4s   %-11s   %-11s   %-4s\n','tau_1 [cart]','tau_2 [cart]','#','ic(i,j,k)','pc(m,n,o)','irr.');
-            fprintf('       %-30s    %-30s   %-4s   %-11s   %-11s   %-4s\n',      bar_(30),      bar_(30),bar_(4),bar_(11),bar_(11),bar_(4));
-            fprintf('     %10.5f %10.5f %10.5f  %10.5f %10.5f %10.5f   %4i   %3i-%3i-%3i   %3i-%3i-%3i   %4i\n', Z(2:end,rankc_(Z(1,:))));
-        end
 
         % new pairs
         
@@ -5166,7 +5094,8 @@ classdef am_dft
                 % covert symmetries if necessary
                 sym_rebase_ = @(B,S) [[ matmul_(matmul_(B,S(1:3,1:3,:)),inv(B)), ...
                     reshape(matmul_(B,S(1:3,4,:)),3,[],size(S,3))]; S(4,1:4,:)];
-                ip.Q{1} = sym_rebase_(ip.bas,ip.Q{1});
+                ip.Q{1} = sym_rebase_(ip.bas,ip.Q{1}); ip.Q{1} = wdv_(ip.Q{1});
+                
                 % get names
                 sym_name = am_dft.get_long_ss_name(ip.Q{1});
                 
