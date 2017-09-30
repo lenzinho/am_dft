@@ -4457,31 +4457,31 @@ classdef am_dft
 
 
         % electrons
+% 
+%         function [tb,pp,H]    = get_tb(pc,uc,dft,cutoff,spdf,nskips)
+% 
+%             import am_lib.* am_dft.*
+% 
+%             % get irreducible shells
+%             fprintf(' ... identifying pairs'); tic;
+%             [tb,pp] = get_pairs(pc,uc,cutoff);
+%             fprintf(' (%.f secs)\n',toc);
+% 
+%             % [cart] print shell results
+%             print_pairs(uc,pp)
+% 
+%             % tight binding model
+%             fprintf(' ... solving for symbolic matrix elements and hamiltonian'); tic;
+%             [tb,H] = get_tb_model(tb,pp,uc,spdf);
+%             fprintf(' (%.f secs)\n',toc);
+% 
+%             % get tight binding matrix elements
+%             fprintf(' ... solving for tight binding matrix elements '); tic;
+%             tb = get_tb_matrix_elements(tb,dft,nskips);
+%             fprintf('(%.f secs)\n',toc);
+% 
+%         end
 
-        function [tb,pp,H]    = get_tb(pc,uc,dft,cutoff,spdf,nskips)
-
-            import am_lib.* am_dft.*
-
-            % get irreducible shells
-            fprintf(' ... identifying pairs'); tic;
-            [tb,pp] = get_pairs(pc,uc,cutoff);
-            fprintf(' (%.f secs)\n',toc);
-
-            % [cart] print shell results
-            print_pairs(uc,pp)
-
-            % tight binding model
-            fprintf(' ... solving for symbolic matrix elements and hamiltonian'); tic;
-            [tb,H] = get_tb_model(tb,pp,uc,spdf);
-            fprintf(' (%.f secs)\n',toc);
-
-            % get tight binding matrix elements
-            fprintf(' ... solving for tight binding matrix elements '); tic;
-            tb = get_tb_matrix_elements(tb,dft,nskips);
-            fprintf('(%.f secs)\n',toc);
-
-        end
-        
         function [ip]         = get_symmetry_adapted_matrix_elements(ip,spdf)
             % set oribtals per irreducible atom: spdf = {'d','p'};
             % may wish to do this to set it per species: x={'p','d'}; spdf={x{ic.species}};
@@ -4494,7 +4494,7 @@ classdef am_dft
             % covert symmetries [pc-frac] to [cart] -- very important!
             sym_rebase_ = @(B,S) [[ matmul_(matmul_(B,S(1:3,1:3,:)),inv(B)), ...
                 reshape(matmul_(B,S(1:3,4,:)),3,[],size(S,3))]; S(4,1:4,:)];
-            Q = ip.Q; Q{1} = sym_rebase_(uc.bas2pc*uc.bas, Q{1});
+            Q = ip.Q; Q{1} = sym_rebase_(ip.bas, Q{1});
 
             % for each irreducible atom, set azimuthal quantum numbers J{:}, 
             % symmetries D{:}, and parity-transpose F{:}
@@ -4548,112 +4548,46 @@ classdef am_dft
                 [sav.c{p},n] = sort(c(:).'); sav.W{p} = W(:,n); sav.vsk{p} = vsk;
             end
 
+            ip.D = D;
+            ip.F = F;
             ip.c = sav.c;
             ip.W = sav.W;
             ip.vsk = sav.vsk;
         end
 
-        function [tb,H]       = get_tb_model(ip,pp,uc,spdf)
-            % set oribtals per irreducible atom: spdf = {'d','p'};
-            % may wish to do this to set it per species: x={'p','d'}; spdf={x{ic.species}};
+        function [Hsum,H]     = get_tightbinding_hamiltonian(ip,pp)
             
-            import am_lib.* am_dft.*
+            import am_dft.* am_lib.*
+            
+            % get symmetry which takes irrep to orbit (and inverse elements)
+            [PM,i2p,p2i] = get_action(pp); qi = findrow_(PM==i2p(p2i).'); 
 
-            % set sym digits
-            digits(10);
+            % get hamiltonian block dimensions and start/end sections
+            d(ip.x2p(ip.cluster(1,:))) = cellfun(@(x)size(x,2),ip.vsk); E=cumsum(d); S=E-d+1; nbands=E(end);
 
-            % initialize irreducible atom properties: for each irreducible atom,
-            % set azimuthal quantum numbers J{:}, symmetries D{:}, and parity-transpose F{:}
-            [J,D,F] = get_tb_symmetry_representation(spdf,pp.Q{1}(1:3,1:3,:));
+            % construct symbolic Hamiltonian matrix
+            H = sym(zeros(nbands,nbands,ip.nclusters)); kvec = sym('k%d',[3,1],'real');
+            for p = 1:pp.nclusters
+                %    c   = irreducible cluster index
+                %    s   = symmetry which takes ir -> orbit
+                %    i,j = irreducible cell atomic indicies
+                %    m,n =   primitive cell atomic indicies
+                c = pp.p2i(p); s = qi(p);
+                m = pp.x2p(pp.cluster(1,p)); i = pp.x2i(pp.cluster(1,p)); mp = S(m):E(m);
+                n = pp.x2p(pp.cluster(2,p)); j = pp.x2i(pp.cluster(2,p)); np = S(n):E(n);
 
-            % primitive cell atoms define hamiltonian blocks dimensions and start/end sections
-            p2i=uc.u2i(uc.p2u); for p=[1:pp.pc_natoms]; d(p)=sum(J{p2i(p)}*2+1); end; E=cumsum(d); S=E-d+1; nbands=E(end);
-
-            % get form of force constants for irreducible prototypical bonds
-            for p = 1:ip.nshells
-                % get indicies
-                x = ip.xy(1,p); i = uc.u2i(x); m = uc.u2p(x); dm = d(m);
-                y = ip.xy(2,p); j = uc.u2i(y); n = pp.u2p(y); dn = d(n);
-
-                % have not tested algo 2 yet!!!! try it with Si first...
-                algo=1;
-                switch algo
-                    case 1
-                        % original version
-                        % use stabilzer group to determine crystallographic symmetry relations; A*B*C' equals kron(C,A)*B(:)
-                        W = sum(kron_( D{j}(:,:,ip.s_ck(:,p)) , D{i}(:,:,ip.s_ck(:,p)) ) - eye(dm*dn),3);
-                    case 2
-                        % incoprorating flip symmetry (need to test still)
-                        sym_list = find(ip.s_ck(:,i)); sym_list=sym_list(sym_list<24); 
-                        W = kron_( D{j}(:,:,sym_list) , D{i}(:,:,sym_list) );
-                        for wi = 1:numel(sym_list) % maybe F{i} should multiply the other right hand side of W?
-                            if all(pp.Q{2}(:,sym_list(wi))==[2;1])
-                                W(:,:,wi) = W(:,:,wi)*F{i}; 
-                            end
-                        end
-                        W = sum( W - eye(dm*dn), 3);
-                end
-
-                % partity transpose
-                if (i==j); W = W + F{i}-eye(dm*dn); end
-
-                % get linearly-independent nullspace and normalize to first nonzero element
-                W=null(W); W=frref_(W.').'; W=W./accessc_(W,findrow_(W.').'); W=wdv_(W); 
-
-                % define parameters
-                c = sym(sprintf('c%02i_%%d%%d',p),[dm,dn],'real'); c = c(findrow_(W.'));
-
-                % get symmetry adapted force constants
-                vsk = reshape( sym(W,'d')*c(:), [dm,dn]);
-
-                % save important stuff (sort W to be in line with c, matlabFunction sorts D variables)
-                [sav.c{p},n] = sort(c(:).'); sav.W{p} = W(:,n); sav.vsk{p} = vsk;
-            end
-
-            % create bvk structure
-            tb_ = @(pp,ip,sav,nbands) struct('units','cart','bas',pp.bas2pc*pp.bas, ...
-                'symb',{pp.symb},'mass',pp.mass,'species',pp.species(pp.p2u),'cutoff',pp.cutoff,'natoms',pp.pc_natoms,...
-                'nbands',nbands,'nshells',size(sav.W,2),'W',{sav.W},'vsk',{sav.vsk},'d',ip.d,'v',ip.v,'xy',ip.xy);
-            tb = tb_(pp,ip,sav,nbands);
-
-            % define function to get bond vector
-            vec_ = @(xy) uc2ws(uc.bas*(uc.tau(:,xy(2,:))-uc.tau(:,xy(1,:))),pp.bas);
-
-            % construct symbolic hamiltonian matrix
-            H=sym(zeros(tb.nbands,tb.nbands,ip.nshells)); kvec=sym('k%d',[3,1],'real');
-            for p = 1:pp.pc_natoms
-            for u = 1:pp.npairs(p)
-                % get indicies:
-                %    ir = irreducible shell index
-                %    iq = symmetry which takes ir -> orbit
-                %    x,y=        unit cell atomic indicies
-                %    i,j= irreducible cell atomic indicies
-                %    m,n=   primitive cell atomic indicies
-                %  mp,np= vector spanning the part of the hamiltonian
-                %         corresponding to primitive atoms m and n
-                ir= pp.i{p}(u); iq = pp.iq{p}(u);
-                x = pp.c{p}(1); y = pp.o{p}(u,1); xy = [x;y];
-                i = uc.u2i(x); m = uc.u2p(x); mp = S(m):E(m);
-                j = uc.u2i(y); n = pp.u2p(y); np = S(n):E(n);
-
-                % rotate force constants and bond vector from irrep to bond
-                rij = vec_(xy); rij(abs(rij)<am_lib.eps) = 0;
-                vsk =  sym(D{i}(:,:,iq)) * permute(tb.vsk{ir},pp.Q{2}(:,iq)) * sym(D{j}(:,:,iq))';
+                rij = pp.tau(:,pp.cluster(2,p)) - pp.tau(:,pp.cluster(1,p)); rij = wdv_(rij,am_dft.tiny);
+                vsk =  sym(ip.D{i}(:,:,s)) * permute(ip.vsk{c},ip.Q{2}(:,s)) * sym(ip.D{j}(:,:,s))';
 
                 % build hamiltonian matrix
-                H(mp,np,ir) = H(mp,np,ir) + vsk .* exp(sym(2i*pi * rij(:).','d') * kvec(:) );
-            end
+                H(mp,np,c) = H(mp,np,c) + vsk .* exp(sym(2i*pi) * sym(rij(:).','d') * kvec(:) );
             end
 
             % simplify (speeds evaluation up significantly later)
-            for i = 1:tb.nshells; H(:,:,i) = simplify(rewrite(H(:,:,i),'cos'),'steps',20); end
+            for i = 1:ip.nclusters; H(:,:,i) = simplify(rewrite(H(:,:,i),'cos'),'steps',20); end
 
             % stupid matlab, doesn't allow for sum(H,3)
-            Hsum=sym(zeros(tb.nbands,tb.nbands));
-            for i = 1:tb.nshells; Hsum = Hsum + H(:,:,i); end
-
-            % attach symbolic dynamical matrix to bvk
-            tb.H = matlabFunction(Hsum);
+            Hsum = sym(zeros(nbands,nbands)); for i = 1:ip.nclusters; Hsum = Hsum + H(:,:,i); end
         end
 
         function [tb]         = get_tb_matrix_elements(tb,dft,nskips)
@@ -4900,7 +4834,7 @@ classdef am_dft
                 'symb',{pc.symb},'mass',pc.mass, ...
                 'x2p',X(5,:),'x2i',X(6,:),'species',X(4,:),'tau',X(1:3,:),  ...
                 'cluster',V,'nclusters',size(V,2),'natoms',size(V,1),'cutoff',cutoff,...
-                'Q',{Q},'nQs',size(Q{1},3));
+                'nQs',size(Q{1},3),'Q',{Q});
             ip = ip_(pc, X, V, cutoff, Q);
             
             % now is the time to sort based on distances
@@ -4915,7 +4849,7 @@ classdef am_dft
             import am_lib.* am_dft.*
 
             % [pc-frac] create cluster tau = [X, natoms, nclusters]
-            X = [ip.tau;ip.species]; tau = reshape( X(:,ip.cluster), 4, ip.natoms, ip.nclusters);
+            X = [ip.tau;ip.species;ip.x2i;ip.x2p]; tau = reshape( X(:,ip.cluster), size(X,1), ip.natoms, ip.nclusters);
 
             % [pc-frac] apply transformation tau = [X, natoms, nclusters, nsymmetries]
             tau = apply_symmetry(ip.Q, tau);
@@ -4933,9 +4867,10 @@ classdef am_dft
             PM = reshape(V_p2i,[ip.nclusters,ip.nQs]); [~,i2p,p2i] = get_connectivity( PM ); 
 
             % create structure
-            pp_ = @(ip,X,V,p2i,i2p) struct('units','frac-pc','bas',ip.bas, ...
-                'symb',{ip.symb},'mass',ip.mass,'species',X(4,:),'tau',X(1:3,:), ...
-                'cluster',V,'nclusters',size(V,2),'natoms',size(V,1),'cutoff',ip.cutoff,'Q',{ip.Q},'nQs',ip.nQs,...
+            pp_ = @(ip,X,V,p2i,i2p) struct('units','frac-pc','bas',ip.bas,'symb',{ip.symb},'mass',ip.mass,...
+                'x2p',X(5,:),'x2i',X(6,:),'species',X(4,:),'tau',X(1:3,:), ...
+                'cluster',V,'nclusters',size(V,2),'natoms',size(V,1),'cutoff',ip.cutoff, ...
+                'nQs',ip.nQs,'Q',{ip.Q}, ...
                 'p2i',p2i,'i2p',i2p);
             pp = pp_(ip,X,V,p2i,i2p);
             
