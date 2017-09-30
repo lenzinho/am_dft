@@ -7,6 +7,9 @@ classdef am_dft
         units_THz = 98.22906;   % sqrt( [eV/Ang^2] * [1/amu] ) --> 98.22906 [THz=1/ps]
         units_GHz = 98229.06;   % sqrt( [eV/Ang^2] * [1/amu] ) --> 98229.06 [GHz=1/fs]
 
+        
+        amu2gram  = 1/6.02214E23;
+        
         usemex    = false;
         potdir    = '/Users/lenzinho/Linux/vasp.5.4/potcars/PBE.54/';
     end
@@ -2531,10 +2534,8 @@ classdef am_dft
             cc.c2i = c2i; cc.c2u = c2u; cc.c2p = c2p;
             cc.i2c = i2c; cc.u2c = u2c; cc.p2c = p2c;
 
-            % save bas2pc and tau2pc to convert [uc-frac] to [pc-frac]
+            % save bas2pc and tau2pc to convert [uc/cc-frac] to [pc-frac]
             uc.bas2pc = pc.bas/uc.bas; uc.tau2pc = pc.bas\uc.bas;
-            
-            % save bas2pc and tau2pc to convert [uc-frac] to [vc-frac]
             cc.bas2pc = pc.bas/cc.bas; cc.tau2pc = pc.bas\cc.bas;
 
             % print basic symmetry info
@@ -2547,7 +2548,7 @@ classdef am_dft
             sg_code = identify_spacegroup(pg_code); % BETA
             
             % atomic density [g/cm3]
-            mass_density = sum(uc.mass(uc.species)) / 6.02214E23 / det(uc.bas*0.1 * 1E-7);
+            mass_density = sum(uc.mass(uc.species)) * am_dft.amu2gram / det(uc.bas*0.1 * 1E-7);
             number_density = uc.natoms / det(uc.bas*0.1);
             formula_density = number_density/(uc.natoms/gcd_(uc.nspecies));
 
@@ -4480,6 +4481,77 @@ classdef am_dft
             fprintf('(%.f secs)\n',toc);
 
         end
+        
+        function [ip]         = get_symmetry_adapted_matrix_elements(ip,spdf)
+            % set oribtals per irreducible atom: spdf = {'d','p'};
+            % may wish to do this to set it per species: x={'p','d'}; spdf={x{ic.species}};
+
+            import am_lib.* am_dft.*
+
+            % set sym digits
+            digits(10); 
+
+            % covert symmetries [pc-frac] to [cart] -- very important!
+            sym_rebase_ = @(B,S) [[ matmul_(matmul_(B,S(1:3,1:3,:)),inv(B)), ...
+                reshape(matmul_(B,S(1:3,4,:)),3,[],size(S,3))]; S(4,1:4,:)];
+            Q = ip.Q; Q{1} = sym_rebase_(uc.bas2pc*uc.bas, Q{1});
+
+            % for each irreducible atom, set azimuthal quantum numbers J{:}, 
+            % symmetries D{:}, and parity-transpose F{:}
+            [J,D,F] = get_tb_symmetry_representation(spdf, Q{1}(1:3,1:3,:) );
+
+            % get dimensions
+            d = zeros(1,numel(J)); for i = 1:numel(J); d(i) = sum(J{i}*2+1); end
+
+            % get stabilizers for each irreducible cluster
+            [s_ck,~] = get_cluster_generators_and_stabilizers(ip); 
+
+            % get form of force constants for irreducible prototypical bonds
+            for p = 1:ip.nclusters
+
+                % get indicies
+                i = ip.x2i( ip.cluster(1,p) );  
+                j = ip.x2i( ip.cluster(2,p) );
+
+                % have not tested algo 2 yet!!!! try it with Si first...
+                algo=1;
+                switch algo
+                    case 1
+                        % original version
+                        % use stabilzer group to determine crystallographic symmetry relations; A*B*C' equals kron(C,A)*B(:)
+                        W = sum(kron_( D{j}(:,:,s_ck(:,p)) , D{i}(:,:,s_ck(:,p)) ) - eye(d(i)*d(j)),3);
+                    case 2
+                        % incoprorating flip symmetry (need to test still)
+                        sym_list = find(s_ck(:,i)); sym_list=sym_list(sym_list<24); 
+                        W = kron_( D{j}(:,:,sym_list) , D{i}(:,:,sym_list) );
+                        for wi = 1:numel(sym_list) % maybe F{i} should multiply the other right hand side of W?
+                            if all(pp.Q{2}(:,sym_list(wi))==[2;1])
+                                W(:,:,wi) = W(:,:,wi)*F{i}; 
+                            end
+                        end
+                        W = sum( W - eye(d(i)*d(j)), 3);
+                end
+
+                % partity transpose
+                if (i==j); W = W + F{i}-eye(d(i)*d(j)); end
+
+                % get linearly-independent nullspace and normalize to first nonzero element
+                W=null(W); W=frref_(W.').'; W=W./accessc_(W,findrow_(W.').'); W=wdv_(W); 
+
+                % define parameters
+                c = sym(sprintf('c%02i_%%d%%d',p),[d(i),d(j)],'real'); c = c(findrow_(W.'));
+
+                % get symmetry adapted force constants
+                vsk = reshape( sym(W)*c(:), [d(i),d(j)]);
+
+                % save important stuff (sort W to be in line with c, matlabFunction sorts D variables)
+                [sav.c{p},n] = sort(c(:).'); sav.W{p} = W(:,n); sav.vsk{p} = vsk;
+            end
+
+            ip.c = sav.c;
+            ip.W = sav.W;
+            ip.vsk = sav.vsk;
+        end
 
         function [tb,H]       = get_tb_model(ip,pp,uc,spdf)
             % set oribtals per irreducible atom: spdf = {'d','p'};
@@ -4784,7 +4856,7 @@ classdef am_dft
             import am_lib.* am_dft.*
 
             % construct concrete supercell for detemrining pairs
-            [uc,uc.u2p,uc.p2u] = get_supercell(pc, diag(ceil(2*cutoff./normc_(pc.bas))) ); 
+            [uc,uc.u2p,uc.p2u] = get_supercell(pc, diag(ceil(2*cutoff./normc_(pc.bas))) ); uc.u2i = pc.p2i(uc.u2p);
             
             % [pc-frac] get symmetries
             [~,~,S] = get_symmetries(pc); nSs = size(S,3);
@@ -4797,14 +4869,11 @@ classdef am_dft
             x = reshape(cat(natoms+1,Y{1:natoms}),[],natoms).';
             
             % [uc-cart] exclude any cluster with a bond length longer than the cutoff
-            d_cart_ = @(dX) normc_(uc.bas*dX); 
-            bond_ij = nchoosek_(natoms,2); nbonds = size(bond_ij,2); ex_=true(1,size(x,2));            
-            for i = 1:nbonds
-                ex_(ex_) = d_cart_( uc.tau(:,x(bond_ij(1,i),ex_)) - uc.tau(:,x(bond_ij(2,i),ex_)) )<cutoff;
-            end
-            
+            d_cart_ = @(dX) normc_(uc.bas*dX); bond_ij = nchoosek_(natoms,2); nbonds = size(bond_ij,2); ex_ = true(1,size(x,2));            
+            for i = 1:nbonds; ex_(ex_) = d_cart_( uc.tau(:,x(bond_ij(1,i),ex_)) - uc.tau(:,x(bond_ij(2,i),ex_)) )<cutoff; end
+
             % [pc-frac] create cluster tau = [X, natoms, nclusters]
-            [natoms,nclusters] = size(x(:,ex_)); X = [uc.tau2pc*uc.tau;uc.species]; 
+            [natoms,nclusters] = size(x(:,ex_)); X = [uc.tau2pc*uc.tau;uc.species;uc.u2i;uc.u2p]; 
             tau = reshape(X(:,x(:,ex_)),[],natoms,nclusters);
 
             % [pc-frac] apply transformation tau = [X, natoms, nclusters, nQs]
@@ -4822,13 +4891,14 @@ classdef am_dft
             
             % get irreducible cluster indicies by connecting symmetrically equivalent clusters with a graph
             PM = reshape(V_p2i,[nclusters,nQs]); [~,i2p,~] = get_connectivity( PM ); V = V(:,i2p);
-            
+
             % reassign position indices and recenter
             [Z,~,IC] = uniquec_(V(:).'); V = reshape(IC,size(V)); X=X(:,Z);
 
             % create structure
             ip_ = @(pc,X,V,cutoff,Q) struct('units','frac-pc','bas',pc.bas, ...
-                'symb',{pc.symb},'mass',pc.mass,'species',X(4,:),'tau',X(1:3,:), ...
+                'symb',{pc.symb},'mass',pc.mass, ...
+                'x2p',X(5,:),'x2i',X(6,:),'species',X(4,:),'tau',X(1:3,:),  ...
                 'cluster',V,'nclusters',size(V,2),'natoms',size(V,1),'cutoff',cutoff,...
                 'Q',{Q},'nQs',size(Q{1},3));
             ip = ip_(pc, X, V, cutoff, Q);
@@ -4875,19 +4945,25 @@ classdef am_dft
             pp.p2i = pp.p2i(:,fwd);
             pp.i2p = findrow_(pp.i2p.'==pp.p2i).';
         end
-        
-        function [s_ck,g_ck]  = get_cluster_stabilizers_and_generators(ip)
+
+        function [PM,i2p,p2i] = get_action(ip)
             import am_dft.* am_lib.*
             % apply symmetry
             tau_action = apply_symmetry(ip.Q, reshape(ip.tau(:,ip.cluster),3,ip.natoms,ip.nclusters) );
-            % shift to first atom to primitive
+            % shift first atom to primitive
             tau_action = tau_action - floor(tau_action(:,1,:,:));
-            % reassing index
+            % reassign index
             [~,~,V_p2i] = uniquec_( reshape(tau_action, 3*ip.natoms, ip.nclusters*ip.nQs) );
             % get permutation matrix
             PM = reshape(V_p2i, ip.nclusters, ip.nQs);
             % get connectivity
-            [~,i2p,~] = get_connectivity( PM );
+            [~,i2p,p2i] = get_connectivity( PM );
+        end
+        
+        function [s_ck,g_ck]  = get_cluster_generators_and_stabilizers(ip)
+            import am_dft.* am_lib.*
+            % get action
+            [PM,i2p,~] = get_action(ip);
             % get stabilzier and generators [nQs, nclusters]
             s_ck = false(ip.nQs,ip.nclusters);
             g_ck = false(ip.nQs,ip.nclusters);
@@ -4967,7 +5043,7 @@ classdef am_dft
                 sym_name = am_dft.get_long_ss_name(ip.Q);
                 
                 % get stabilizers and generators
-                [s_ck,g_ck] = get_cluster_stabilizers_and_generators(ip);
+                [s_ck,g_ck] = get_cluster_generators_and_stabilizers(ip);
 
                 % print generators and stabilizers (bond group + reversal group)
                 for i = 1:ip.nclusters; if gt_(d(i),0)
@@ -4998,6 +5074,49 @@ classdef am_dft
                         end
                     end
                     fprintf('\n');
+                end
+            end
+        end
+        
+        function [c_id,o_id,q_id,iq_id] = get_irreducible_map(pp,uc)
+
+            import am_lib.* am_dft.*
+
+            % get multiplication table and inverse elements
+            [~,~,I] = get_multiplication_table(pp.Q);
+
+            % get action (permutation matrix, stabilizers, and generators)
+            [PM,i2p,p2i] = get_action(pp);
+
+            % get symmetry which takes irrep to orbit (and inverse elements)
+            qi = findrow_(PM==i2p(p2i).'); iqi = I(qi);
+
+            % convert positions to [uc-frac]
+            pp_tau = uc.bas\pp.bas*pp.tau;
+            pc_tau = uc.tau(:,uc.p2u);
+            uc_tau = uc.tau;
+            pc2pp  = member_(pc_tau,pp_tau); % indicies of pc atoms in pp
+
+            % loop over primitive cell atoms
+            for m = 1:numel(uc.u2p)
+                % record unit cell atoms of primitive type m
+                c_id{m} = find(uc.p2u==m); ncenters = numel(c_id{m});
+                % find orbits around c_id{m}(n), count their numbers
+                ex_ = [pp.cluster(1,:)==pc2pp(m)].'; norbits = sum(ex_);
+                % allocate space
+                o_id{m} = zeros(norbits,ncenters);
+                q_id{m}(1:norbits,:) =  qi(ex_);
+               iq_id{m}(1:norbits,:) = iqi(ex_);
+                % loop over centers
+                for n = 1:ncenters
+                    % center clusters atoms on uc reference frame
+                    pp_tau = pp_tau - pp_tau(:,pc2pp(m)) + uc_tau(:,c_id{m}(n));
+                    % shift to positive octant
+                    pp_tau = mod_(pp_tau);
+                    % compare to get indicies of pp atoms in uc
+                    pp2uc=member_(pp_tau(:,pp.cluster(2,ex_)),uc_tau);
+                    % record uc id for the pairing atom for each orbit
+                    o_id{m}(:,n) = pp2uc;
                 end
             end
         end
