@@ -4457,30 +4457,43 @@ classdef am_dft
 
 
         % electrons
-% 
-%         function [tb,pp,H]    = get_tb(pc,uc,dft,cutoff,spdf,nskips)
-% 
-%             import am_lib.* am_dft.*
-% 
-%             % get irreducible shells
-%             fprintf(' ... identifying pairs'); tic;
-%             [tb,pp] = get_pairs(pc,uc,cutoff);
-%             fprintf(' (%.f secs)\n',toc);
-% 
-%             % [cart] print shell results
-%             print_pairs(uc,pp)
-% 
-%             % tight binding model
-%             fprintf(' ... solving for symbolic matrix elements and hamiltonian'); tic;
-%             [tb,H] = get_tb_model(tb,pp,uc,spdf);
-%             fprintf(' (%.f secs)\n',toc);
-% 
-%             % get tight binding matrix elements
-%             fprintf(' ... solving for tight binding matrix elements '); tic;
-%             tb = get_tb_matrix_elements(tb,dft,nskips);
-%             fprintf('(%.f secs)\n',toc);
-% 
-%         end
+
+        function [ip,pp,H]    = get_tb(pc,dft,cutoff,spdf,nskips)
+
+            import am_lib.* am_dft.*
+
+            % get irreducible pairs
+            fprintf(' ... identifying irreducible pairs'); tic;
+            ip = get_irreducible_cluster(pc,natoms,cutoff);
+            fprintf(' (%.f secs)\n',toc);
+            
+            % print irreducible pair cluster info 
+            print_irreducible_cluster(ip,'bond,cart');
+            
+            % get primitive pairs
+            fprintf(' ... getting primitive pairs'); tic;
+            pp = get_primitive_cluster(ip);
+            fprintf(' (%.f secs)\n',toc);
+            
+            % get irreducible shells
+            fprintf(' ... identifying irreducible matrix elements'); tic;
+            ip = get_symmetry_adapted_matrix_elements(ip,spdf);
+            fprintf(' (%.f secs)\n',toc);
+            
+            % get hamiltonian
+            fprintf(' ... building Hamiltonian'); tic;
+            [Hsum,H] = get_tightbinding_hamiltonian(ip,pp);
+            fprintf(' (%.f secs)\n',toc);
+
+            % covert hamiltonian to matlab function
+            ip.H = matlabFunction(Hsum);
+
+            % tight binding model
+            fprintf(' ... solving for tight binding matrix elements '); tic;
+            tb = get_tb_matrix_elements(ip,dft,nskips);
+            fprintf(' (%.f secs)\n',toc);
+
+        end
 
         function [ip]         = get_symmetry_adapted_matrix_elements(ip,spdf)
             % set oribtals per irreducible atom: spdf = {'d','p'};
@@ -4563,7 +4576,9 @@ classdef am_dft
             [PM,i2p,p2i] = get_action(pp); qi = findrow_(PM==i2p(p2i).'); 
 
             % get hamiltonian block dimensions and start/end sections
-            d(ip.x2p(ip.cluster(1,:))) = cellfun(@(x)size(x,2),ip.vsk); E=cumsum(d); S=E-d+1; nbands=E(end);
+            d(ip.x2p(ip.cluster(1,:))) = cellfun(@(x)size(x,2),ip.vsk); 
+            d(ip.x2p(ip.cluster(2,:))) = cellfun(@(x)size(x,1),ip.vsk); % yes these 1 and 2 are opposites.
+            E=cumsum(d); S=E-d+1; nbands=E(end);
 
             % construct symbolic Hamiltonian matrix
             H = sym(zeros(nbands,nbands,ip.nclusters)); kvec = sym('k%d',[3,1],'real');
@@ -4808,7 +4823,7 @@ classdef am_dft
 
             % [pc-frac] create cluster tau = [X, natoms, nclusters]
             [natoms,nclusters] = size(x(:,ex_)); X = [uc.tau2pc*uc.tau;uc.species;uc.u2i;uc.u2p]; 
-            tau = reshape(X(:,x(:,ex_)),[],natoms,nclusters);
+            tau = reshape(X(:,x(:,ex_)),size(X,1), natoms, nclusters);
 
             % [pc-frac] apply transformation tau = [X, natoms, nclusters, nQs]
             tau = apply_symmetry(Q,tau);
@@ -4816,12 +4831,9 @@ classdef am_dft
             % [pc-frac] shift reference atom to primitive cell 
             tau(1:3,:,:,:) = tau(1:3,:,:,:) - floor(tau(1:3,1,:,:));
             
-            % shift X positions to positive octant so that they are comparable to uc.tau
+            % shift to positive octant so that positions are comparable and assign unique labels
             positive_ = @(X) matmul_(uc.tau2pc, mod_(matmul_(inv(uc.tau2pc), X ) ));
-            tau_positive = tau; tau_positive(1:3,:,:,:) = positive_(tau_positive(1:3,:,:,:));
-            
-            % assign clusters unique labels
-            [V,~,V_p2i]=uniquec_( member_(tau_positive/10,X/10) ); 
+            [V,~,V_p2i]=uniquec_( member_(positive_(tau(1:3,:,:,:))/10,X(1:3,:,:,:)/10) ); 
             
             % get irreducible cluster indicies by connecting symmetrically equivalent clusters with a graph
             PM = reshape(V_p2i,[nclusters,nQs]); [~,i2p,~] = get_connectivity( PM ); V = V(:,i2p);
@@ -4832,7 +4844,7 @@ classdef am_dft
             % create structure
             ip_ = @(pc,X,V,cutoff,Q) struct('units','frac-pc','bas',pc.bas, ...
                 'symb',{pc.symb},'mass',pc.mass, ...
-                'x2p',X(5,:),'x2i',X(6,:),'species',X(4,:),'tau',X(1:3,:),  ...
+                'x2p',X(6,:),'x2i',X(5,:),'species',X(4,:),'tau',X(1:3,:),  ...
                 'cluster',V,'nclusters',size(V,2),'natoms',size(V,1),'cutoff',cutoff,...
                 'nQs',size(Q{1},3),'Q',{Q});
             ip = ip_(pc, X, V, cutoff, Q);
@@ -4849,30 +4861,35 @@ classdef am_dft
             import am_lib.* am_dft.*
 
             % [pc-frac] create cluster tau = [X, natoms, nclusters]
-            X = [ip.tau;ip.species;ip.x2i;ip.x2p]; tau = reshape( X(:,ip.cluster), size(X,1), ip.natoms, ip.nclusters);
+            X = [ip.tau;ip.species]; tau = reshape( X(:,ip.cluster), size(X,1), ip.natoms, ip.nclusters);
 
             % [pc-frac] apply transformation tau = [X, natoms, nclusters, nsymmetries]
-            tau = apply_symmetry(ip.Q, tau);
-
+            tau = apply_symmetry(ip.Q, tau); 
+            
             % [pc-frac] shift reference atom to primitive cell 
             tau(1:3,:,:,:) = tau(1:3,:,:,:) - floor(tau(1:3,1,:,:));
 
             % [pc-frac] make a list of unique positions and assign each a number (rank by species then by position)
-            X = uniquec_( reshape(tau, size(tau,1), []) );
+            X = uniquec_( reshape(tau,size(tau,1),[]) );
 
+            % get primitive and irreducible labels for positions
+            fwd = member_(mod_(X(1:3,:)),mod_(ip.tau));
+            x2p = ip.x2p( fwd );
+            x2i = ip.x2i( fwd );
+            
             % assign clusters unique labels
-            [V,~,V_p2i]=uniquec_( member_(tau/10,X/10) ); 
+            [V,~,V_p2i]=uniquec_( member_(tau/10,X/10) );
 
             % get irreducible cluster indicies by connecting symmetrically equivalent clusters with a graph
-            PM = reshape(V_p2i,[ip.nclusters,ip.nQs]); [~,i2p,p2i] = get_connectivity( PM ); 
+            PM = reshape(V_p2i, [ip.nclusters, ip.nQs] ); [~,i2p,p2i] = get_connectivity( PM ); 
 
             % create structure
-            pp_ = @(ip,X,V,p2i,i2p) struct('units','frac-pc','bas',ip.bas,'symb',{ip.symb},'mass',ip.mass,...
-                'x2p',X(5,:),'x2i',X(6,:),'species',X(4,:),'tau',X(1:3,:), ...
+            pp_ = @(ip,X,V,x2p,x2i,p2i,i2p) struct('units','frac-pc','bas',ip.bas,'symb',{ip.symb},'mass',ip.mass,...
+                'x2p',x2p,'x2i',x2i,'species',X(4,:),'tau',X(1:3,:), ...
                 'cluster',V,'nclusters',size(V,2),'natoms',size(V,1),'cutoff',ip.cutoff, ...
                 'nQs',ip.nQs,'Q',{ip.Q}, ...
                 'p2i',p2i,'i2p',i2p);
-            pp = pp_(ip,X,V,p2i,i2p);
+            pp = pp_(ip,X,V,x2p,x2i,p2i,i2p);
             
             % now is the time to sort based on irreducible pairs
             fwd = rankc_(pp.p2i);
@@ -4883,14 +4900,19 @@ classdef am_dft
 
         function [PM,i2p,p2i] = get_action(ip)
             import am_dft.* am_lib.*
+            
+            if     isfield(ip,'Q'); sym='Q'; nsyms='nQs';
+            elseif isfield(ip,'S'); sym='S'; nsyms='nSs';
+            end
+            
             % apply symmetry
-            tau_action = apply_symmetry(ip.Q, reshape(ip.tau(:,ip.cluster),3,ip.natoms,ip.nclusters) );
+            tau_action = apply_symmetry(ip.(sym), reshape(ip.tau(:,ip.cluster),3,ip.natoms,ip.nclusters) );
             % shift first atom to primitive
             tau_action = tau_action - floor(tau_action(:,1,:,:));
             % reassign index
-            [~,~,V_p2i] = uniquec_( reshape(tau_action, 3*ip.natoms, ip.nclusters*ip.nQs) );
+            [~,~,V_p2i] = uniquec_( reshape(tau_action, 3*ip.natoms, ip.nclusters*ip.(nsyms)) );
             % get permutation matrix
-            PM = reshape(V_p2i, ip.nclusters, ip.nQs);
+            PM = reshape(V_p2i, ip.nclusters, ip.(nsyms));
             % get connectivity
             [~,i2p,p2i] = get_connectivity( PM );
         end
