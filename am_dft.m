@@ -2729,8 +2729,9 @@ classdef am_dft
             function [uc]    = load_material(material)
                 % conventional cell
                 switch material
-                    case 'VN'; uc = am_dft.create_cell(am_dft.abc2bas(4.1340,'cubic'),[[0;0;0], [1;1;1]/2], {'V','N'}, 225);
+                    case 'Cu'; uc = am_dft.create_cell(am_dft.abc2bas(3.6151,'cubic'),[0;0;0], {'Cu'}, 225);
                     case 'Si'; uc = am_dft.create_cell(am_dft.abc2bas(5.4209,'cubic'),[0;0;0], {'Si'}, 227);
+                    case 'VN'; uc = am_dft.create_cell(am_dft.abc2bas(4.1340,'cubic'),[[0;0;0], [1;1;1]/2], {'V','N'}, 225);
                     otherwise; error('load_material: unknown material');
                 end
             end
@@ -4823,12 +4824,15 @@ classdef am_dft
             [L{1:(natoms-1)}]=deal([1:uc.natoms]); [Y{natoms:-1:1}] = ndgrid(L{:},uc.p2u); 
             x = reshape(cat(natoms+1,Y{1:natoms}),[],natoms).';
             
-            % [uc-cart] exclude any cluster with a bond length longer than the cutoff
+            % [cart] exclude any cluster with at least one bond length longer than the cutoff
             d_cart_ = @(dX) normc_(uc.bas*dX); bond_ij = nchoosek_(natoms,2); nbonds = size(bond_ij,2); ex_ = true(1,size(x,2));            
             for i = 1:nbonds; ex_(ex_) = d_cart_( uc.tau(:,x(bond_ij(1,i),ex_)) - uc.tau(:,x(bond_ij(2,i),ex_)) )<cutoff; end
-
+            
+            % get number of clusters
+            nclusters = size(x(:,ex_),2); 
+            
             % [pc-frac] create cluster tau = [X, natoms, nclusters]
-            [natoms,nclusters] = size(x(:,ex_)); X = [uc.tau2pc*uc.tau;uc.species;uc.u2i;uc.u2p]; 
+            X = [uc.tau2pc*uc.tau;uc.species;uc.u2i;uc.u2p]; 
             tau = reshape(X(:,x(:,ex_)),size(X,1), natoms, nclusters);
 
             % [pc-frac] apply transformation tau = [X, natoms, nclusters, nQs]
@@ -4838,8 +4842,8 @@ classdef am_dft
             tau(1:3,:,:,:) = tau(1:3,:,:,:) - floor(tau(1:3,1,:,:));
             
             % shift to positive octant so that positions are comparable and assign unique labels
-            positive_ = @(X) matmul_(uc.tau2pc, mod_(matmul_(inv(uc.tau2pc), X ) ));
-            [V,~,V_p2i]=uniquec_( member_(positive_(tau(1:3,:,:,:))/10,X(1:3,:,:,:)/10) ); 
+            positive_ = @(X) cat(1, matmul_(uc.tau2pc, mod_(matmul_(inv(uc.tau2pc), X(1:3,:,:,:) ) )), X(4:end,:,:,:));
+            [V,~,V_p2i]=uniquec_( member_(positive_(tau(1:4,:,:,:))/10,X(1:4,:,:,:)/10) ); 
             
             % get irreducible cluster indicies by connecting symmetrically equivalent clusters with a graph
             PM = reshape(V_p2i,[nclusters,nQs]); [~,i2p,~] = get_connectivity( PM ); V = V(:,i2p);
@@ -4866,11 +4870,14 @@ classdef am_dft
         
             import am_lib.* am_dft.*
 
+            % combine space symmetry with permutation of atomic positions
+            M = perms([ip.natoms:-1:1]).'; Q{1} = repmat(ip.S,1,1,size(M,2)); Q{2} = repelem(M,1,ip.nSs); nQs=size(Q{1},3);
+            
             % [pc-frac] create cluster tau = [X, natoms, nclusters]
             X = [ip.tau;ip.species]; tau = reshape( X(:,ip.cluster), size(X,1), ip.natoms, ip.nclusters);
 
             % [pc-frac] apply transformation tau = [X, natoms, nclusters, nsymmetries]
-            tau = apply_symmetry(ip.S, tau); 
+            tau = apply_symmetry(Q, tau); 
             
             % [pc-frac] shift reference atom to primitive cell 
             tau(1:3,:,:,:) = tau(1:3,:,:,:) - floor(tau(1:3,1,:,:));
@@ -4887,7 +4894,7 @@ classdef am_dft
             [V,~,V_p2i]=uniquec_( member_(tau/10,X/10) );
 
             % get irreducible cluster indicies by connecting symmetrically equivalent clusters with a graph
-            PM = reshape(V_p2i, [ip.nclusters, ip.nSs] ); [~,i2p,p2i] = get_connectivity( PM ); 
+            PM = reshape(V_p2i, [ip.nclusters, nQs] ); [~,i2p,p2i] = get_connectivity( PM ); 
 
             % create structure
             pp_ = @(ip,X,V,x2p,x2i,p2i,i2p) struct('units','frac-pc','bas',ip.bas,'symb',{ip.symb},'mass',ip.mass,...
