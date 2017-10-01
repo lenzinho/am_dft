@@ -122,7 +122,7 @@ classdef am_dft
                 % construct sc
                 [sc,sc.u2p,sc.p2u] = get_supercell(pc,diag([5,5,5])); sc.i2u = sc.p2u(pc.i2p); sc.u2i = pc.p2i(sc.u2p); 
                 % get tb
-                [tb,pp] = get_tb(pc,sc,dft,opts.cutoff2,opts.spdf,opts.nskips);
+                [tb,pp] = get_tb(pc,dft,opts.cutoff2,opts.spdf,opts.nskips);
                 % save results
                 save(sname,'uc','pc','dft','tb','pp');
 
@@ -4458,41 +4458,41 @@ classdef am_dft
 
         % electrons
 
-        function [ip,pp,H]    = get_tb(pc,dft,cutoff,spdf,nskips)
+        function [tb,pp]      = get_tb(pc,dft,cutoff,spdf,nskips)
 
             import am_lib.* am_dft.*
 
             % get irreducible pairs
             fprintf(' ... identifying irreducible pairs'); tic;
-            ip = get_irreducible_cluster(pc,natoms,cutoff);
+            ip = get_irreducible_cluster(pc,2,cutoff);
             fprintf(' (%.f secs)\n',toc);
-            
+
             % print irreducible pair cluster info 
-            print_irreducible_cluster(ip,'bond,cart');
-            
+            print_cluster(ip,'bond,cart');
+
             % get primitive pairs
             fprintf(' ... getting primitive pairs'); tic;
             pp = get_primitive_cluster(ip);
             fprintf(' (%.f secs)\n',toc);
-            
+
             % get irreducible shells
             fprintf(' ... identifying irreducible matrix elements'); tic;
-            ip = get_symmetry_adapted_matrix_elements(ip,spdf);
-            fprintf(' (%.f secs)\n',toc);
-            
-            % get hamiltonian
-            fprintf(' ... building Hamiltonian'); tic;
-            [Hsum,H] = get_tightbinding_hamiltonian(ip,pp);
+            tb = get_symmetry_adapted_matrix_elements(ip,spdf);
             fprintf(' (%.f secs)\n',toc);
 
-            % covert hamiltonian to matlab function
-            ip.H = matlabFunction(Hsum);
+            % get hamiltonian
+            fprintf(' ... building Hamiltonian'); tic;
+            [tb.H,tb.H_analytical] = get_tightbinding_hamiltonian(tb,pp);
+            fprintf(' (%.f secs)\n',toc);
+
+            % covert hamiltonian to matlab function and save the number of bands
+            tb.nbands = size(tb.H_analytical,1);
+            tb.H = matlabFunction(tb.H);
 
             % tight binding model
             fprintf(' ... solving for tight binding matrix elements '); tic;
-            tb = get_tb_matrix_elements(ip,dft,nskips);
+            tb = get_tb_matrix_elements(tb,dft,nskips);
             fprintf(' (%.f secs)\n',toc);
-
         end
 
         function [ip]         = get_symmetry_adapted_matrix_elements(ip,spdf)
@@ -4572,7 +4572,7 @@ classdef am_dft
             
             import am_dft.* am_lib.*
             
-            % get symmetry which takes irrep to orbit (and inverse elements)
+            % get symmetry which takes orbit to irrep
             [PM,i2p,p2i] = get_action(pp); qi = findrow_(PM==i2p(p2i).'); 
 
             % get hamiltonian block dimensions and start/end sections
@@ -4592,10 +4592,10 @@ classdef am_dft
                 n = pp.x2p(pp.cluster(2,p)); j = pp.x2i(pp.cluster(2,p)); np = S(n):E(n);
 
                 rij = pp.tau(:,pp.cluster(2,p)) - pp.tau(:,pp.cluster(1,p)); rij = wdv_(rij,am_dft.tiny);
-                vsk =  sym(ip.D{i}(:,:,s)) * permute(ip.vsk{c},ip.Q{2}(:,s)) * sym(ip.D{j}(:,:,s))';
+                vsk =  sym(ip.D{i}(:,:,s))' * permute(ip.vsk{c},ip.Q{2}(:,s)) * sym(ip.D{j}(:,:,s));
 
                 % build hamiltonian matrix
-                H(mp,np,c) = H(mp,np,c) + vsk .* exp(sym(2i*pi) * sym(rij(:).','d') * kvec(:) );
+                H(mp,np,c) = H(mp,np,c) + vsk .* exp(sym(2i*pi) * rij(:).' * kvec(:) );
             end
 
             % simplify (speeds evaluation up significantly later)
@@ -4603,6 +4603,11 @@ classdef am_dft
 
             % stupid matlab, doesn't allow for sum(H,3)
             Hsum = sym(zeros(nbands,nbands)); for i = 1:ip.nclusters; Hsum = Hsum + H(:,:,i); end
+            
+            % check that hamilonian is hermitian
+            if ~all(all(simplify(Hsum-Hsum')==0))
+                error('Hamiltonian is not Hermitian!');
+            end
         end
 
         function [tb]         = get_tb_matrix_elements(tb,dft,nskips)
@@ -4614,7 +4619,8 @@ classdef am_dft
             tb.nskips = nskips;
 
             % fit neighbor parameter at high symmetry points using poor man's simulated anneal
-            d4fc = repelem(tb.d,cellfun(@(x)size(x,2),tb.W)); nfcs=numel(d4fc); x=zeros(1,nfcs);
+            d = normc_(tb.bas*(tb.tau(:,tb.cluster(2,:))-tb.tau(:,tb.cluster(1,:))));
+            d4fc = repelem(d,cellfun(@(x)size(x,2),tb.W)); nfcs=numel(d4fc); x=zeros(1,nfcs);
             d=unique(rnd_(d4fc)); d=conv([d,Inf],[1 1]/2,'valid'); nds = numel(d); r_best = Inf;
 
             % set simulated annealing temeprature and optimization options
@@ -4658,8 +4664,8 @@ classdef am_dft
             [x,~] = lsqnonlin_(cost_,x,false(1,nfcs),[],[],opts);
 
             % save refined matrix elements and conform to bvk
-            for i = [1:tb.nshells]; d(i)=size(tb.W{i},2); end; Evsk=cumsum(d); Svsk=Evsk-d+1;
-            for i = [1:tb.nshells]; tb.vsk{i} = x(Svsk(i):Evsk(i)); end
+            for i = [1:tb.nclusters]; d(i)=size(tb.W{i},2); end; Evsk=cumsum(d); Svsk=Evsk-d+1;
+            for i = [1:tb.nclusters]; tb.vsk{i} = x(Svsk(i):Evsk(i)); end
 
         end
 
@@ -4860,17 +4866,20 @@ classdef am_dft
         
             import am_lib.* am_dft.*
 
+            % get rid of permutation symmetries
+            S = ip.Q{1}; S = reshape(uniquec_(reshape(S,16,[])),4,4,[]); nSs = size(S,3);
+            
             % [pc-frac] create cluster tau = [X, natoms, nclusters]
             X = [ip.tau;ip.species]; tau = reshape( X(:,ip.cluster), size(X,1), ip.natoms, ip.nclusters);
 
             % [pc-frac] apply transformation tau = [X, natoms, nclusters, nsymmetries]
-            tau = apply_symmetry(ip.Q, tau); 
+            tau = apply_symmetry(S, tau); 
             
             % [pc-frac] shift reference atom to primitive cell 
             tau(1:3,:,:,:) = tau(1:3,:,:,:) - floor(tau(1:3,1,:,:));
 
             % [pc-frac] make a list of unique positions and assign each a number (rank by species then by position)
-            X = uniquec_( reshape(tau,size(tau,1),[]) );
+            X = uniquec_( reshape(tau,size(tau,1),[]) ); 
 
             % get primitive and irreducible labels for positions
             fwd = member_(mod_(X(1:3,:)),mod_(ip.tau));
@@ -4881,18 +4890,18 @@ classdef am_dft
             [V,~,V_p2i]=uniquec_( member_(tau/10,X/10) );
 
             % get irreducible cluster indicies by connecting symmetrically equivalent clusters with a graph
-            PM = reshape(V_p2i, [ip.nclusters, ip.nQs] ); [~,i2p,p2i] = get_connectivity( PM ); 
+            PM = reshape(V_p2i, [ip.nclusters, nSs] ); [~,i2p,p2i] = get_connectivity( PM ); 
 
             % create structure
-            pp_ = @(ip,X,V,x2p,x2i,p2i,i2p) struct('units','frac-pc','bas',ip.bas,'symb',{ip.symb},'mass',ip.mass,...
+            pp_ = @(ip,X,V,x2p,x2i,p2i,i2p,S) struct('units','frac-pc','bas',ip.bas,'symb',{ip.symb},'mass',ip.mass,...
                 'x2p',x2p,'x2i',x2i,'species',X(4,:),'tau',X(1:3,:), ...
                 'cluster',V,'nclusters',size(V,2),'natoms',size(V,1),'cutoff',ip.cutoff, ...
-                'nQs',ip.nQs,'Q',{ip.Q}, ...
+                'nSs',size(S,3),'S',S, ...
                 'p2i',p2i,'i2p',i2p);
-            pp = pp_(ip,X,V,x2p,x2i,p2i,i2p);
+            pp = pp_(ip,X,V,x2p,x2i,p2i,i2p,S);
             
             % now is the time to sort based on irreducible pairs
-            fwd = rankc_(pp.p2i);
+            fwd = rankc_( [pp.p2i;pp.cluster] );
             pp.cluster = pp.cluster(:,fwd);
             pp.p2i = pp.p2i(:,fwd);
             pp.i2p = findrow_(pp.i2p.'==pp.p2i).';
@@ -4928,7 +4937,7 @@ classdef am_dft
             for i = 1:numel(i2p); [~,a,~]=unique(PM(i2p(i),:)); g_ck(a,i)=true; end
         end
         
-        function                print_irreducible_cluster(ip,flags)
+        function                print_cluster(ip,flags)
 
             import am_lib.* am_dft.*
             
@@ -4967,9 +4976,19 @@ classdef am_dft
             fprintf('\n');  
             
             % table entries
-            REF = reshape(ip.bas*ip.tau(:,circshift(ip.cluster,1,1)),[3*ip.natoms,ip.nclusters]);
-            POS = reshape(ip.bas*ip.tau(:,          ip.cluster     ),[3*ip.natoms,ip.nclusters]);
-            d = normc_(REF-POS)/sqrt(ip.natoms); 
+            switch ip.natoms
+                case 2
+                    REF = ip.bas*ip.tau(:,ip.cluster(1,:));
+                    POS = ip.bas*ip.tau(:,ip.cluster(2,:));
+                    d = normc_(REF-POS);
+                case 3
+                    REF = reshape(ip.bas*ip.tau(:,ip.cluster(1,:)),[3,1        ,ip.nclusters]);
+                    POS = reshape(ip.bas*ip.tau(:,ip.cluster     ),[3,ip.natoms,ip.nclusters]);
+                    d = normc_(REF-POS)/sqrt(ip.natoms);
+                otherwise 
+                error('not yet implemented');
+            end
+            
             
             for i = 1:ip.nclusters
             fprintf('     '); 
@@ -4977,9 +4996,10 @@ classdef am_dft
                 fprintf('%-4i %2s',i,ip.symb{ip.species(ip.cluster(1,i))}); fprintf('-%2s',ip.symb{ip.species(ip.cluster(2:end,i))}); 
                 % center and bonds
                 if contains(flags,'bond')
-                    fprintf(' %7.3f',REF(1:3,i)); fprintf(' %7.3f',POS(4:end,i)-REF(4:end,i)); 
+                    fprintf(' %7.3f', ip.bas*ip.tau(:,ip.cluster(1,i)) ); 
+                    fprintf(' %7.3f', ip.bas*ip.tau(:,ip.cluster(2:end,i))-ip.bas*ip.tau(:,ip.cluster(1,i))); 
                 else
-                    fprintf(' %7.3f',POS(:,i));
+                    fprintf(' %7.3f',ip.bas*ip.tau(:,ip.cluster(:,i)));
                 end
                 % length
                 fprintf(' %7.3f',d(i)); 
@@ -5007,7 +5027,7 @@ classdef am_dft
                     ex_ = s_ck(:,i);
                     ex_bond_group_ = ex_; ex_bond_group_(ex_) = all(ip.Q{2}(:,ex_)==[1:ip.natoms].',1); 
                     ex_revr_group_ = ex_; ex_revr_group_(ex_) = all(ip.Q{2}(:,ex_)~=[1:ip.natoms].',1); 
-                    ex_generators_ = g_ck(:,i);
+                    ex_generators_ = g_ck(1:(ip.nQs/factorial(ip.natoms)),i);
     
                     fprintf('     ----------------------------------------------------- cluster #%-3i\n', i);
                     print_helper_(sym_name,'generators',ex_generators_);
@@ -5920,10 +5940,11 @@ classdef am_dft
 
         function E       = eval_energies_(tb,x,k)
             % get hamiltonians
-            nks = size(k,2); E = zeros(tb.nbands,nks); recbas = inv(tb.bas).';
+            nks = size(k,2); E = zeros(tb.nbands,nks); % recbas = inv(tb.bas).';
             for m = 1:nks
                 % build input
-                input = num2cell([x,(recbas*k(:,m)).']);
+                % input = num2cell([x,(recbas*k(:,m)).']);
+                input = num2cell([x,k(:,m).']);
                 % evaluate H
                 E(:,m) = real(eig(tb.H(input{:})));
             end
