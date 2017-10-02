@@ -3755,137 +3755,109 @@ classdef am_dft
 
         end
 
-        function [bvk,D,Dasr] = get_bvk_model(ip,pp,uc)
-            % [bvk,D,Dasr] = get_bvk_model(ip,pp,uc)
-            %
-            % Example for Si:
-            %
-            %     >> bvk.phi{1} (zeroth neighbor) ==> [0.00000    0.00000    0.00000]
-            % 
-            %     [ c01_11,      0,      0]
-            %     [      0, c01_11,      0]
-            %     [      0,      0, c01_11]
-            % 
-            %     >> bvk.phi{3} (first neighbor)  ==> [1.36750    1.36750    1.36750]
-            % 
-            %     [ c03_11, c03_21, c03_21]
-            %     [ c03_21, c03_11, c03_21]
-            %     [ c03_21, c03_21, c03_11]
-            % 
-            %     >> bvk.phi{2} (second neighbor) ==> [2.73500    2.73500    0.00000]
-            % 
-            %            (INCORRECT)	        (CORRECT, see MELVIN LAX p 264)
-            %     [ c02_11, c02_21,      0]  ==>  [ c02_11, c02_21, c02_31]
-            %     [ c02_21, c02_11,      0]  ==>  [ c02_21, c02_11, c02_31]
-            %     [      0,      0, c02_33]  ==>  [-c02_31,-c02_31, c02_33]
-            %
-            %     This erroneous version of the force constant matrix was also
-            %     published in 
-            %
-            %       H. M. J. Smith, Philosophical Transactions of the Royal Society a:
-            %       Mathematical, Physical and Engineering Sciences 241, 105 (1948).  
-            %
-            %     as pointed out in
-            %
-            %   	M. Lax, Symmetry Principles in Solid State and Molecular Physics
-            %   	(Dover Publications, 2012), p 264.
-            %
-            %     Also correct in 
-            %
-            %       R. Tubino and J. L. Birman, Phys. Rev. B 15, 5843 (1977).
-            %
-            %     Interestingly, the fact that second-neighbor force constant is
-            %     anti-symmetric implies that the order of differentiation matters and
-            %     the intrinsic transpositional symmetry does not apply.
-            %
-            
-            import am_lib.* am_dft.*
 
-            % set sym digits
-            digits(10);
-                
-            % construct transpose super operator (flip symmetry)
-            F = zeros(9,9); F(sub2ind([9,9],[1:9],[1,4,7,2,5,8,3,6,9])) = 1;
-
-            % get form of force constants for irreducible prototypical bonds
-            for i = 1:ip.nshells
-                sym_list = find(ip.s_ck(:,i)); 
-                W = kron_( ip.Q{1}(1:3,1:3,sym_list), ip.Q{1}(1:3,1:3,sym_list) );
-                for j = 1:numel(sym_list)
-                    if all(ip.Q{2}(:,sym_list(j))==[2;1]); W(:,:,j) = F*W(:,:,j); end
-                end
-
-                % use stabilzer group to determine crystallographic symmetry relations; A*B*C' equals kron(C,A)*B(:)
-                W = sum(W-eye(9),3);
-
-                %
-                %    This doesn't seem to be a correct symmetry since the example in Lax p. 264
-                %    shows a force constant matrix which is anti-symmetric.
-                %
-                % enforce intrinsic symmetry (immaterial order of differentiation: c == c.')
-                % F = zeros(9,9); F(sub2ind([9,9],[1:9],[1,4,7,2,5,8,3,6,9])) = 1; W = W + F-eye(9);
-
-                % get linearly-independent nullspace and normalize to first nonzero element
-                W=real(null(W)); W=frref_(W.').'; W(abs(W)<am_lib.eps)=0; W(abs(W-1)<am_lib.eps)=1; W=W./accessc_(W,findrow_(W.').');
-
-                % define parameters
-                c = sym(sprintf('c%02i_%%d%%d',i),[3,3],'real'); c = c(findrow_(double(W).'));
-
-                % get symmetry adapted force constants
-                phi = reshape( sym(W,'d')*c(:), [3,3]);
-
-                % save important stuff (sort W to be in line with c, matlabFunction sorts D variables)
-                [sav.c{i},n] = sort(c(:).'); sav.W{i} = W(:,n); sav.phi{i} = phi;
-            end
-
-            % create bvk structure
-            bvk_ = @(pp,ip,sav) struct('units','cart','bas',pp.bas2pc*pp.bas, ...
-                'symb',{pp.symb},'mass',pp.mass,'species',pp.species(pp.p2u),'cutoff',pp.cutoff,'natoms',pp.pc_natoms,...
-                'nbranches',3*pp.pc_natoms,'nshells',size(sav.W,2),'s_ck',ip.s_ck,'W',{sav.W},'phi',{sav.phi},'d',ip.d,'v',ip.v,'xy',ip.xy);
-            bvk = bvk_(pp,ip,sav);
-
-            % [cart] define function to get bond vector
-            vec_ = @(xy) uc2ws(uc.bas*(uc.tau(:,xy(2,:))-uc.tau(:,xy(1,:))),pp.bas);
-
-            % construct symbolic dynamical matrix
-            D=sym(zeros(bvk.nbranches,bvk.nbranches,bvk.nshells)); kvec=sym('k%d',[3,1],'real'); mass=sym('m%d',[1,numel(pp.i2u)],'positive');
-            for p = 1:pp.pc_natoms
-            for j = 1:pp.npairs(p)
-                % get indicies and already permute xy,mn,mp,np if necessary by iq
-                i = pp.i{p}(j);iq = pp.iq{p}(j);
-                x = pp.c{p}(1); y = pp.o{p}(j,1); xy = [x;y];
-                m = pp.u2p(x); mp = [1:3]+3*(m-1); n = pp.u2p(y); np = [1:3]+3*(n-1);
-
-                % rotate force constants and bond vector (NOTE #1)
-                rij = vec_(xy); rij(abs(rij)<am_lib.eps) = 0;
-                phi = sym(pp.Q{1}(1:3,1:3,iq)) * permute(bvk.phi{i},pp.Q{2}(:,iq)) * sym(pp.Q{1}(1:3,1:3,iq)).';
-
-                % build dynamical matrix
-                D(mp,np,i) = D(mp,np,i) + phi .* exp(sym(2i*pi * rij(:).','d') * kvec(:) );
-            end
-            end
-
-            % simplify (speeds evaluation up significantly later)
-            for i = 1:bvk.nshells; D(:,:,i) = simplify(rewrite(D(:,:,i),'cos'),'steps',20); end
-
-            % stupid matlab, doesn't allow for sum(H,3)
-            Dsum=sym(zeros(bvk.nbranches,bvk.nbranches));
-            for i = 1:bvk.nshells; Dsum = Dsum + D(:,:,i); end
-
-            % multiply by 1/sqrt(mass)
-            mass = repelem(mass(pp.species(pp.p2u)),1,3); mass = 1./sqrt(mass.' * mass); Dsum = Dsum .* mass;
-
-            % attach symbolic dynamical matrix to bvk
-            bvk.D = matlabFunction(Dsum);
-
-            % enforce acoustic sum rule algebraically?
-            if nargout > 2
-                Dasr = sym(zeros(bvk.nbranches,bvk.nbranches));
-                for i = 1:bvk.nshells; Dasr = Dasr + subs(subs(subs(D(:,:,i),kvec(1),0),kvec(2),0),kvec(3),0); end
-                % simplify and remove TRUE = TRUE (first term) from the set of equations
-                Dasr = unique(simplify(Dasr(:)==0)); Dasr = Dasr(2:end);
-            end
-        end
+        
+%         function [bvk,D,Dasr] = get_bvk_model(ip,pp,uc)
+%             % [bvk,D,Dasr] = get_bvk_model(ip,pp,uc)
+%             %
+%             % Example for Si:
+%             %
+%             %     >> bvk.phi{1} (zeroth neighbor) ==> [0.00000    0.00000    0.00000]
+%             % 
+%             %     [ c01_11,      0,      0]
+%             %     [      0, c01_11,      0]
+%             %     [      0,      0, c01_11]
+%             % 
+%             %     >> bvk.phi{3} (first neighbor)  ==> [1.36750    1.36750    1.36750]
+%             % 
+%             %     [ c03_11, c03_21, c03_21]
+%             %     [ c03_21, c03_11, c03_21]
+%             %     [ c03_21, c03_21, c03_11]
+%             % 
+%             %     >> bvk.phi{2} (second neighbor) ==> [2.73500    2.73500    0.00000]
+%             % 
+%             %            (INCORRECT)	        (CORRECT, see MELVIN LAX p 264)
+%             %     [ c02_11, c02_21,      0]  ==>  [ c02_11, c02_21, c02_31]
+%             %     [ c02_21, c02_11,      0]  ==>  [ c02_21, c02_11, c02_31]
+%             %     [      0,      0, c02_33]  ==>  [-c02_31,-c02_31, c02_33]
+%             %
+%             %     This erroneous version of the force constant matrix was also
+%             %     published in 
+%             %
+%             %       H. M. J. Smith, Philosophical Transactions of the Royal Society a:
+%             %       Mathematical, Physical and Engineering Sciences 241, 105 (1948).  
+%             %
+%             %     as pointed out in
+%             %
+%             %   	M. Lax, Symmetry Principles in Solid State and Molecular Physics
+%             %   	(Dover Publications, 2012), p 264.
+%             %
+%             %     Also correct in 
+%             %
+%             %       R. Tubino and J. L. Birman, Phys. Rev. B 15, 5843 (1977).
+%             %
+%             %     Interestingly, the fact that second-neighbor force constant is
+%             %     anti-symmetric implies that the order of differentiation matters and
+%             %     the intrinsic transpositional symmetry does not apply.
+%             %
+%             
+%             import am_lib.* am_dft.*
+% 
+%             % set sym digits
+%             digits(10);
+%                 
+%             
+%             
+%             
+% 
+%             % create bvk structure
+%             bvk_ = @(pp,ip,sav) struct('units','cart','bas',pp.bas2pc*pp.bas, ...
+%                 'symb',{pp.symb},'mass',pp.mass,'species',pp.species(pp.p2u),'cutoff',pp.cutoff,'natoms',pp.pc_natoms,...
+%                 'nbranches',3*pp.pc_natoms,'nshells',size(sav.W,2),'s_ck',ip.s_ck,'W',{sav.W},'phi',{sav.phi},'d',ip.d,'v',ip.v,'xy',ip.xy);
+%             bvk = bvk_(pp,ip,sav);
+% 
+%             % [cart] define function to get bond vector
+%             vec_ = @(xy) uc2ws(uc.bas*(uc.tau(:,xy(2,:))-uc.tau(:,xy(1,:))),pp.bas);
+% 
+%             % construct symbolic dynamical matrix
+%             D=sym(zeros(bvk.nbranches,bvk.nbranches,bvk.nshells)); kvec=sym('k%d',[3,1],'real'); mass=sym('m%d',[1,numel(pp.i2u)],'positive');
+%             for p = 1:pp.pc_natoms
+%             for j = 1:pp.npairs(p)
+%                 % get indicies and already permute xy,mn,mp,np if necessary by iq
+%                 i = pp.i{p}(j);iq = pp.iq{p}(j);
+%                 x = pp.c{p}(1); y = pp.o{p}(j,1); xy = [x;y];
+%                 m = pp.u2p(x); mp = [1:3]+3*(m-1); n = pp.u2p(y); np = [1:3]+3*(n-1);
+% 
+%                 % rotate force constants and bond vector (NOTE #1)
+%                 rij = vec_(xy); rij(abs(rij)<am_lib.eps) = 0;
+%                 phi = sym(pp.Q{1}(1:3,1:3,iq)) * permute(bvk.phi{i},pp.Q{2}(:,iq)) * sym(pp.Q{1}(1:3,1:3,iq)).';
+% 
+%                 % build dynamical matrix
+%                 D(mp,np,i) = D(mp,np,i) + phi .* exp(sym(2i*pi * rij(:).','d') * kvec(:) );
+%             end
+%             end
+% 
+%             % simplify (speeds evaluation up significantly later)
+%             for i = 1:bvk.nshells; D(:,:,i) = simplify(rewrite(D(:,:,i),'cos'),'steps',20); end
+% 
+%             % stupid matlab, doesn't allow for sum(H,3)
+%             Dsum=sym(zeros(bvk.nbranches,bvk.nbranches));
+%             for i = 1:bvk.nshells; Dsum = Dsum + D(:,:,i); end
+% 
+%             % multiply by 1/sqrt(mass)
+%             mass = repelem(mass(pp.species(pp.p2u)),1,3); mass = 1./sqrt(mass.' * mass); Dsum = Dsum .* mass;
+% 
+%             % attach symbolic dynamical matrix to bvk
+%             bvk.D = matlabFunction(Dsum);
+% 
+%             % enforce acoustic sum rule algebraically?
+%             if nargout > 2
+%                 Dasr = sym(zeros(bvk.nbranches,bvk.nbranches));
+%                 for i = 1:bvk.nshells; Dasr = Dasr + subs(subs(subs(D(:,:,i),kvec(1),0),kvec(2),0),kvec(3),0); end
+%                 % simplify and remove TRUE = TRUE (first term) from the set of equations
+%                 Dasr = unique(simplify(Dasr(:)==0)); Dasr = Dasr(2:end);
+%             end
+%         end
 
         function [bvk]        = get_bvk_force_constants(uc,md,bvk,pp,algo)
             % Extracts symmetry adapted force constants.
@@ -4496,77 +4468,151 @@ classdef am_dft
             fprintf(' (%.f secs)\n',toc);
         end
 
-        function [ip]         = get_symmetry_adapted_matrix_elements(ip,spdf)
+        function [ip]         = get_symmetry_adapted_matrix_elements(flag,ip,spdf)
+            % [bvk,D,Dasr] = get_symmetry_adapted_matrix_elements(flag,ip,spdf)
+            %
             % set oribtals per irreducible atom: spdf = {'d','p'};
             % may wish to do this to set it per species: x={'p','d'}; spdf={x{ic.species}};
+            %
+            % Q: What should zeroth, first, and second neighbor force constants look
+            %    like for a typical material?
+            % A: The force constant matrices for Si are listed below:
+            %
+            %     zeroth neighbor [0.00000    0.00000    0.00000]
+            % 
+            %     [ c01_11,      0,      0]
+            %     [      0, c01_11,      0]
+            %     [      0,      0, c01_11]
+            % 
+            %     first neighbor  [1.36750    1.36750    1.36750]
+            % 
+            %     [ c03_11, c03_21, c03_21]
+            %     [ c03_21, c03_11, c03_21]
+            %     [ c03_21, c03_21, c03_11]
+            % 
+            %     second neighbor [2.73500    2.73500    0.00000]
+            % 
+            %            (INCORRECT)	         (CORRECT, MELVIN LAX p 264)
+            %     [ c02_11, c02_21,      0]  ==>  [ c02_11, c02_21, c02_31]
+            %     [ c02_21, c02_11,      0]  ==>  [ c02_21, c02_11, c02_31]
+            %     [      0,      0, c02_33]  ==>  [-c02_31,-c02_31, c02_33]
+            %
+            %     The erroneous version of this force constant matrix was published in 
+            %
+            %       H. M. J. Smith, Philosophical Transactions of the Royal Society a:
+            %       Mathematical, Physical and Engineering Sciences 241, 105 (1948).  
+            %
+            %     as pointed out by
+            %
+            %   	M. Lax, Symmetry Principles in Solid State and Molecular Physics
+            %   	(Dover Publications, 2012), p 264.
+            %
+            %     Another publication with the corrected version of the force constant
+            %     is:
+            %
+            %       R. Tubino and J. L. Birman, Phys. Rev. B 15, 5843 (1977).
+            %
+            %     Interestingly, that the second-neighbor force constant is
+            %     anti-symmetric implies that the order of differentiation matters and
+            %     the intrinsic transpositional symmetry does not apply. 
+            %
+            % Q: How are symmetry operations represented in the flattened basis?
+            % A: Check it out with the code below.
+            %
+            %     0) initialize symbolic variables
+            %        a=sym('a_%d%d',[3,3]);
+            %        b=sym('b_%d%d',[3,3]);
+            %        c=sym('c_%d%d',[3,3]);
+            % 
+            %     1) matrix multiplication 
+            %        equationsToMatrix(a*b*c.',b(:)) - kron(c,a)
+            % 
+            %     2) flip symmetry
+            %        xx = [1:9]; xt = reshape(permute(reshape(xx,3,3),ip.Q{2}(:,iq)),1,9);
+            %        T = zeros(9,9); T(sub2ind([9,9],xx,xt) = 1;
+            %        equationsToMatrix(a*(b.')*c.',b(:)) - kron(c,a) * T
+            % 
+            %     3) flip symmetry (another way)
+            %        X=equationsToMatrix(a*b*c.',b(:)); 
+            %        simplify(equationsToMatrix(a*(b.')*c.',b(:)) - X(:,[1,4,7,2,5,8,3,6,9]))
+            % 
+            
+            digits(10); import am_lib.* am_dft.*
 
-            import am_lib.* am_dft.*
-
-            % set sym digits
-            digits(10); 
-
-            % covert symmetries [pc-frac] to [cart] -- very important!
-            sym_rebase_ = @(B,S) [[ matmul_(matmul_(B,S(1:3,1:3,:)),inv(B)), ...
-                reshape(matmul_(B,S(1:3,4,:)),3,[],size(S,3))]; S(4,1:4,:)];
-            S = ip.S; S = sym_rebase_(ip.bas, S);
-
-            % for each irreducible atom, set azimuthal quantum numbers J{:}, 
-            % symmetries D{:}, and parity-transpose F{:}
-            [J,D,F] = get_tb_symmetry_representation(spdf, S(1:3,1:3,:) );
-
-            % get dimensions
-            d = zeros(1,numel(J)); for i = 1:numel(J); d(i) = sum(J{i}*2+1); end
+            if     contains(flag,'tb')
+                matxname_ = 'vsk'; 
+            elseif contains(flag,'bvk')
+                matxname_ = 'phi'; 
+            end
 
             % get stabilizers for each irreducible cluster
             [s_ck,~] = get_cluster_generators_and_stabilizers(ip); 
-
+            
+            % reversal symmetries should not be ignored, however in the rare even that
+            % one would want to ignore them, set ignore_reversal_symmerties to true.
+            ignore_reversal_symmerties = false;
+            if ignore_reversal_symmerties
+                s_ck((end/2):end,:)=false; 
+            end
+            
+            % covert symmetries [pc-frac] to [cart] -- very important!
+            sym_rebase_ = @(B,S) [[ matmul_(matmul_(B,S(1:3,1:3,:)),inv(B)), ...
+                reshape(matmul_(B,S(1:3,4,:)),3,[],size(S,3))]; S(4,1:4,:)];
+            Q = ip.Q; Q{1} = sym_rebase_(ip.bas, Q{1});
+            
+            if     contains(flag,'tb')
+                % for each irreducible atom, set azimuthal quantum numbers J{:}, 
+                % symmetries D{:}, and parity-transpose F{:}
+                [J,D,F] = get_tb_symmetry_representation(spdf, Q(1:3,1:3,:) );
+                % get dimensions
+                d = zeros(1,numel(J)); for i = 1:numel(J); d(i) = sum(J{i}*2+1); end
+            elseif contains(flag,'bvk')
+                z = unique(ip.x2i); 
+                % construct transpose super operator (flip symmetry)
+                T = zeros(9,9); T(sub2ind([9,9],[1:9],[1,4,7,2,5,8,3,6,9])) = 1;
+                for i = 1:numel(z); D{i} = Q{1}(1:3,1:3,:); F{i}=T; end; d(z) = 3; 
+            end
+            
             % get form of force constants for irreducible prototypical bonds
             for p = 1:ip.nclusters
-
-                % get indicies
-                i = ip.x2i( ip.cluster(1,p) );  
-                j = ip.x2i( ip.cluster(2,p) );
-
-                % have not tested algo 2 yet!!!! try it with Si first...
-                algo=1;
+                % get irreducible atom indicies
+                i = ip.x2i( ip.cluster(1,p) );  j = ip.x2i( ip.cluster(2,p) );
+                
+                % use stabilzer group to determine crystallographic symmetry relations; A*B*C' equals kron(C,A)*B(:)
+                % choose an algorithm ALGO=2 is the default and correct version
+                algo=2;
                 switch algo
                     case 1
-                        % original version
-                        % use stabilzer group to determine crystallographic symmetry relations; A*B*C' equals kron(C,A)*B(:)
+                        % original (and erroneous version) just like in Smith's paper on force
+                        % constants of diamond.
                         W = sum(kron_( D{j}(:,:,s_ck(:,p)) , D{i}(:,:,s_ck(:,p)) ) - eye(d(i)*d(j)),3);
                     case 2
                         % incoprorating flip symmetry (need to test still)
-                        sym_list = find(s_ck(:,i)); sym_list=sym_list(sym_list<24); 
-                        W = kron_( D{j}(:,:,sym_list) , D{i}(:,:,sym_list) );
-                        for wi = 1:numel(sym_list) % maybe F{i} should multiply the other right hand side of W?
-                            if all(pp.Q{2}(:,sym_list(wi))==[2;1])
-                                W(:,:,wi) = W(:,:,wi)*F{i}; 
-                            end
-                        end
+                        % when atomic indicies are flipped, the matrix element is transposed. 
+                        % this is achieved like so: equationsToMatrix(a*(b.')*c.',b(:)) - kron(c,a) * T
+                        sym_list = find(s_ck(:,p)); W = kron_( D{j}(:,:,sym_list) , D{i}(:,:,sym_list) );
+                        for wi = 1:numel(sym_list); if all(Q{2}(:,sym_list(wi))~=[1;2])
+                            W(:,:,wi) = W(:,:,wi) * F{i};
+                        end; end
                         W = sum( W - eye(d(i)*d(j)), 3);
                 end
-
                 % partity transpose
                 if (i==j); W = W + F{i}-eye(d(i)*d(j)); end
-
                 % get linearly-independent nullspace and normalize to first nonzero element
                 W=null(W); W=frref_(W.').'; W=W./accessc_(W,findrow_(W.').'); W=wdv_(W); 
-
                 % define parameters
                 c = sym(sprintf('c%02i_%%d%%d',p),[d(i),d(j)],'real'); c = c(findrow_(W.'));
-
                 % get symmetry adapted force constants
-                vsk = reshape( sym(W)*c(:), [d(i),d(j)]);
-
+                matrix_ = reshape( sym(W)*c(:), [d(i),d(j)]);
                 % save important stuff (sort W to be in line with c, matlabFunction sorts D variables)
-                [sav.c{p},n] = sort(c(:).'); sav.W{p} = W(:,n); sav.vsk{p} = vsk;
+                [sav.c{p},n] = sort(c(:).'); sav.W{p} = W(:,n); sav.(matxname_){p} = matrix_;
             end
 
             ip.D = D;
             ip.F = F;
             ip.c = sav.c;
             ip.W = sav.W;
-            ip.vsk = sav.vsk;
+            ip.(matxname_) = sav.(matxname_);
         end
 
         function [Hsum,H]     = get_tightbinding_hamiltonian(ip,pp)
@@ -4683,7 +4729,6 @@ classdef am_dft
 
         % pairs and triplets
 
-        
         function [it,pt]      = get_triplets(pc,uc,cutoff)
 
             import am_lib.* am_dft.*
@@ -4805,7 +4850,7 @@ classdef am_dft
         end
 
 
-        % new pairs
+        % clusters
         
         function [ip]         = get_irreducible_cluster(pc,natoms,cutoff)
             
@@ -4856,8 +4901,8 @@ classdef am_dft
                 'symb',{pc.symb},'mass',pc.mass, ...
                 'x2p',X(6,:),'x2i',X(5,:),'species',X(4,:),'tau',X(1:3,:),  ...
                 'cluster',V,'nclusters',size(V,2),'natoms',size(V,1),'cutoff',cutoff,...
-                'nSs',size(S,3),'S',S);
-            ip = ip_(pc, X, V, cutoff, S);
+                'nQs',size(Q{1},3),'Q',{Q});
+            ip = ip_(pc, X, V, cutoff, Q);
             
             % now is the time to sort based on distances
             REF = reshape(ip.bas*ip.tau(:,circshift(ip.cluster,1,1)),[3*ip.natoms,ip.nclusters]);
@@ -4871,13 +4916,13 @@ classdef am_dft
             import am_lib.* am_dft.*
 
             % combine space symmetry with permutation of atomic positions
-            M = perms([ip.natoms:-1:1]).'; Q{1} = repmat(ip.S,1,1,size(M,2)); Q{2} = repelem(M,1,ip.nSs); nQs=size(Q{1},3);
+            % M = perms([ip.natoms:-1:1]).'; Q{1} = repmat(ip.S,1,1,size(M,2)); Q{2} = repelem(M,1,ip.nSs); nQs=size(Q{1},3);
             
             % [pc-frac] create cluster tau = [X, natoms, nclusters]
             X = [ip.tau;ip.species]; tau = reshape( X(:,ip.cluster), size(X,1), ip.natoms, ip.nclusters);
 
             % [pc-frac] apply transformation tau = [X, natoms, nclusters, nsymmetries]
-            tau = apply_symmetry(Q, tau); 
+            tau = apply_symmetry(ip.Q, tau); 
             
             % [pc-frac] shift reference atom to primitive cell 
             tau(1:3,:,:,:) = tau(1:3,:,:,:) - floor(tau(1:3,1,:,:));
@@ -4894,15 +4939,16 @@ classdef am_dft
             [V,~,V_p2i]=uniquec_( member_(tau/10,X/10) );
 
             % get irreducible cluster indicies by connecting symmetrically equivalent clusters with a graph
-            PM = reshape(V_p2i, [ip.nclusters, nQs] ); [~,i2p,p2i] = get_connectivity( PM ); 
+            PM = reshape(V_p2i, [ip.nclusters, ip.nQs] ); [~,i2p,p2i] = get_connectivity( PM ); 
 
             % create structure
-            pp_ = @(ip,X,V,x2p,x2i,p2i,i2p) struct('units','frac-pc','bas',ip.bas,'symb',{ip.symb},'mass',ip.mass,...
+            pp_ = @(ip,X,V,x2p,x2i,p2i,i2p,S) struct('units','frac-pc','bas',ip.bas,'symb',{ip.symb},'mass',ip.mass,...
                 'x2p',x2p,'x2i',x2i,'species',X(4,:),'tau',X(1:3,:), ...
                 'cluster',V,'nclusters',size(V,2),'natoms',size(V,1),'cutoff',ip.cutoff, ...
-                'nSs',ip.nSs,'S',ip.S, ...
+                'nSs',size(S,3),'S',S, ...
                 'p2i',p2i,'i2p',i2p);
-            pp = pp_(ip,X,V,x2p,x2i,p2i,i2p);
+            S = reshape(uniquec_(reshape(ip.Q{1},16,[])),4,4,[]);
+            pp = pp_(ip,X,V,x2p,x2i,p2i,i2p,S);
             
             % now is the time to sort based on irreducible pairs
             fwd = rankc_( [pp.p2i;pp.cluster] );
@@ -4914,16 +4960,20 @@ classdef am_dft
         function [PM,i2p,p2i] = get_action(ip)
             import am_dft.* am_lib.*
             
+            % get field properly
+            if     isfield(ip,'S'); sym='S'; nsyms='nSs';
+            elseif isfield(ip,'Q'); sym='Q'; nsyms='nQs';
+            end
             % composite vector
             X = [ip.tau;ip.species]; Xd = size(X,1);
             % apply symmetry
-            X_action = apply_symmetry(ip.S, reshape(X(:,ip.cluster), Xd, ip.natoms, ip.nclusters) );
+            X_action = apply_symmetry(ip.(sym), reshape(X(:,ip.cluster), Xd, ip.natoms, ip.nclusters) );
             % shift first atom to primitive
             X_action(1:3,:,:,:) = X_action(1:3,:,:,:) - floor(X_action(1:3,1,:,:));
             % reassign index
-            [~,~,V_p2i] = uniquec_( reshape(X_action, Xd*ip.natoms, ip.nclusters*ip.nSs) );
+            [~,~,V_p2i] = uniquec_( reshape(X_action, Xd*ip.natoms, ip.nclusters*ip.(nsyms)) );
             % get permutation matrix
-            PM = reshape(V_p2i, ip.nclusters, ip.nSs);
+            PM = reshape(V_p2i, ip.nclusters, ip.(nsyms));
             % get connectivity
             [~,i2p,p2i] = get_connectivity( PM );
         end
@@ -4932,11 +4982,15 @@ classdef am_dft
             
             import am_dft.* am_lib.*
             
+            % get field properly
+            if     isfield(ip,'S'); sym='S'; nsyms='nSs';
+            elseif isfield(ip,'Q'); sym='Q'; nsyms='nQs';
+            end
             % get action
             [PM,i2p,~] = get_action(ip);
             % get stabilzier and generators [nQs, nclusters]
-            s_ck = false(ip.nSs,ip.nclusters);
-            g_ck = false(ip.nSs,ip.nclusters);
+            s_ck = false(ip.(nsyms),ip.nclusters);
+            g_ck = false(ip.(nsyms),ip.nclusters);
             s_ck = [PM(i2p,:)==PM(i2p,1)].';
             for i = 1:numel(i2p); [~,a,~]=unique(PM(i2p(i),:)); g_ck(a,i)=true; end
         end
@@ -5018,10 +5072,16 @@ classdef am_dft
                 % covert symmetries if necessary
                 sym_rebase_ = @(B,S) [[ matmul_(matmul_(B,S(1:3,1:3,:)),inv(B)), ...
                     reshape(matmul_(B,S(1:3,4,:)),3,[],size(S,3))]; S(4,1:4,:)];
-                ip.S = sym_rebase_(ip.bas,ip.S); ip.S = wdv_(ip.S);
+                
+                % get field properly
+                if     isfield(ip,'S')
+                    sym='S'; ip.(sym) = sym_rebase_(ip.bas,ip.(sym)); ip.(sym) = wdv_(ip.(sym));
+                elseif isfield(ip,'Q')
+                    sym='Q'; ip.(sym){1} = sym_rebase_(ip.bas,ip.(sym){1}); ip.(sym){1} = wdv_(ip.(sym){1});
+                end
                 
                 % get names
-                sym_name = am_dft.get_long_ss_name(ip.S);
+                sym_name = am_dft.get_long_ss_name(ip.(sym));
                 
                 % get stabilizers and generators
                 [s_ck,g_ck] = get_cluster_generators_and_stabilizers(ip);
