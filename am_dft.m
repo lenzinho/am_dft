@@ -255,7 +255,7 @@ classdef am_dft
             fd(1:3,:,:) = matmul_(inv(uc.bas),fd(1:3,:,:));
             fd(4:6,:,:) = matmul_(inv(uc.bas),fd(4:6,:,:));
 
-            fd_ = @(uc,force,tau,vel,dt) struct('units','frac', ...
+            fd_ = @(uc,force,tau,vel,dt) struct('units','tau=frac; bas=ang', ...
                 'bas',uc.bas,'bas2pc',uc.bas2pc,'tau2pc',uc.tau2pc,...
                 'symb',{{uc.symb{:}}},'mass',uc.mass,'nspecies',uc.nspecies, ...
                 'natoms',uc.natoms,'force',force,'tau',tau,'vel',vel,'species',uc.species, ...
@@ -2499,7 +2499,7 @@ classdef am_dft
             end
             switch flag
                 case 'poscar';   uc = load_poscar(arg);
-                case 'cif';      uc = load_cif(arg);
+                case 'cif';      [uc,str] = load_cif(arg);
                 case 'material'; uc = load_material(arg);
                 case 'create';   uc = am_dft.create_cell(arg{:});
             end
@@ -2546,11 +2546,6 @@ classdef am_dft
             hg_code = identify_pointgroup(H); 
             pg_code = identify_pointgroup(R); 
             sg_code = identify_spacegroup(pg_code); % BETA
-            
-            % atomic density [g/cm3]
-            mass_density = sum(uc.mass(uc.species)) * am_dft.amu2gram / det(uc.bas*0.1 * 1E-7);
-            number_density = uc.natoms / det(uc.bas*0.1);
-            formula_density = number_density/(uc.natoms/gcd_(uc.nspecies));
 
             % print relevant information
             verbose = true;
@@ -2561,14 +2556,17 @@ classdef am_dft
                 fprintf('     %-15s = %s\n','holohodry',decode_holohodry(hg_code));
                 fprintf('     %-15s = %s\n','point group',decode_pg(pg_code));
                 fprintf('     %-15s = %s\n','space group',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
-                fprintf('     %-15s = %-8.3f [g/cm3] \n','mass density',mass_density);
-                fprintf('     %-15s = %-8.3f [atoms/nm3]\n','number density',number_density);
-                fprintf('     %-15s = %-8.3f [f.u./nm3]\n','formula density',formula_density);
+                fprintf('     %-15s = %-8.3f [g/cm3] \n','mass density',get_cell_mass_density(uc));
+                fprintf('     %-15s = %-8.3f [atoms/nm3]\n','number density',get_cell_number_density(uc));
+                fprintf('     %-15s = %-8.3f [f.u./nm3]\n','formula density',get_cell_formula_unit_density(uc));
+                if contains(flag,'cif')
+                    fprintf('     %-15s = %s\n','create command',str);
+                end
             end
             
             % sub functions
             
-            function [uc]    = load_cif(fcif)
+            function [uc, str]    = load_cif(fcif)
 
                 % load file into memory
                 str = am_lib.load_file_(fcif);
@@ -2680,6 +2678,12 @@ classdef am_dft
                     end
                 end; end
                 nSs = size(S,3);
+                
+                % save this cell?
+                str_bas = sprintf('am_dft.abc2bas([%g,%g,%g,%g,%g,%g])',[abc,angles]);
+                str_tau = sprintf('[%g;%g;%g],',tau); str_tau = ['[',str_tau(1:(end-1)),']'];
+                str_spc = sprintf('''%s'',',symb{:}); str_spc = ['{',str_spc(1:(end-1)),'}'];
+                str = sprintf('create_cell(%s,%s,%s,%i)', str_bas, str_tau, str_spc, sg_id);
 
                 % generate all positions based on symmetry operations
                 seitz_apply_ = @(S,tau) am_lib.mod_(reshape(am_lib.matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
@@ -2688,7 +2692,7 @@ classdef am_dft
                 [species,i]=sort(species); tau=tau(:,i);
 
                 % define primitive cell creation function and make structure
-                uc_ = @(bas,symb,Z,species) struct('units','frac','bas',bas, ...
+                uc_ = @(bas,symb,Z,species) struct('units','tau=frac; bas=ang','bas',bas, ...
                     'symb',{symb},'mass',am_dft.get_atomic_mass(Z),'nspecies',sum(unique(species).'==species,2).', ...
                     'natoms',numel(species),'tau',tau,'species',species);
                 uc = uc_(bas,symb,Z,species);
@@ -2696,7 +2700,7 @@ classdef am_dft
             
             function [uc]    = load_poscar(fposcar)
                 fid=fopen(fposcar,'r');                % open file
-                    header=fgetl(fid); uc.units='frac';% read header (often times contains atomic symbols)
+                    header=fgetl(fid); uc.units='tau=frac; bas=ang';% read header (often times contains atomic symbols)
                     latpar=sscanf(fgetl(fid),'%f');    % read lattice parameter
                     a1=sscanf(fgetl(fid),'%f %f %f');  % first basis vector
                     a2=sscanf(fgetl(fid),'%f %f %f');  % second basis vector
@@ -2727,15 +2731,68 @@ classdef am_dft
             end
 
             function [uc]    = load_material(material)
-                % conventional cell
                 switch material
-                    case 'Cu'; uc = am_dft.create_cell(am_dft.abc2bas(3.6151,'cubic'),[0;0;0], {'Cu'}, 225);
-                    case 'Si'; uc = am_dft.create_cell(am_dft.abc2bas(5.4209,'cubic'),[0;0;0], {'Si'}, 227);
-                    case 'VN'; uc = am_dft.create_cell(am_dft.abc2bas(4.1340,'cubic'),[[0;0;0], [1;1;1]/2], {'V','N'}, 225);
+                    case 'Al2O3';           uc = create_cell(am_dft.abc2bas([4.7617,12.9990],'hex'),        [[0;0;0.3522],[0.6936;0;0.2500]],                           {'Al','O'}, 167); % ICSD 10425
+                    case 'gamma-Al2O3';     uc = create_cell(am_dft.abc2bas(7.9110,'cubic'),                [[1;1;1]*0.2547,[1;1;1]/2,[1;1;1]/4,[1;1;1]*0.0272],       	{'O','Al','Al','Al'},227); % ICSD 66558
+                    case 'eta-Al2O3';       uc = create_cell(am_dft.abc2bas(7.9140,'cubic'),                [[1;1;1]*0.2549,[1;1;1]/2,[4*0.3511;1;1]/4,[1;1;1]*0.0699], {'O','Al','Al','Al'},227); % ICSD 66559
+                    case 'BiAlO3';          uc = create_cell(am_dft.abc2bas([5.37546,13.3933],'hex'),       [[0;0;0],[0;0;0.2222],[0.5326;0.0099;0.9581]],              {'Bi','Al','O'},161); % ICSD 171708
+                    case 'Bi2Al4O9';        uc = create_cell(am_dft.abc2bas([7.7134,8.1139,5.6914],'orth'), [[0.1711;0.1677;0],[0.5;0;0.2645],[0.3545;0.3399;0.5],[0;0;0.5],[0.3718;0.2056;0.2503],[0.1364;0.412;0.5],[0.1421;0.4312;0]],{'Bi','Al','Al','O','O','O','O'},55); % ICSD 88775
+                    case 'Cu';              uc = create_cell(am_dft.abc2bas(3.6151,'cubic'),                 [0;0;0],                                                   {'Cu'}, 225); % ICSD 43493
+                    case 'Si';              uc = create_cell(am_dft.abc2bas(5.4209,'cubic'),                 [0;0;0],                                                   {'Si'}, 227); % ICSD 51688
+                    case 'SrTiO3';          uc = create_cell(am_dft.abc2bas(3.9010,'cubic'),                [[0;0;0], [1;1;1]/2, [1;1;0]/2],                            {'Sr','Ti','O'}, 221); % ICSD 80873
+                    case 'SrRuO3';          uc = create_cell(am_dft.abc2bas([5.5729,7.8518,5.5346],'orth'), [[0;0;0],[0.5;0.25;0.99],[0.55;0.25;0.5],[0.22;0.03;0.21]], {'Ru','Sr','O','O'}, 62); % ICSD 56697
+                    case 'VN';              uc = create_cell(am_dft.abc2bas(4.1340,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'V','N'}, 225);
                     otherwise; error('load_material: unknown material');
                 end
-            end
-            
+                
+                function [uc]         = create_cell(bas,tau,symb,sg_code)
+                    % create_cell(bas,tau,symb,sg_code) creates cell based on wyckoff positions and standard crystallographic setting
+                    %
+                    % Example input for BiFeO3 P63cm (hypothetical polymorph):
+                    %     % define basis, atomic positions, species, and elements
+                    %     a = 6.200; c = 12.076;
+                    %     bas = abc2bas([a,a,c,90,90,120]);
+                    %     tau=[0.00000 0.00000 0.48021; 0.33333 0.66667 0.01946; ...
+                    %       0.29931 0.00000 0.15855; 0.63457 0.00000 0.34439; ...
+                    %       0.33440 0.00000 0.00109; 0.00000 0.00000 0.27855; ...
+                    %       0.33333 0.66667 0.23206].';
+                    %     symb = {'O','O','O','O','Fe','Bi','Bi'}; sg_code=185;
+                    %     % create cell
+                    %     [uc] = create_cell(bas,tau,symb,sg_code); [bragg] = get_bragg(uc);
+                    %     plot_bragg(bragg); tabulate_bragg(bragg,10);
+                    %     % save poscar
+                    %     write_poscar(uc,'BiFeO3_P63cm_dft.poscar');
+                    %
+
+                    import am_dft.* am_lib.*
+
+                    % identify atomic types and assign a number label
+                    [symb,~,species]=unique(symb,'stable');
+
+                    % get space symmetries in conventional setting
+                    S = am_dft.generate_sg(sg_code);
+
+                    % define function to apply symmetries to position vectors
+                    seitz_apply_ = @(S,tau) am_lib.mod_(reshape(am_lib.matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
+
+                    % apply symmetry operations to all atoms
+                    natoms = size(tau,2); nSs = size(S,3); c_i2u = repmat([1:natoms].',1,nSs); c_i2u=c_i2u(:).';
+                    tau = reshape(seitz_apply_(S,tau),3,[]); species = repmat(species(:),1,nSs); species=species(:).';
+
+                    % get unique species
+                    [~,ind] = am_lib.uniquec_(tau); tau = tau(:,ind); species = species(ind); c_i2u = c_i2u(ind);
+
+                    % sort by species
+                    [~,ind] = sort(c_i2u);  tau = tau(:,ind); species = species(ind); c_i2u = c_i2u(ind);
+
+                    % define irreducible cell creation function and make structure
+                    uc_ = @(bas,tau,symb,species) struct('units','tau=frac; bas=ang','bas',bas,...
+                        'symb',{symb},'mass',am_dft.get_atomic_mass(am_dft.get_atomic_number(symb)),...
+                        'nspecies',sum(unique(species).'==species,2).', ...
+                        'natoms',size(tau,2),'tau',tau,'species',species);
+                    uc = uc_(bas,tau,symb,species);
+                end
+            end 
         end
 
         function [dc,idc]     = get_displaced_cell(pc,bvk,n,kpt,amp,mode,nsteps)
@@ -2881,7 +2938,7 @@ classdef am_dft
             f   = matmul_(inv(uc.bas),f);
 
             % create displaced structure
-            dc_ = @(uc,f,tau,v,dt) struct('units','frac',...
+            dc_ = @(uc,f,tau,v,dt) struct('units','tau=frac; bas=ang',...
                 'bas',uc.bas,'tau2pc',uc.tau2pc,'bas2pc',uc.bas2pc,...
                 'symb',{{uc.symb{:}}},'mass',uc.mass,'nspecies',uc.nspecies, ...
                 'natoms',uc.natoms,'force',f,'tau',tau,'vel',v,'species',uc.species, ...
@@ -2927,7 +2984,7 @@ classdef am_dft
             hold off; daspect([1 1 1]); box on;
 
             % legend
-            legend(h,pc.symb{:},'boxoff'); axis off;
+            lh_ = legend(h,pc.symb{:}); lh_.Box='off'; axis off;
 
         end
 
@@ -3134,6 +3191,22 @@ classdef am_dft
             end
         end
         
+        function mass_density = get_cell_mass_density(uc)
+            % mass_density = get_cell_mass_density(uc)
+            % [g/cm3]
+            mass_density = sum(uc.mass(uc.species)) * am_dft.amu2gram / det(uc.bas*0.1 * 1E-7);
+        end
+        
+        function num_density  = get_cell_number_density(uc)
+            % [atoms/nm3]
+            num_density = uc.natoms / det(uc.bas*0.1);
+        end
+        
+        function formula_density = get_cell_formula_unit_density(uc)
+            % [f.u./nm3]
+            import am_dft.get_cell_number_density am_lib.gcd_
+            formula_density = get_cell_number_density(uc)/(uc.natoms/gcd_(uc.nspecies));
+        end
         
         % brillouin zones
 
@@ -3153,9 +3226,6 @@ classdef am_dft
             
             function [fbz]         = get_fbz(pc,n)
 
-                import am_lib.*
-                import am_dft.*
-
                 % check
                 if any(mod(n,1)~=0); error('n must be integers'); end
                 if numel(n)~=3; error('n must be three integers'); end
@@ -3164,112 +3234,132 @@ classdef am_dft
                 Q_ = @(i) [0:(n(i)-1)]./n(i); [Y{1:3}]=ndgrid(Q_(1),Q_(2),Q_(3)); k=reshape(cat(3+1,Y{:}),[],3).';
 
                 % define irreducible cell creation function and make structure
-                fbz_ = @(uc,n,k) struct('units','frac-recp','recbas',inv(uc.bas).',...
+                fbz_ = @(uc,n,k) struct('units','k=frac-recp; bas=ang-recp','recbas',inv(uc.bas).',...
                     'n',n,'nks',size(k,2),'k',k,'w',ones([1,size(k,2)]));
                 fbz = fbz_(pc,n,k);
-
             end
 
-            function [ibz,i2f,f2i] = get_ibz(fbz,pc)
+        end
+        
+        function [ibz,i2f,f2i]= get_ibz(fbz,pc,flag)
 
-                import am_lib.* am_dft.*
+            import am_lib.* am_dft.*
 
-                % get point symmetries [real-frac --> rec-frac] by transposing R
-                [~,~,~,R] = am_dft.get_symmetries(pc); R = permute(R,[2,1,3]);
+            if nargin<3; flag=''; end
 
-                % build permutation matrix for kpoints related by point symmetries
-                PM = am_lib.member_(am_lib.mod_(am_lib.matmul_(R,fbz.k)),fbz.k); A = am_lib.get_connectivity(PM);
+            % get point symmetries [real-frac --> rec-frac] by transposing R
+            [~,~,~,R] = am_dft.get_symmetries(pc); R = permute(R,[2,1,3]);
 
-                % set identifiers
-                i2f = round(am_lib.findrow_(A)).'; f2i = round(([1:size(A,1)]*A)); w=sum(A,2).';
-                if abs(sum(w)-prod(fbz.n))>am_lib.eps; error('mismatch: kpoint mesh and point group symmetry'); end
+            % build permutation matrix for kpoints related by point symmetries
+            if contains(flag,'nomod') % this is used for bragg reflections, otherwise all points would go to gamma
+                PM = am_lib.member_(           (am_lib.matmul_(R,fbz.k)),fbz.k);
+            else
+                PM = am_lib.member_(am_lib.mod_(am_lib.matmul_(R,fbz.k)),fbz.k);
+            end
+            A = am_lib.get_connectivity(PM);
 
+            % set identifiers
+            i2f = round(am_lib.findrow_(A)).'; f2i = round(([1:size(A,1)]*A)); w=sum(A,2).';
+            if abs(sum(w)-fbz.nks)>am_lib.eps; error('mismatch: kpoint mesh and point group symmetry'); end
+
+            % define irreducible cell creation function and make structure
+            ibz_ = @(fbz,i2f,w,tet,tetw) struct('units','k=frac-recp; bas=ang-recp','recbas',fbz.recbas,...
+                'n',[],'nks',numel(i2f),'k',fbz.k(:,i2f),'w',w);
+            ibz = ibz_(fbz,i2f,w);
+            % pass along additional parameters if they exist
+            for f = {'n','hv','Fk','Fk2'}
+                if isfield(fbz,f) && ~isempty(fbz.(f{:}))
+                    ibz.(f{:}) = fbz.(f{:}); 
+                end
+            end
+
+            % if requested
+            if contains(flag,'tetra')
                 % get irreducible tetrahedra
                 [tet,~,tet_f2i] = unique(sort(f2i(get_tetrahedra(fbz.recbas,fbz.n))).','rows'); tet=tet.'; tetw = hist(tet_f2i,[1:size(tet,2)].'-.5);
+                % augment structure with tetrahedron
+                ibz.ntets = size(tet,2);
+                ibz.tet   = tet; 
+                ibz.tetw  = tetw;
+            end
 
-                % define irreducible cell creation function and make structure
-                ibz_ = @(fbz,i2f,w,tet,tetw) struct('units','frac-recp','recbas',fbz.recbas,...
-                    'n',fbz.n,'nks',numel(i2f),'k',fbz.k(:,i2f),'w',w,'ntets',size(tet,2),'tet',tet,'tetw',tetw);
-                ibz = ibz_(fbz,i2f,w,tet,tetw);
+            % subfunctions
+            function tet           = get_tetrahedra(recbas,n)
+                % divide mesh into boxes
+                box = grid2box(n); nboxes = size(box,2);
+                % divide a single box into six tetrahedron
+                tetrahedron = box2tetrahedron(recbas);
+                % loop over boxes
+                tet = zeros(4,6*nboxes); t = 0;
+                for b = 1:nboxes
+                    % loop over tetrahedron/box
+                    for j = 1:6
+                        % augment tetrahedron counter
+                        t = t + 1;
+                        % define tetrahedra corners using indices of kpoints
+                        tet(:,t) = box(tetrahedron(:,j),b);
+                    end
+                end
 
                 % subfunctions
-                function tet           = get_tetrahedra(recbas,n)
-                    % divide mesh into boxes
-                    box = grid2box(n); nboxes = size(box,2);
-                    % divide a single box into six tetrahedron
-                    tetrahedron = box2tetrahedron(recbas);
-                    % loop over boxes
-                    tet = zeros(4,6*nboxes); t = 0;
-                    for b = 1:nboxes
-                        % loop over tetrahedron/box
-                        for j = 1:6
-                            % augment tetrahedron counter
-                            t = t + 1;
-                            % define tetrahedra corners using indices of kpoints
-                            tet(:,t) = box(tetrahedron(:,j),b);
-                        end
-                    end
-
-                    % subfunctions
-                    function box           = grid2box(n)
-                        % get mesh
-                        [Z{1:3}]=ndgrid([1:n(1)],[1:n(2)],[1:n(3)]); ki = reshape(cat(3+1,Z{:}),[],3).';
-                        % get box vertices
-                        boxv = [0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1];
-                        % there will be 1 box per kpoint and 8 vertices per box
-                        nks = prod(n); box = zeros(8,nks);
-                        % get boxes for each kpoint
-                        box_ = @(d,i) mod(boxv(d,:)+ki(d,i)-1,n(d))+1;
-                        for m = 1:nks; box(:,m) = sub2ind(n,box_(1,m),box_(2,m),box_(3,m)); end
-                    end
-                    function tetrahedron   = box2tetrahedron(recbas)
-                        %     7-------8
-                        %    /|      /|
-                        %   / |     / |
-                        %  5-------6  |
-                        %  |  3----|--4
-                        %  | /     | /
-                        %  |/      |/
-                        %  1-------2
-                        %
-                        boxvc = recbas*[0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1];
-                        % get indices of diagonal pairs
-                        diags=[1,2,3,4;8,7,6,5];
-                        % get distances across diagonals
-                        d=zeros(1,4); for m = 1:4; d(m) = norm(boxvc(:,diags(2,m))-boxvc(:,diags(1,m))); end
-                        % record smallest diagonal
-                        [~,si]=min(d);
-                        % create connectivity list defining tetrahedra
-                        switch si
-                            case (1)
-                            tetrahedron(:,1) = [1,8,2,4];
-                            tetrahedron(:,2) = [1,8,2,6];
-                            tetrahedron(:,3) = [1,8,3,4];
-                            tetrahedron(:,4) = [1,8,3,7];
-                            tetrahedron(:,5) = [1,8,5,6];
-                            tetrahedron(:,6) = [1,8,5,7];
-                            case (2)
-                            tetrahedron(:,1) = [2,7,1,3];
-                            tetrahedron(:,2) = [2,7,1,5];
-                            tetrahedron(:,3) = [2,7,3,4];
-                            tetrahedron(:,4) = [2,7,4,8];
-                            tetrahedron(:,5) = [2,7,5,6];
-                            tetrahedron(:,6) = [2,7,6,8];
-                            case (3)
-                            tetrahedron(:,1) = [3,6,1,2];
-                            tetrahedron(:,2) = [3,6,1,5];
-                            tetrahedron(:,3) = [3,6,2,4];
-                            tetrahedron(:,4) = [3,6,4,8];
-                            tetrahedron(:,5) = [3,6,5,7];
-                            tetrahedron(:,6) = [3,6,7,8];
-                            case (4)
-                            tetrahedron(:,1) = [4,5,1,2];
-                            tetrahedron(:,2) = [4,5,1,3];
-                            tetrahedron(:,3) = [4,5,2,6];
-                            tetrahedron(:,4) = [4,5,3,7];
-                            tetrahedron(:,5) = [4,5,6,8];
-                            tetrahedron(:,6) = [4,5,7,8];
-                        end
+                function box           = grid2box(n)
+                    % get mesh
+                    [Z{1:3}]=ndgrid([1:n(1)],[1:n(2)],[1:n(3)]); ki = reshape(cat(3+1,Z{:}),[],3).';
+                    % get box vertices
+                    boxv = [0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1];
+                    % there will be 1 box per kpoint and 8 vertices per box
+                    nks = prod(n); box = zeros(8,nks);
+                    % get boxes for each kpoint
+                    box_ = @(d,i) mod(boxv(d,:)+ki(d,i)-1,n(d))+1;
+                    for m = 1:nks; box(:,m) = sub2ind(n,box_(1,m),box_(2,m),box_(3,m)); end
+                end
+                function tetrahedron   = box2tetrahedron(recbas)
+                    %     7-------8
+                    %    /|      /|
+                    %   / |     / |
+                    %  5-------6  |
+                    %  |  3----|--4
+                    %  | /     | /
+                    %  |/      |/
+                    %  1-------2
+                    %
+                    boxvc = recbas*[0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1];
+                    % get indices of diagonal pairs
+                    diags=[1,2,3,4;8,7,6,5];
+                    % get distances across diagonals
+                    d=zeros(1,4); for m = 1:4; d(m) = norm(boxvc(:,diags(2,m))-boxvc(:,diags(1,m))); end
+                    % record smallest diagonal
+                    [~,si]=min(d);
+                    % create connectivity list defining tetrahedra
+                    switch si
+                        case (1)
+                        tetrahedron(:,1) = [1,8,2,4];
+                        tetrahedron(:,2) = [1,8,2,6];
+                        tetrahedron(:,3) = [1,8,3,4];
+                        tetrahedron(:,4) = [1,8,3,7];
+                        tetrahedron(:,5) = [1,8,5,6];
+                        tetrahedron(:,6) = [1,8,5,7];
+                        case (2)
+                        tetrahedron(:,1) = [2,7,1,3];
+                        tetrahedron(:,2) = [2,7,1,5];
+                        tetrahedron(:,3) = [2,7,3,4];
+                        tetrahedron(:,4) = [2,7,4,8];
+                        tetrahedron(:,5) = [2,7,5,6];
+                        tetrahedron(:,6) = [2,7,6,8];
+                        case (3)
+                        tetrahedron(:,1) = [3,6,1,2];
+                        tetrahedron(:,2) = [3,6,1,5];
+                        tetrahedron(:,3) = [3,6,2,4];
+                        tetrahedron(:,4) = [3,6,4,8];
+                        tetrahedron(:,5) = [3,6,5,7];
+                        tetrahedron(:,6) = [3,6,7,8];
+                        case (4)
+                        tetrahedron(:,1) = [4,5,1,2];
+                        tetrahedron(:,2) = [4,5,1,3];
+                        tetrahedron(:,3) = [4,5,2,6];
+                        tetrahedron(:,4) = [4,5,3,7];
+                        tetrahedron(:,5) = [4,5,6,8];
+                        tetrahedron(:,6) = [4,5,7,8];
                     end
                 end
             end
@@ -3319,7 +3409,7 @@ classdef am_dft
             [k,x,qt] = get_path(recbas*qs,recbas*qe,nqs,n); k=recbas\k;
 
             % create path object
-            bzp_ = @(recbas,ql,qt,nks,x,k) struct('units','frac-recp', ...
+            bzp_ = @(recbas,ql,qt,nks,x,k) struct('units','k=frac-recp; bas=ang-recp', ...
                 'recbas',recbas,'ql',{{ql{:}}},'qt',qt,'nks',nks,'x',x,'k',k);
             bzp = bzp_(recbas,ql,qt,size(k,2),x,k);
 
@@ -3356,7 +3446,7 @@ classdef am_dft
             k = Y{1}(:).'.*vx + Y{2}(:).'.*vy; k = recbas\k;
 
             % create path object
-            bzs_ = @(recbas,n,nks,k) struct('units','frac-recp', ...
+            bzs_ = @(recbas,n,nks,k) struct('units','k=frac-recp; bas=ang-recp', ...
                 'recbas',recbas,'nks',nks,'n',n,'k',k);
             bzs = bzs_(recbas,n,nks,k);
         end
@@ -3379,7 +3469,7 @@ classdef am_dft
             x(    :) =    x_(ve-vs,[0;0;0],n); x = cumsum(x);
 
             % create path object
-            bzl_ = @(recbas,n,nks,x,k) struct('units','frac-recp',...
+            bzl_ = @(recbas,n,nks,x,k) struct('units','k=frac-recp; bas=ang-recp',...
                 'recbas',recbas,'nks',nks,'n',n,'x',x,'k',k);
             bzl = bzl_(recbas,n,nks,x,k);
         end
@@ -3755,110 +3845,6 @@ classdef am_dft
 
         end
 
-
-        
-%         function [bvk,D,Dasr] = get_bvk_model(ip,pp,uc)
-%             % [bvk,D,Dasr] = get_bvk_model(ip,pp,uc)
-%             %
-%             % Example for Si:
-%             %
-%             %     >> bvk.phi{1} (zeroth neighbor) ==> [0.00000    0.00000    0.00000]
-%             % 
-%             %     [ c01_11,      0,      0]
-%             %     [      0, c01_11,      0]
-%             %     [      0,      0, c01_11]
-%             % 
-%             %     >> bvk.phi{3} (first neighbor)  ==> [1.36750    1.36750    1.36750]
-%             % 
-%             %     [ c03_11, c03_21, c03_21]
-%             %     [ c03_21, c03_11, c03_21]
-%             %     [ c03_21, c03_21, c03_11]
-%             % 
-%             %     >> bvk.phi{2} (second neighbor) ==> [2.73500    2.73500    0.00000]
-%             % 
-%             %            (INCORRECT)	        (CORRECT, see MELVIN LAX p 264)
-%             %     [ c02_11, c02_21,      0]  ==>  [ c02_11, c02_21, c02_31]
-%             %     [ c02_21, c02_11,      0]  ==>  [ c02_21, c02_11, c02_31]
-%             %     [      0,      0, c02_33]  ==>  [-c02_31,-c02_31, c02_33]
-%             %
-%             %     This erroneous version of the force constant matrix was also
-%             %     published in 
-%             %
-%             %       H. M. J. Smith, Philosophical Transactions of the Royal Society a:
-%             %       Mathematical, Physical and Engineering Sciences 241, 105 (1948).  
-%             %
-%             %     as pointed out in
-%             %
-%             %   	M. Lax, Symmetry Principles in Solid State and Molecular Physics
-%             %   	(Dover Publications, 2012), p 264.
-%             %
-%             %     Also correct in 
-%             %
-%             %       R. Tubino and J. L. Birman, Phys. Rev. B 15, 5843 (1977).
-%             %
-%             %     Interestingly, the fact that second-neighbor force constant is
-%             %     anti-symmetric implies that the order of differentiation matters and
-%             %     the intrinsic transpositional symmetry does not apply.
-%             %
-%             
-%             import am_lib.* am_dft.*
-% 
-%             % set sym digits
-%             digits(10);
-%                 
-%             
-%             
-%             
-% 
-%             % create bvk structure
-%             bvk_ = @(pp,ip,sav) struct('units','cart','bas',pp.bas2pc*pp.bas, ...
-%                 'symb',{pp.symb},'mass',pp.mass,'species',pp.species(pp.p2u),'cutoff',pp.cutoff,'natoms',pp.pc_natoms,...
-%                 'nbranches',3*pp.pc_natoms,'nshells',size(sav.W,2),'s_ck',ip.s_ck,'W',{sav.W},'phi',{sav.phi},'d',ip.d,'v',ip.v,'xy',ip.xy);
-%             bvk = bvk_(pp,ip,sav);
-% 
-%             % [cart] define function to get bond vector
-%             vec_ = @(xy) uc2ws(uc.bas*(uc.tau(:,xy(2,:))-uc.tau(:,xy(1,:))),pp.bas);
-% 
-%             % construct symbolic dynamical matrix
-%             D=sym(zeros(bvk.nbranches,bvk.nbranches,bvk.nshells)); kvec=sym('k%d',[3,1],'real'); mass=sym('m%d',[1,numel(pp.i2u)],'positive');
-%             for p = 1:pp.pc_natoms
-%             for j = 1:pp.npairs(p)
-%                 % get indicies and already permute xy,mn,mp,np if necessary by iq
-%                 i = pp.i{p}(j);iq = pp.iq{p}(j);
-%                 x = pp.c{p}(1); y = pp.o{p}(j,1); xy = [x;y];
-%                 m = pp.u2p(x); mp = [1:3]+3*(m-1); n = pp.u2p(y); np = [1:3]+3*(n-1);
-% 
-%                 % rotate force constants and bond vector (NOTE #1)
-%                 rij = vec_(xy); rij(abs(rij)<am_lib.eps) = 0;
-%                 phi = sym(pp.Q{1}(1:3,1:3,iq)) * permute(bvk.phi{i},pp.Q{2}(:,iq)) * sym(pp.Q{1}(1:3,1:3,iq)).';
-% 
-%                 % build dynamical matrix
-%                 D(mp,np,i) = D(mp,np,i) + phi .* exp(sym(2i*pi * rij(:).','d') * kvec(:) );
-%             end
-%             end
-% 
-%             % simplify (speeds evaluation up significantly later)
-%             for i = 1:bvk.nshells; D(:,:,i) = simplify(rewrite(D(:,:,i),'cos'),'steps',20); end
-% 
-%             % stupid matlab, doesn't allow for sum(H,3)
-%             Dsum=sym(zeros(bvk.nbranches,bvk.nbranches));
-%             for i = 1:bvk.nshells; Dsum = Dsum + D(:,:,i); end
-% 
-%             % multiply by 1/sqrt(mass)
-%             mass = repelem(mass(pp.species(pp.p2u)),1,3); mass = 1./sqrt(mass.' * mass); Dsum = Dsum .* mass;
-% 
-%             % attach symbolic dynamical matrix to bvk
-%             bvk.D = matlabFunction(Dsum);
-% 
-%             % enforce acoustic sum rule algebraically?
-%             if nargout > 2
-%                 Dasr = sym(zeros(bvk.nbranches,bvk.nbranches));
-%                 for i = 1:bvk.nshells; Dasr = Dasr + subs(subs(subs(D(:,:,i),kvec(1),0),kvec(2),0),kvec(3),0); end
-%                 % simplify and remove TRUE = TRUE (first term) from the set of equations
-%                 Dasr = unique(simplify(Dasr(:)==0)); Dasr = Dasr(2:end);
-%             end
-%         end
-
         function [bvk]        = get_bvk_force_constants(uc,md,bvk,pp,algo)
             % Extracts symmetry adapted force constants.
             %
@@ -4023,7 +4009,7 @@ classdef am_dft
             f   = matmul_(inv(uc.bas),f);
 
             % define md creation function [frac]
-            md_ = @(uc,force,tau,vel,dt) struct('units','frac',...
+            md_ = @(uc,force,tau,vel,dt) struct('units','tau=frac-recp; bas=ang',...
                 'bas',uc.bas,'symb',{{uc.symb{:}}},'mass',uc.mass,'nspecies',uc.nspecies, ...
                 'natoms',uc.natoms,'force',force,'tau',tau,'vel',vel,'species',uc.species, ...
                 'dt',dt,'nsteps',size(tau,3));
@@ -4035,7 +4021,7 @@ classdef am_dft
 
             import am_lib.* am_dft.*
 
-            bvk_ = @(bvk,mass,fc) struct('units','cart','bas',bvk.bas,'recbas',bvk.recbas,'natoms',bvk.natoms,'mass',mass, ...
+            bvk_ = @(bvk,mass,fc) struct('units','tau=cart; bas=ang','bas',bvk.bas,'recbas',bvk.recbas,'natoms',bvk.natoms,'mass',mass, ...
                 'nshells',bvk.nshells,'W',{bvk.W},'shell',{bvk.shell},'nbranches',bvk.nbranches,'D',bvk.D,'fc',{fc});
 
             fc_interp = nlinspace( [bvk_1.fc{:}] , [bvk_2.fc{:}] , n );
@@ -4326,7 +4312,7 @@ classdef am_dft
             end
 
             % augment bvk structure with triplet info
-            bvt_ = @(pt,it,sav) struct('units','cart','bas',pt.bas2pc*pt.bas, ...
+            bvt_ = @(pt,it,sav) struct('units','tau=cart; bas=ang','bas',pt.bas2pc*pt.bas, ...
                 'symb',{pt.symb},'mass',pt.mass,'species',pt.species(pt.p2u),'cutoff',pt.cutoff,'natoms',pt.pc_natoms,...
                 'nshells',size(sav.W,2),'W',{sav.W},'phi',{sav.phi},'xyz',it.xyz);
             bvt = bvt_(pt,it,sav);
@@ -4429,7 +4415,7 @@ classdef am_dft
         end
 
 
-        % electrons
+        % tb/bvk
 
         function [tb,pp]      = get_tb(pc,dft,cutoff,spdf,nskips)
 
@@ -4450,12 +4436,12 @@ classdef am_dft
 
             % get irreducible shells
             fprintf(' ... identifying irreducible matrix elements'); tic;
-            tb = get_symmetry_adapted_matrix_elements(ip,spdf);
+            tb = get_matrix_elements('tb',ip,spdf);
             fprintf(' (%.f secs)\n',toc);
 
             % get hamiltonian
             fprintf(' ... building Hamiltonian'); tic;
-            [tb.H,tb.H_analytical] = get_tightbinding_hamiltonian(tb,pp);
+            [tb.H,tb.H_analytical] = get_hamiltonian(tb,pp);
             fprintf(' (%.f secs)\n',toc);
 
             % covert hamiltonian to matlab function and save the number of bands
@@ -4464,11 +4450,11 @@ classdef am_dft
 
             % tight binding model
             fprintf(' ... solving for tight binding matrix elements '); tic;
-            tb = get_tb_matrix_elements(tb,dft,nskips);
+            tb = get_tb_parameters(tb,dft,nskips);
             fprintf(' (%.f secs)\n',toc);
         end
 
-        function [ip]         = get_symmetry_adapted_matrix_elements(flag,ip,spdf)
+        function [ip]         = get_matrix_elements(flag,ip,spdf)
             % [bvk,D,Dasr] = get_symmetry_adapted_matrix_elements(flag,ip,spdf)
             %
             % set oribtals per irreducible atom: spdf = {'d','p'};
@@ -4505,7 +4491,7 @@ classdef am_dft
             %     as pointed out by
             %
             %   	M. Lax, Symmetry Principles in Solid State and Molecular Physics
-            %   	(Dover Publications, 2012), p 264.
+            %   	(Dover Publications, 2012), p 264 and p 364.
             %
             %     Another publication with the corrected version of the force constant
             %     is:
@@ -4515,6 +4501,16 @@ classdef am_dft
             %     Interestingly, that the second-neighbor force constant is
             %     anti-symmetric implies that the order of differentiation matters and
             %     the intrinsic transpositional symmetry does not apply. 
+            %
+            %     And, lastly, ...
+            %
+            %     third neighbor  [4.06600    1.35500    1.35500]
+            % 
+            %     [ c04_11, c04_21, c04_21]
+            %     [ c04_21, c04_22, c04_32]
+            %     [ c04_21, c04_32, c04_22]
+            %
+            %
             %
             % Q: How are symmetry operations represented in the flattened basis?
             % A: Check it out with the code below.
@@ -4563,7 +4559,7 @@ classdef am_dft
             if     contains(flag,'tb')
                 % for each irreducible atom, set azimuthal quantum numbers J{:}, 
                 % symmetries D{:}, and parity-transpose F{:}
-                [J,D,F] = get_tb_symmetry_representation(spdf, Q(1:3,1:3,:) );
+                [J,D,F] = get_tb_symmetry_representation(spdf, Q{1}(1:3,1:3,:) );
                 % get dimensions
                 d = zeros(1,numel(J)); for i = 1:numel(J); d(i) = sum(J{i}*2+1); end
             elseif contains(flag,'bvk')
@@ -4597,7 +4593,7 @@ classdef am_dft
                         W = sum( W - eye(d(i)*d(j)), 3);
                 end
                 % partity transpose
-                if (i==j); W = W + F{i}-eye(d(i)*d(j)); end
+                % if (i==j); W = W + F{i}-eye(d(i)*d(j)); end
                 % get linearly-independent nullspace and normalize to first nonzero element
                 W=null(W); W=frref_(W.').'; W=W./accessc_(W,findrow_(W.').'); W=wdv_(W); 
                 % define parameters
@@ -4615,49 +4611,119 @@ classdef am_dft
             ip.(matxname_) = sav.(matxname_);
         end
 
-        function [Hsum,H]     = get_tightbinding_hamiltonian(ip,pp)
+        function [H,Hc,ASR]   = get_hamiltonian(ip,pp)
+            %
+            % Q: What do the force constant matrices loop like when rotated from the
+            %    irreducible bond to the orbit? 
+            % A: Clusters up to first-neighbor in Si, indexed by the pair of atoms are:
+            %
+            %    pp.cluster = 
+            %      1     2     1     1     1     1     2     2     2     2
+            %      1     2     2     3     6     7     1     4     5     8
+            %
+            %    The force constant matrices for each first-neighbor orbit involving
+            %    the primitive cell atom at [0 0 0] are:
+            %
+            %     for p = 3									for p = 4
+            %             rij = 										rij = 
+            %                   [ 1.3552, 1.3552, 1.3552]					  [ 1.3552,-1.3552,-1.3552]
+            %             matrix_ = 									matrix_ = 
+            %                   [ c02_11, c02_21, c02_21]					  [ c02_11,-c02_21,-c02_21]
+            %                   [ c02_21, c02_11, c02_21]					  [-c02_21, c02_11, c02_21]
+            %                   [ c02_21, c02_21, c02_11]					  [-c02_21, c02_21, c02_11]
+            %
+            %     for p = 5									for p = 6
+            %             rij = 										rij = 
+            %                   [-1.3552, 1.3552,-1.3552]					  [-1.3552,-1.3552, 1.3552]
+            %             matrix_ = 									matrix_ = 
+            %                   [ c02_11,-c02_21, c02_21]					  [ c02_11, c02_21,-c02_21]
+            %                   [-c02_21, c02_11,-c02_21]					  [ c02_21, c02_11,-c02_21]
+            %                   [ c02_21,-c02_21, c02_11]					  [-c02_21,-c02_21, c02_11]
+            %
+            %    For the primitive cell atom at [1 1 1]/4, the force constant matrices are:
+            %   
+            %     for p = 7									for p = 10
+            %             rij = 										rij = 
+            %                   [-1.3552,-1.3552,-1.3552]					  [-1.3552, 1.3552, 1.3552]
+            %             matrix_ = 									matrix_ = 
+            %                   [ c02_11, c02_21, c02_21]					  [ c02_11,-c02_21,-c02_21]
+            %                   [ c02_21, c02_11, c02_21]					  [-c02_21, c02_11, c02_21]
+            %                   [ c02_21, c02_21, c02_11]					  [-c02_21, c02_21, c02_11]
+            %
+            %     for p = 9 								for p = 8
+            %             rij = 										rij = 
+            %                   [ 1.3552,-1.3552, 1.3552]					  [ 1.3552, 1.3552,-1.3552]
+            %             matrix_ = 									matrix_ = 
+            %                   [ c02_11,-c02_21, c02_21]					  [ c02_11, c02_21,-c02_21]
+            %                   [-c02_21, c02_11,-c02_21]					  [ c02_21, c02_11,-c02_21]
+            %                   [ c02_21,-c02_21, c02_11]					  [-c02_21,-c02_21, c02_11]
+            %
+            %   Compare these to Melvin Lax p 266.
+
+
             
-            import am_dft.* am_lib.*
+            digits(10); import am_dft.* am_lib.*
             
-            % get symmetry which takes orbit to irrep
-            [PM,i2p,p2i] = get_action(pp); qi = findrow_(PM==i2p(p2i).'); 
+            if     isfield(ip,'vsk')
+                matxname_ = 'vsk'; 
+            elseif isfield(ip,'phi')
+                matxname_ = 'phi'; 
+            end
+            
+            % get multiplication table
+            [~,~,I] = get_multiplication_table(ip.Q);
+            
+            % get qi symmetry which takes irrep to orbit 
+            [PM,i2p,p2i] = get_action(pp); qi = I(findrow_(PM==i2p(p2i).')); 
 
             % get hamiltonian block dimensions and start/end sections
-            d(ip.x2p(ip.cluster(1,:))) = cellfun(@(x)size(x,2),ip.vsk); 
-            d(ip.x2p(ip.cluster(2,:))) = cellfun(@(x)size(x,1),ip.vsk); % yes these 1 and 2 are opposites.
+            if     isfield(ip,'vsk')
+                d(ip.x2p(ip.cluster(1,:))) = cellfun(@(x)size(x,2),ip.vsk); 
+                d(ip.x2p(ip.cluster(2,:))) = cellfun(@(x)size(x,1),ip.vsk); % yes these 1 and 2 are opposites.
+            elseif isfield(ip,'phi')
+                d(ip.x2p(ip.cluster(1,:))) = 3;
+                d(ip.x2p(ip.cluster(2,:))) = 3;
+            end
             E=cumsum(d); S=E-d+1; nbands=E(end);
 
             % construct symbolic Hamiltonian matrix
-            H = sym(zeros(nbands,nbands,ip.nclusters)); kvec = sym('k%d',[3,1],'real');
+            Hc = sym(zeros(nbands,nbands,ip.nclusters)); kvec = sym('k%d',[3,1],'real');
             for p = 1:pp.nclusters
                 %    c   = irreducible cluster index
                 %    s   = symmetry which takes ir -> orbit
                 %    i,j = irreducible cell atomic indicies
                 %    m,n =   primitive cell atomic indicies
-                c = pp.p2i(p); s = qi(p);
-                m = pp.x2p(pp.cluster(1,p)); i = pp.x2i(pp.cluster(1,p)); mp = S(m):E(m);
-                n = pp.x2p(pp.cluster(2,p)); j = pp.x2i(pp.cluster(2,p)); np = S(n):E(n);
+                c = pp.p2i(p); s = qi(p); cluster = pp.cluster(:,p); % pp.cluster(ip.Q{2}(:,s),p);
+                m = pp.x2p(cluster(1)); i = pp.x2i(cluster(1)); mp = S(m):E(m); dm = E(m)-S(m)+1;
+                n = pp.x2p(cluster(2)); j = pp.x2i(cluster(2)); np = S(n):E(n); dn = E(n)-S(n)+1;
 
-                rij = pp.tau(:,pp.cluster(2,p)) - pp.tau(:,pp.cluster(1,p)); rij = wdv_(rij,am_dft.tiny);
-                vsk =  sym(ip.D{i}(:,:,s))' * permute(ip.vsk{c},ip.Q{2}(:,s)) * sym(ip.D{j}(:,:,s));
-
+                rij = pp.tau(:,cluster(2)) - pp.tau(:,cluster(1)); rij = wdv_(rij,am_dft.tiny);
+                % if any(any(ip.Q{2}(:,s)~=[1,2])); F = sign(reshape(ip.F{1}*[1:(dm*dn)].',dm,dn)); else; F = ones(dm,dn); end
+                matrix_ = sym(ip.D{i}(:,:,s)) * permute(F .* ip.(matxname_){c},ip.Q{2}(:,s)) * sym(ip.D{j}(:,:,s))';
+        
                 % build hamiltonian matrix
-                H(mp,np,c) = H(mp,np,c) + vsk .* exp(sym(2i*pi) * rij(:).' * kvec(:) );
+                Hc(mp,np,c) = Hc(mp,np,c) + matrix_ .* exp(sym(2i*pi) * sym(rij(:).','d') * kvec(:) );
             end
 
+            % check that each irreducible part of the Hamilonian is Hermitian
+            for i = 1:ip.nclusters; if any(any(simplify(Hc(:,:,i)-Hc(:,:,i)'~=0))); error('Hamiltonian is not Hermitian!'); end; end
+            
             % simplify (speeds evaluation up significantly later)
-            for i = 1:ip.nclusters; H(:,:,i) = simplify(rewrite(H(:,:,i),'cos'),'steps',20); end
+            for i = 1:ip.nclusters; Hc(:,:,i) = simplify(rewrite(Hc(:,:,i),'cos'),'steps',20); end
 
             % stupid matlab, doesn't allow for sum(H,3)
-            Hsum = sym(zeros(nbands,nbands)); for i = 1:ip.nclusters; Hsum = Hsum + H(:,:,i); end
-            
-            % check that hamilonian is hermitian
-            if ~all(all(simplify(Hsum-Hsum')==0))
-                error('Hamiltonian is not Hermitian!');
+            H = sym(zeros(nbands,nbands)); for i = 1:ip.nclusters; H = H + Hc(:,:,i); end
+                        
+            % enforce acoustic sum rule algebraically?
+            if nargout > 3
+                ASR = sym(zeros(nbands,nbands));
+                for i = 1:ip.nclusters; ASR = ASR + subs(subs(subs(Hc(:,:,i),kvec(1),0),kvec(2),0),kvec(3),0); end
+                % simplify and remove TRUE = TRUE (first term) from the set of equations
+                ASR = unique(simplify(ASR(:)==0)); ASR = ASR(2:end);
             end
         end
 
-        function [tb]         = get_tb_matrix_elements(tb,dft,nskips)
+        function [tb]         = get_tb_parameters(tb,dft,nskips)
             % nskips : number of dft bands to skip (e.g. 5)
 
             import am_lib.* am_dft.*
@@ -4848,7 +4914,6 @@ classdef am_dft
             pt = pt_(uc,c_id,o_id,i_id,q_id,iq_id,Q);
 
         end
-
 
         % clusters
         
@@ -5164,54 +5229,6 @@ classdef am_dft
 
         % aux unit cells
 
-        function [uc]         = create_cell(bas,tau,symb,sg_code)
-            % create_cell(bas,tau,symb,sg_code) creates cell based on wyckoff positions and standard crystallographic setting
-            %
-            % Example input for BiFeO3 P63cm (hypothetical polymorph):
-            %     % define basis, atomic positions, species, and elements
-            %     a = 6.200; c = 12.076;
-            %     bas = abc2bas([a,a,c,90,90,120]);
-            %     tau=[0.00000 0.00000 0.48021; 0.33333 0.66667 0.01946; ...
-            %       0.29931 0.00000 0.15855; 0.63457 0.00000 0.34439; ...
-            %       0.33440 0.00000 0.00109; 0.00000 0.00000 0.27855; ...
-            %       0.33333 0.66667 0.23206].';
-            %     symb = {'O','O','O','O','Fe','Bi','Bi'}; sg_code=185;
-            %     % create cell
-            %     [uc] = create_cell(bas,tau,symb,sg_code); [bragg] = get_bragg(uc);
-            %     plot_bragg(bragg); tabulate_bragg(bragg,10);
-            %     % save poscar
-            %     write_poscar(uc,'BiFeO3_P63cm_dft.poscar');
-            %
-
-            import am_dft.* am_lib.*
-
-            % identify atomic types and assign a number label
-            [symb,~,species]=unique(symb,'stable');
-
-            % get space symmetries in conventional setting
-            S = generate_sg(sg_code);
-
-            % define function to apply symmetries to position vectors
-            seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
-
-            % apply symmetry operations to all atoms
-            natoms = size(tau,2); nSs = size(S,3); i2u = repmat([1:natoms].',1,nSs); i2u=i2u(:).';
-            tau = reshape(seitz_apply_(S,tau),3,[]); species = repmat(species(:),1,nSs); species=species(:).';
-
-            % get unique species
-            [~,ind] = uniquec_(tau); tau = tau(:,ind); species = species(ind); i2u = i2u(ind);
-
-            % sort by species
-            [~,ind] = sort(i2u);  tau = tau(:,ind); species = species(ind); i2u = i2u(ind);
-
-            % define irreducible cell creation function and make structure
-            uc_ = @(bas,tau,symb,species) struct('units','frac','bas',bas,...
-                'symb',{symb},'mass',get_atomic_mass(get_atomic_number(symb)),...
-                'nspecies',sum(unique(species).'==species,2).', ...
-                'natoms',size(tau,2),'tau',tau,'species',species);
-            uc = uc_(bas,tau,symb,species);
-        end
-
         function [pc,p2u,u2p] = get_primitive_cell(uc, tol)
             % [pc,p2u,u2p] = get_primitive_cell(uc, tol)
             % NOTE: saves p2u entries which share a common closest
@@ -5225,7 +5242,8 @@ classdef am_dft
             if nargin<2; tol = am_dft.tiny; end
 
             % translate one atom to the origin if there isn't one already
-            if all(sum(uc.tau,1)>am_dft.tiny); uc.tau = uc.tau-uc.tau(:,1); end
+            % COMMENTING THIS OUT HAS NOT BE THOROUGHLY TESTED
+            % if all(sum(uc.tau,1)>am_dft.tiny); uc.tau = uc.tau-uc.tau(:,1); end
 
             % build permutation matrix for atoms related by translations
             T = get_symmetries(uc); nTs=size(T,2); PM=zeros(uc.natoms,nTs);
@@ -5284,7 +5302,8 @@ classdef am_dft
             pc = pc_(uc,B,p2u);
             
             % set first atom to 0 position, important for symmetries
-            pc.tau=mod_(pc.tau-pc.tau(:,1));
+            % COMMENTING THIS OUT HAS NOT BE THOROUGHLY TESTED
+            % pc.tau=mod_(pc.tau-pc.tau(:,1));
         end
 
         function [ic,i2p,p2i] = get_irreducible_cell(pc, tol)
