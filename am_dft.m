@@ -3250,13 +3250,20 @@ classdef am_dft
             % get point symmetries [real-frac --> rec-frac] by transposing R
             [~,~,~,R] = am_dft.get_symmetries(pc); R = permute(R,[2,1,3]);
 
-            % build permutation matrix for kpoints related by point symmetries
-            if contains(flag,'nomod') % this is used for bragg reflections, otherwise all points would go to gamma
-                PM = am_lib.member_(           (am_lib.matmul_(R,fbz.k)),fbz.k);
-            else
-                PM = am_lib.member_(am_lib.mod_(am_lib.matmul_(R,fbz.k)),fbz.k);
+            % add inversion for time-reversal?
+            if contains(flag,'addinv') 
+            if ~any(all(all(R==eye(3),1),2))
+                R = complete_group( cat(3,R,-eye(3)) );
             end
-            A = am_lib.get_connectivity(PM);
+            end
+            
+            % build permutation matrix for kpoints related by point symmetries
+            if contains(flag,'nomod') % nomod is used for bragg reflections, otherwise all points would go to gamma
+                PM = am_lib.member_(           (matmul_(R,fbz.k)),fbz.k);
+            else
+                PM = am_lib.member_(am_lib.mod_(matmul_(R,fbz.k)),fbz.k);
+            end
+            A = get_connectivity(PM);
 
             % set identifiers
             i2f = round(am_lib.findrow_(A)).'; f2i = round(([1:size(A,1)]*A)); w=sum(A,2).';
