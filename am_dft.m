@@ -133,6 +133,35 @@ classdef am_dft
                 figure('color','white'); plot_tb_vs_dft(tb,dft); drawnow;
         end
 
+        function demo_plot_doscar()
+            clear;clc;import am_dft.*
+            cd('/Users/lenzinho/Linux/calc.vasp/VN/AM05.VN.ChargeDisproportionation/2_scf');
+            uc = get_cell('poscar','POSCAR');
+            [dos]   = load_doscar();
+
+            spdf={'s','p','d','f'}; k=0;
+            for l = 0:3; for m = -l:l
+            k=k+1; lm{k} = sprintf('%s%i',spdf{l+1},m);
+            end; end
+
+            species = uc.symb(uc.species);
+
+            % proj = [nEs,nspins,norbitals,natoms,nbands,nkpts]
+            proj = permute(dos.proj,[6,1,2,3,4,5]);
+
+            % plot
+            figure(1);set(gcf,'color','w');
+            [nEs,nspins,norbitals,natoms,nbands,nkpts] = size(proj);
+            sx = [+1,-1]; sx = sx(1:nspins);
+            for i = 1:natoms
+                subplot(natoms/2,2,i); 
+                plot(dos.E, reshape(dos.D.*proj(:,:,:,i).*sx,nEs,[]) ); 
+                title(sprintf('%i %s',i,species{i})); xlim([-10 8]);
+            end
+
+            
+        end
+        
     end
     
     
@@ -212,20 +241,20 @@ classdef am_dft
         function [dos]   = load_doscar(Ef)
             
             import am_lib.*
-            
+              
             [str,~] = load_file_('DOSCAR');
                 % get energies, density of states, and integration DOS
                 t=sscanf(str{1},'%i'); natoms = t(1);
-                t=sscanf(str{6},'%f'); nEs = round(t(3)); if nargin<1; Ef = t(4); end; 
+                t=sscanf(str{6},'%f'); nEs = round(t(3)); if nargin<1; Ef = t(4); end
                 nspins = round((numel(strsplit(strtrim(str{7}),' '))-1)/2);
-                t=sscanf(sprintf('%s\n',str{6+[1:nEs]}),'%f'); t=reshape(t,2*nspins+1,nEs).';
-                dos.E = t(:,1)-Ef; dos.D = sum(t(:,2*[1:nspins]),2); dos.iD = sum(t(:,1+2*[1:nspins]),2);
+                t=sscanf(sprintf('%s\n',str{6+[1:nEs]}),'%f'); t=reshape(t,1+2*nspins,nEs).';
+                dos.E = t(:,1)-Ef; dos.D = sum(t(:,1+[1:nspins]),2); dos.iD = sum(t(:,1+nspins+[1:nspins]),2);
             % proj(nEs,nspins,norbitals,natoms) ==> proj(nspins,norbitals,natoms,nbands,nkpts,nEs)
-            norbitals = 9;
+            norbitals = (1+3+5+7);
             proj = zeros(nEs,nspins,norbitals,natoms);
             for i = [1:natoms]
                 t = sscanf(sprintf('%s\n',str{6+i*(1+nEs)+[1:nEs]}),'%f');
-                t = reshape(t,1+nspins*9,nEs).'; % nEs x spin x orbitals
+                t = reshape(t,1+nspins*norbitals,nEs).'; % nEs x spin x orbitals
                 t = reshape(t(:,2:end),nEs,nspins,norbitals);
                 proj(:,:,:,i) = t;
             end
@@ -240,8 +269,7 @@ classdef am_dft
             % Loads outcar preprocessed with outcar2fp.sh (generate_script).
             %
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             fprintf(' ... loading displacements vs forces'); tic;
 
@@ -343,7 +371,7 @@ classdef am_dft
                         incar = generate_incar('defaults',opts_);
                     case 'scf'
                         opts_ = { ...
-                            'ibrion' , '-1'       , 'nsw'    , '0'       , 'lorbit' , '11'      , ...
+                            'ibrion' , '-1'       , 'nsw'    , '0'       , 'lorbit' , '11'      , 'nedos' ,  '10001' ...
                             'addgrid', '.FALSE.'  , ... % takes too long with addgrid
                             'lwave'  , '.TRUE.'   , 'lcharg' , '.TRUE.'  , 'lvtot'  , '.TRUE.'  , ...
                             };
@@ -358,7 +386,7 @@ classdef am_dft
                         opts_ = {'lepsilon', '.TRUE.'};
                         incar = generate_incar('nscf',opts_);
                     case 'opt'
-                        opts_ = {'loptics','.TRUE.','nedos','10000'};
+                        opts_ = {'loptics','.TRUE.','nedos','9999'};
                         incar = generate_incar('nscf',opts_);
                     case 'aimd'
                         % similar to rlx but with ibrion=0, a lower energy convergence, no convergence on ionic motion, nose thermostat, and more steps 
@@ -420,9 +448,9 @@ classdef am_dft
             if nargin<2;potdir=am_dft.potdir; end
             % database
             potcar_database = {...
-                '  ' ,'  ' ,'Li_sv' ,'Be_sv' ,'  ' ,'  ' ,'  ' ,'O_s_GW' , ... %  h     he    li    be    b     c     n     o
+                '  ' ,'  ' ,'Li_sv' ,'Be_sv' ,'  ' ,'  ' ,'N_s_GW' ,'O_s_GW' , ... %  h     he    li    be    b     c     n     o
                 '  ' ,'  ' ,'Na_pv' ,'Mg_pv' ,'Al_GW' ,'Si' ,'  ' ,'  ' , ... %  f     ne    na    mg    al    si    p     s
-                '  ' ,'  ' ,'K_sv' ,'Ca_sv' ,'Sc_sv_GW' ,'Ti_pv' ,'  ' ,'  ' , ... %  cl    ar    k     ca    sc    ti    v     cr
+                '  ' ,'  ' ,'K_sv' ,'Ca_sv' ,'Sc_sv_GW' ,'Ti_pv' ,'V_sv_GW' ,'  ' , ... %  cl    ar    k     ca    sc    ti    v     cr
                 'Mn_GW' ,'Fe_GW' ,'  ' ,'Ni_sv_GW' ,'  ' ,'  ' ,'Ga_sv_GW' ,'  ' , ... %  mn    fe    co    ni    cu    zn    ga    ge
                 '  ' ,'  ' ,'  ' ,'  ' ,'Rb_sv' ,'Sr_sv' ,'Y_sv' ,'  ' , ... %  as    se    br    kr    rb    sr    y     zr
                 '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  nb    mo    tc    ru    rh    pd    ag    cd
@@ -479,6 +507,7 @@ classdef am_dft
                 case 'ismear'; 		c='(0) gauss (1) mp (-5) tetrah';
                 case 'sigma';  		c='maximize with entropy below 0.1 meV / atom';
                 case 'ediff';  		c='toten convergence';
+                case 'isym';        c='(0) symmetry off (1) symmetry on (2) efficient symmetry for PAW';
                 % dft+U
                 case 'ldau'; 		c='Activates DFT+U calculation';
                 case 'ldautype'; 	c='(1) Liechtenstein (2) Dudarev Ueff = U - J (3) adds Ueff on the atomic sites';
@@ -517,8 +546,12 @@ classdef am_dft
             if nargin < 2; fkpoints='KPOINTS'; end
             if     isnumeric(bz)
                 if     ndims(bz)==1
-                    % still need to implement k-point density
-                elseif ndims(bz)==3
+                    % % still need to implement k-point density
+                    % % calculates mesh for as isometric as possible k-point sampling
+                    % % for VN: 10 = [ 5, 5, 5]; 20 = [ 9, 9, 9]; 30 = [13,13,13]; 40 = [17,17,17];
+                    % kpt_ = @(bas,s) ceil(normc_(inv(bas).')*s); n = kpt_(pc.bas,40);
+                    % write_kpoints(n,fkpoints);
+                elseif ndims(bz)==2
                     % [nx,ny,nz] kpoint point density along each direction
                     fid = fopen(fkpoints,'w');
                         fprintf(fid,'%s \n','KPOINTS');
@@ -531,6 +564,8 @@ classdef am_dft
                         fprintf(fid,' %i %i %i \n',ceil(bz));
                         fprintf(fid,' %i %i %i \n',[0 0 0]);
                    fclose(fid);
+                else
+                    error('Invalid bz shape.');
                 end
             elseif isstruct(bz)
                 if field(bz,'w')
@@ -550,12 +585,13 @@ classdef am_dft
             end
         end
 
-        function           write_qsub(hardware,account,nnodes,hrs,job)
+        function           write_qsub(hardware,account,nnodes,hrs,job,email)
             % defaults
             if nargin < 2; account = []; end
             if nargin < 3; nnodes = 1; end
             if nargin < 4; hrs = 12; end
             if nargin < 5; job = 'job'; end
+            if nargin < 6; email = 'amei2@illinois.edu'; end
 
             fid = fopen('QSUB','w');
                 switch hardware
@@ -577,9 +613,10 @@ classdef am_dft
                         fprintf(fid,'#SBATCH -J %s \n',job);
                         fprintf(fid,'#SBATCH --exclusive \n');
                         fprintf(fid,'#SBATCH -A %s \n',account);
+                        fprintf(fid,'#SBATCH --mail-user=%s \n',email);
                         fprintf(fid,'module load vasp/5.4.4-18Apr17 \n');
                         fprintf(fid,'mpprun vasp_std > output \n');
-                        fprintf(fid,'#mpprun vasp-gamma > output \n');
+                        fprintf(fid,'#mpprun vasp-gamma > output \n');                        
                 end
             fclose(fid);
         end
@@ -610,6 +647,8 @@ classdef am_dft
                     [~,x] = system('awk ''/ o = /{ print $3 }'' OUTCAR');     x = sscanf(x,'%f'); x = reshape(x,[],m);
                 case 'outcar:toten'
                     [~,x] = system('awk ''/TOTEN/ { print $5 }'' OUTCAR');  x = sscanf(x,'%f');
+                case 'outcar:entropy'
+                    [~,x] = system('awk ''/EENTRO/ { print $5 }'' OUTCAR');  x = sscanf(x,'%f');
                 case 'outcar:fermi'
                     [~,x] = system('awk ''/E-fermi/ { print $3 }'' OUTCAR');  x = sscanf(x,'%f');
                 case 'outcar:pressure'
@@ -682,18 +721,66 @@ classdef am_dft
                     nspins    = get_vasp('procar:ispin');
                     switch norbitals
                         case 1+3+5
-                            [~,x]=system(sprintf('grep -A%i py PROCAR | grep -v py | awk ''{print $2 " " $3 " " $4 " " $5 " " $6 " " $7 " " $8 " " $9 " " $10}''',natoms));
+                            [~,x]=system(sprintf('grep -A%i py PROCAR | grep -A%i tot | grep -v py | awk ''{print $2 " " $3 " " $4 " " $5 " " $6 " " $7 " " $8 " " $9 " " $10}''',natoms,natoms));
                         case 1+3+5+7
-                            [~,x]=system(sprintf('grep -A%i py PROCAR | grep -v py | awk ''{print $2 " " $3 " " $4 " " $5 " " $6 " " $7 " " $8 " " $9 " " $10 " " $11 " " $12 " " $13 " " $14 " " $15 " " $16 " " $17}''',natoms));
+                            [~,x]=system(sprintf('grep -A%i py PROCAR | grep -A%i tot | grep -v py | awk ''{print $2 " " $3 " " $4 " " $5 " " $6 " " $7 " " $8 " " $9 " " $10 " " $11 " " $12 " " $13 " " $14 " " $15 " " $16 " " $17}''',natoms,natoms));
                     end
                     x = strrep(x,'--',''); x = sscanf(x,'%f'); x = reshape(x,norbitals,natoms,nbands,nkpts,nspins); % last is ispin
                     % lmproj(nspins,norbitals,nions,nbands,nkpts)
                     x = permute(x,[5,1,2,3,4]);
+                case 'procar:phasefactor'
+                    natoms    = get_vasp('procar:natoms');
+                    norbitals = get_vasp('procar:norbitals');
+                    nkpts     = get_vasp('procar:nkpts');
+                    nbands    = get_vasp('procar:nbands');
+                    nspins    = get_vasp('procar:ispin');
+                    switch norbitals
+                        case 1+3+5
+                            [~,x]=system(sprintf('grep -v tot PROCAR | grep -A%i py | grep -v py | awk ''{print $2 " " $3 " " $4 " " $5 " " $6 " " $7 " " $8 " " $9 " " $10}''',2*natoms));
+                        case 1+3+5+7
+                            [~,x]=system(sprintf('grep -v tot PROCAR | grep -A%i py | grep -v py | awk ''{print $2 " " $3 " " $4 " " $5 " " $6 " " $7 " " $8 " " $9 " " $10 " " $11 " " $12 " " $13 " " $14 " " $15 " " $16 " " $17}''',2*natoms));
+                    end
+                    x = strrep(x,'--',''); x = strrep(x,'-',' -'); x = sscanf(x,'%f'); x = reshape(x,norbitals,2,natoms,nbands,nkpts,nspins); 
+                    % add real and imaginary parts
+                    x = permute( x(:,1,:,:,:,:) + 1i * x(:,2,:,:,:,:) ,[1,3,4,5,2] );
+                    % lmproj(nspins,norbitals,nions,nbands,nkpts)
+                    x = permute(x,[5,1,2,3,4]);
+                case 'proout:nkpts'
+                    [~,x] = system('grep -m 1 "# of k-points:" PROOUT.1 | awk ''{print $4}'''); x = sscanf(x,'%f');
+                case 'proout:nbands'
+                    [~,x] = system('grep -m 1 "# of k-points:" PROOUT.1 | awk ''{print $8}'''); x = sscanf(x,'%f');
+                case 'proout:natoms'
+                    [~,x] = system('grep -m 1 "# of k-points:" PROOUT.1 | awk ''{print $12}'''); x = sscanf(x,'%f');
+                case 'proout:augmentation'
+                    natoms    = get_vasp('proout:natoms');
+                    norbitals = 9; % hard coded in sphpro.F
+                    nkpts     = get_vasp('proout:nkpts');
+                    nbands    = get_vasp('proout:nbands');
+                    nspins    = get_vasp('procar:ispin');
+                    [~,x]=system(sprintf('grep -A%i augmentation PROOUT.1 | grep -v augmentation | awk ''{print $1 " " $2 " " $3 " " $4 " " $5 " " $6 " " $7 " " $8 " " $9}''',natoms*nbands*nkpts));
+                    %
+                    x = strrep(x,'--',''); x = strrep(x,'-',' -'); x = sscanf(x,'%f'); x = reshape(x,norbitals,natoms,nbands,nkpts,nspins); 
+                    % augmentation(nspins,norbitals,natoms,nbands,nkpts)
+                    x = permute(x,[5,1,2,3,4]);
+                case 'proout:phase'
+                    natoms    = get_vasp('proout:natoms');
+                    norbitals = 9; % hard coded in sphpro.F
+                    nkpts     = get_vasp('proout:nkpts');
+                    nbands    = get_vasp('proout:nbands');
+                    nspins    = 1; % multiple spins not yet implemented
+                    [~,x]=system(sprintf('grep -B%i augmentation PROOUT.1 | grep -v augmentation | awk ''{print $1 " " $2 " " $3 " " $4 " " $5 " " $6 " " $7 " " $8 " " $9}''',2*nkpts*nbands*natoms));
+                    % 
+                    x = strrep(x,'--',''); x = strrep(x,'-',' -'); x = sscanf(x,'%f'); x = reshape(x,2,norbitals,nbands,nkpts,natoms,nspins); 
+                    % add real and imaginary parts
+                    x = x(1,:,:,:,:,:) + 1i * x(2,:,:,:,:,:);
+                    % augmentation(nspins,norbitals,nions,nbands,nkpts)
+                    x = permute(x,[1,2,5,3,4]);
                 % VASPRUN
                 case 'vasprun:scf_energy'
                     [~,x] = system('grep ''e_fr_energy'' vasprun.xml | sed ''s/\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*/ 1e8 /g'' | awk ''{print $3}'''); x = sscanf(x,'%f');
                 case 'vasprun:natoms'
                     [~,x] = system('grep ''<atoms>'' vasprun.xml | awk ''{print $2}'''); x = sscanf(x,'%f');
+                    
             end
         end
             
@@ -966,7 +1053,7 @@ classdef am_dft
 
                     MT = reshape( member_( opr , ref, tol), s(3), s(3));
                 end
-                
+
                 
             elseif s(1)==4 && s(2)==4
                 % seitz operator (applies mod to translational components)
@@ -1118,7 +1205,7 @@ classdef am_dft
                     end
                     U(:,ex_) = (U(:,ex_)*Vp);
                 end
-                inds = [1:d]*merge_(double(sum(abs(RR),3)>am_lib.eps));
+                A = merge_(sum(abs(RR),3)>am_lib.eps); inds = [1:size(A,1)]*A;
                 if ninds == max(inds); break; else; ninds = max(inds); end
             end
             
@@ -1984,6 +2071,7 @@ classdef am_dft
                 
                 % load recipe
                 recipe = get_recipe(sg_code);
+                
                 % allocate space
                 S = zeros(4,4,sscanf(recipe(2),'%i')+double(recipe(1)=='1'));
 
@@ -2145,7 +2233,25 @@ classdef am_dft
                 %     d{i} = decode_pg(x(i));
                 %     fprintf('case %i; R = [',i); fprintf('%g',R{i}(1)); fprintf(',%g',R{i}(2:end)); fprintf(']; %% %s\n',d{i});
                 % end
-                
+                %
+                % point group number and name
+                %     1.   c_1        17. d_4
+                %     2.   s_2        18. c_4v
+                %     3.   c_2        19. d_2d
+                %     4.   c_1h       20. d_4h
+                %     5.   c_2h       21. c_6
+                %     6.   d_2        22. c_3h
+                %     7.   c_2v       23. c_6h
+                %     8.   d_2h       24. d_6
+                %     9.   c_3        25. c_6v
+                %     10.  s_6        26. d_3h
+                %     11.  d_3        27. d_6h
+                %     12.  c_3v       28. t
+                %     13.  d_3d       29. t_h
+                %     14.  c_4        30. o
+                %     15.  s_4        31. t_d
+                %     16.  c_4h       32. o_h             
+                %
                 switch pg_code
                 case 1;  R = [1,0,0,0,1,0,0,0,1]; % c_1
                 case 2;  R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,-1]; % s_2
@@ -2236,7 +2342,7 @@ classdef am_dft
             s=size(S); d=s(1)*s(2);
             
             % switch
-            if s(1)==4 && s(2)==4
+            if s(1)==4 && s(2)==4 && all_(eq_(S(1,1:4,:), [0,0,0,1], tol))
                 algo = 2; % seitz symmetry
             else
                 algo = 1; % point symmetry
@@ -2255,7 +2361,7 @@ classdef am_dft
             S=cat(3,S,zeros(size(S,1),size(S,1),2*192-nsyms));
 
             % add symmetry until no new symmetry is generated
-            nsyms_last=0; MT = zeros(2*192,2*192);
+            nsyms_last=0; MT = zeros(2*192*100,2*192*100);
             while nsyms ~= nsyms_last
                 nsyms_last=nsyms;
                 for i = 1:nsyms_last
@@ -2489,6 +2595,9 @@ classdef am_dft
 
             import am_lib.* am_dft.*
             
+            % stupid matlab requires these symbolic variables to be initialized
+            x=[];y=[];z=[];
+            
             % time
             fprintf(' ... getting cell'); tic
             
@@ -2650,14 +2759,14 @@ classdef am_dft
 
                 % get space group symmetries
                 position_aliases = {...
-                    '_symmetry_Int_Tables_number', ... % icsd
                     '_symmetry_equiv_pos_as_xyz', ... % crystal maker
+                    '_symmetry_Int_Tables_number', ... % icsd
                     };
                 for alias = position_aliases; ex_ = contains(str,alias{:}); if any(ex_)
                     switch alias{:}
                         case '_symmetry_equiv_pos_as_xyz'
                             j=find(ex_); i=1; syms x y z;
-                            while ~isempty(strtrim(str{j+i})) && ~any(strmatchi_(str{j+i},{'_','#','loop_'})) && lt(i+j,nlines)
+                            while ~isempty(strtrim(str{j+i})) && ~any(am_lib.strmatchi_(str{j+i},{'_','#','loop_'})) && lt(i+j,nlines)
                                 buffer = strsplit(str{j+i},'''');
                                 buffer = strsplit(buffer{2},','); 
                                 tmp=coeffs(eval(buffer{1}),'all'); T(1) = double(tmp(end));
@@ -2665,16 +2774,18 @@ classdef am_dft
                                 tmp=coeffs(eval(buffer{3}),'all'); T(3) = double(tmp(end));
                                 S(1:3,1:3,i) = double(equationsToMatrix(...
                                     [eval(buffer{1}),eval(buffer{2}),eval(buffer{3})] ));
-                                S(1:3,4:4,i) = mod_(T(:));
+                                S(1:3,4:4,i) = am_lib.mod_(T(:));
                                 S(4:4,1:3,i) = 0;
                                 S(4:4,4:4,i) = 1;
                                 i=i+1;
                             end
-                            break;
+                            sg_id = [];
                         case '_symmetry_Int_Tables_number'
                             % true == generate from memory
-                            sg_id = am_lib.extract_token_(str,'_symmetry_Int_Tables_number',true); S = am_dft.generate_sg(sg_id,true);
-                            break;
+                            sg_id = am_lib.extract_token_(str,'_symmetry_Int_Tables_number',true); S_generated = am_dft.generate_sg(sg_id,true);
+                            if any(any( ~am_lib.eq_(am_lib.sortc_(reshape(S,16,[])),am_lib.sortc_(reshape(S_generated,16,[]))) ))
+                                fprintf('\n'); warning('Generate space symmetries do not match those in cif file!');
+                            end
                     end
                 end; end
                 nSs = size(S,3);
@@ -2733,16 +2844,21 @@ classdef am_dft
             function [uc]    = load_material(material)
                 switch material
                     case 'Al2O3';           uc = create_cell(am_dft.abc2bas([4.7617,12.9990],'hex'),        [[0;0;0.3522],[0.6936;0;0.2500]],                           {'Al','O'}, 167); % ICSD 10425
-                    case 'gamma-Al2O3';     uc = create_cell(am_dft.abc2bas(7.9110,'cubic'),                [[1;1;1]*0.2547,[1;1;1]/2,[1;1;1]/4,[1;1;1]*0.0272],       	{'O','Al','Al','Al'},227); % ICSD 66558
-                    case 'eta-Al2O3';       uc = create_cell(am_dft.abc2bas(7.9140,'cubic'),                [[1;1;1]*0.2549,[1;1;1]/2,[4*0.3511;1;1]/4,[1;1;1]*0.0699], {'O','Al','Al','Al'},227); % ICSD 66559
+                    case 'gamma-Al2O3';     uc = create_cell(am_dft.abc2bas(7.9110,'cubic'),                [[1;1;1]*0.37970,[5;5;5]/8,[0;0;0],[1;1;1]*0.15220],       	{'O','Al','Al','Al'},227); % ICSD 66558 - CIF has different origin choice
+                    case 'eta-Al2O3';       uc = create_cell(am_dft.abc2bas(7.9140,'cubic'),                [[1;1;1]*0.37990,[5;5;5]/8,[1;0;0]*0.77390,[1;1;1]*0.19490],{'O','Al','Al','Al'},227); % ICSD 66559 - CIF has different origin choice
                     case 'BiAlO3';          uc = create_cell(am_dft.abc2bas([5.37546,13.3933],'hex'),       [[0;0;0],[0;0;0.2222],[0.5326;0.0099;0.9581]],              {'Bi','Al','O'},161); % ICSD 171708
                     case 'Bi2Al4O9';        uc = create_cell(am_dft.abc2bas([7.7134,8.1139,5.6914],'orth'), [[0.1711;0.1677;0],[0.5;0;0.2645],[0.3545;0.3399;0.5],[0;0;0.5],[0.3718;0.2056;0.2503],[0.1364;0.412;0.5],[0.1421;0.4312;0]],{'Bi','Al','Al','O','O','O','O'},55); % ICSD 88775
-                    case 'Cu';              uc = create_cell(am_dft.abc2bas(3.6151,'cubic'),                 [0;0;0],                                                   {'Cu'}, 225); % ICSD 43493
-                    case 'Si';              uc = create_cell(am_dft.abc2bas(5.4209,'cubic'),                 [0;0;0],                                                   {'Si'}, 227); % ICSD 51688
+                    case 'fcc-Co';          uc = create_cell(am_dft.abc2bas(3.5441,'cubic'),                [[0;0;0]],                                                  {'Co'},225); % ICSD 44989
+                    case 'hcp-Co';          uc = create_cell(am_dft.abc2bas([2.5054,4.0893],'hex'),         [[1/3;2/3;1/4]],                                            {'Co'},194); % ICSD 44990
+                    case 'CsCl-CoFe';       uc = create_cell(am_dft.abc2bas(2.8570,'cubic'),                [[0;0;0],[1;1;1]/2],                                        {'Co','Fe'},221); % ICSD 56273
+                    case 'Cu';              uc = create_cell(am_dft.abc2bas(3.6151,'cubic'),                 [0;0;0],                                                   {'Cu'},225); % ICSD 43493
+                    case 'fcc-Fe';          uc = create_cell(am_dft.abc2bas(3.6468,'cubic'),                [[0;0;0]],                                                  {'Fe'},225); % ICSD 44862
+                    case 'bcc-Fe';          uc = create_cell(am_dft.abc2bas(2.9315,'cubic'),                [[0;0;0]],                                                  {'Fe'},229); % ICSD 44863
+                    case 'Si';              uc = create_cell(am_dft.abc2bas(5.4209,'cubic'),                 [0;0;0],                                                   {'Si'},227); % ICSD 51688
                     case 'SrTiO3';          uc = create_cell(am_dft.abc2bas(3.9010,'cubic'),                [[0;0;0], [1;1;1]/2, [1;1;0]/2],                            {'Sr','Ti','O'}, 221); % ICSD 80873
                     case 'SrRuO3';          uc = create_cell(am_dft.abc2bas([5.5729,7.8518,5.5346],'orth'), [[0;0;0],[0.5;0.25;0.99],[0.55;0.25;0.5],[0.22;0.03;0.21]], {'Ru','Sr','O','O'}, 62); % ICSD 56697
                     case 'VN';              uc = create_cell(am_dft.abc2bas(4.1340,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'V','N'}, 225);
-                    otherwise; error('load_material: unknown material');
+                    otherwise; error('load_material: unknown material'); 
                 end
                 
                 function [uc]         = create_cell(bas,tau,symb,sg_code)
@@ -3252,7 +3368,7 @@ classdef am_dft
 
             % add inversion for time-reversal?
             if contains(flag,'addinv') 
-            if ~any(all(all(R==eye(3),1),2))
+            if ~any(all(all(R==-eye(3),1),2))
                 R = complete_group( cat(3,R,-eye(3)) );
             end
             end
@@ -3513,8 +3629,7 @@ classdef am_dft
             %     hw-hw(:,1) < am_lib.eps
             %
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             fprintf(' ... computing dispersion '); tic;
             switch lower(strtrim(flag))
@@ -5322,13 +5437,13 @@ classdef am_dft
             if nargin < 2; tol = am_dft.tiny; end
             
             % get seitz matrices
-            [~,~,S] = get_symmetries(pc);
+            [~,~,S] = get_symmetries(pc, tol);
 
             % define function to apply symmetries to position vectors
             seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:), tol);
 
             % get permutation matrix and construct a sparse binary representation
-            PM = member_(seitz_apply_(S,pc.tau),pc.tau, tol); [A,i2p,p2i] = get_connectivity(PM);
+            PM = member_(seitz_apply_(S,pc.tau),pc.tau, tol*1.01); [A,i2p,p2i] = get_connectivity(PM);
 
             % define irreducible cell creation function and make structure
             ic_ = @(uc,i2p) struct('units','frac','bas',uc.bas, ...
@@ -5373,6 +5488,15 @@ classdef am_dft
             % sc = get_supercell(pc,T);
             %
             import am_lib.* am_dft.*
+            
+            % simple lattice transformations
+            if ischar(B)
+               switch B
+                   case 'bcc'; B = (ones(3)-eye(3))/2;
+                   case 'fcc'; B = ones(3)-2*eye(3);
+                   otherwise; error('Invalid lattice transformation.');
+               end
+            end
 
             % basic check
             if abs(mod_(det(B)))>am_lib.eps; error('determinant of B must be an integer'); end
