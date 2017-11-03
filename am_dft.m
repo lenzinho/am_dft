@@ -1263,7 +1263,7 @@ classdef am_dft
 
                     H(1:nbases,1:nbases) = 0;
                     for q = 1:nsyms
-                        H = H + rr(:,:,q)' * Hrs * rr(:,:,q);
+                        H = H + rr(:,:,q) \ Hrs * rr(:,:,q);
                     end
                     H = H / nsyms;
 
