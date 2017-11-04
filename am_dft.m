@@ -921,13 +921,6 @@ classdef am_dft
             criteria = nirreps==nclasses;
             test_(all(criteria),'dg classes+irreps',sprintf('failed to produce an equal number of classes and irreps for dg:%s',sprintf(' %i',find(~criteria))));
             
-%             % test winger rotation axes
-%             R = generate_pg(32,false);
-%             W = get_wigner(1,R,'spherical');
-%             (get_wigner_axis(DG)~=0)-(round_(R_axis_(R))~=0)
-%             criteria = squeeze(all(all(eq_(W,R),1),2));
-%             test_(all(criteria),'wigner SO(3)',sprintf('failed to generate consistent SO(3) rotations:%s',sprintf(' %i',find(criteria))))
-            
             function test_(logical,test_name,fail_msg)
                 if logical
                     fprintf('      %s: pass\n',test_name);
@@ -941,7 +934,7 @@ classdef am_dft
 
         % symmetry
 
-%         function [sg,pg]      = get_groups(pc, tol)
+%         function [sg,pg,dg]   = get_groups(pc, tol)
 %
 %             % getting point groups
 %             [T,H,S,R]    = get_symmetries(pc, tol)
@@ -1130,6 +1123,67 @@ classdef am_dft
             rev(fwd) = [1:size(MT,1)]; MT = rev(MT(fwd,fwd));
         end
         
+        function [subgroup,structure] = get_subgroups(MT)
+            % clear;clc; import am_dft.* am_lib.*
+            % [R,~]=generate_pg('o',false);
+            % % get multiplication table
+            % MT=am_dft.get_multiplication_table(R);
+            % % get subgroups
+            % [subgroup,structure] = get_subgroups(MT);
+            % % identify the subgroup
+            % for i = 1:size(subgroup,2); pg_id(i) = identify_pointgroup(R(:,:,logical(subgroup(:,i)))); end
+            % % plot the group/subgroup hierarchy
+            % h=plot(digraph(structure,'OmitSelfLoops'),'Layout','layered','NodeLabel',decode_pg(pg_id));
+
+            import am_lib.* am_dft.*
+            
+            % set maximum generators (3 should be enough for point groups)
+            maxgens = 3;
+
+            % gen number of symmerties
+            nsyms = size(MT,1);
+
+            % preallocate space
+            maxmem = 0; for ngens = 1:maxgens; maxmem = maxmem+nchoosek(nsyms,ngens); end
+            subgroup = false(nsyms,maxmem);
+
+            % [gen_id] = get_generators(MT)
+            flatten_ = @(x) x(:); k=0;
+            for ngens = 1:maxgens
+                % generate a list of all possible generators (ignores generator order for speed)
+                genlist = nchoosek_(nsyms,ngens);
+                % loop over the list one set of generators at a time, checking whether the entire multiplication table can be generated
+                for i = 1:size(genlist,2)
+                    % initialize, include identity
+                    x = genlist(:,i);
+                    % expand multiplication table
+                    while true
+                        u = unique([flatten_(MT(x,x));x],'stable');
+                        switch numel(u)
+                            case {nsyms, numel(x)}
+                                % exausted all possibiltiies: a subgroup or the entire group has been generated
+                                k=k+1; 
+                                subgroup(u,k) = true;
+                                break;
+                            otherwise
+                                % update
+                                x = u;
+                        end
+                    end
+                end
+            end
+
+            % get unique subgroups
+            subgroup = uniquec_(single(subgroup)); nsubs = size(subgroup,2);
+
+            % sort subgroups by order
+            subgroup = subgroup(:, rankc_(sum(subgroup,1)) );
+
+            % structure(:,k) indicates subgroups contained within group k
+            structure = eq_((subgroup./normc_(subgroup).^2).'*subgroup,1);
+
+        end
+        
         function [G,u]        = get_generators(MT)
             % [G,u] = get_generators(MT)
             % u reindexes symmetries based on the generators
@@ -1200,14 +1254,21 @@ classdef am_dft
         end
 
         function                plot_cayley_graph(MT)
+            % clear;clc; import am_dft.* am_lib.*
+            % [R,~]=generate_pg('o_h');
+            % % get multiplication table
+            % MT=am_dft.get_multiplication_table(R);
+            % % plot cayley graph
+            % plot_cayley_graph(MT)
             %
+            import am_dft.* am_lib.*
             [G] = get_generators(MT);
             i=[]; j=[]; x = MT(1,:);
             for k = 1:numel(G)
                 i = [i;flatten_(x)];
                 j = [j;flatten_(MT(G(k),x))];
             end
-            plot(digraph(i,j));
+            plot(digraph(i,j,'OmitSelfLoops'),'layout','subspace3');
         end
 
         function [IR]         = get_irreducible_representations(S)
@@ -1308,7 +1369,12 @@ classdef am_dft
 
             % get irreducible classes
             [CT,~,ir_id]=uniquec_(CT.'); CT=CT.';
-        
+            
+            % check 
+            if ~isdiag_(CT'*CT)
+                sym(CT)
+                error('Character table is not orthogonal')
+            end
         end
         
         function                print_character_table(R,CT,cc_id)
@@ -1320,48 +1386,86 @@ classdef am_dft
 
             import am_dft.* am_lib.*
             
-            % check if double group is input and convert it to SO(3)
-            if size(R,1) == 2; R = SU2_to_SO3(R); R = wdv_(R); end 
-            
             % identify the prototypical symmetries
-            [~,unique_c_id]=unique(cc_id);
+            [~,cc_rep]=unique(cc_id,'stable');
 
-            % get number of classes
-            nclasses=numel(unique_c_id);
+            % get number of classes and number of elements in each class
+            nclasses = numel(cc_rep);
+            nelems = sum(cc_id(cc_rep)==cc_id',2).';
+            nsyms = sum(nelems);
+            
+            % calculate orbital characters
+            [chi,J] = get_orbital_characters(R(:,:,cc_rep));
 
-            fprintf('      '); fprintf('%12s',repmat('------------',1,nclasses)); fprintf('\n');
+            print_bar(nclasses);
             % class label 
             fprintf('      '); for i = 1:nclasses; fprintf('%12s',['#',num2str(i)]); end; fprintf('\n');
-            fprintf('      '); fprintf('%12s',repmat(' -----------',1,nclasses)); fprintf('\n');
+            print_bar(nclasses);
             % print class name 
-            ps_name = decode_ps(identify_point_symmetries(R(:,:,unique_c_id)));
+            ps_name = decode_ps(identify_point_symmetries(R(:,:,cc_rep)));
             fprintf('      '); for i = 1:nclasses; fprintf('%12s',ps_name{i}); end; fprintf('\n');
             % print class elements
-            cl_size = sum(cc_id.'==cc_id(unique_c_id),2);
-            fprintf('      '); for i = 1:nclasses; fprintf('%12i',cl_size(i)); end; fprintf('\n');
-            % bar
-            fprintf('      '); fprintf('%12s',repmat(' -----------',1,nclasses)); fprintf('\n');
+            fprintf('      '); for i = 1:nclasses; fprintf('%12i',nelems(i)); end; fprintf('\n');
+            print_bar(nclasses);
             % print character table
-            for l = 1:size(CT,1)
-                chi = CT(l,:); chi = wdv_(chi);
-                fprintf('      '); fprintf('%12s',sym(chi)); fprintf('\n');
-            end
-            % bar
-            fprintf('      '); fprintf('%12s',repmat(' -----------',1,nclasses)); fprintf('\n');
+            for l = 1:size(CT,1); fprintf('      '); fprintf('%12s',sym(wdv_(CT(l,:)))); fprintf('\n'); end
             % print SO(3) and SU(2) characters single and double groups
-            character_ = @(l,alpha) sin((l+1/2)*alpha)./sin(alpha/2);
-            alpha = 2*pi./get_order(R);
-            for l = [0:.5:4]
-                chi = character_(l,alpha(:,unique_c_id)); chi = wdv_(chi);
-                fprintf('      '); fprintf('%12s',sym(chi)); fprintf('\n');
-            end
-            fprintf('      '); fprintf('%12s',repmat('------------',1,nclasses)); fprintf('\n');
+            print_bar(nclasses);
+            for l = 1:size(chi,1); fprintf('      '); fprintf('%12s',sym(chi(l,:))); fprintf('\n'); end
+            print_bar(nclasses);
             
             % symmetries in each class
-            fprintf('Symmetries in each classes:\n')
-            ps_name_long = get_long_ps_name(R);
-            for i = 1:numel(unique_c_id)
-                fprintf('%12s:%s\n',['#',num2str(i)], sprintf(' %-12s',ps_name_long{cc_id==i}));
+                fprintf('      '); fprintf('Symmetries in each classes:\n')
+                ps_name_long = get_long_ps_name(R);
+                for i = 1:numel(cc_rep)
+                    fprintf('%12s:%s\n',['#',num2str(i)], sprintf(' %-12s',ps_name_long{cc_id==i}));
+                end
+            
+            % DECOMPOSITIONS
+                decomp_ = @(chi) wdv_( chi * (CT.*nelems).' / nsyms );
+                
+            % IRREP x IRREP decomposition
+                decomp = decomp_( CT.^2 ); nirreps = size(CT,1);
+                for i = 1:nirreps; row_name{i} = sprintf('irr # %g',i); end
+                for i = 1:nirreps; col_name{i} = sprintf('irr # %g',i); end
+                print_table_decomposition_('irrep x irrep', row_name, col_name, decomp);
+                
+            % ORBITAL decomposition
+                decomp = decomp_( chi );
+                for i = 1:nirreps; row_name{i} = sprintf('irr # %g',i); end
+                clear row_name; for i = 1:numel(J); row_name{i} = sprintf('%s',sym(J(i))); end
+                clear col_name; for i = 1:nirreps;  col_name{i} = sprintf('irr # %g',i); end
+                print_table_decomposition_('orbitals', row_name, col_name, decomp);
+                
+                
+            function [chi,J] = get_orbital_characters(W)
+                import am_lib.* am_dft.*
+                % identify double groups symmetries (negative ps_id = double valued)
+                [ps_id,~,d,o] = am_dft.identify_point_symmetries(W);
+                % get rotation angle
+                alpha = 2*pi ./ o .* ~am_lib.eq_(o,1);
+                % compute character
+                character_ = @(l,alpha) sin((l+1/2).*(alpha+1E-12))./sin((alpha+1E-12)./2); 
+                chi_l = [0.0:5.0]; chi_O3 = character_(chi_l(:), alpha) .* d.^(chi_l(:)) ;
+                chi_j = [0.5:5.5]; chi_U2 = character_(chi_j(:), alpha) .* d.^(chi_j(:)) .* sign(ps_id);
+                J = [chi_l(:);chi_j(:)]; chi = [chi_O3;chi_U2]; chi = am_lib.wdv_(chi);
+            end
+            
+            function print_table_decomposition_(table_name,row_name,col_name,decomp)
+                [nrows,ncols] = size(decomp); 
+                fprintf('\n');
+                fprintf('      '); fprintf('%12s\n',table_name); 
+                fprintf('      '); fprintf('%12s\n','==========='); 
+
+                fprintf('      '); fprintf('%12s',''); fprintf('%12s',col_name{:}); fprintf('\n');
+                fprintf('      '); fprintf('%12s',repmat(' -----------',1,ncols+1)); fprintf('\n');
+                for k = 1:nrows
+                    fprintf('        '); fprintf('%-10s',row_name{k}); fprintf('%12s',sym(decomp(k,:))); fprintf('\n');
+                end
+            end
+            
+            function print_bar(nclasses)
+                fprintf('      '); fprintf('%12s',repmat(' -----------',1,nclasses)); fprintf('\n');
             end
         end
 
@@ -1399,26 +1503,76 @@ classdef am_dft
             cc_id = reindex_using_occurances(cc_id);
         end
 
-        function [ps_id,tr,dt]= identify_point_symmetries(R)
+        function [ps_id,t,d,o]= identify_point_symmetries(R)
             import am_lib.* am_dft.*
+            
+            % number of symmetries
+            nsyms=size(R,3); 
+            
             % check if double group is input and convert it to SO(3)
-            if size(R,1) == 2; R = SU2_to_SO3(R); R = wdv_(R); end 
-            % get classify
-            nsyms=size(R,3); ps_id = zeros(1,nsyms); tr = zeros(1,nsyms); dt = zeros(1,nsyms);
+            if size(R,1) == 2
+                Rp = SU2_to_SO3(R); Rp = wdv_(Rp); 
+                D  = get_wigner(1/2,Rp,'spherical');
+                dg = ~permute(all(all(eq_(R,D),1),2),[1,3,2]);
+                dg = 1-2*dg;
+                R  = Rp;
+            else
+                dg = ones(1,nsyms);
+            end
+            
+            % classify
+            ps_id = zeros(1,nsyms); t = zeros(1,nsyms); d = zeros(1,nsyms);
             for i = 1:nsyms
                 % get trace and determinant (fractional)
-                tr(i) = trace(R(1:3,1:3,i)); dt(i) = det(R(1:3,1:3,i));
-                if     (eq_(tr(i),+3) && eq_(dt(i),+1)); ps_id(i) = 1;  % 'e'
-                elseif (eq_(tr(i),-1) && eq_(dt(i),+1)); ps_id(i) = 2;  % 'c_2'
-                elseif (eq_(tr(i),+0) && eq_(dt(i),+1)); ps_id(i) = 3;  % 'c_3'
-                elseif (eq_(tr(i),+1) && eq_(dt(i),+1)); ps_id(i) = 4;  % 'c_4'
-                elseif (eq_(tr(i),+2) && eq_(dt(i),+1)); ps_id(i) = 5;  % 'c_6'
-                elseif (eq_(tr(i),-3) && eq_(dt(i),-1)); ps_id(i) = 6;  % 'i'
-                elseif (eq_(tr(i),+1) && eq_(dt(i),-1)); ps_id(i) = 7;  % 's_2'
-                elseif (eq_(tr(i),+0) && eq_(dt(i),-1)); ps_id(i) = 8;  % 's_6'
-                elseif (eq_(tr(i),-1) && eq_(dt(i),-1)); ps_id(i) = 9;  % 's_4'
-                elseif (eq_(tr(i),-2) && eq_(dt(i),-1)); ps_id(i) = 10; % 's_3'
-                else;                            ps_id(i) = 0;  % unknown
+                t(i) = trace(R(1:3,1:3,i)); d(i) = det(R(1:3,1:3,i));
+                if     (eq_(t(i),+3) && eq_(d(i),+1)); ps_id(i) = 1;  % 'e'
+                elseif (eq_(t(i),-1) && eq_(d(i),+1)); ps_id(i) = 2;  % 'c_2'
+                elseif (eq_(t(i),+0) && eq_(d(i),+1)); ps_id(i) = 3;  % 'c_3'
+                elseif (eq_(t(i),+1) && eq_(d(i),+1)); ps_id(i) = 4;  % 'c_4'
+                elseif (eq_(t(i),+2) && eq_(d(i),+1)); ps_id(i) = 5;  % 'c_6'
+                elseif (eq_(t(i),-3) && eq_(d(i),-1)); ps_id(i) = 6;  % 'i'
+                elseif (eq_(t(i),+1) && eq_(d(i),-1)); ps_id(i) = 7;  % 's_2'
+                elseif (eq_(t(i),+0) && eq_(d(i),-1)); ps_id(i) = 8;  % 's_6'
+                elseif (eq_(t(i),-1) && eq_(d(i),-1)); ps_id(i) = 9;  % 's_4'
+                elseif (eq_(t(i),-2) && eq_(d(i),-1)); ps_id(i) = 10; % 's_3'
+                else;                                  ps_id(i) = 0;  % unknown
+                end
+            end
+            ps_id = ps_id .* dg;
+                
+            % finally, get the order
+            o = get_order(R);
+            
+            function order = get_order(S, tol)
+
+                import am_lib.* am_dft.*
+
+                if nargin<2; tol = am_dft.tiny; end
+
+                % define comparison function
+                check_ = @(x) any(~am_lib.eq_(x(:),0,tol));
+
+                % get sizes
+                s = size(S); if numel(s)<3; s(3) = 1; end; nSs = s(3);
+
+                if s(1) == 4 && s(2) == 4       % space symmetry
+                    order = ones(1,nSs); 
+                    for j = 1:nSs
+                        X=S(1:4,1:4,j);
+                        while check_(X - eye(4))
+                            order(j) = order(j) + 1;
+                            X = X*S(:,:,j); X(1:3,4)=mod_(X(1:3,4));
+                        end
+                    end
+                else                            % point symmetry 
+                    order = ones(1,nSs); n = size(S,1);
+                    for j = 1:nSs
+                        X=S(:,:,j);
+                        while check_(X - eye(n))
+                            order(j) = order(j) + 1;
+                            X = X*S(:,:,j);
+                        end
+                    end
                 end
             end
         end
@@ -1691,13 +1845,20 @@ classdef am_dft
         end
 
         function pg_name      = decode_pg(pg_code)
-            % point group dataset
-            pg={'c_1' ,'s_2' ,'c_2' ,'c_1h','c_2h','d_2' ,'c_2v','d_2h', ...
-                'c_3' ,'s_6' ,'d_3' ,'c_3v','d_3d','c_4' ,'s_4' ,'c_4h', ...
-                'd_4' ,'c_4v','d_2d','d_4h','c_6' ,'c_3h','c_6h','d_6' , ...
-                'c_6v','d_3h','d_6h','t'   ,'t_h' ,'o'   ,'t_d' ,'o_h'};
-            % print point group name
-            pg_name = pg{pg_code};
+            import am_dft.*
+            if numel(pg_code)==1
+                % point group dataset
+                pg={'c_1' ,'s_2' ,'c_2' ,'c_1h','c_2h','d_2' ,'c_2v','d_2h', ...
+                    'c_3' ,'s_6' ,'d_3' ,'c_3v','d_3d','c_4' ,'s_4' ,'c_4h', ...
+                    'd_4' ,'c_4v','d_2d','d_4h','c_6' ,'c_3h','c_6h','d_6' , ...
+                    'c_6v','d_3h','d_6h','t'   ,'t_h' ,'o'   ,'t_d' ,'o_h'};
+                % print point group name
+                pg_name = pg{pg_code};
+            else
+                for i = 1:numel(pg_code)
+                    pg_name{i} = decode_pg(pg_code(i));
+                end
+            end
         end
 
         function sg_name      = decode_sg(sg_code)
@@ -1772,7 +1933,7 @@ classdef am_dft
         function ps_name      = decode_ps(ps_code)
             nsyms = numel(ps_code);ps_name=cell(1,nsyms);
             for i = 1:nsyms
-                switch ps_code(i)
+                switch abs(ps_code(i))
                     case 1;   ps_name{i}='e';
                     case 2;   ps_name{i}='c_2';
                     case 3;   ps_name{i}='c_3';
@@ -1784,6 +1945,10 @@ classdef am_dft
                     case 9;   ps_name{i}='s_4';
                     case 10;  ps_name{i}='s_3';
                     otherwise;ps_name{i}='';
+                end
+                % append double group
+                if ps_code(i)<0
+                    ps_name{i} = ['R',ps_name{i}];
                 end
             end
         end
@@ -1797,7 +1962,7 @@ classdef am_dft
             syms x y z
             for i = 1:nsyms
                 ps_name_long{i} = sprintf('%s',strtrim(ps_name{i}));
-                if ps_id(i)~=1 && ps_id(i)~=6
+                if abs(ps_id(i))~=1 && abs(ps_id(i))~=6
                     ax = ps_axis(:,i).'; if sum(lt_(ax,0))>sum(gt_(ax,0)); ax=-ax; end
                     ax_name = sprintf('%s',ax*[x;y;z]); ax_name=strrep(ax_name,' ',''); ax_name=strrep(ax_name,'+',''); 
                     ps_name_long{i} = sprintf('%s(%s)',ps_name_long{i}, ax_name );
@@ -1829,39 +1994,6 @@ classdef am_dft
             end
         end
             
-        function order        = get_order(S, tol)
-
-            import am_lib.* am_dft.*
-
-            if nargin<2; tol = am_dft.tiny; end
-            
-            % define comparison function
-            check_ = @(x) any(~eq_(x(:),0,tol));
-
-            % get sizes
-            s = size(S); nSs = s(3);
-
-            if s(1) == 4 && s(2) == 4       % space symmetry
-                order = ones(1,nSs); 
-                for i = 1:nSs
-                    X=S(1:4,1:4,i);
-                    while check_(X - eye(4))
-                        order(i) = order(i) + 1;
-                        X = X*S(:,:,i); X(1:3,4)=mod_(X(1:3,4));
-                    end
-                end
-            else                            % point symmetry 
-                order = ones(1,nSs); n = size(S,1);
-                for i = 1:nSs
-                    X=S(:,:,i);
-                    while check_(X - eye(n))
-                        order(i) = order(i) + 1;
-                        X = X*S(:,:,i);
-                    end
-                end
-            end
-        end
-
         function S            = generate_sg(sg_code,from_memory)
 
             import am_lib.* am_dft.*
@@ -4917,8 +5049,8 @@ classdef am_dft
                 %    i,j = irreducible cell atomic indicies
                 %    m,n =   primitive cell atomic indicies
                 c = pp.p2i(p); s = qi(p); cluster = pp.cluster(:,p); % pp.cluster(ip.Q{2}(:,s),p);
-                m = pp.x2p(cluster(1)); i = pp.x2i(cluster(1)); mp = S(m):E(m); dm = E(m)-S(m)+1;
-                n = pp.x2p(cluster(2)); j = pp.x2i(cluster(2)); np = S(n):E(n); dn = E(n)-S(n)+1;
+                m = pp.x2p(cluster(1)); i = pp.x2i(cluster(1)); mp = S(m):E(m); % dm = E(m)-S(m)+1;
+                n = pp.x2p(cluster(2)); j = pp.x2i(cluster(2)); np = S(n):E(n); % dn = E(n)-S(n)+1;
 
                 rij = pp.tau(:,cluster(2)) - pp.tau(:,cluster(1)); rij = wdv_(rij,am_dft.tiny);
                 % if any(any(ip.Q{2}(:,s)~=[1,2])); F = sign(reshape(ip.F{1}*[1:(dm*dn)].',dm,dn)); else; F = ones(dm,dn); end
@@ -5544,7 +5676,7 @@ classdef am_dft
             seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:), tol);
 
             % get permutation matrix and construct a sparse binary representation
-            PM = member_(seitz_apply_(S,pc.tau),pc.tau, tol*1.01); [A,i2p,p2i] = get_connectivity(PM);
+            PM = member_(seitz_apply_(S,pc.tau),pc.tau, tol*1.01); [~,i2p,p2i] = get_connectivity(PM);
 
             % define irreducible cell creation function and make structure
             ic_ = @(uc,i2p) struct('units','frac','bas',uc.bas, ...
