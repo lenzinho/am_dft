@@ -424,7 +424,7 @@ classdef am_dft
                 % open file
                 fid=fopen(fname,'w');
                     % header
-                    fprintf(fid,'%s',get_formula(uc));
+                    fprintf(fid,'%s',get_cell_formula(uc));
                     if n ~= 1; fprintf(fid,' %i of %i',i,n); end
                     fprintf(fid,'\n');
                     % print body
@@ -1383,6 +1383,23 @@ classdef am_dft
             % [CT,cc_id,ir_id] = get_character_table(IR);
             % print_character_table(R,CT,cc_id)
 
+            
+            %     clear;clc; import am_dft.* am_lib.*
+            %     [R,W]=generate_pg('o_h',false);
+            %     % d = permute(det_(R),[3,1,2]);
+            %     % j=1/2; [W] = get_wigner(j,d,'spherical');
+            % 
+            %     % (1i*eq_(d,-1) + eq_(d,1));
+            %     % W = cat(3,1i*W,-1i*W);
+            %     % W = cat(3,kron_(R,eye(2)),kron_(R,[0 1; 1 0]));
+            %     % W = complete_group(W);
+            %     % MT = am_dft.get_multiplication_table(W);
+            %     % MTk = am_dft.get_multiplication_table(K);
+            %     IR = get_irreducible_representations(W);
+            %     [CT,cc_id,ir_id] = get_character_table( IR );
+            %     % sym(CT)
+            %     print_character_table(W,CT,cc_id)
+            
             import am_dft.* am_lib.*
             
             % identify the prototypical symmetries
@@ -1424,8 +1441,8 @@ classdef am_dft
                 alpha = am_lib.R_angle_(permute(d,[3,1,2]).*W);
                 % compute character
                 character_ = @(l,alpha) sin((l+1/2).*(alpha+1E-12))./sin((alpha+1E-12)./2); 
-                chi_l = [0.0:5.0]; chi_O3 = character_(chi_l(:), alpha) .* d.^(chi_l(:));% .* sign(ps_id);
-                chi_j = [0.5:5.5]; chi_U2 = character_(chi_j(:), alpha) .* d.^(chi_j(:)) .* sign(ps_id);
+                chi_l = [0.0:5.0]; chi_O3 = character_(chi_l(:), alpha) .* (am_lib.eq_(d,-1).*1i + 1*am_lib.eq_(d,1));% .* (d).^(chi_l(:));% .* sign(ps_id);
+                chi_j = [0.5:5.5]; chi_U2 = character_(chi_j(:), alpha) .* (d).^(chi_j(:)) .* sign(ps_id);
                 J = [chi_l(:);chi_j(:)]; chi = [chi_O3;chi_U2]; chi = am_lib.wdv_(chi);
             end
             
@@ -2897,13 +2914,13 @@ classdef am_dft
             verbose = true;
             if verbose
                 fprintf(' (%.3f s) \n',toc);
-                fprintf('     %-15s = %s\n','formula',get_formula(uc));
+                fprintf('     %-15s = %s\n','formula',get_cell_formula(uc));
                 fprintf('     %-15s = %s\n','primitive',decode_bravais(bv_code));
                 fprintf('     %-15s = %s\n','holohodry',decode_holohodry(hg_code));
                 fprintf('     %-15s = %s\n','point group',decode_pg(pg_code));
                 fprintf('     %-15s = %s\n','space group',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
                 fprintf('     %-15s = %-8.3f [g/cm3] \n','mass density',get_cell_mass_density(uc));
-                fprintf('     %-15s = %-8.3f [atoms/nm3]\n','number density',get_cell_number_density(uc));
+                fprintf('     %-15s = %-8.3f [atoms/nm3]\n','number density',get_atomic_number_density(uc));
                 fprintf('     %-15s = %-8.3f [f.u./nm3]\n','formula density',get_cell_formula_unit_density(uc));
                 if contains(flag,'cif')
                     fprintf('     %-15s = %s\n','create command',str);
@@ -3080,21 +3097,31 @@ classdef am_dft
 
             function [uc]    = load_material(material)
                 switch material
-                    case 'Al2O3';           uc = create_cell(am_dft.abc2bas([4.7617,12.9990],'hex'),        [[0;0;0.3522],[0.6936;0;0.2500]],                           {'Al','O'}, 167); % ICSD 10425
-                    case 'gamma-Al2O3';     uc = create_cell(am_dft.abc2bas(7.9110,'cubic'),                [[1;1;1]*0.37970,[5;5;5]/8,[0;0;0],[1;1;1]*0.15220],       	{'O','Al','Al','Al'},227); % ICSD 66558 - CIF has different origin choice
-                    case 'eta-Al2O3';       uc = create_cell(am_dft.abc2bas(7.9140,'cubic'),                [[1;1;1]*0.37990,[5;5;5]/8,[1;0;0]*0.77390,[1;1;1]*0.19490],{'O','Al','Al','Al'},227); % ICSD 66559 - CIF has different origin choice
-                    case 'BiAlO3';          uc = create_cell(am_dft.abc2bas([5.37546,13.3933],'hex'),       [[0;0;0],[0;0;0.2222],[0.5326;0.0099;0.9581]],              {'Bi','Al','O'},161); % ICSD 171708
-                    case 'Bi2Al4O9';        uc = create_cell(am_dft.abc2bas([7.7134,8.1139,5.6914],'orth'), [[0.1711;0.1677;0],[0.5;0;0.2645],[0.3545;0.3399;0.5],[0;0;0.5],[0.3718;0.2056;0.2503],[0.1364;0.412;0.5],[0.1421;0.4312;0]],{'Bi','Al','Al','O','O','O','O'},55); % ICSD 88775
-                    case 'fcc-Co';          uc = create_cell(am_dft.abc2bas(3.5441,'cubic'),                [[0;0;0]],                                                  {'Co'},225); % ICSD 44989
-                    case 'hcp-Co';          uc = create_cell(am_dft.abc2bas([2.5054,4.0893],'hex'),         [[1/3;2/3;1/4]],                                            {'Co'},194); % ICSD 44990
-                    case 'CsCl-CoFe';       uc = create_cell(am_dft.abc2bas(2.8570,'cubic'),                [[0;0;0],[1;1;1]/2],                                        {'Co','Fe'},221); % ICSD 56273
-                    case 'Cu';              uc = create_cell(am_dft.abc2bas(3.6151,'cubic'),                 [0;0;0],                                                   {'Cu'},225); % ICSD 43493
-                    case 'fcc-Fe';          uc = create_cell(am_dft.abc2bas(3.6468,'cubic'),                [[0;0;0]],                                                  {'Fe'},225); % ICSD 44862
-                    case 'bcc-Fe';          uc = create_cell(am_dft.abc2bas(2.9315,'cubic'),                [[0;0;0]],                                                  {'Fe'},229); % ICSD 44863
-                    case 'Si';              uc = create_cell(am_dft.abc2bas(5.4209,'cubic'),                 [0;0;0],                                                   {'Si'},227); % ICSD 51688
-                    case 'SrTiO3';          uc = create_cell(am_dft.abc2bas(3.9010,'cubic'),                [[0;0;0], [1;1;1]/2, [1;1;0]/2],                            {'Sr','Ti','O'}, 221); % ICSD 80873
-                    case 'SrRuO3';          uc = create_cell(am_dft.abc2bas([5.5729,7.8518,5.5346],'orth'), [[0;0;0],[0.5;0.25;0.99],[0.55;0.25;0.5],[0.22;0.03;0.21]], {'Ru','Sr','O','O'}, 62); % ICSD 56697
-                    case 'VN';              uc = create_cell(am_dft.abc2bas(4.1340,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'V','N'}, 225);
+                    % metals
+                    case 'fcc-Co';          uc = create_cell(am_dft.abc2bas(3.5441,'cubic'),               [[0;0;0]],                                                  {'Co'},225); % ICSD 44989
+                    case 'hcp-Co';          uc = create_cell(am_dft.abc2bas([2.5054,4.0893],'hex'),        [[1/3;2/3;1/4]],                                            {'Co'},194); % ICSD 44990
+                    case 'CsCl-CoFe';       uc = create_cell(am_dft.abc2bas(2.8570,'cubic'),               [[0;0;0],[1;1;1]/2],                                        {'Co','Fe'},221); % ICSD 56273
+                    case 'Cu';              uc = create_cell(am_dft.abc2bas(3.6151,'cubic'),                [0;0;0],                                                   {'Cu'},225); % ICSD 43493
+                    case 'fcc-Fe';          uc = create_cell(am_dft.abc2bas(3.6468,'cubic'),               [[0;0;0]],                                                  {'Fe'},225); % ICSD 44862
+                    case 'bcc-Fe';          uc = create_cell(am_dft.abc2bas(2.9315,'cubic'),               [[0;0;0]],                                                  {'Fe'},229); % ICSD 44863
+                    % oxides
+                    case 'Al2O3';           uc = create_cell(am_dft.abc2bas([4.7617,12.9990],'hex'),       [[0;0;0.3522],[0.6936;0;0.2500]],                           {'Al','O'}, 167); % ICSD 10425
+                    case 'gamma-Al2O3';     uc = create_cell(am_dft.abc2bas(7.9110,'cubic'),               [[1;1;1]*0.37970,[5;5;5]/8,[0;0;0],[1;1;1]*0.15220],        {'O','Al','Al','Al'},227); % ICSD 66558 - CIF has different origin choice
+                    case 'eta-Al2O3';       uc = create_cell(am_dft.abc2bas(7.9140,'cubic'),               [[1;1;1]*0.37990,[5;5;5]/8,[1;0;0]*0.77390,[1;1;1]*0.19490],{'O','Al','Al','Al'},227); % ICSD 66559 - CIF has different origin choice
+                    case 'BiAlO3';          uc = create_cell(am_dft.abc2bas([5.37546,13.3933],'hex'),      [[0;0;0],[0;0;0.2222],[0.5326;0.0099;0.9581]],              {'Bi','Al','O'},161); % ICSD 171708
+                    case 'Bi2Al4O9';        uc = create_cell(am_dft.abc2bas([7.7134,8.1139,5.6914],'orth'),[[0.1711;0.1677;0],[0.5;0;0.2645],[0.3545;0.3399;0.5],[0;0;0.5],[0.3718;0.2056;0.2503],[0.1364;0.412;0.5],[0.1421;0.4312;0]],{'Bi','Al','Al','O','O','O','O'},55); % ICSD 88775
+                    case 'SrTiO3';          uc = create_cell(am_dft.abc2bas(3.9010,'cubic'),               [[0;0;0], [1;1;1]/2, [1;1;0]/2],                            {'Sr','Ti','O'}, 221); % ICSD 80873
+                    case 'SrRuO3';          uc = create_cell(am_dft.abc2bas([5.5729,7.8518,5.5346],'orth'),[[0;0;0],[0.5;0.25;0.99],[0.55;0.25;0.5],[0.22;0.03;0.21]], {'Ru','Sr','O','O'}, 62); % ICSD 56697
+                    % semiconductors
+                    case 'Si';              uc = create_cell(am_dft.abc2bas(5.4209,'cubic'),                [0;0;0],                                                   {'Si'},227); % ICSD 51688
+                    % nitrides
+                    case 'VN';              uc = create_cell(am_dft.abc2bas(4.134,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'V','N'},  225);
+                    case 'ScN';             uc = create_cell(am_dft.abc2bas(4.501,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'Sc','N'}, 225);
+                    case 'TiN';             uc = create_cell(am_dft.abc2bas(4.240,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'Ti','N'}, 225);
+                    case 'ZrN';             uc = create_cell(am_dft.abc2bas(4.573,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'Zr','N'}, 225);
+                    case 'HfN';             uc = create_cell(am_dft.abc2bas(4.524,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'Hf','N'}, 225);
+                    case 'CeN';             uc = create_cell(am_dft.abc2bas(5.043,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'Ce','N'}, 225);
+                    case 'CrN';             uc = create_cell(am_dft.abc2bas(4.162,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'Cr','N'}, 225);
                     otherwise; error('load_material: unknown material'); 
                 end
                 
@@ -3544,23 +3571,6 @@ classdef am_dft
             end
         end
         
-        function mass_density = get_cell_mass_density(uc)
-            % mass_density = get_cell_mass_density(uc)
-            % [g/cm3]
-            mass_density = sum(uc.mass(uc.species)) * am_dft.amu2gram / det(uc.bas*0.1 * 1E-7);
-        end
-        
-        function num_density  = get_cell_number_density(uc)
-            % [atoms/nm3]
-            num_density = uc.natoms / det(uc.bas*0.1);
-        end
-        
-        function formula_density = get_cell_formula_unit_density(uc)
-            % [f.u./nm3]
-            import am_dft.get_cell_number_density am_lib.gcd_
-            formula_density = get_cell_number_density(uc)/(uc.natoms/gcd_(uc.nspecies));
-        end
-        
         % brillouin zones
 
         function [fbz,ibz]    = get_zones(pc,n)
@@ -3611,7 +3621,8 @@ classdef am_dft
             end
             
             % build permutation matrix for kpoints related by point symmetries
-            if contains(flag,'nomod') % nomod is used for bragg reflections, otherwise all points would go to gamma
+            % nomod is used for bragg reflections, otherwise all points would go to gamma
+            if contains(flag,'nomod') 
                 PM = am_lib.member_(           (matmul_(R,fbz.k)),fbz.k);
             else
                 PM = am_lib.member_(am_lib.mod_(matmul_(R,fbz.k)),fbz.k);
@@ -6437,6 +6448,12 @@ classdef am_dft
         end
 
         function [mass] = get_atomic_mass(Z)
+            
+            import am_dft.*
+            
+            % convert to Z if string is input
+            if ischar(Z) || iscell(Z);  Z = get_atomic_number(Z);  end
+            
             mass_database = [...
                     1.007947000,     4.002602000,     6.941200000,     9.012182000,    10.811500000, ...
                    12.011100000,    14.006747000,    15.999430000,    18.998403000,    20.179760000, ...
