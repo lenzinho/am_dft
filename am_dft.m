@@ -282,7 +282,7 @@ classdef am_dft
             fd(1:3,:,:) = matmul_(inv(uc.bas),fd(1:3,:,:));
             fd(4:6,:,:) = matmul_(inv(uc.bas),fd(4:6,:,:));
 
-            fd_ = @(uc,force,tau,vel,dt) struct('units','tau=frac; bas=ang', ...
+            fd_ = @(uc,force,tau,vel,dt) struct('units','frac', ...
                 'bas',uc.bas,'bas2pc',uc.bas2pc,'tau2pc',uc.tau2pc,...
                 'symb',{{uc.symb{:}}},'mass',uc.mass,'nspecies',uc.nspecies, ...
                 'natoms',uc.natoms,'force',force,'tau',tau,'vel',vel,'species',uc.species, ...
@@ -2864,10 +2864,10 @@ classdef am_dft
                 case {'poscar','cif'};  if exist(arg,'file')~=2; fprintf('\n'); error('File does not exist: %s',arg); end
             end
             switch flag
-                case 'poscar';   uc = load_poscar(arg);
+                case 'poscar';   [uc]     = load_poscar(arg);
                 case 'cif';      [uc,str] = load_cif(arg);
-                case 'material'; uc = load_material(arg);
-                case 'create';   uc = am_dft.create_cell(arg{:});
+                case 'material'; [uc]     = load_material(arg);
+                case 'create';   [uc]     = am_dft.create_cell(arg{:});
             end
             
             % convert bas from [Ang] to [nm]
@@ -3063,7 +3063,7 @@ classdef am_dft
                 [species,i]=sort(species); tau=tau(:,i);
 
                 % define primitive cell creation function and make structure
-                uc_ = @(bas,symb,Z,species) struct('units','tau=frac; bas=ang','bas',bas, ...
+                uc_ = @(bas,symb,Z,species) struct('units','frac','bas',bas, ...
                     'symb',{symb},'mass',am_dft.get_atomic_mass(Z),'nspecies',sum(unique(species).'==species,2).', ...
                     'natoms',numel(species),'tau',tau,'species',species);
                 uc = uc_(bas,symb,Z,species);
@@ -3071,7 +3071,7 @@ classdef am_dft
             
             function [uc]    = load_poscar(fposcar)
                 fid=fopen(fposcar,'r');                % open file
-                    header=fgetl(fid); uc.units='tau=frac; bas=ang';% read header (often times contains atomic symbols)
+                    header=fgetl(fid); uc.units='frac';% read header (often times contains atomic symbols)
                     latpar=sscanf(fgetl(fid),'%f');    % read lattice parameter
                     a1=sscanf(fgetl(fid),'%f %f %f');  % first basis vector
                     a2=sscanf(fgetl(fid),'%f %f %f');  % second basis vector
@@ -3174,7 +3174,7 @@ classdef am_dft
                     [~,ind] = sort(c_i2u);  tau = tau(:,ind); species = species(ind); % c_i2u = c_i2u(ind);
 
                     % define irreducible cell creation function and make structure
-                    uc_ = @(bas,tau,symb,species) struct('units','tau=frac; bas=ang','bas',bas,...
+                    uc_ = @(bas,tau,symb,species) struct('units','frac','bas',bas,...
                         'symb',{symb},'mass',am_dft.get_atomic_mass(am_dft.get_atomic_number(symb)),...
                         'nspecies',sum(unique(species).'==species,2).', ...
                         'natoms',size(tau,2),'tau',tau,'species',species);
@@ -3326,7 +3326,7 @@ classdef am_dft
             f   = matmul_(inv(uc.bas),f);
 
             % create displaced structure
-            dc_ = @(uc,f,tau,v,dt) struct('units','tau=frac; bas=ang',...
+            dc_ = @(uc,f,tau,v,dt) struct('units','frac',...
                 'bas',uc.bas,'tau2pc',uc.tau2pc,'bas2pc',uc.bas2pc,...
                 'symb',{{uc.symb{:}}},'mass',uc.mass,'nspecies',uc.nspecies, ...
                 'natoms',uc.natoms,'force',f,'tau',tau,'vel',v,'species',uc.species, ...
@@ -4735,8 +4735,7 @@ classdef am_dft
             %    That is: u = sym('u_%d',[3,1]); w = sym('w_%d',[3,1]); reshape(Z* reshape(u*w.',[],1),3,27)
             %
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % [cart] get displacements and forces
             u = matmul_( md.bas, mod_( md.tau-uc.tau +.5 )-.5 );
@@ -4926,9 +4925,7 @@ classdef am_dft
             % reversal symmetries should not be ignored, however in the rare even that
             % one would want to ignore them, set ignore_reversal_symmerties to true.
             ignore_reversal_symmerties = false;
-            if ignore_reversal_symmerties
-                s_ck((end/2):end,:)=false; 
-            end
+            if ignore_reversal_symmerties; s_ck((end/2):end,:)=false; end
             
             % covert symmetries [pc-frac] to [cart] -- very important!
             sym_rebase_ = @(B,S) [[ matmul_(matmul_(B,S(1:3,1:3,:)),inv(B)), ...
@@ -4938,14 +4935,14 @@ classdef am_dft
             if     contains(flag,'tb')
                 % for each irreducible atom, set azimuthal quantum numbers J{:}, 
                 % symmetries D{:}, and parity-transpose F{:}
-                [J,D,F] = get_tb_symmetry_representation(spdf, Q{1}(1:3,1:3,:) );
+                [J,D,T] = get_tb_symmetry_representation(spdf, Q{1}(1:3,1:3,:) );
                 % get dimensions
                 d = zeros(1,numel(J)); for i = 1:numel(J); d(i) = sum(J{i}*2+1); end
             elseif contains(flag,'bvk')
                 z = unique(ip.x2i); 
                 % construct transpose super operator (flip symmetry)
-                T = zeros(9,9); T(sub2ind([9,9],[1:9],[1,4,7,2,5,8,3,6,9])) = 1;
-                for i = 1:numel(z); D{i} = Q{1}(1:3,1:3,:); F{i}=T; end; d(z) = 3; 
+                T_ = zeros(9,9); T_(sub2ind([9,9],[1:9],[1,4,7,2,5,8,3,6,9])) = 1;
+                for i = 1:numel(z); D{i} = Q{1}(1:3,1:3,:); T{i}=T_; end; d(z) = 3; 
             end
             
             % get form of force constants for irreducible prototypical bonds
@@ -4955,19 +4952,18 @@ classdef am_dft
                 
                 % use stabilzer group to determine crystallographic symmetry relations; A*B*C' equals kron(C,A)*B(:)
                 % choose an algorithm ALGO=2 is the default and correct version
-                algo=2;
-                switch algo
+                switch 2
                     case 1
                         % original (and erroneous version) just like in Smith's paper on force
                         % constants of diamond.
                         W = sum(kron_( D{j}(:,:,s_ck(:,p)) , D{i}(:,:,s_ck(:,p)) ) - eye(d(i)*d(j)),3);
                     case 2
-                        % incoprorating flip symmetry (need to test still)
+                        % incoprorating flip symmetry
                         % when atomic indicies are flipped, the matrix element is transposed. 
                         % this is achieved like so: equationsToMatrix(a*(b.')*c.',b(:)) - kron(c,a) * T
                         sym_list = find(s_ck(:,p)); W = kron_( D{j}(:,:,sym_list) , D{i}(:,:,sym_list) );
                         for wi = 1:numel(sym_list); if all(Q{2}(:,sym_list(wi))~=[1;2])
-                            W(:,:,wi) = W(:,:,wi) * F{i};
+                            W(:,:,wi) = W(:,:,wi) * T{i};
                         end; end
                         W = sum( W - eye(d(i)*d(j)), 3);
                 end
@@ -4984,7 +4980,6 @@ classdef am_dft
             end
 
             ip.D = D;
-            ip.F = F;
             ip.c = sav.c;
             ip.W = sav.W;
             ip.(matxname_) = sav.(matxname_);
@@ -5039,8 +5034,6 @@ classdef am_dft
             %
             %   Compare these to Melvin Lax p 266.
 
-
-            
             digits(10); import am_dft.* am_lib.*
             
             if     isfield(ip,'vsk')
@@ -5076,12 +5069,14 @@ classdef am_dft
                 m = pp.x2p(cluster(1)); i = pp.x2i(cluster(1)); mp = S(m):E(m); % dm = E(m)-S(m)+1;
                 n = pp.x2p(cluster(2)); j = pp.x2i(cluster(2)); np = S(n):E(n); % dn = E(n)-S(n)+1;
 
+                % get bond vector
                 rij = pp.tau(:,cluster(2)) - pp.tau(:,cluster(1)); rij = wdv_(rij,am_dft.tiny);
-                % if any(any(ip.Q{2}(:,s)~=[1,2])); F = sign(reshape(ip.F{1}*[1:(dm*dn)].',dm,dn)); else; F = ones(dm,dn); end
-                matrix_ = sym(ip.D{i}(:,:,s)) * permute(F .* ip.(matxname_){c},ip.Q{2}(:,s)) * sym(ip.D{j}(:,:,s))';
+                
+                % transform matrix elements
+                matrix_ = sym(ip.D{i}(:,:,s)) * permute(ip.(matxname_){c},ip.Q{2}(:,s)) * sym(ip.D{j}(:,:,s))';
         
                 % build hamiltonian matrix
-                Hc(mp,np,c) = Hc(mp,np,c) + matrix_ .* exp(sym(2i*pi) * sym(rij(:).','d') * kvec(:) );
+                Hc(mp,np,c) = Hc(mp,np,c) + matrix_ .* exp(sym(2i*pi) * sym(rij(:).','f') * kvec(:) );
             end
 
             % check that each irreducible part of the Hamilonian is Hermitian
@@ -6397,8 +6392,7 @@ classdef am_dft
 
         function [bvk] = set_bvk_acoustic_sum_rules(bvk,pp)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % build force constants
             phi = zeros(3,3,bvk.nshells);
@@ -6428,7 +6422,7 @@ classdef am_dft
             end
         end
 
-
+        
         % aux phonons (anharmonic)
 
         function [f]   = get_bvt_forces(bvt,pt,u,algo)
@@ -6495,8 +6489,7 @@ classdef am_dft
 
         function [U,I] = get_bvt_U_matrix(bvt,pt,u)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % the Z matrix factors out force constants leaving displacements
             Z = [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
@@ -6567,7 +6560,7 @@ classdef am_dft
 
         % aux electrons
 
-        function [J,D,F] = get_tb_symmetry_representation(spdf,R)
+        function [J,D,T] = get_tb_symmetry_representation(spdf,R)
             % set symmetries D{:}, and parity-transpose F{:} for each
             % irreducible atom given a list of orbitals for each
             % irreducible atom, spdf = {'sp','d'}
@@ -6578,7 +6571,7 @@ classdef am_dft
             nRs=size(R,3);
 
             % transform symmetries to the tight binding representation (wiger functions)
-            W=cell(1,3); for j=[1:3]; W{j} = get_wigner(j,R); end
+            W=cell(1,3); for j=[1:3]; W{j} = get_wigner(j,R,'real'); end
 
             % set orbitals J{:}, symmetries D{:}, and parity-transpose T{:} for each irreducible atom
             natoms=numel(spdf); F=cell(1,natoms);  D=cell(1,natoms);
@@ -6600,9 +6593,21 @@ classdef am_dft
                     P(S(j):E(j)) = (-1).^j;
                 end
 
-                % construct parity super-operator
+                % construct (NOT parity) transpose super-operator F --> T
+                % F is supposed to be just the transpose operator, without the parity component.
+                % Checked by comparing the tight binding hamiltonian for sp Si to that
+                % reported in Chadi Cohen's paper. Taking parity into account produces
+                % all-positive matrix elements, while ignoring parity (which is correct)
+                % and using only the transpose produces a second-neighbor matrix element of
+                % the form (which is correct):
+                % [ c02_11, -c02_21, -c02_21, -c02_21]
+                % [ c02_21,  c02_22,  c02_32,  c02_32]
+                % [ c02_21,  c02_32,  c02_22,  c02_32]
+                % [ c02_21,  c02_32,  c02_32,  c02_22]
+                % Therefore, the absolute value of F is taken at the end.
                 f_ = @(x) x(:); A=(P.'*P).*reshape([1:d^2],[d,d]);
                 F{i}=zeros(d^2,d^2); F{i}(sub2ind([d^2,d^2],abs(f_(A')),abs(f_(A))))=sign(f_(A'));
+                T{i} = abs(F{i}); 
             end
 
             % correct rounding errors in sym (non-exauhstive)
