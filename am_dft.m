@@ -8,6 +8,7 @@ classdef am_dft
         units_GHz = 98229.06;   % sqrt( [eV/Ang^2] * [1/amu] ) --> 98229.06 [GHz=1/fs]
         
         amu2gram  = 1/6.02214E23;
+        ev2nm     = 1239.842;
         
         usemex    = false;
         potdir    = '/Users/lenzinho/Linux/vasp.5.4/potcars/PBE.54/';
@@ -414,8 +415,12 @@ classdef am_dft
             % write_poscar(uc,fposcar)
             if nargin < 2; fposcar='POSCAR'; end
 
+            % check that the basis is right-handed
             if det(uc.bas)<0; error('vasp requires basis vectors with positive determinants'); end
 
+            % convert from [nm] to [Ang]
+            uc.bas = uc.bas*10;
+            
             n = size(uc.tau,3);
             for i = 1:n
                 % file name
@@ -2867,6 +2872,9 @@ classdef am_dft
                 case 'create';   uc = am_dft.create_cell(arg{:});
             end
             
+            % convert bas from [Ang] to [nm]
+            uc.bas = uc.bas*0.1;
+            
             % set default numerical tolerance
             if nargin < 3; tol = am_dft.tiny; end
 
@@ -2920,8 +2928,8 @@ classdef am_dft
                 fprintf('     %-15s = %s\n','point group',decode_pg(pg_code));
                 fprintf('     %-15s = %s\n','space group',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
                 fprintf('     %-15s = %-8.3f [g/cm3] \n','mass density',get_cell_mass_density(uc));
-                fprintf('     %-15s = %-8.3f [atoms/nm3]\n','number density',get_atomic_number_density(uc));
-                fprintf('     %-15s = %-8.3f [f.u./nm3]\n','formula density',get_cell_formula_unit_density(uc));
+                fprintf('     %-15s = %-8.3f [atoms/nm3]\n','number density',get_cell_atomic_density(uc));
+                fprintf('     %-15s = %-8.3f [f.u./nm3]\n','formula density',get_cell_formula_density(uc));
                 if contains(flag,'cif')
                     fprintf('     %-15s = %s\n','create command',str);
                 end
@@ -3104,6 +3112,8 @@ classdef am_dft
                     case 'Cu';              uc = create_cell(am_dft.abc2bas(3.6151,'cubic'),                [0;0;0],                                                   {'Cu'},225); % ICSD 43493
                     case 'fcc-Fe';          uc = create_cell(am_dft.abc2bas(3.6468,'cubic'),               [[0;0;0]],                                                  {'Fe'},225); % ICSD 44862
                     case 'bcc-Fe';          uc = create_cell(am_dft.abc2bas(2.9315,'cubic'),               [[0;0;0]],                                                  {'Fe'},229); % ICSD 44863
+                    % salts
+                    case 'NaCl';            uc = create_cell(am_dft.abc2bas(5.4533,'cubic'),               [[0;0;0], [1;1;1]/2],                                       {'Na','Cl'}, 225);
                     % oxides
                     case 'Al2O3';           uc = create_cell(am_dft.abc2bas([4.7617,12.9990],'hex'),       [[0;0;0.3522],[0.6936;0;0.2500]],                           {'Al','O'}, 167); % ICSD 10425
                     case 'gamma-Al2O3';     uc = create_cell(am_dft.abc2bas(7.9110,'cubic'),               [[1;1;1]*0.37970,[5;5;5]/8,[0;0;0],[1;1;1]*0.15220],        {'O','Al','Al','Al'},227); % ICSD 66558 - CIF has different origin choice
@@ -3570,6 +3580,7 @@ classdef am_dft
                     m = bas.'*bas;
             end
         end
+        
         
         % brillouin zones
 
@@ -5592,6 +5603,227 @@ classdef am_dft
         
     end
 
+    
+    % diffraction
+    
+    methods (Static)
+        
+        
+        function [fbs,ibs] = get_bragg(uc,k_max)
+            % bragg brillouin zone
+            import am_mbe.* am_lib.* am_dft.*
+
+            % k max is the largest wavevector magntiude considered
+            if nargin < 2; th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
+
+            % get miller indicies [hkl] excluding gamma
+            N=6; k=permn_([N:-1:-N],3).'; k=k(:,~all(k==0,1)); 
+            % get reciprocal basis vectors [1/nm]
+            recbas = inv(uc.bas).';
+            % sort by distance
+            k = k(:,rankc_(normc_(recbas*k)));               
+            % identify values which cannot be reached by diffractometer
+            k = k(:,normc_(recbas*k)<k_max); 
+            % save "full bragg spots" structure 
+            bb_ = @(recbas,k) struct('units','frac-recp',...
+                'recbas',recbas,'nks',size(k,2),'k',k,'w',ones(1,size(k,2)));
+            fbs = bb_(recbas,k);
+
+            % get symmetrically equivalent bragg spots
+            % save "irreducible bragg spots" structure 
+            [ibs,i2b,b2i] = get_ibz(fbs,uc,'nomod,addinv');
+            ibs.i2b = i2b; ibs.b2i = b2i;
+            fbs.i2b = i2b; fbs.b2i = b2i; 
+        end
+
+        function [Fk,L,P]      = get_structure_factor(uc,ibs,hv)
+
+            import am_mbe.* am_lib.* am_dft.*
+
+            fprintf(' ... computing structure factors'); tic
+
+            [Z,~,inds] = unique(get_atomic_number({uc.symb{uc.species}}));
+
+            % get wavevector [1/nm]
+            q = normc_(ibs.recbas*ibs.k);
+
+            % get atomic form factors
+            [f0,f1,f2] = get_atomic_xray_form_factor(Z,hv,q);
+            
+            f = permute(f0+f1+f2*1i,[1,3,2]);
+
+            % compute structure factor
+            Fk = sum(f(inds,:).*exp(2i*pi*uc.tau.'*ibs.k),1); 
+
+            % get structure factor squared
+            ibs.Fk2 = abs(Fk).^2; ibs.Fk2 = ibs.Fk2./max(ibs.Fk2)*100; 
+
+            % get lorentz-polarization factors [Warren p 3 eq 1.3, p 44 eq 4.6]
+            th_ = @(hv,q) asind(get_photon_wavelength(hv)*q/2);
+            P_  = {@(th) cosd(2*th).^2, ...             % polarized in the scattering plane
+                   @(th) 1, ...                         % polarized perpendicular to the scattering plane
+                   @(th) (1 + cosd(2*th).^2) ./ 2}      % unpolarized 
+            P = P_{3}(th_(hv,q));
+            
+            L_  = {@(th) 1./(sind(th).*sind(2*th)), ... % Lorentz factor [warren p 49, eq 4.11]
+                   @(th) 1./(sind(th).^2.*cosd(th))}
+            L = L_{2}(th_(hv,q));
+            
+            % print table
+            fprintf(' (%.3f s)\n',toc);
+            tabulate_bragg(ibs,hv,0.1);
+
+            function           tabulate_bragg(fbs,hv,threshold)
+                
+                % print results
+                fprintf('     %5s %5s %5s %10s %5s %10s\n','h','k','l','2th [deg]','w','Fhkl^2 [%]');
+                fprintf('     %5s %5s %5s %10s %5s %10s\n','-----','-----','-----','----------','-----','----------');
+                for j = 1:fbs.nks
+                    % exclude everything with peak height smaller than threshold
+                    if abs(fbs.Fk2(j))>threshold
+                        th2 = 2 * th_( hv, norm(fbs.recbas*fbs.k(:,j)) );
+                        fprintf('     %5i %5i %5i %10.3f %5i %10.3f\n',fbs.k(:,j),th2,fbs.w(j),fbs.Fk2(j));
+                    end
+                end
+            end
+        end
+            
+
+            
+% 
+%         function [fbs,ibs] = get_bragg(uc,hv)
+%             % bragg brillouin zone
+%             import am_mbe.* am_lib.* am_dft.*
+% 
+%             if nargin < 2; hv = get_atomic_emission_line_energy(get_atomic_number('Cu'),'kalpha1'); end
+% 
+%             fprintf(' ... getting diffraction intensities'); tic
+% 
+%             % generate hkl list
+%             lambda = get_photon_energy(hv);
+%             % get miller indicies [hkl] excluding gamma
+%             N=6; k=permn_([N:-1:-N],3).'; k=k(:,~all(k==0,1)); 
+%             % get reciprocal basis vectors [1/Ang]
+%             recbas = inv(uc.bas*0.1).'; k_cart = recbas*k;
+%             % covert to cart [1/Ang] and sort by distances
+%             [~,i]=sort(normc_(k_cart)); k=k(:,i); k_cart=k_cart(:,i); 
+%             % identify values which cannot be reached by diffractometer
+%             th2_max=180; d=normc_(k_cart); ex_ = lambda*d/2 < sind(th2_max/2); k=k(:,ex_); k_cart=k_cart(:,ex_); d=d(ex_);
+%             % get structure factors
+%             Fk = get_structure_factor(uc,hv,k_cart);
+%             % incorporate texture and exclude reflections with diffraction intensities below threshold
+%             threshold = am_mbe.tiny; Fk2 = abs(Fk).^2; Fk2 = Fk2./max(Fk2)*100; ex_ = Fk2>threshold;
+%             % save "full bragg spots" structure 
+%             bb_ = @(hv,recbas,k,Fk2) struct('units','frac-recp',...
+%                 'hv',hv,'recbas',recbas,'nks',size(k,2),'k',k,'w',ones(1,size(k,2)),'Fk2',Fk2);
+%             fbs = bb_(hv,recbas,k(:,ex_),Fk2(ex_));
+%             
+%             % get symmetrically equivalent bragg spots
+%             % save "irreducible bragg spots" structure 
+%             [ibs,i2b,b2i] = get_ibz(fbs,uc,'nomod,addinv');
+%             ibs.i2b = i2b; ibs.b2i = b2i; ibs.Fk2 = ibs.Fk2(i2b);
+%             fbs.i2b = i2b; fbs.b2i = b2i; 
+%             
+%             % print stuff
+%             fprintf(' (%.3f s) \n',toc);
+%             tabulate_bragg(ibs,hv,threshold)
+% 
+%             function           tabulate_bragg(ibs,hv,threshold)
+%                 fprintf('     %5s %5s %5s %10s %5s %10s\n','h','k','l','2th [deg]','w','Fhkl^2 [%]');
+%                 fprintf('     %5s %5s %5s %10s %5s %10s\n','-----','-----','-----','----------','-----','----------');
+%                 for j = 1:ibs.nks
+%                     % exclude everything with peak height smaller than threshold
+%                     if abs(ibs.Fk2(j))>threshold
+%                         th2 = 2*am_mbe.get_th(norm(ibs.recbas*ibs.k(:,j)),hv);
+%                         fprintf('     %5i %5i %5i %10.3f %5i %10.3f\n',ibs.k(:,j),th2,ibs.w(j),ibs.Fk2(j));
+%                     end
+%                 end
+%             end
+%         end
+        
+        function [h]       = plot_ibs_1D(ibs,labels,label_threshold,varargin)
+            import am_lib.* am_dft.* am_mbe.*
+            % set default maximum range in plot
+            max_th2_range = 110;
+            %
+            yscaler_ = @(x) x.^0.1;
+            yscaler_ = @(x) x;
+            % set threshold
+            if nargin<3 || isempty(label_threshold); label_threshold = 0; end
+            if nargin<2 || isempty(labels); labels = cell(1,numel(ibs)); end
+            % number of bragg structures (one for each cell)
+            nibss=numel(ibs);
+            % plot results
+            if nibss>1
+                clist = am_lib.color_(nibss).';
+                for j = 1:nibss
+                    ax(j) = axes('position',[0.025 (0.1+0.87*(j-1)/nibss) 0.95 0.85/nibss]);
+                    h=plot_ibs_1D(ibs(j),[],label_threshold,'color',clist(:,j)); 
+                    if j~=1; set(gca,'XTickLabel',[]); xlabel(''); end
+                    % set y axis label properties
+                    ax(j).YLabel.String=labels{j};
+                    ax(j).YLabel.Color=clist(:,j);
+                end
+                linkaxes(ax);
+            else
+                % plot Bragg peaks
+                set(gcf,'color','w'); 
+                h=hggroup;
+                for i = 1:ibs.nks
+                    th2 = 2*get_th(norm(ibs.recbas*ibs.k(:,i)),ibs.hv);
+                    if th2 < max_th2_range
+                        line([th2,th2],[0,yscaler_(ibs.Fk2(i))],'linewidth',2,varargin{:},'Parent',h);
+                        if ibs.Fk2(i) > label_threshold
+                            % text(th2,ibs.Fk2(i),sprintf('  [%i%i%i]  %.3f^\\circ  %i', ibs.k(:,i),th2,ibs.w(i)),'Parent',h);
+                            text(th2,yscaler_(ibs.Fk2(i)),sprintf('  [%i%i%i]', ibs.k(:,i)),varargin{:},'Parent',h);
+                        end
+                    end
+                end
+                box on; xlabel('2\theta [deg]'); xlim([5 max_th2_range]); ylim([0 yscaler_(120)]); %xlabel('intensity [a.u.]');
+                set(gca,'XTick',[0:10:max_th2_range]); set(gca,'YTick',[]); grid on; set(gca,'YMinorGrid','on');
+            end
+            H=findobj(gca,'Type','text');
+            set(H,'Rotation',60);
+        end
+        
+        function [h]       = plot_ibs_2D(ibs)
+            % [uc,~,~]=get_cell('material','SrTiO3');
+            % [bragg] = get_bragg_poly_rings(uc,hv);
+            % [h]     = plot_bragg_poly_rings(bragg,'linewidth',1.5);
+            import am_mbe.*
+            % include edge points 
+            N = 201; euler = exp(2i*pi*[0:N]/N);
+            x = real(euler);y = imag(euler); h=hggroup;
+            for i = 1:ibs.nks
+                r = norm(ibs.recbas*ibs.k(:,i));
+                line(r*x,r*y,'color','r','linewidth',log10(ibs.Fk2(i)+1)/1.5+0.5,'Parent',h)
+                text(0,r,sprintf('%i %i %i',ibs.k(:,i)),'HorizontalAlignment','center','BackgroundColor','w','EdgeColor','r','Parent',h);
+            end
+        end
+        
+        function [h]       = plot_fbs_2D(fbs,v1,v2,varargin)
+            import am_lib.*
+            % see which points lie on the plane
+            for i = 1:fbs.nks
+                if eq_(det([v1(:),v2(:),fbs.k(:,i)]),0)
+                    ex_(i) = true;
+                else
+                    ex_(i) = false;
+                end
+            end
+            % exclude points not on the line
+            fbs.k = fbs.k(:,ex_); fbs.Fk2 = fbs.Fk2(ex_); 
+            fbs.x = v1*fbs.recbas*fbs.k/norm(v1); fbs.y = v2*fbs.recbas*fbs.k/norm(v2);
+            fbs.b2i = fbs.b2i(ex_); fbs.w = fbs.w(ex_); fbs.nks = sum(ex_); 
+            % plot points
+            h=hggroup;
+            hold on; scatter(fbs.x,fbs.y,log10(fbs.Fk2+1)*50,'filled','linewidth',2,varargin{:},'Parent',h); hold off;
+            for i = 1:fbs.nks
+                text(fbs.x(i),fbs.y(i)+0.5,sprintf('%i %i %i',fbs.k(:,i)),'HorizontalAlignment','center','BackgroundColor','w','EdgeColor','b');
+            end
+        end
+        
+    end
 
     % aux library
 
@@ -5888,7 +6120,9 @@ classdef am_dft
             end
         end
 
-        function formula      = get_formula(uc)
+        % cell parameters
+        
+        function formula         = get_cell_formula(uc)
             import am_lib.*
             formula = ''; x = uc.nspecies./gcd_(uc.nspecies);
             for j = 1:numel(x)
@@ -5899,7 +6133,24 @@ classdef am_dft
             end
         end
 
+        function mass_density    = get_cell_mass_density(uc)
+            % mass_density = get_cell_mass_density(uc)
+            % [g/cm3]
+            mass_density = sum(uc.mass(uc.species)) * am_dft.amu2gram / det(uc.bas * 1E-7);
+        end
+        
+        function num_density     = get_cell_atomic_density(uc)
+            % [atoms/nm3]
+            num_density = uc.natoms / det(uc.bas);
+        end
+        
+        function formula_density = get_cell_formula_density(uc)
+            % [f.u./nm3]
+            import am_dft.* am_lib.*
+            formula_density = get_cell_atomic_density(uc)/(uc.natoms/gcd_(uc.nspecies));
+        end
 
+        
         % aux brillouin zones
 
         function [y]           = ibz2fbz(fbz,ibz,x)
@@ -6481,6 +6732,319 @@ classdef am_dft
             for i = 1:nZs; mass(i) = mass_database(Z(i)); end
         end
 
+        function [f0,f1,f2] = get_atomic_xray_form_factor(Z,hv,k,flag)
+            %
+            % [f1,f2] = get_atomic_xray_form_factor(Z,hv,th) [nZs,nhvs,nths]
+            % 
+            % Z      [Z]            atomic number
+            % hv     [eV]           photon energy
+            % k      [1/Ang]        reciprocal wavevector magnitude
+            % f0     [e-/atom]      atomic scattering factor
+            % f1     [e-/atom]      atomic scattering factor
+            % f2     [e-/atom]      atomic scattering factor
+            %
+            % Conversion factor = 
+            %       Plank's constant * speed of light / nm / eV
+            %
+            % B. L. Henke, E. M. Gullikson, and J. C. Davis, Atomic Data
+            % and Nuclear Data Tables 54, 181 (1993). Note: There is a
+            % difference in convention between this reference and Warren.
+            % Warren defines the anomolous atomic scattering factor as:
+            %
+            %       f = f0 + f1 + i f2
+            %
+            % This article clumps f0 and f1 together:
+            %
+            %       f = f' + i f''
+            %
+            % f' and f'' are provided in the dataset. To recover Warren's
+            % original definition:
+            % 
+            %       f1 = f' - f0
+            %
+            % using f0 values computed from Cromer Mann coefficients.
+            
+            import am_mbe.* am_dft.*
+            
+            % algo
+            if nargin < 4; flag = 'CM'; end
+            
+            % convert k [1/nm -> 1/Ang]
+            k = k/10;
+            
+            % initialize
+            nZs = numel(Z); nks = numel(k); nhvs = numel(hv); f0 = zeros(nZs,nhvs,nks);  
+            
+            if     contains(flag,'CM')
+                for i = 1:nZs
+                    % get f0 analytically from Cromer-Mann coefficients
+                    CM = get_atomic_cromer_mann_coefficients(Z(i));
+                    ai = reshape(CM(1:4),1,1,[]);
+                    bi = reshape(CM(5:8),1,1,[]);
+                    % f0 [nZs,nhvs,nths]
+                    for j = 1:nhvs
+                        % evaluate form factor
+                        f0(i,j,:) = sum( ai .* exp( - bi .* (k/2).^2 ) , 3) + CM(9);
+                    end
+                end
+            elseif contains(flag,'DT')
+                for i = 1:nZs
+                    % get f0 analytically from Cromer-Mann coefficients
+                    DT = get_doyle_turner_coefficients(Z(i));
+                    ai = reshape(DT(1:4),1,1,[]);
+                    bi = reshape(DT(5:8),1,1,[]);
+                    % f0 [nZs,nhvs,nths]
+                    for j = 1:nhvs
+                        % evaluate form factor
+                        f0(i,j,:) = Z(i) - 41.78214 * (k/2).^2 .* sum( ai .* exp( - bi .* (k/2).^2 ) , 3);
+                    end
+                end
+                
+            end
+            
+            if nargout > 1
+                f1 = zeros(nZs,nhvs,nks); f2 = zeros(nZs,nhvs,nks);  symb=get_atomic_symbol(Z);
+                for i = 1:nZs
+                    
+                    % get f1 and f2 by interpolation
+                    fid = fopen(['data_atomic_scattering_factor/',strtrim(lower(symb{i})),'.nff']);
+                        [~] = fgetl(fid); buffer = reshape(fscanf(fid,'%f'),3,[]).';
+                    fclose(fid);
+
+                    % anomolous form factors from Henke
+                    for j = 1:nhvs
+                        f1(i,j,:) = interp1(buffer(:,1),buffer(:,2),hv(j)) - Z(i);
+                        f2(i,j,:) = interp1(buffer(:,1),buffer(:,3),hv(j));
+                    end
+                end
+            end
+            
+            function [CM]    = get_atomic_cromer_mann_coefficients(Z)
+                %
+                % CM = get_atomic_cromer_mann_coefficients(Z)
+                % 
+                % Z     atomic number
+                % CM    array of Cromer-Mann coefficients [a1, a2, a3, a4, b1, b2, b3, b4, c]
+                %
+                % Atomic form factors are defined as:
+                %
+                %           4
+                %     f0 = sum [ ai*exp(-bi*s^2) ] + c
+                %          i=1
+                %
+                % for s = sin(theta)/lambda and Cromer-Mann coefficients ai,
+                % bi, and c. 
+                %
+                % S. L. Morelhão, Computer Simulation Tools for X-Ray Analysis
+                % (Springer International Publishing, Cham, 2016). 
+                %
+
+                CM_database = [ ...
+                   0.489918,  0.262003,  0.196767, 0.049879,20.659300, 7.740390, 49.551900,  2.201590,  0.001305;  % H        
+                   0.873400,  0.630900,  0.311200, 0.178000, 9.103700, 3.356800, 22.927600,  0.982100,  0.006400;  % He       
+                   1.128200,  0.750800,  0.617500, 0.465300, 3.954600, 1.052400, 85.390500,168.261000,  0.037700;  % Li       
+                   1.591900,  1.127800,  0.539100, 0.702900,43.642700, 1.862300,103.483000,  0.542000,  0.038500;  % Be       
+                   2.054500,  1.332600,  1.097900, 0.706800,23.218500, 1.021000, 60.349800,  0.140300, -0.193200;  % B        
+                   2.260690,  1.561650,  1.050750, 0.839259,22.690700, 0.656665,  9.756180, 55.594900,  0.286977;  % C        
+                  12.212600,  3.132200,  2.012500, 1.166300, 0.005700, 9.893300, 28.997500,  0.582600,-11.529000;  % N        
+                   3.048500,  2.286800,  1.546300, 0.867000,13.277100, 5.701100,  0.323900, 32.908900,  0.250800;  % O        
+                   3.539200,  2.641200,  1.517000, 1.024300,10.282500, 4.294400,  0.261500, 26.147600,  0.277600;  % F        
+                   3.955300,  3.112500,  1.454600, 1.125100, 8.404200, 3.426200,  0.230600, 21.718400,  0.351500;  % Ne       
+                   4.762600,  3.173600,  1.267400, 1.112800, 3.285000, 8.842200,  0.313600,129.424000,  0.676000;  % Na       
+                   5.420400,  2.173500,  1.226900, 2.307300, 2.827500,79.261100,  0.380800,  7.193700,  0.858400;  % Mg       
+                   6.420200,  1.900200,  1.593600, 1.964600, 3.038700, 0.742600, 31.547200, 85.088600,  1.115100;  % Al       
+                   5.662690,  3.071640,  2.624460, 1.393200, 2.665200,38.663400,  0.916946, 93.545800,  1.247070;  % Si       
+                   6.434500,  4.179100,  1.780000, 1.490800, 1.906700,27.157000,  0.526000, 68.164500,  1.114900;  % P        
+                   6.905300,  5.203400,  1.437900, 1.586300, 1.467900,22.215100,  0.253600, 56.172000,  0.866900;  % S        
+                  11.460400,  7.196400,  6.255600, 1.645500, 0.010400, 1.166200, 18.519400, 47.778400, -9.557400;  % Cl       
+                   7.484500,  6.772300,  0.653900, 1.644200, 0.907200,14.840700, 43.898300, 33.392900,  1.444500;  % Ar       
+                   8.218600,  7.439800,  1.051900, 0.865900,12.794900, 0.774800,213.187000, 41.684100,  1.422800;  % K        
+                   8.626600,  7.387300,  1.589900, 1.021100,10.442100, 0.659900, 85.748400,178.437000,  1.375100;  % Ca       
+                   9.189000,  7.367900,  1.640900, 1.468000, 9.021300, 0.572900,136.108000, 51.353100,  1.332900;  % Sc       
+                   9.759500,  7.355800,  1.699100, 1.902100, 7.850800, 0.500000, 35.633800,116.105000,  1.280700;  % Ti       
+                  10.297100,  7.351100,  2.070300, 2.057100, 6.865700, 0.438500, 26.893800,102.478000,  1.219900;  % V        
+                  10.640600,  7.353700,  3.324000, 1.492200, 6.103800, 0.392000, 20.262600, 98.739900,  1.183200;  % Cr       
+                  11.281900,  7.357300,  3.019300, 2.244100, 5.340900, 0.343200, 17.867400, 83.754300,  1.089600;  % Mn       
+                  11.769500,  7.357300,  3.522200, 2.304500, 4.761100, 0.307200, 15.353500, 76.880500,  1.036900;  % Fe       
+                  12.284100,  7.340900,  4.003400, 2.348800, 4.279100, 0.278400, 13.535900, 71.169200,  1.011800;  % Co       
+                  12.837600,  7.292000,  4.443800, 2.380000, 3.878500, 0.256500, 12.176300, 66.342100,  1.034100;  % Ni       
+                  13.338000,  7.167600,  5.615800, 1.673500, 3.582800, 0.247000, 11.396600, 64.812600,  1.191000;  % Cu       
+                  14.074300,  7.031800,  5.165200, 2.410000, 3.265500, 0.233300, 10.316300, 58.709700,  1.304100;  % Zn       
+                  15.235400,  6.700600,  4.359100, 2.962300, 3.066900, 0.241200, 10.780500, 61.413500,  1.718900;  % Ga       
+                  16.081600,  6.374700,  3.706800, 3.683000, 2.850900, 0.251600, 11.446800, 54.762500,  2.131300;  % Ge       
+                  16.672300,  6.070100,  3.431300, 4.277900, 2.634500, 0.264700, 12.947900, 47.797200,  2.531000;  % As       
+                  17.000600,  5.819600,  3.973100, 4.354300, 2.409800, 0.272600, 15.237200, 43.816300,  2.840900;  % Se       
+                  17.178900,  5.235800,  5.637700, 3.985100, 2.172300,16.579600,  0.260900, 41.432800,  2.955700;  % Br       
+                  17.355500,  6.728600,  5.549300, 3.537500, 1.938400,16.562300,  0.226100, 39.397200,  2.825000;  % Kr       
+                  17.178400,  9.643500,  5.139900, 1.529200, 1.788800,17.315100,  0.274800,164.934000,  3.487300;  % Rb       
+                  17.566300,  9.818400,  5.422000, 2.669400, 1.556400,14.098800,  0.166400,132.376000,  2.506400;  % Sr       
+                  17.776000, 10.294600,  5.726290, 3.265880, 1.402900,12.800600,  0.125599,104.354000,  1.912130;  % Y        
+                  17.876500, 10.948000,  5.417320, 3.657210, 1.276180,11.916000,  0.117622, 87.662700,  2.069290;  % Zr       
+                  17.614200, 12.014400,  4.041830, 3.533460, 1.188650,11.766000,  0.204785, 69.795700,  3.755910;  % Nb       
+                   3.702500, 17.235600, 12.887600, 3.742900, 0.277200, 1.095800, 11.004000, 61.658400,  4.387500;  % Mo       
+                  19.130100, 11.094800,  4.649010, 2.712630, 0.864132, 8.144870, 21.570700, 86.847200,  5.404280;  % Tc       
+                  19.267400, 12.918200,  4.863370, 1.567560, 0.808520, 8.434670, 24.799700, 94.292800,  5.378740;  % Ru       
+                  19.295700, 14.350100,  4.734250, 1.289180, 0.751536, 8.217580, 25.874900, 98.606200,  5.328000;  % Rh       
+                  19.331900, 15.501700,  5.295370, 0.605844, 0.698655, 7.989290, 25.205200, 76.898600,  5.265930;  % Pd       
+                  19.280800, 16.688500,  4.804500, 1.046300, 0.644600, 7.472600, 24.660500, 99.815600,  5.179000;  % Ag       
+                  19.221400, 17.644400,  4.461000, 1.602900, 0.594600, 6.908900, 24.700800, 87.482500,  5.069400;  % Cd       
+                  19.162400, 18.559600,  4.294800, 2.039600, 0.547600, 6.377600, 25.849900, 92.802900,  4.939100;  % In       
+                  19.188900, 19.100500,  4.458500, 2.466300, 5.830300, 0.503100, 26.890900, 83.957100,  4.782100;  % Sn       
+                  19.641800, 19.045500,  5.037100, 2.682700, 5.303400, 0.460700, 27.907400, 75.282500,  4.590900;  % Sb       
+                  19.964400, 19.013800,  6.144870, 2.523900, 4.817420, 0.420885, 28.528400, 70.840300,  4.352000;  % Te       
+                  20.147200, 18.994900,  7.513800, 2.273500, 4.347000, 0.381400, 27.766000, 66.877600,  4.071200;  % I        
+                  20.293300, 19.029800,  8.976700, 1.990000, 3.928200, 0.344000, 26.465900, 64.265800,  3.711800;  % Xe       
+                  20.389200, 19.106200, 10.662000, 1.495300, 3.569000, 0.310700, 24.387900,213.904000,  3.335200;  % Cs       
+                  20.336100, 19.297000, 10.888000, 2.695900, 3.216000, 0.275600, 20.207300,167.202000,  2.773100;  % Ba       
+                  20.578000, 19.599000, 11.372700, 3.287190, 2.948170, 0.244475, 18.772600,133.124000,  2.146780;  % La       
+                  21.167100, 19.769500, 11.851300, 3.330490, 2.812190, 0.226836, 17.608300,127.113000,  1.862640;  % Ce       
+                  22.044000, 19.669700, 12.385600, 2.824280, 2.773930, 0.222087, 16.766900,143.644000,  2.058300;  % Pr       
+                  22.684500, 19.684700, 12.774000, 2.851370, 2.662480, 0.210628, 15.885000,137.903000,  1.984860;  % Nd       
+                  23.340500, 19.609500, 13.123500, 2.875160, 2.562700, 0.202088, 15.100900,132.721000,  2.028760;  % Pm       
+                  24.004200, 19.425800, 13.439600, 2.896040, 2.472740, 0.196451, 14.399600,128.007000,  2.209630;  % Sm       
+                  24.627400, 19.088600, 13.760300, 2.922700, 2.387900, 0.194200, 13.754600,123.174000,  2.574500;  % Eu       
+                  25.070900, 19.079800, 13.851800, 3.545450, 2.253410, 0.181951, 12.933100,101.398000,  2.419600;  % Gd       
+                  25.897600, 18.218500, 14.316700, 2.953540, 2.242560, 0.196143, 12.664800,115.362000,  3.583240;  % Tb       
+                  26.507000, 17.638300, 14.559600, 2.965770, 2.180200, 0.202172, 12.189900,111.874000,  4.297280;  % Dy       
+                  26.904900, 17.294000, 14.558300, 3.638370, 2.070510, 0.197940, 11.440700, 92.656600,  4.567960;  % Ho       
+                  27.656300, 16.428500, 14.977900, 2.982330, 2.073560, 0.223545, 11.360400,105.703000,  5.920460;  % Er       
+                  28.181900, 15.885100, 15.154200, 2.987060, 2.028590, 0.238849, 10.997500,102.961000,  6.756210;  % Tm       
+                  28.664100, 15.434500, 15.308700, 2.989630, 1.988900, 0.257119, 10.664700,100.417000,  7.566720;  % Yb       
+                  28.947600, 15.220800, 15.100000, 3.716010, 1.901820, 9.985190,  0.261033, 84.329800,  7.976280;  % Lu       
+                  29.144000, 15.172600, 14.758600, 4.300130, 1.832620, 9.599900,  0.275116, 72.029000,  8.581540;  % Hf       
+                  29.202400, 15.229300, 14.513500, 4.764920, 1.773330, 9.370460,  0.295977, 63.364400,  9.243540;  % Ta       
+                  29.081800, 15.430000, 14.432700, 5.119820, 1.720290, 9.225900,  0.321703, 57.056000,  9.887500;  % W        
+                  28.762100, 15.718900, 14.556400, 5.441740, 1.671910, 9.092270,  0.350500, 52.086100, 10.472000;  % Re       
+                  28.189400, 16.155000, 14.930500, 5.675890, 1.629030, 8.979480,  0.382661, 48.164700, 11.000500;  % Os       
+                  27.304900, 16.729600, 15.611500, 5.833770, 1.592790, 8.865530,  0.417916, 45.001100, 11.472200;  % Ir       
+                  27.005900, 17.763900, 15.713100, 5.783700, 1.512930, 8.811740,  0.424593, 38.610300, 11.688300;  % Pt       
+                  16.881900, 18.591300, 25.558200, 5.860000, 0.461100, 8.621600,  1.482600, 36.395600, 12.065800;  % Au       
+                  20.680900, 19.041700, 21.657500, 5.967600, 0.545000, 8.448400,  1.572900, 38.324600, 12.608900;  % Hg       
+                  27.544600, 19.158400, 15.538000, 5.525930, 0.655150, 8.707510,  1.963470, 45.814900, 13.174600;  % Tl       
+                  31.061700, 13.063700, 18.442000, 5.969600, 0.690200, 2.357600,  8.618000, 47.257900, 13.411800;  % Pb       
+                  33.368900, 12.951000, 16.587700, 6.469200, 0.704000, 2.923800,  8.793700, 48.009300, 13.578200;  % Bi       
+                  34.672600, 15.473300, 13.113800, 7.025880, 0.700999, 3.550780,  9.556420, 47.004500, 13.677000;  % Po       
+                  35.316300, 19.021100,  9.498870, 7.425180, 0.685870, 3.974580, 11.382400, 45.471500, 13.710800;  % At       
+                  35.563100, 21.281600,  8.003700, 7.443300, 0.663100, 4.069100, 14.042200, 44.247300, 13.690500;  % Rn       
+                  35.929900, 23.054700, 12.143900, 2.112530, 0.646453, 4.176190, 23.105200,150.645000, 13.724700;  % Fr       
+                  35.763000, 22.906400, 12.473900, 3.210970, 0.616341, 3.871350, 19.988700,142.325000, 13.621100;  % Ra       
+                  35.659700, 23.103200, 12.597700, 4.086550, 0.589092, 3.651550, 18.599000,117.020000, 13.526600;  % Ac       
+                  35.564500, 23.421900, 12.747300, 4.807030, 0.563359, 3.462040, 17.830900, 99.172200, 13.431400;  % Th       
+                  35.884700, 23.294800, 14.189100, 4.172870, 0.547751, 3.415190, 16.923500,105.251000, 13.428700;  % Pa       
+                  36.022800, 23.412800, 14.949100, 4.188000, 0.529300, 3.325300, 16.092700,100.613000, 13.396600;  % U        
+                  36.187400, 23.596400, 15.640200, 4.185500, 0.511929, 3.253960, 15.362200, 97.490800, 13.357300;  % Np       
+                  35.510300, 22.578700, 12.776600, 4.921590, 0.498626, 2.966270, 11.948400, 22.750200, 13.211600;  % Pu       
+                  36.670600, 24.099200, 17.341500, 3.493310, 0.483629, 3.206470, 14.313600,102.273000, 13.359200;  % Am       
+                  36.648800, 24.409600, 17.399000, 4.216650, 0.465154, 3.089970, 13.434600, 88.483400, 13.288700;  % Cm       
+                  36.788100, 24.773600, 17.891900, 4.232840, 0.451018, 3.046190, 12.894600, 86.003000, 13.275400;  % Bk       
+                  36.918500, 25.199500, 18.331700, 4.243910, 0.437533, 3.007750, 12.404400, 83.788100, 13.267400]; % Cf       
+              CM = CM_database(Z,:);
+            end
+            
+            function [DT]    = get_doyle_turner_coefficients(Z)
+                DT_database = [...
+                 0.202, 0.244, 0.082,  0,     30.868,  8.544,  1.273, 0      ;	%	1	H
+                 0.091, 0.181, 0.11,   0.036, 18.183,  6.212,  1.803, 0.284  ;	%	2	He
+                 1.611, 1.246, 0.326,  0.099, 107.638, 30.48,  4.533, 0.495  ;	%	3	Li
+                 1.25,  1.334, 0.36,   0.106, 60.804,  18.591, 3.653, 0.416  ;	%	4	Be
+                 0.945, 1.312, 0.419,  0.116, 46.444,  14.178, 3.223, 0.377  ;	%	5	B
+                 0.731, 1.195, 0.456,  0.125, 36.995,  11.297, 2.814, 0.346  ;	%	6	C
+                 0.572, 1.043, 0.465,  0.131, 28.847,  9.054,  2.421, 0.317  ;	%	7	N
+                 0.455, 0.917, 0.472,  0.138, 23.78,   7.622,  2.144, 0.296  ;	%	8	O
+                 0.387, 0.811, 0.475,  0.146, 20.239,  6.609,  1.931, 0.279  ;	%	9	F
+                 0.303, 0.72,  0.475,  0.153, 17.64,   5.86,   1.762, 0.266  ;	%	10	Ne
+                 2.241, 1.333, 0.907,  0.286, 108.004, 24.505, 3.391, 0.435  ;	%	11	Na
+                 2.268, 1.803, 0.839,  0.289, 73.67,   20.175, 3.013, 0.405  ;	%	12	Mg
+                 2.276, 2.428, 0.858,  0.317, 72.322,  19.773, 3.08,  0.408  ;	%	13	Al
+                 2.129, 2.533, 0.835,  0.322, 57.775,  16.476, 2.88,  0.386  ;	%	14	Si
+                 1.888, 2.469, 0.805,  0.32,  44.876,  13.538, 2.642, 0.361  ;	%	15	P
+                 1.659, 2.386, 0.79,   0.321, 36.65,   11.488, 2.469, 0.34   ;	%	16	S
+                 1.452, 2.292, 0.787,  0.322, 30.935,  9.98,   2.234, 0.323  ;	%	17	Cl
+                 1.274, 2.19,  0.793,  0.326, 26.682,  8.813,  2.219, 0.307  ;	%	18	Ar
+                 3.951, 2.545, 1.98,   0.482, 137.075, 22.402, 4.532, 0.434  ;	%	19	K
+                 4.47,  2.971, 1.97,   0.482, 99.523,  22.696, 4.195, 0.417  ;	%	20	Ca
+                 3.966, 2.917, 1.925,  0.48,  88.96,   20.606, 3.856, 0.399  ;	%	21	Sc
+                 3.565, 2.818, 1.893,  0.483, 81.982,  19.049, 3.59,  0.386  ;	%	22	Ti
+                 3.245, 2.698, 1.86,   0.486, 76.379,  17.726, 3.363, 0.374  ;	%	23	V
+                 2.307, 2.334, 1.823,  0.49,  78.405,  15.785, 3.157, 0.364  ;	%	24	Cr
+                 2.747, 2.456, 1.792,  0.498, 67.786,  15.674, 3.0,   0.357  ;	%	25	Mn
+                 2.544, 2.343, 1.759,  0.506, 64.424,  14.88,  2.854, 0.35   ;	%	26	Fe
+                 2.367, 2.236, 1.724,  0.515, 61.431,  14.18,  2.725, 0.344  ;	%	27	Co
+                 2.21,  2.134, 1.689,  0.524, 58.727,  13.553, 2.609, 0.339  ;	%	28	Ni
+                 1.579, 1.82,  1.658,  0.532, 62.94,   12.453, 2.504, 0.333  ;	%	29	Cu
+                 1.942, 1.95,  1.619,  0.543, 54.162,  12.518, 2.416, 0.33   ;	%	30	Zn
+                 2.321, 2.486, 1.688,  0.599, 65.602,  15.458, 2.581, 0.351  ;	%	31	Ga
+                 2.447, 2.702, 1.616,  0.601, 55.893,  14.393, 2.446, 0.342  ;	%	32	Ge
+                 2.399, 2.79,  1.529,  0.594, 45.718,  12.817, 2.28,  0.328  ;	%	33	As
+                 2.298, 2.854, 1.456,  0.59,  38.83,   11.536, 2.146, 0.316  ;	%	34	Se
+                 2.166, 2.904, 1.395,  0.589, 33.899,  10.497, 2.041, 0.307  ;	%	35	Br
+                 2.034, 2.927, 1.342,  0.589, 29.999,  9.598,  1.952, 0.299  ;	%	36	Kr
+                 4.776, 3.859, 2.234,  0.868, 140.782, 18.991, 3.701, 0.419  ;	%	37	Rb
+                 5.848, 4.003, 2.342,  0.88,  104.972, 19.367, 3.737, 0.414  ;	%	38	Sr
+                 4.129, 3.012, 1.179,  0,     27.548,  5.088,  0.591, 0      ;	%	39	Y
+                 4.105, 3.144, 1.229,  0,     28.492,  5.277,  0.601, 0      ;	%	40	Zr
+                 4.237, 3.105, 1.234,  0,     27.415,  5.074,  0.593, 0      ;	%	41	Nb
+                 3.12,  3.906, 2.361,  0.85,  72.464,  14.642, 3.237, 0.366  ;	%	42	Mo
+                 4.318, 3.27,  1.287,  0,     28.246,  5.148,  0.59,  0      ;	%	43	Tc
+                 4.358, 3.298, 1.323,  0,     27.881,  5.179,  0.594, 0      ;	%	44	Ru
+                 4.431, 3.343, 1.345,  0,     27.911,  5.153,  0.592, 0      ;	%	45	Rh
+                 4.436, 3.454, 1.383,  0,     28.67,   5.269,  0.595, 0      ;	%	46	Pd
+                 2.036, 3.272, 2.511,  0.837, 61.497,  11.824, 2.846, 0.327  ;	%	47	Ag
+                 2.574, 3.259, 2.547,  0.838, 55.675,  11.838, 2.784, 0.322  ;	%	48	Cd
+                 3.153, 3.557, 2.818,  0.884, 66.649,  14.449, 2.976, 0.335  ;	%	49	In
+                 3.45,  3.735, 2.118,  0.877, 59.104,  14.179, 2.855, 0.327  ;	%	50	Sn
+                 3.564, 3.844, 2.687,  0.864, 50.487,  13.316, 2.691, 0.316  ;	%	51	Sb
+                 4.785, 3.688, 1.5,    0,     27.999,  5.083,  0.581, 0      ;	%	52	Te
+                 3.473, 4.06,  2.522,  0.84,  39.441,  11.816, 2.415, 0.298  ;	%	53	I
+                 3.366, 4.147, 2.443,  0.829, 35.509,  11.117, 2.294, 0.289  ;	%	54	Xe
+                 6.062, 5.986, 3.303,  1.096, 155.837, 19.695, 3.335, 0.379  ;	%	55	Cs
+                 7.821, 6.004, 3.28,   1.103, 117.657, 18.778, 3.263, 0.376  ;	%	56	Ba
+                 4.94,  3.968, 1.663,  0,     28.716,  5.245,  0.594, 0      ;	%	57	La
+                 5.007, 3.98,  1.678,  0,     28.283,  5.183,  0.589, 0      ;	%	58	Ce
+                 5.085, 4.043, 1.684,  0,     28.588,  5.143,  0.581, 0      ;	%	59	Pr
+                 5.151, 4.075, 1.683,  0,     28.304,  5.073,  0.571, 0      ;	%	60	Nd
+                 5.201, 4.094, 1.719,  0,     28.079,  5.081,  0.576, 0      ;	%	61	Pm
+                 5.255, 4.113, 1.743,  0,     28.016,  5.037,  0.577, 0      ;	%	62	Sm
+                 6.267, 4.844, 3.202,  1.2,   100.298, 16.066, 2.98,  0.367  ;	%	63	Eu
+                 5.225, 4.314, 1.827,  0,     29.158,  5.259,  0.586, 0      ;	%	64	Gd
+                 5.272, 4.347, 1.844,  0,     29.046,  5.226,  0.585, 0      ;	%	65	Tb
+                 5.332, 4.37,  1.863,  0,     28.888,  5.198,  0.581, 0      ;	%	66	Dy
+                 5.376, 4.403, 1.884,  0,     28.773,  5.174,  0.582, 0      ;	%	67	Ho
+                 5.436, 4.437, 1.891,  0,     28.655,  5.117,  0.577, 0      ;	%	68	Er
+                 5.441, 4.51,  1.956,  0,     29.149,  5.264,  0.59,  0      ;	%	69	Tm
+                 5.529, 4.533, 1.945,  0,     28.927,  5.144,  0.578, 0      ;	%	70	Yb
+                 5.553, 4.58,  1.969,  0,     28.907,  5.16,   0.577, 0      ;	%	71	Lu
+                 5.588, 4.619, 1.997,  0,     29.001,  5.164,  0.579, 0      ;	%	72	Hf
+                 5.659, 4.63,  2.014,  0,     28.807,  5.114,  0.578, 0      ;	%	73	Ta
+                 5.709, 4.677, 2.019,  0,     28.782,  5.084,  0.572, 0      ;	%	74	W
+                 5.695, 4.74,  2.064,  0,     28.968,  5.156,  0.575, 0      ;	%	75	Re
+                 5.75,  4.773, 2.079,  0,     28.933,  5.139,  0.573, 0      ;	%	76	Os
+                 5.754, 4.851, 2.096,  0,     29.159,  5.152,  0.57,  0      ;	%	77	Ir
+                 5.803, 4.87,  2.127,  0,     29.016,  5.15,   0.572, 0      ;	%	78	Pt
+                 2.388, 4.226, 2.689,  1.255, 42.866,  9.743,  2.264, 0.307  ;	%	79	Au
+                 2.682, 4.241, 2.755,  1.27,  42.822,  9.856,  2.295, 0.307  ;	%	80	Hg
+                 5.932, 4.972, 2.195,  0,     29.086,  5.126,  0.572, 0      ;	%	81	Tl
+                 3.51,  4.552, 3.154,  1.359, 52.914,  11.884, 2.571, 0.321  ;	%	82	Pb
+                 3.841, 4.679, 3.192,  1.363, 50.261,  11.999, 2.56,  0.318  ;	%	83	Bi
+                 6.07,  4.997, 2.232,  0,     28.075,  4.999,  0.563, 0      ;	%	84	Po
+                 6.133, 5.031, 2.239,  0,     28.047,  4.957,  0.558, 0      ;	%	85	At
+                 4.078, 4.978, 3.096,  1.326, 38.406,  11.02,  2.355, 0.299  ;	%	86	Rn
+                 6.201, 5.121, 2.275,  0,     28.2,    4.954,  0.556, 0      ;	%	87	Fr
+                 6.215, 5.17,  2.316,  0,     28.382,  5.002,  0.562, 0      ;	%	88	Ra
+                 6.278, 5.195, 2.321,  0,     28.323,  4.949,  0.557, 0      ;	%	89	Ac
+                 6.264, 5.263, 2.367,  0,     28.651,  5.03,   0.563, 0      ;	%	90	Th
+                 6.306, 5.303, 2.386,  0,     28.688,  5.026,  0.561, 0      ;	%	91	Pa
+                 6.767, 6.729, 4.014,  1.561, 85.951,  15.642, 2.936, 0.335  ;	%	92	U
+                 6.323, 5.414, 2.453,  0,     29.142,  5.096,  0.568, 0      ;	%	93	Np
+                 6.415, 5.419, 2.449,  0,     28.836,  5.022,  0.561, 0      ;	%	94	Pu
+                 6.378, 5.495, 2.495,  0,     29.156,  5.102,  0.565, 0      ;	%	95	Am
+                 6.46,  5.469, 2.471,  0,     28.396,  4.97,   0.554, 0      ;	%	96	Cm
+                 6.502, 5.478, 2.51,   0,     28.375,  4.975,  0.561, 0      ;	%	97	Bk
+                 6.548, 5.526, 2.52,   0,     28.461,  4.965,  0.557, 0      ];	%	98	Cf
+                 DT = DT_database(Z,:);
+            end
+        end
+        
         function [r]    = get_atomic_radius(Z)
             % [r] = get_atomic_radius(Z)
             % Gives the radii of free atoms [nm].
