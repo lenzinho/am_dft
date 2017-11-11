@@ -14,7 +14,6 @@ classdef am_dft
         potdir    = '/Users/lenzinho/Linux/vasp.5.4/potcars/PBE.54/';
     end
 
-    
     % program level
 
     methods (Static)
@@ -43,10 +42,10 @@ classdef am_dft
             % file name to save to/load from
             sname = sprintf('%s_%s_%0.2f_%0.2f.mat',...
                 opts.fposcar, opts.fforce_position, opts.cutoff2, opts.cutoff3);
-            if and(exist(sname,'file'),opts.continue); load(sname); else
+            if and(exist(sname,'file'),opts.continue); load(sname); else %#ok<LOAD>
 
                 % get cells
-                [uc,pc] = get_cell('poscar',opts.fposcar);
+                [uc,pc] = load_cell('poscar',opts.fposcar);
                 % load md
                 [md] = load_md(uc,opts.fforce_position,opts.dt);
                 % get both pairs and triplets?
@@ -113,10 +112,10 @@ classdef am_dft
             sname = sprintf('%s_%s_%02i_%0.2f_%0.2f_%s.mat',...
                 opts.fposcar, opts.feigenval, opts.nskips, ...
                 opts.Ef, opts.cutoff2, strjoin(opts.spdf,'+') );
-            if and(exist(sname,'file'),opts.continue); load(sname); else
+            if and(exist(sname,'file'),opts.continue); load(sname); else %#ok<LOAD>
 
                 % get cells
-                [uc,pc] = get_cell('poscar',opts.fposcar);
+                [uc,pc] = load_cell('poscar',opts.fposcar);
                 % load dft
                 [dft]   = load_eigenval(opts.feigenval,opts.Ef);
                 % construct sc
@@ -136,13 +135,13 @@ classdef am_dft
         function demo_plot_doscar()
             clear;clc;import am_dft.*
             cd('/Users/lenzinho/Linux/calc.vasp/VN/AM05.VN.ChargeDisproportionation/2_scf');
-            uc = get_cell('poscar','POSCAR');
+            uc = load_cell('poscar','POSCAR');
             [dos]   = load_doscar();
 
-            spdf={'s','p','d','f'}; k=0;
-            for l = 0:3; for m = -l:l
-            k=k+1; lm{k} = sprintf('%s%i',spdf{l+1},m);
-            end; end
+            % spdf={'s','p','d','f'}; k=0;
+            % for l = 0:3; for m = -l:l
+            % k=k+1; lm{k} = sprintf('%s%i',spdf{l+1},m);
+            % end; end
 
             species = uc.symb(uc.species);
 
@@ -151,7 +150,7 @@ classdef am_dft
 
             % plot
             figure(1);set(gcf,'color','w');
-            [nEs,nspins,norbitals,natoms,nbands,nkpts] = size(proj);
+            [nEs,nspins,norbitals,natoms,nbands,nkpts] = size(proj); %#ok<ASGLU>
             sx = [+1,-1]; sx = sx(1:nspins);
             for i = 1:natoms
                 subplot(natoms/2,2,i); 
@@ -393,6 +392,7 @@ classdef am_dft
                         opts_ = {...
                             'ibrion' , '0' , 'ediff','1e-6', 'ediffg', '', 'smass', '0', 'nsw', '1000', ...
                             };
+                        incar = generate_incar('rlx',opts_);
                 end
             end
             
@@ -429,7 +429,7 @@ classdef am_dft
                 % open file
                 fid=fopen(fname,'w');
                     % header
-                    fprintf(fid,'%s',get_cell_formula(uc));
+                    fprintf(fid,'%s',load_cell_formula(uc));
                     if n ~= 1; fprintf(fid,' %i of %i',i,n); end
                     fprintf(fid,'\n');
                     % print body
@@ -549,13 +549,13 @@ classdef am_dft
         function           write_kpoints(bz,fkpoints)
             if nargin < 2; fkpoints='KPOINTS'; end
             if     isnumeric(bz)
-                if     ndims(bz)==1
+                if     isscalar(bz)
                     % % still need to implement k-point density
                     % % calculates mesh for as isometric as possible k-point sampling
                     % % for VN: 10 = [ 5, 5, 5]; 20 = [ 9, 9, 9]; 30 = [13,13,13]; 40 = [17,17,17];
                     % kpt_ = @(bas,s) ceil(normc_(inv(bas).')*s); n = kpt_(pc.bas,40);
                     % write_kpoints(n,fkpoints);
-                elseif ndims(bz)==2
+                elseif isvector(bz)
                     % [nx,ny,nz] kpoint point density along each direction
                     fid = fopen(fkpoints,'w');
                         fprintf(fid,'%s \n','KPOINTS');
@@ -825,7 +825,7 @@ classdef am_dft
                 % fix is to try a lower AMIX and set SCF algo to Normal
                 incar = load_incar('INCAR');
                 % reduce amix by 1/2
-                if isfield(incar,'amix') && ~isempty(incar.amix); amix = str2num(incar.amix); else; amix = 0.4; end
+                if isfield(incar,'amix') && ~isempty(incar.amix); amix = str2double(incar.amix); else; amix = 0.4; end
                 amix = amix/2;
                 incar = generate_incar(incar,{'algo','Normal','amix',num2str(amix)});
                 % print the fix
@@ -1178,7 +1178,7 @@ classdef am_dft
             end
 
             % get unique subgroups
-            subgroup = uniquec_(single(subgroup)); nsubs = size(subgroup,2);
+            subgroup = uniquec_(single(subgroup)); % nsubs = size(subgroup,2);
 
             % sort subgroups by order
             subgroup = subgroup(:, rankc_(sum(subgroup,1)) );
@@ -1287,11 +1287,11 @@ classdef am_dft
             import am_lib.* am_dft.*
             
             % get regular rep G by putting identity along diagonal of multiplciation table
-            [MT,E,I] = get_multiplication_table(S); nSs = size(MT,2);
+            [MT,~,I] = get_multiplication_table(S); nSs = size(MT,2);
             RR = double(accessc_(MT,I)==permute([1:nSs],[1,3,2]));
             
             % initialize decomposition loop
-            [d,~,nSs] = size(RR); U = eye(nSs); inds = ones(nSs,1); ninds = 1;
+            [~,~,nSs] = size(RR); U = eye(nSs); inds = ones(nSs,1); ninds = 1;
 
             % loop until irreps are fully decomposed
             while true
@@ -1411,7 +1411,7 @@ classdef am_dft
             [~,cc_rep]=unique(cc_id,'stable');
 
             % name of prototypical symmetries
-            ps_name = decode_ps(identify_point_symmetries(R)); ps_name_long = get_long_ps_name(R);
+            ps_name_long = get_long_ps_name(R);
                 
             % get number of classes and number of elements in each class
             nclasses = numel(cc_rep); nelems = sum(cc_id(cc_rep)==cc_id',2).'; nsyms = sum(nelems);
@@ -1474,7 +1474,7 @@ classdef am_dft
             end
             
             function print_table_decomposition_(table_name,row_name,col_name,decomp)
-                [nrows,ncols] = size(decomp); 
+                [nrows,~] = size(decomp); 
                 fprintf('\n');
                 fprintf('      '); fprintf('%12s\n',table_name); 
                 fprintf('      '); fprintf('%12s\n','==========='); 
@@ -1826,7 +1826,7 @@ classdef am_dft
               24   24   12   48   24   12   24   24   24   96   96   48 , ...
               24   48   24   24   96   96   48   24   24   48   24   96 , ...
               48   24   96   48   48   48   48   48  192  192  192  192 , ...
-              96   96    3    6    6    6    6   12   12 ];
+              96   96    3    6    6    6    6   12   12 ]; %#ok<NASGU>
             nclasses_database = [ ...
                1    2    2    2    4    2    2    4    4    4    4    8 , ...
                4    4    8    4    4    4    4    8    8   16    8    8 , ...
@@ -1847,10 +1847,8 @@ classdef am_dft
               12   12    4    8    8    4    8    8    8   16   10   16 , ...
                8   16    5    5   10   10   10    5    5   10    5   10 , ...
               10    5   10   10   10   10   10   10   20   20   14   14 , ...
-              20   14    3    6    3    3    3    6    6 ];
-
-            sg_code = find( (pg_database==pg_code) );
-
+              20   14    3    6    3    3    3    6    6 ]; %#ok<NASGU>
+            sg_code = find( (pg_database==pg_code) ); 
         end
 
         function bv_name      = decode_bravais(bv_code)
@@ -2438,7 +2436,7 @@ classdef am_dft
                     'c_3' ,'s_6' ,'d_3' ,'c_3v','d_3d','c_4' ,'s_4' ,'c_4h', ...
                     'd_4' ,'c_4v','d_2d','d_4h','c_6' ,'c_3h','c_6h','d_6' , ...
                     'c_6v','d_3h','d_6h','t'   ,'t_h' ,'o'   ,'t_d' ,'o_h'};
-                pg_code = find(string(pg)==pg_code);
+                pg_code = find(string(pg)==pg_code); %#ok<STRCLQT>
             end
 
             if from_memory
@@ -2848,14 +2846,14 @@ classdef am_dft
 
         % unit cells
         
-        function [uc,pc,ic,cc]= get_cell(flag, arg, tol)
-            % [uc,pc,ic,cc]   = get_cell(fposcar)
+        function [uc,pc,ic,cc]= load_cell(flag, arg, tol)
+            % [uc,pc,ic,cc]   = load_cell(fposcar)
             % fposcar can be a poscar or cif file
 
             import am_lib.* am_dft.*
             
             % stupid matlab requires these symbolic variables to be initialized
-            x=[];y=[];z=[];
+            x=[];y=[];z=[]; %#ok<NASGU>
             
             % time
             fprintf(' ... getting cell'); tic
@@ -2922,14 +2920,14 @@ classdef am_dft
             verbose = true;
             if verbose
                 fprintf(' (%.3f s) \n',toc);
-                fprintf('     %-15s = %s\n','formula',get_cell_formula(uc));
+                fprintf('     %-15s = %s\n','formula',load_cell_formula(uc));
                 fprintf('     %-15s = %s\n','primitive',decode_bravais(bv_code));
                 fprintf('     %-15s = %s\n','holohodry',decode_holohodry(hg_code));
                 fprintf('     %-15s = %s\n','point group',decode_pg(pg_code));
                 fprintf('     %-15s = %s\n','space group',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
-                fprintf('     %-15s = %-8.3f [g/cm3] \n','mass density',get_cell_mass_density(uc));
-                fprintf('     %-15s = %-8.3f [atoms/nm3]\n','number density',get_cell_atomic_density(uc));
-                fprintf('     %-15s = %-8.3f [f.u./nm3]\n','formula density',get_cell_formula_density(uc));
+                fprintf('     %-15s = %-8.3f [g/cm3] \n','mass density',load_cell_mass_density(uc));
+                fprintf('     %-15s = %-8.3f [atoms/nm3]\n','number density',load_cell_atomic_density(uc));
+                fprintf('     %-15s = %-8.3f [f.u./nm3]\n','formula density',load_cell_formula_density(uc));
                 if contains(flag,'cif')
                     fprintf('     %-15s = %s\n','create command',str);
                 end
@@ -3173,7 +3171,7 @@ classdef am_dft
                     [~,ind] = am_lib.uniquec_(tau); tau = tau(:,ind); species = species(ind); c_i2u = c_i2u(ind);
 
                     % sort by species
-                    [~,ind] = sort(c_i2u);  tau = tau(:,ind); species = species(ind); c_i2u = c_i2u(ind);
+                    [~,ind] = sort(c_i2u);  tau = tau(:,ind); species = species(ind); % c_i2u = c_i2u(ind);
 
                     % define irreducible cell creation function and make structure
                     uc_ = @(bas,tau,symb,species) struct('units','tau=frac; bas=ang','bas',bas,...
@@ -3411,7 +3409,7 @@ classdef am_dft
             end
         end
 
-        function [T]          = coincidence_site_lattice(B1, B2, multiplicity, tol)
+        function [T]          = coincidence_site_lattice(B1, B2, multiplicity, tol)  %#ok<INUSD>
             % T is the matrix which transforms lattice B1 into B2 through: B2 == B1*T
             
             import am_lib.rankc_ am_lib.matmul_ am_dft.get_niggli_basis am_dft.bas2abc
@@ -3496,7 +3494,7 @@ classdef am_dft
                 if (a > b + tol || (~ abs(a - b) > tol && abs(x) >  abs(y) + tol))
                     % Procedure A1
                     A = [0, -1, 0; -1, 0, 0; 0, 0, -1];
-                    [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol); T = T * A;
+                    [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol); T = T * A; %#ok<ASGLU>
                 end
                 if (b > c + tol || (~ abs(b - c) > tol && abs(y) >  abs(z) + tol))
                     % Procedure A2
@@ -3510,7 +3508,7 @@ classdef am_dft
                     if m == -1; j = -1; else; j = 1; end
                     if n == -1; k = -1; else; k = 1; end
                     A = [i, 0, 0; 0, j, 0; 0, 0, k];
-                    [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol); T = T * A;
+                    [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol); T = T * A; %#ok<ASGLU>
                 else
                     % Procedure A4
                     if l == 1; i = -1; else; i = 1; end
@@ -3522,7 +3520,7 @@ classdef am_dft
                         if n == 0; k = -1; end
                     end
                     A = [i, 0, 0; 0, j, 0; 0, 0, k];
-                    [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol); T = T * A;
+                    [x,y,z,a,b,c,l,m,n,bas] = update_(bas, A, tol); T = T * A; %#ok<ASGLU>
                 end
                 if ( abs(x) > b + tol || (~ abs(b - x) > tol && 2 * y < z - tol) || (~ abs(b + x) > tol && z < -tol))
                     % Procedure A5
@@ -4004,7 +4002,7 @@ classdef am_dft
 
         function plot_dispersion_orbital_character(dft,bzp)
             % FPOSCAR = 'POSCAR'; Ef = 5.0740;
-            % [~,pc] = get_cells(FPOSCAR);
+            % [~,pc] = load_cells(FPOSCAR);
             % [dft]   = load_procar('evk/PROCAR',Ef);
             % [bzp]   = get_bz_path(pc,40,'sc');
 
@@ -4050,7 +4048,7 @@ classdef am_dft
 
         function plot_dispersion_atomic_character(dft,bzp,pc)
             % FPOSCAR = 'POSCAR'; Ef = 5.0740;
-            % [~,pc] = get_cells(FPOSCAR);
+            % [~,pc] = load_cells(FPOSCAR);
             % [dft]   = load_procar('evk/PROCAR',Ef);
             % [bzp]   = get_bz_path(pc,40,'sc');
 
@@ -5429,8 +5427,8 @@ classdef am_dft
             import am_dft.* am_lib.*
             
             % get field properly
-            if     isfield(ip,'S'); sym='S'; nsyms='nSs';
-            elseif isfield(ip,'Q'); sym='Q'; nsyms='nQs';
+            if     isfield(ip,'S'); nsyms='nSs'; % sym='S'; 
+            elseif isfield(ip,'Q'); nsyms='nQs'; % sym='Q'; 
             end
             % get action
             [PM,i2p,~] = get_action(ip);
@@ -5700,7 +5698,7 @@ classdef am_dft
             % set default maximum range in plot
             max_th2_range = 110;
             %
-            yscaler_ = @(x) x.^0.1;
+            % yscaler_ = @(x) x.^0.1;
             yscaler_ = @(x) x;
             % set threshold
             if nargin<3 || isempty(label_threshold); label_threshold = 0; end
@@ -5742,7 +5740,7 @@ classdef am_dft
         end
         
         function [h]       = plot_ibs_2D(ibs)
-            % uc=am_dft.get_cell('material','TiN');
+            % uc=am_dft.load_cell('material','TiN');
             % [fbs,ibs] = get_bragg(uc);
             % hv = get_atomic_emission_line_energy(get_atomic_number('Cu'),'kalpha1');
             % [ibs] = get_structure_factor(uc,ibs,hv); print_bragg_table(ibs,hv);
@@ -5929,8 +5927,8 @@ classdef am_dft
         function [uc,u2p,p2u] = get_supercell(pc, B)
             % [uc,u2p,p2u] = get_supercell(pc, B)
             % Example: to make a cell pc have the same shape as a reference cell ref, do this:
-            % [~,ref] = get_cells('185_P63cm.poscar');
-            % [~,pc]  = get_cells('194_P63mmc.poscar');
+            % [~,ref] = load_cells('185_P63cm.poscar');
+            % [~,pc]  = load_cells('194_P63mmc.poscar');
             % pc.bas = rotzd_(-30)*pc.bas; T = round(pc.bas\ref.bas);
             % sc = get_supercell(pc,T);
             %
@@ -5993,7 +5991,7 @@ classdef am_dft
 %                     fposcar='~/Developments/_materials/poscar/VN_Fm-3m.poscar';
 %                     % fposcar='./Al2O3_167_R-3c_corundum.poscar';
 %                     % fposcar='Fe3O4_Fd-3m_magnetite_spinel.poscar';
-%                     [uc,pc,ic,cc]=get_cells(fposcar);
+%                     [uc,pc,ic,cc]=load_cells(fposcar);
 %                     [~,~,~,g] = get_symmetries(pc);
                     
                 case 1
@@ -6034,7 +6032,7 @@ classdef am_dft
                     cc_bas = pc.bas*T; 
                     fwd = rankc_([-sign(dt);-tr;-max(sign(cc_bas));sign(cc_bas)]);
                     filter_ = @(tr,dt,T,vc_bas,inds,ex_) deal(tr(ex_),dt(ex_),T(:,ex_),vc_bas(:,ex_),inds(ex_));
-                    [tr,dt,T,cc_bas,inds] = filter_(tr,dt,T,cc_bas,inds, fwd );
+                    [~,~,T,~,~] = filter_(tr,dt,T,cc_bas,inds, fwd );
 
                     % append identity
                     T = [T,eye(3)]; cc_bas = pc.bas*T; nTs=nTs+3;
@@ -6089,7 +6087,7 @@ classdef am_dft
 
         % cell parameters
         
-        function formula         = get_cell_formula(uc)
+        function formula         = load_cell_formula(uc)
             import am_lib.*
             formula = ''; x = uc.nspecies./gcd_(uc.nspecies);
             for j = 1:numel(x)
@@ -6100,21 +6098,21 @@ classdef am_dft
             end
         end
 
-        function mass_density    = get_cell_mass_density(uc)
-            % mass_density = get_cell_mass_density(uc)
+        function mass_density    = load_cell_mass_density(uc)
+            % mass_density = load_cell_mass_density(uc)
             % [g/cm3]
             mass_density = sum(uc.mass(uc.species)) * am_dft.amu2gram / det(uc.bas * 1E-7);
         end
         
-        function num_density     = get_cell_atomic_density(uc)
+        function num_density     = load_cell_atomic_density(uc)
             % [atoms/nm3]
             num_density = uc.natoms / det(uc.bas);
         end
         
-        function formula_density = get_cell_formula_density(uc)
+        function formula_density = load_cell_formula_density(uc)
             % [f.u./nm3]
             import am_dft.* am_lib.*
-            formula_density = get_cell_atomic_density(uc)/(uc.natoms/gcd_(uc.nspecies));
+            formula_density = load_cell_atomic_density(uc)/(uc.natoms/gcd_(uc.nspecies));
         end
 
         
