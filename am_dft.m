@@ -5710,7 +5710,7 @@ classdef am_dft
             [fbs.Fk,fbs.Fk2,fbs.L,fbs.P,fbs.intensity,fbs.w,fbs.k,fbs.nks] = deal(fbs.Fk(ex_),fbs.Fk2(ex_),fbs.L(ex_),fbs.P(ex_),fbs.intensity(ex_),fbs.w(ex_),fbs.k(:,ex_),sum(ex_));
         end
         
-        function           print_bragg_table(fbs,hv)
+        function             print_bragg_table(fbs,hv)
             import am_mbe.*
             th_ = @(hv,q) asind(get_photon_wavelength(hv)*q/2);
             % print results
