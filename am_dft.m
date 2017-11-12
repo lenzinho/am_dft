@@ -278,9 +278,9 @@ classdef am_dft
             % open file and parse: use single precision here, solves for force constants much faster
             fid = fopen(fforces); fd = reshape(single(fscanf(fid,'%f')),6,uc.natoms,nlines/uc.natoms); fclose(fid);
 
-            % convert to [uc-frac]
-            fd(1:3,:,:) = matmul_(inv(uc.bas),fd(1:3,:,:));
-            fd(4:6,:,:) = matmul_(inv(uc.bas),fd(4:6,:,:));
+            % convert [Ang] --> [uc-frac] (factor of 10 is used because uc.bas is in nm)
+            fd(1:3,:,:) = matmul_(inv(uc.bas*10),fd(1:3,:,:));
+            fd(4:6,:,:) = matmul_(inv(uc.bas*10),fd(4:6,:,:));
 
             fd_ = @(uc,force,tau,vel,dt) struct('units','frac', ...
                 'bas',uc.bas,'bas2pc',uc.bas2pc,'tau2pc',uc.tau2pc,...
@@ -645,6 +645,11 @@ classdef am_dft
             end
             
             switch flag
+                % INCAR
+                case 'incar:potim'
+                    [~,x] = system('awk ''/POTIM/ { print $3 }'' INCAR');  x = sscanf(x,'%f');
+                
+                
                 % OUTCAR
             	case 'outcar:site_occupancy' % for DFT+U
                     [~,m] = system('awk ''/onsite density matrix/'' OUTCAR'); m = numel(strfind(m,'matrix'));
@@ -4283,6 +4288,16 @@ classdef am_dft
                 case 2
                     % basic method using full 3x3 second-order tensor (ignores intrinsic force constant symmetry)
                     % F [3 * m] = - FC [3 * 3n] * U [3n * m]: n pairs, m atoms ==> FC = - F / U
+                    
+                    % get map from cluster to unit cell
+                    [c_id,o_id,q_id,iq_id] = get_irreducible_map(pp,uc);
+                    % 
+                    
+                    % STOPED HERE
+                    % STOPED HERE
+                    % STOPED HERE
+                    % STOPED HERE
+                    
                     phi=[];
                     for m = 1:pp.pc_natoms
                         % get forces : f = [ (x,y,z), (1:natoms)*nsteps ]
@@ -4835,7 +4850,7 @@ classdef am_dft
         function [ip]         = get_matrix_elements(flag,ip,spdf)
             % [bvk,D,Dasr] = get_symmetry_adapted_matrix_elements(flag,ip,spdf)
             %
-            % set oribtals per irreducible atom: spdf = {'d','p'};
+            % set orbitals per irreducible atom: spdf = {'d','p'};
             % may wish to do this to set it per species: x={'p','d'}; spdf={x{ic.species}};
             %
             % Q: What should zeroth, first, and second neighbor force constants look
@@ -4887,7 +4902,6 @@ classdef am_dft
             %     [ c04_11, c04_21, c04_21]
             %     [ c04_21, c04_22, c04_32]
             %     [ c04_21, c04_32, c04_22]
-            %
             %
             %
             % Q: How are symmetry operations represented in the flattened basis?
@@ -5075,7 +5089,9 @@ classdef am_dft
                 % transform matrix elements
                 matrix_ = sym(ip.D{i}(:,:,s)) * permute(ip.(matxname_){c},ip.Q{2}(:,s)) * sym(ip.D{j}(:,:,s))';
         
-                % build hamiltonian matrix
+                % build hamiltonian matrix 
+                % [make this pp.bas*rij(:) with pp.bas = (ones(3)-eye(3))/2 to reproduce the 
+                % tight binding hamiltonian of Vogl and of Chadi-Cohen]
                 Hc(mp,np,c) = Hc(mp,np,c) + matrix_ .* exp(sym(2i*pi) * sym(rij(:).','f') * kvec(:) );
             end
 
@@ -5089,7 +5105,7 @@ classdef am_dft
             H = sym(zeros(nbands,nbands)); for i = 1:ip.nclusters; H = H + Hc(:,:,i); end
                         
             % enforce acoustic sum rule algebraically?
-            if nargout > 3
+            if nargout > 2
                 ASR = sym(zeros(nbands,nbands));
                 for i = 1:ip.nclusters; ASR = ASR + subs(subs(subs(Hc(:,:,i),kvec(1),0),kvec(2),0),kvec(3),0); end
                 % simplify and remove TRUE = TRUE (first term) from the set of equations
@@ -5381,13 +5397,12 @@ classdef am_dft
             PM = reshape(V_p2i, [ip.nclusters, ip.nQs] ); [~,i2p,p2i] = get_connectivity( PM ); 
 
             % create structure
-            pp_ = @(ip,X,V,x2p,x2i,p2i,i2p,S) struct('units','frac-pc','bas',ip.bas,'symb',{ip.symb},'mass',ip.mass,...
+            pp_ = @(ip,X,V,x2p,x2i,p2i,i2p,Q) struct('units','frac-pc','bas',ip.bas,'symb',{ip.symb},'mass',ip.mass,...
                 'x2p',x2p,'x2i',x2i,'species',X(4,:),'tau',X(1:3,:), ...
                 'cluster',V,'nclusters',size(V,2),'natoms',size(V,1),'cutoff',ip.cutoff, ...
-                'nSs',size(S,3),'S',S, ...
+                'nQs',size(Q{1},3),'Q',{Q}, ...
                 'p2i',p2i,'i2p',i2p);
-            S = reshape(uniquec_(reshape(ip.Q{1},16,[])),4,4,[]);
-            pp = pp_(ip,X,V,x2p,x2i,p2i,i2p,S);
+            pp = pp_(ip,X,V,x2p,x2i,p2i,i2p,ip.Q);
             
             % now is the time to sort based on irreducible pairs
             fwd = rankc_( [pp.p2i;pp.cluster] );
@@ -5571,9 +5586,9 @@ classdef am_dft
             pc2pp  = member_(pc_tau,pp_tau); % indicies of pc atoms in pp
 
             % loop over primitive cell atoms
-            for m = 1:numel(uc.u2p)
+            for m = 1:numel(uc.p2u)
                 % record unit cell atoms of primitive type m
-                c_id{m} = find(uc.p2u==m); ncenters = numel(c_id{m});
+                c_id{m} = find(uc.u2p==m); ncenters = numel(c_id{m});
                 % find orbits around c_id{m}(n), count their numbers
                 ex_ = [pp.cluster(1,:)==pc2pp(m)].'; norbits = sum(ex_);
                 % allocate space
@@ -5862,10 +5877,6 @@ classdef am_dft
                 'symb',{uc.symb},'mass',uc.mass,'nspecies',sum(unique(uc.species(p2u)).'==uc.species(p2u),2).', ...
                 'natoms',numel(p2u),'tau',mod_(B\uc.tau(:,p2u)),'species',uc.species(p2u) );
             pc = pc_(uc,B,p2u);
-            
-            % set first atom to 0 position, important for symmetries
-            % COMMENTING THIS OUT HAS NOT BE THOROUGHLY TESTED
-            % pc.tau=mod_(pc.tau-pc.tau(:,1));
         end
 
         function [ic,i2p,p2i] = get_irreducible_cell(pc, tol)
@@ -6200,8 +6211,7 @@ classdef am_dft
             %   plot(f1(:),f2(:),'.')
             %
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             if nargin ~= 4; algo=2; end
 
@@ -6240,8 +6250,7 @@ classdef am_dft
 
         function [U,I] = get_bvk_U_matrix(bvk,pp,u)
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % the Z matrix factors out force constants leaving displacements
             Z = [1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0;
@@ -6261,7 +6270,7 @@ classdef am_dft
 
             % F [3m * 1] = - U [3m * nFcs] * FC [ nFCs * 1]: n pairs, m atoms ==> FC = - U \ F
             for m = 1:bvk.natoms
-                % get inds to properly reordering of force constants
+                % get inds to properly reorder force constants
                 I(m_id==m) = reshape(X(:,pp.c{m},:),[],1);
             for s = 1:bvk.nshells
                 ex_    = [pp.i{m}==s];
@@ -6444,8 +6453,7 @@ classdef am_dft
             %     tic; f2 = get_bvt_forces(bvt,pt,u,2); toc
             %     plot(f1(:),f2(:),'.')
             %
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             if nargin ~= 4; algo=2; end
 
