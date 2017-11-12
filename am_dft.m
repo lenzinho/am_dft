@@ -3839,8 +3839,7 @@ classdef am_dft
         function [bzl]        = get_bz_line(pc,n,vs,ve)
             % surf: vs and ve are the start and end vectors in cart
 
-            import am_lib.*
-            import am_dft.*
+            import am_lib.* am_dft.*
 
             % get number of kpoints
             nks=n; recbas = inv(pc.bas).';
@@ -3859,7 +3858,7 @@ classdef am_dft
             bzl = bzl_(recbas,n,nks,x,k);
         end
 
-        function [bz]         = get_dispersion(model,bz,flag)
+        function [bz]         = get_dispersion(model,bz)
             % Get phonon and electron dispersions on bz.
             % model is either bvk or tb
             %
@@ -3894,39 +3893,35 @@ classdef am_dft
             import am_lib.* am_dft.*
 
             fprintf(' ... computing dispersion '); tic;
-            switch lower(strtrim(flag))
-                case 'electron'
-
-                    % get eigenvalues
-                    bz.nbands = model.nbands;
-                    bz.E = zeros(bz.nbands,bz.nks);
-                    bz.V = zeros(bz.nbands,bz.nbands,bz.nks);
-                    for i = 1:bz.nks
-                        % define input ...
-                        input = num2cell([model.vsk{:},[bz.recbas*bz.k(:,i)].']);
-                        % ... and evaluate (V are column vectors)
-                        [bz.V(:,:,i),bz.E(:,i)] = eig(  force_hermiticity_(model.H(input{:})) ,'vector');
-                        % sort energies
-                        [bz.E(:,i),inds]=sort(bz.E(:,i)); bz.V(:,:,i)=bz.V(:,inds,i);
-                    end
-
-                case 'phonon'
-
-                    % get eigenvalues
-                    bz.nbranches = model.nbranches;
-                    bz.hw = zeros(bz.nbranches,bz.nks);
-                    bz.U  = zeros(bz.nbranches,bz.nbranches,bz.nks);
-                    for i = 1:bz.nks
-                        % define input ...
-                        % input = num2cell([bvk.fc{:},bz.k(:,i).',bvk.mass]); % [pc-frac]
-                        input = num2cell([model.fc{:},(bz.recbas*bz.k(:,i)).',model.mass]); % [cart]
-                        % ... and evaluate (U are column vectors)
-                        [bz.U(:,:,i),bz.hw(:,i)] = eig( force_hermiticity_(model.D(input{:})) ,'vector');
-                        % correct units
-                        bz.hw(:,i) = sqrt(real(bz.hw(:,i))) * am_lib.units_eV;
-                        % sort energies
-                        [bz.hw(:,i),inds]=sort(bz.hw(:,i)); bz.U(:,:,i)=bz.U(:,inds,i);
-                    end
+            if     isfield(model,'vsk')
+                % get eigenvalues
+                bz.nbands = model.nbands;
+                bz.E = zeros(bz.nbands,bz.nks);
+                bz.V = zeros(bz.nbands,bz.nbands,bz.nks);
+                for i = 1:bz.nks
+                    % define input ...
+                    input = num2cell([model.vsk{:},[bz.recbas*bz.k(:,i)].']);
+                    % ... and evaluate (V are column vectors)
+                    [bz.V(:,:,i),bz.E(:,i)] = eig(  force_hermiticity_(model.H(input{:})) ,'vector');
+                    % sort energies
+                    [bz.E(:,i),inds]=sort(bz.E(:,i)); bz.V(:,:,i)=bz.V(:,inds,i);
+                end
+            elseif isfield(model,'phi')
+                % get eigenvalues
+                bz.nbranches = model.nbranches;
+                bz.hw = zeros(bz.nbranches,bz.nks);
+                bz.U  = zeros(bz.nbranches,bz.nbranches,bz.nks);
+                for i = 1:bz.nks
+                    % define input ...
+                    % input = num2cell([bvk.fc{:},bz.k(:,i).',bvk.mass]); % [pc-frac]
+                    input = num2cell([model.fc{:},(bz.recbas*bz.k(:,i)).',model.mass]); % [cart]
+                    % ... and evaluate (U are column vectors)
+                    [bz.U(:,:,i),bz.hw(:,i)] = eig( force_hermiticity_(model.D(input{:})) ,'vector');
+                    % correct units
+                    bz.hw(:,i) = sqrt(real(bz.hw(:,i))) * am_lib.units_eV;
+                    % sort energies
+                    [bz.hw(:,i),inds]=sort(bz.hw(:,i)); bz.U(:,:,i)=bz.U(:,inds,i);
+                end
             end
             fprintf('(%.f secs)\n',toc);
         end
@@ -3977,7 +3972,7 @@ classdef am_dft
             axs_(gca,bzp.qt,bzp.ql); axis tight; xlabel('Wavevector k');
         end
 
-        function plot_dispersion(model,bzp,flag, varargin)
+        function plot_dispersion(model, bzp, varargin)
             % model is either bvk or tb
 
             import am_lib.* am_dft.*
@@ -3987,22 +3982,21 @@ classdef am_dft
             axs_ = @(h,qt,ql) set(h,'Box','on','XTick',qt,'Xticklabel',ql);
             fig_(gcf);
 
-            switch lower(strtrim(flag))
-                case 'electron'
-                    % get electron band structure along path
-                    bzp = get_dispersion(model,bzp,flag);
-                    % plot results
-                    plot(bzp.x,sort(bzp.E), varargin{:});
-                    axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [eV]'); xlabel('Wavevector k');
-                case 'phonon'
-                    % get phonon band structure along path
-                    bzp = get_dispersion(model,bzp,flag);
-                    % plot results
-                    plot(bzp.x,sort(real(bzp.hw)*1E3),'-k',bzp.x,-sort(abs(imag(bzp.hw))), varargin{:});
-                    axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [meV]'); xlabel('Wavevector k');
+            if     isfield(model,'vsk')
+                % get electron band structure along path
+                bzp = get_dispersion(model,bzp);
+                % plot results
+                plot(bzp.x,sort(bzp.E), varargin{:});
+                axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [eV]'); xlabel('Wavevector k');
+            elseif isfield(model,'phi')
+                % get phonon band structure along path
+                bzp = get_dispersion(model,bzp);
+                % plot results
+                plot(bzp.x,sort(real(bzp.hw)*1E3),'-k',bzp.x,-sort(abs(imag(bzp.hw))), varargin{:});
+                axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [meV]'); xlabel('Wavevector k');
+            else 
+                error('model unknown');
             end
-
-
         end
 
         function plot_dispersion_orbital_character(dft,bzp)
@@ -4251,6 +4245,11 @@ classdef am_dft
             % [cart] get displacements and forces
             u = matmul_( md.bas, mod_( md.tau-uc.tau +.5 )-.5 );
             f = matmul_( md.bas, md.force );
+            
+            % covert symmetries [pc-frac] to [cart] -- very important!
+            sym_rebase_ = @(B,S) [[ matmul_(matmul_(B,S(1:3,1:3,:)),inv(B)), ...
+                reshape(matmul_(B,S(1:3,4,:)),3,[],size(S,3))]; S(4,1:4,:)];
+            Q_cart = pp.Q; Q_cart{1} = sym_rebase_(pp.bas, Q_cart{1}); Q_cart{1} = wdv_(Q_cart{1});
 
             % select a method (method 1 is the most accurate)
             switch algo
@@ -4290,32 +4289,37 @@ classdef am_dft
                     % F [3 * m] = - FC [3 * 3n] * U [3n * m]: n pairs, m atoms ==> FC = - F / U
                     
                     % get map from cluster to unit cell
-                    [c_id,o_id,q_id,iq_id] = get_irreducible_map(pp,uc);
-                    % 
+                    [c_id,o_id,q_id,pp_id] = get_irreducible_map(pp,uc); 
                     
-                    % STOPED HERE
-                    % STOPED HERE
-                    % STOPED HERE
-                    % STOPED HERE
+                    % get sizes
+                    npairs   = cellfun(@(x)size(x,1),o_id);
+                    ncenters = cellfun(@(x)size(x,2),o_id);
+                    pc_natoms= numel(uc.p2u);
                     
+                    % construct force constant matrices
                     phi=[];
-                    for m = 1:pp.pc_natoms
+                    for m = 1:pc_natoms
                         % get forces : f = [ (x,y,z), (1:natoms)*nsteps ]
                         % get displacements : u [ (x,y,z)*orbits, (1:natoms)*nsteps ]
                         %  ... and solve for the generalized force constants: FC = - f / u
-                        fc = - reshape( f(:,pp.c{m},:) ,3,pp.ncenters(m)*md.nsteps) /...
-                               reshape( u(:,pp.o{m},:) ,3*pp.npairs(m),pp.ncenters(m)*md.nsteps);
+                        fc = - reshape( f(:,c_id{m},:) , 3            , ncenters(m) * md.nsteps) /...
+                               reshape( u(:,o_id{m},:) , 3 * npairs(m), ncenters(m) * md.nsteps);
                         % reshape into 3x3 matrices
                         phi = double(cat(3,phi,reshape(fc,3,3,[])));
                     end
+                    
+                    % reorder force constants to match pp (phi is ordered in terms of m 
+                    % here, but pp is in terms of irreducible pairs)
+                    phi(:,:,pp_id) = phi;
 
-                    % transform fc from orbit to irrep
-                    q = cat(1,pp.q{:}); phi = matmul_( matmul_( pp.Q{1}(1:3,1:3,q) ,phi), permute(pp.Q{1}(1:3,1:3,q),[2,1,3]) );
-                    for j = 1:size(phi,3); phi(:,:,j) = permute( phi(:,:,j), pp.Q{2}(:,q(j)) ); end
+                    % transform force constants from orbit to irrep
+                    q = cat(1,q_id{:}); phi = matmul_( matmul_( Q_cart{1}(1:3,1:3,q) ,phi), permute(Q_cart{1}(1:3,1:3,q),[2,1,3]) );
+                    for j = 1:size(phi,3); phi(:,:,j) = permute( phi(:,:,j), Q_cart{2}(:,q(j)) ); end
 
                     % solve for symmetry adapted force constants : A x = B
-                    for i = 1:bvk.nshells
-                        ex_ = cat(1,pp.i{:})==i;
+                    for i = 1:bvk.nclusters
+                        % find primitive clusters involving irreducible cluster i
+                        ex_ = pp.p2i==i;
                         if any(ex_)
                             A = repmat(double(bvk.W{i}),sum(ex_),1);
                             B = reshape(phi(:,:,ex_),[],1);
@@ -4949,14 +4953,14 @@ classdef am_dft
             if     contains(flag,'tb')
                 % for each irreducible atom, set azimuthal quantum numbers J{:}, 
                 % symmetries D{:}, and parity-transpose F{:}
-                [J,D,T] = get_tb_symmetry_representation(spdf, Q{1}(1:3,1:3,:) );
+                [J,Dj,T] = get_tb_symmetry_representation(spdf, Q{1}(1:3,1:3,:) );
                 % get dimensions
                 d = zeros(1,numel(J)); for i = 1:numel(J); d(i) = sum(J{i}*2+1); end
             elseif contains(flag,'bvk')
                 z = unique(ip.x2i); 
                 % construct transpose super operator (flip symmetry)
                 T_ = zeros(9,9); T_(sub2ind([9,9],[1:9],[1,4,7,2,5,8,3,6,9])) = 1;
-                for i = 1:numel(z); D{i} = Q{1}(1:3,1:3,:); T{i}=T_; end; d(z) = 3; 
+                for i = 1:numel(z); Dj{i} = Q{1}(1:3,1:3,:); T{i}=T_; end; d(z) = 3; 
             end
             
             % get form of force constants for irreducible prototypical bonds
@@ -4970,12 +4974,12 @@ classdef am_dft
                     case 1
                         % original (and erroneous version) just like in Smith's paper on force
                         % constants of diamond.
-                        W = sum(kron_( D{j}(:,:,s_ck(:,p)) , D{i}(:,:,s_ck(:,p)) ) - eye(d(i)*d(j)),3);
+                        W = sum(kron_( Dj{j}(:,:,s_ck(:,p)) , Dj{i}(:,:,s_ck(:,p)) ) - eye(d(i)*d(j)),3);
                     case 2
                         % incoprorating flip symmetry
                         % when atomic indicies are flipped, the matrix element is transposed. 
                         % this is achieved like so: equationsToMatrix(a*(b.')*c.',b(:)) - kron(c,a) * T
-                        sym_list = find(s_ck(:,p)); W = kron_( D{j}(:,:,sym_list) , D{i}(:,:,sym_list) );
+                        sym_list = find(s_ck(:,p)); W = kron_( Dj{j}(:,:,sym_list) , Dj{i}(:,:,sym_list) );
                         for wi = 1:numel(sym_list); if all(Q{2}(:,sym_list(wi))~=[1;2])
                             W(:,:,wi) = W(:,:,wi) * T{i};
                         end; end
@@ -4993,13 +4997,13 @@ classdef am_dft
                 [sav.c{p},n] = sort(c(:).'); sav.W{p} = W(:,n); sav.(matxname_){p} = matrix_;
             end
 
-            ip.D = D;
+            ip.Dj= Dj;
             ip.c = sav.c;
             ip.W = sav.W;
             ip.(matxname_) = sav.(matxname_);
         end
 
-        function [H,Hc,ASR]   = get_hamiltonian(ip,pp)
+        function [ip]   = get_hamiltonian(ip,pp)
             %
             % Q: What do the force constant matrices loop like when rotated from the
             %    irreducible bond to the orbit? 
@@ -5050,11 +5054,9 @@ classdef am_dft
 
             digits(10); import am_dft.* am_lib.*
             
-            if     isfield(ip,'vsk')
-                matxname_ = 'vsk'; 
-            elseif isfield(ip,'phi')
-                matxname_ = 'phi'; 
-            end
+            % switch between phonon and electrons
+            if     isfield(ip,'vsk'); matxname_ = 'vsk'; 
+            elseif isfield(ip,'phi'); matxname_ = 'phi'; end
             
             % get multiplication table
             [~,~,I] = get_multiplication_table(ip.Q);
@@ -5073,7 +5075,7 @@ classdef am_dft
             E=cumsum(d); S=E-d+1; nbands=E(end);
 
             % construct symbolic Hamiltonian matrix
-            Hc = sym(zeros(nbands,nbands,ip.nclusters)); kvec = sym('k%d',[3,1],'real');
+            Hc = sym(zeros(nbands,nbands,ip.nclusters)); kvec = sym('k%d',[3,1],'real'); 
             for p = 1:pp.nclusters
                 %    c   = irreducible cluster index
                 %    s   = symmetry which takes ir -> orbit
@@ -5087,7 +5089,7 @@ classdef am_dft
                 rij = pp.tau(:,cluster(2)) - pp.tau(:,cluster(1)); rij = wdv_(rij,am_dft.tiny);
                 
                 % transform matrix elements
-                matrix_ = sym(ip.D{i}(:,:,s)) * permute(ip.(matxname_){c},ip.Q{2}(:,s)) * sym(ip.D{j}(:,:,s))';
+                matrix_ = sym(ip.Dj{i}(:,:,s)) * permute(ip.(matxname_){c},ip.Q{2}(:,s)) * sym(ip.Dj{j}(:,:,s))';
         
                 % build hamiltonian matrix 
                 % [make this pp.bas*rij(:) with pp.bas = (ones(3)-eye(3))/2 to reproduce the 
@@ -5101,16 +5103,33 @@ classdef am_dft
             % simplify (speeds evaluation up significantly later)
             for i = 1:ip.nclusters; Hc(:,:,i) = simplify(rewrite(Hc(:,:,i),'cos'),'steps',20); end
 
-            % stupid matlab, doesn't allow for sum(H,3)
-            H = sym(zeros(nbands,nbands)); for i = 1:ip.nclusters; H = H + Hc(:,:,i); end
-                        
-            % enforce acoustic sum rule algebraically?
-            if nargout > 2
+            % multiply mass factor to get the dynamical matrix
+            if isfield(ip,'phi')
+                % get unique masses
+                mass = sym('m%d',unique(ip.species),'real');
+                % get mass matrix
+                p2i=[]; p2i(ip.x2p)=ip.x2i; mass=mass(repelem(p2i,1,3)); mass=(mass.'*mass); 
+                % include mass
+                for i = 1:ip.nclusters; Hc(:,:,i) = Hc(:,:,i)./sqrt(mass); end
+                
+                % enforce acoustic sum rule algebraically?
                 ASR = sym(zeros(nbands,nbands));
                 for i = 1:ip.nclusters; ASR = ASR + subs(subs(subs(Hc(:,:,i),kvec(1),0),kvec(2),0),kvec(3),0); end
                 % simplify and remove TRUE = TRUE (first term) from the set of equations
                 ASR = unique(simplify(ASR(:)==0)); ASR = ASR(2:end);
             end
+
+            % stupid matlab, doesn't allow for sum(H,3)
+            H = sym(zeros(nbands,nbands)); for i = 1:ip.nclusters; H = H + Hc(:,:,i); end
+
+            % augment model
+            if     isfield(ip,'vsk'); nbands_ = 'nbands';    hamiltonian_matlab_func_ = 'H'; hamiltonian_per_cluster_ = 'Hc';
+            elseif isfield(ip,'phi'); nbands_ = 'nbranches'; hamiltonian_matlab_func_ = 'D'; hamiltonian_per_cluster_ = 'Dc'; 
+            end
+            ip.(nbands_) = nbands;
+            ip.(hamiltonian_matlab_func_) = matlabFunction(H);
+            ip.(hamiltonian_per_cluster_) = Hc;
+            if isfield(ip,'phi'); ip.ASR = ASR; end
         end
 
         function [tb]         = get_tb_parameters(tb,dft,nskips)
@@ -5370,9 +5389,6 @@ classdef am_dft
         
             import am_lib.* am_dft.*
 
-            % combine space symmetry with permutation of atomic positions
-            % M = perms([ip.natoms:-1:1]).'; Q{1} = repmat(ip.S,1,1,size(M,2)); Q{2} = repelem(M,1,ip.nSs); nQs=size(Q{1},3);
-            
             % [pc-frac] create cluster tau = [X, natoms, nclusters]
             X = [ip.tau;ip.species]; tau = reshape( X(:,ip.cluster), size(X,1), ip.natoms, ip.nclusters);
 
@@ -5387,8 +5403,7 @@ classdef am_dft
 
             % get primitive and irreducible labels for positions
             fwd = member_(mod_(X(1:3,:)),mod_(ip.tau));
-            x2p = ip.x2p( fwd );
-            x2i = ip.x2i( fwd );
+            x2p = ip.x2p( fwd ); x2i = ip.x2i( fwd );
             
             % assign clusters unique labels
             [V,~,V_p2i]=uniquec_( member_(tau/10,X/10) );
@@ -5404,11 +5419,10 @@ classdef am_dft
                 'p2i',p2i,'i2p',i2p);
             pp = pp_(ip,X,V,x2p,x2i,p2i,i2p,ip.Q);
             
-            % now is the time to sort based on irreducible pairs
-            fwd = rankc_( [pp.p2i;pp.cluster] );
-            pp.cluster = pp.cluster(:,fwd);
-            pp.p2i = pp.p2i(:,fwd);
-            pp.i2p = findrow_(pp.i2p.'==pp.p2i).';
+            % now is the time to sort based on irreducible pairs and to
+            % create link irreducible and primitive pairs
+            fwd = rankc_( [pp.p2i;pp.cluster] ); pp.cluster = pp.cluster(:,fwd);
+            pp.p2i = pp.p2i(:,fwd); pp.i2p = findrow_(pp.i2p.'==pp.p2i).';
         end
 
         function [PM,i2p,p2i] = get_action(ip)
@@ -5566,12 +5580,17 @@ classdef am_dft
             end
         end
         
-        function [c_id,o_id,q_id,iq_id] = get_irreducible_map(pp,uc)
+        function [c_id,o_id,q_id,pp_id] = get_irreducible_map(pp,uc)
 
             import am_lib.* am_dft.*
 
+            % get field properly
+            if     isfield(pp,'S'); sym='S'; % nsyms='nSs'; 
+            elseif isfield(pp,'Q'); sym='Q'; % nsyms='nQs'; 
+            end
+            
             % get multiplication table and inverse elements
-            [~,~,I] = get_multiplication_table(pp.Q);
+            [~,~,I] = get_multiplication_table(pp.(sym));
 
             % get action (permutation matrix, stabilizers, and generators)
             [PM,i2p,p2i] = get_action(pp);
@@ -5584,17 +5603,18 @@ classdef am_dft
             pc_tau = uc.tau(:,uc.p2u);
             uc_tau = uc.tau;
             pc2pp  = member_(pc_tau,pp_tau); % indicies of pc atoms in pp
-
+            pp_id  = [];
+            
             % loop over primitive cell atoms
             for m = 1:numel(uc.p2u)
                 % record unit cell atoms of primitive type m
                 c_id{m} = find(uc.u2p==m); ncenters = numel(c_id{m});
                 % find orbits around c_id{m}(n), count their numbers
-                ex_ = [pp.cluster(1,:)==pc2pp(m)].'; norbits = sum(ex_);
+                ex_ = [pp.cluster(1,:)==pc2pp(m)].'; norbits = sum(ex_); pp_id = [pp_id;find(ex_(:))];
                 % allocate space
                 o_id{m} = zeros(norbits,ncenters);
                 q_id{m}(1:norbits,:) =  qi(ex_);
-               iq_id{m}(1:norbits,:) = iqi(ex_);
+              %iq_id{m}(1:norbits,:) = iqi(ex_);
                 % loop over centers
                 for n = 1:ncenters
                     % center clusters atoms on uc reference frame
@@ -6568,7 +6588,7 @@ classdef am_dft
 
         % aux electrons
 
-        function [J,D,T] = get_tb_symmetry_representation(spdf,R)
+        function [J,Dj,T] = get_tb_symmetry_representation(spdf,R)
             % set symmetries D{:}, and parity-transpose F{:} for each
             % irreducible atom given a list of orbitals for each
             % irreducible atom, spdf = {'sp','d'}
@@ -6582,7 +6602,7 @@ classdef am_dft
             W=cell(1,3); for j=[1:3]; W{j} = get_wigner(j,R,'real'); end
 
             % set orbitals J{:}, symmetries D{:}, and parity-transpose T{:} for each irreducible atom
-            natoms=numel(spdf); F=cell(1,natoms);  D=cell(1,natoms);
+            natoms=numel(spdf); F=cell(1,natoms);  Dj=cell(1,natoms);
             for i = 1:natoms
                 % set orbitals
                 J{i} = findrow_('spdf'==spdf{i}(:)).'-1;
@@ -6591,12 +6611,12 @@ classdef am_dft
                 E=cumsum(J{i}*2+1); S=E-(J{i}*2+1)+1;
 
                 % construct D matrix and lay the ground work construction of parity super-operator
-                d = max(E); P = zeros(1,d); D{i} = zeros(d,d,nRs);
+                d = max(E); P = zeros(1,d); Dj{i} = zeros(d,d,nRs);
                 for j = 1:length(J{i})
                     if J{i}(j)==0 % s orbital
-                        D{i}(S(j):E(j),S(j):E(j),:) = 1;
+                        Dj{i}(S(j):E(j),S(j):E(j),:) = 1;
                     else % p,d,f orbitals
-                        D{i}(S(j):E(j),S(j):E(j),:) = W{J{i}(j)};
+                        Dj{i}(S(j):E(j),S(j):E(j),:) = W{J{i}(j)};
                     end
                     P(S(j):E(j)) = (-1).^j;
                 end
@@ -6619,7 +6639,7 @@ classdef am_dft
             end
 
             % correct rounding errors in sym (non-exauhstive)
-            for i = 1:numel(D); D{i} = wdv_(D{i}); end
+            for i = 1:numel(Dj); Dj{i} = wdv_(Dj{i}); end
         end
 
         function E       = eval_energies_(tb,x,k)
