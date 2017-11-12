@@ -2031,6 +2031,7 @@ classdef am_dft
 
             if from_memory
                 % ~ 500x faster for large space groups
+                %{
                 switch sg_code
                 case 1; S=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
                 case 2; S=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,-1,0,0,0,0,-1,0,0,0,0,-1,0,0,0,0,1];
@@ -2270,6 +2271,7 @@ classdef am_dft
                 case 236; S=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,-1,0,0,0,0,-1,0,0,0,0,-1,0,0,0,0,1,0,1,0,0,0,0,1,0,1,0,0,0,0,0,0,1,0,-1,0,0,-1,0,0,0,0,0,-1,0,0,0,0,1,0,-1,0,0,0,0,-1,0,-1,0,0,0,0,0,0,1,0,1,0,0,1,0,0,0,0,0,1,0,0,0,0,1,0,0,1,0,1,0,0,0,0,1,0,0,0,0,0,1,0,0,-1,0,0,-1,0,0,-1,0,0,0,0,0,0,1,-1,0,0,0,0,0,-1,0,0,-1,0,0,0,0,0,1,0,0,-1,0,-1,0,0,0,0,-1,0,0,0,0,0,1,0,0,1,0,0,1,0,0,1,0,0,0,0,0,0,1,1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1];
                 case 237; S=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,-1,0,0,0,0,-1,0,0,0,0,-1,0,0,0,0,1,0,1,0,0,0,0,1,0,1,0,0,0,0,0,0,1,0,-1,0,0,-1,0,0,0,0,0,-1,0,1/2,1/2,1/2,1,0,-1,0,0,0,0,-1,0,-1,0,0,0,0,0,0,1,0,1,0,0,1,0,0,0,0,0,1,0,1/2,1/2,1/2,1,0,0,1,0,1,0,0,0,0,1,0,0,0,0,0,1,0,0,-1,0,0,-1,0,0,-1,0,0,0,1/2,1/2,1/2,1,-1,0,0,0,0,0,-1,0,0,-1,0,0,1/2,1/2,1/2,1,0,0,-1,0,-1,0,0,0,0,-1,0,0,0,0,0,1,0,0,1,0,0,1,0,0,1,0,0,0,1/2,1/2,1/2,1,1,0,0,0,0,0,1,0,0,1,0,0,1/2,1/2,1/2,1];
                 end
+                %}
                 S = reshape(S,4,4,[]);
             else
                 
@@ -5371,10 +5373,11 @@ classdef am_dft
             [Z,~,IC] = uniquec_(V(:).'); V = reshape(IC,size(V)); X=X(:,Z);
 
             % create structure
+            % save space for W: shape of matrix elements
             ip_ = @(pc,X,V,cutoff,Q) struct('units','frac-pc','bas',pc.bas, ...
                 'symb',{pc.symb},'mass',pc.mass, ...
                 'x2p',X(6,:),'x2i',X(5,:),'species',X(4,:),'tau',X(1:3,:),  ...
-                'cluster',V,'nclusters',size(V,2),'natoms',size(V,1),'cutoff',cutoff,...
+                'nclusters',size(V,2),'cluster',V,'W',[],'natoms',size(V,1),'cutoff',cutoff,...
                 'nQs',size(Q{1},3),'Q',{Q});
             ip = ip_(pc, X, V, cutoff, Q);
             
@@ -6423,12 +6426,17 @@ classdef am_dft
 
             import am_lib.* am_dft.*
 
+            [c_id,o_id,q_id,pp_id] = get_irreducible_map(pp,uc); 
+            
+            % 
+            % % NOT WORKING YET, NEED TO UPDATE.
+            
             % build force constants
-            phi = zeros(3,3,bvk.nshells);
-            for i = 1:bvk.nshells; phi(:,:,i) = reshape(bvk.W{i}*bvk.fc{i}.',3,3); end
+            phi = zeros(3,3,bvk.nclusters);
+            for i = 1:bvk.nclusters; phi(:,:,i) = reshape(bvk.W{i}*bvk.fc{i}.',3,3); end
 
             % enforce acoustic sum rule
-            for i = 1:bvk.nshells
+            for i = 1:bvk.nclusters
                 % check if it is a 0-th neighbor shell
                 if bvk.xy(1,i)==bvk.xy(2,i)
                     % get index of primitive cell atom corresponding to this shell
