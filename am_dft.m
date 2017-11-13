@@ -4214,18 +4214,6 @@ classdef am_dft
 
             % print irreducible pair cluster info 
             print_cluster(ip,'bond,cart');
-
-            % get primitive pairs
-            fprintf(' ... getting primitive pairs'); tic;
-            pp = get_primitive_cluster(ip);
-            fprintf(' (%.f secs)\n',toc);
-            
-            % get map between primitive pairs and unit cell
-            fprintf(' ... identifying pairs in unit cell'); tic;
-            pp.pc_natoms=[];pp.ncenters=[];pp.norbits=[];
-            [pp.c_id,pp.o_id,pp.q_id,pp.pp_id,pp.ip_id] = get_cluster_map(pp,uc); 
-            [pp.norbits,pp.ncenters] = cellfun(@(x)size(x),pp.o_id); pp.pc_natoms=numel(pp.norbits);
-            fprintf(' (%.f secs)\n',toc);
             
             % get irreducible shells
             fprintf(' ... analyzing matrix element symmetries'); tic;
@@ -4240,6 +4228,20 @@ classdef am_dft
             ip.(N_) = size(H,1); ip.(H_C_) = H; ip.(H_F_) = matlabFunction(ssum_(ip.(H_C_))); if contains(flag,'bvk'); ip.ASR = ASR; end
             fprintf(' (%.f secs)\n',toc);
             
+            if contains(flag,'bvk')
+            % get primitive pairs
+            fprintf(' ... generating pairs'); tic;
+            pp = get_primitive_cluster(ip);
+            fprintf(' (%.f secs)\n',toc);
+            
+            % get map between primitive pairs and unit cell
+            fprintf(' ... identifying pairs in unit cell'); tic;
+            pp.pc_natoms=[];pp.ncenters=[];pp.norbits=[];
+            [pp.c_id,pp.o_id,pp.q_id,pp.pp_id,pp.ip_id] = get_cluster_map(pp,uc); 
+            [pp.norbits,pp.ncenters] = cellfun(@(x)size(x),pp.o_id); pp.pc_natoms=numel(pp.norbits);
+            fprintf(' (%.f secs)\n',toc);
+            end
+            
             % tight binding model
             fprintf(' ... solving for matrix element values '); tic;
             if     contains(flag,'tb');  ip = get_tb_parameters(ip,dft,nskips);
@@ -4250,15 +4252,13 @@ classdef am_dft
             function [ip]         = get_tb_parameters(ip,dft,nskips)
                 % nskips : number of dft bands to skip (e.g. 5)
 
-                import am_lib.* am_dft.*
-
                 % copy number of bands to skip
                 ip.nskips = nskips;
 
                 % fit neighbor parameter at high symmetry points using poor man's simulated anneal
-                d = normc_(ip.bas*(ip.tau(:,ip.cluster(2,:))-ip.tau(:,ip.cluster(1,:))));
+                d = am_lib.normc_(ip.bas*(ip.tau(:,ip.cluster(2,:))-ip.tau(:,ip.cluster(1,:))));
                 d4fc = repelem(d,cellfun(@(x)size(x,2),ip.W)); nfcs=numel(d4fc); x=zeros(1,nfcs);
-                d=unique(rnd_(d4fc)); d=conv([d,Inf],[1 1]/2,'valid'); nds = numel(d); r_best = Inf;
+                d=unique(am_lib.rnd_(d4fc)); d=conv([d,Inf],[1 1]/2,'valid'); nds = numel(d); r_best = Inf;
 
                 % set simulated annealing temeprature and optimization options
                 kT = 20; kT_decay_ = @(kT,i) kT .* exp(-i/5); rand_ = @(x) (0.5-rand(size(x))).*abs(x./max(x));
@@ -4270,7 +4270,7 @@ classdef am_dft
                 % define cost function
                 kpt_id = 1:max(round(dft.nks/20),1):dft.nks;
                 % kpt_id = [1:dft.nks];
-                cost_ = @(x) dft.E(bnd_id,kpt_id) - eval_energies_(ip,x,dft.k(:,kpt_id));
+                cost_ = @(x) dft.E(bnd_id,kpt_id) - am_dft.eval_energies_(ip,x,dft.k(:,kpt_id));
 
                 % poor man's simulated annealing: loop over distances, incorporating each shell at a time
                 % it appears that ignoring the loop over distance is better, at least for cases with small pair cutoffs
@@ -4280,12 +4280,12 @@ classdef am_dft
                         if i ~= 1; x = x_best + rand_(x_best) * kT_decay_(kT,i); end
 
                         % optimize
-                        [x,r] = lsqnonlin_(cost_, x, [d4fc>d(j)], [], [], opts);
+                        [x,r] = am_lib.lsqnonlin_(cost_, x, [d4fc>d(j)], [], [], opts);
 
                         % save r_best parameter
                         if r < r_best; r_best = r; x_best = x;
                             % plot band structure (quick and dirty)
-                            plot([1:dft.nks], eval_energies_(ip,x,dft.k),'-k',...
+                            plot([1:dft.nks], am_dft.eval_energies_(ip,x,dft.k),'-k',...
                                  [1:dft.nks], dft.E(bnd_id,:),':r');
                             set(gca,'XTick',[]); axis tight; grid on;
                             ylabel('Energy E'); xlabel('Wavevector k'); drawnow;
@@ -4295,10 +4295,10 @@ classdef am_dft
 
                 % redefine cost function on all kpoints
                 kpt_id = [1:dft.nks];
-                cost_ = @(x) dft.E(bnd_id,kpt_id) - eval_energies_(ip,x,dft.k(:,kpt_id));
+                cost_ = @(x) dft.E(bnd_id,kpt_id) - am_dft.eval_energies_(ip,x,dft.k(:,kpt_id));
 
                 % final pass with all parameters and all kpoints
-                [x,~] = lsqnonlin_(cost_,x,false(1,nfcs),[],[],opts);
+                [x,~] = am_lib.lsqnonlin_(cost_,x,false(1,nfcs),[],[],opts);
 
                 % save refined matrix elements and conform to ip
                 for i = [1:ip.nclusters]; d(i)=size(ip.W{i},2); end; Evsk=cumsum(d); Svsk=Evsk-d+1;
@@ -4494,7 +4494,7 @@ classdef am_dft
             
             import am_lib.* am_dft.*
 
-            % construct concrete supercell for detemrining pairs
+            % construct concrete supercell for determining pairs
             [uc,uc.u2p,uc.p2u] = get_supercell(pc, diag(ceil(2*cutoff./normc_(pc.bas))) ); uc.u2i = pc.p2i(uc.u2p);
             
             % [pc-frac] get symmetries
@@ -4726,6 +4726,58 @@ classdef am_dft
                 M{p} = reshape( sym(W{p})*C{p}(:), [d(i),d(j)] );
                 % reorder C to be in the same order as D
                 [C{p},n] = sort(C{p}(:).'); W{p} = W{p}(:,n); 
+            end
+            
+            function [J,Dj,T] = get_tb_symmetry_representation(spdf,R)
+                % set symmetries D{:}, and parity-transpose F{:} for each
+                % irreducible atom given a list of orbitals for each
+                % irreducible atom, spdf = {'sp','d'}
+
+                % get symmetries
+                nRs=size(R,3);
+
+                % transform symmetries to the tight binding representation (wiger functions)
+                W_=cell(1,3); for j_=[1:3]; W_{j_} = am_lib.get_wigner(j_,R,'real'); end
+
+                % set orbitals J{:}, symmetries D{:}, and parity-transpose T{:} for each irreducible atom
+                natoms=numel(spdf); F=cell(1,natoms);  Dj=cell(1,natoms);
+                for i_ = 1:natoms
+                    % set orbitals
+                    J{i_} = am_lib.findrow_('spdf'==spdf{i_}(:)).'-1;
+
+                    % set start and end points for J
+                    E=cumsum(J{i_}*2+1); S=E-(J{i_}*2+1)+1;
+
+                    % construct D matrix and lay the ground work construction of parity super-operator
+                    d_ = max(E); P = zeros(1,d_); Dj{i_} = zeros(d_,d_,nRs);
+                    for j_ = 1:length(J{i_})
+                        if J{i_}(j_)==0 % s orbital
+                            Dj{i_}(S(j_):E(j_),S(j_):E(j_),:) = 1;
+                        else % p,d,f orbitals
+                            Dj{i_}(S(j_):E(j_),S(j_):E(j_),:) = W_{J{i_}(j_)};
+                        end
+                        P(S(j_):E(j_)) = (-1).^j_;
+                    end
+
+                    % construct (NOT parity) transpose super-operator F --> T
+                    % F is supposed to be just the transpose operator, without the parity component.
+                    % Checked by comparing the tight binding hamiltonian for sp Si to that
+                    % reported in Chadi Cohen's paper. Taking parity into account produces
+                    % all-positive matrix elements, while ignoring parity (which is correct)
+                    % and using only the transpose produces a second-neighbor matrix element of
+                    % the form (which is correct):
+                    % [ c02_11, -c02_21, -c02_21, -c02_21]
+                    % [ c02_21,  c02_22,  c02_32,  c02_32]
+                    % [ c02_21,  c02_32,  c02_22,  c02_32]
+                    % [ c02_21,  c02_32,  c02_32,  c02_22]
+                    % Therefore, the absolute value of F is taken at the end.
+                    f_ = @(x) x(:); A=(P.'*P).*reshape([1:d_^2],[d_,d_]);
+                    F{i_} = zeros(d_^2,d_^2); F{i_}(sub2ind([d_^2,d_^2],abs(f_(A')),abs(f_(A))))=sign(f_(A'));
+                    T{i_} = abs(F{i_}); 
+                end
+
+                % correct rounding errors in sym (non-exauhstive)
+                for i_ = 1:numel(Dj); Dj{i_} = am_lib.wdv_(Dj{i_}); end
             end
         end
 
@@ -6561,59 +6613,6 @@ classdef am_dft
 
         % aux electrons
 
-        function [J,Dj,T] = get_tb_symmetry_representation(spdf,R)
-            % set symmetries D{:}, and parity-transpose F{:} for each
-            % irreducible atom given a list of orbitals for each
-            % irreducible atom, spdf = {'sp','d'}
-
-            import am_lib.* am_dft.*
-
-            % get symmetries
-            nRs=size(R,3);
-
-            % transform symmetries to the tight binding representation (wiger functions)
-            W=cell(1,3); for j=[1:3]; W{j} = get_wigner(j,R,'real'); end
-
-            % set orbitals J{:}, symmetries D{:}, and parity-transpose T{:} for each irreducible atom
-            natoms=numel(spdf); F=cell(1,natoms);  Dj=cell(1,natoms);
-            for i = 1:natoms
-                % set orbitals
-                J{i} = findrow_('spdf'==spdf{i}(:)).'-1;
-
-                % set start and end points for J
-                E=cumsum(J{i}*2+1); S=E-(J{i}*2+1)+1;
-
-                % construct D matrix and lay the ground work construction of parity super-operator
-                d = max(E); P = zeros(1,d); Dj{i} = zeros(d,d,nRs);
-                for j = 1:length(J{i})
-                    if J{i}(j)==0 % s orbital
-                        Dj{i}(S(j):E(j),S(j):E(j),:) = 1;
-                    else % p,d,f orbitals
-                        Dj{i}(S(j):E(j),S(j):E(j),:) = W{J{i}(j)};
-                    end
-                    P(S(j):E(j)) = (-1).^j;
-                end
-
-                % construct (NOT parity) transpose super-operator F --> T
-                % F is supposed to be just the transpose operator, without the parity component.
-                % Checked by comparing the tight binding hamiltonian for sp Si to that
-                % reported in Chadi Cohen's paper. Taking parity into account produces
-                % all-positive matrix elements, while ignoring parity (which is correct)
-                % and using only the transpose produces a second-neighbor matrix element of
-                % the form (which is correct):
-                % [ c02_11, -c02_21, -c02_21, -c02_21]
-                % [ c02_21,  c02_22,  c02_32,  c02_32]
-                % [ c02_21,  c02_32,  c02_22,  c02_32]
-                % [ c02_21,  c02_32,  c02_32,  c02_22]
-                % Therefore, the absolute value of F is taken at the end.
-                f_ = @(x) x(:); A=(P.'*P).*reshape([1:d^2],[d,d]);
-                F{i}=zeros(d^2,d^2); F{i}(sub2ind([d^2,d^2],abs(f_(A')),abs(f_(A))))=sign(f_(A'));
-                T{i} = abs(F{i}); 
-            end
-
-            % correct rounding errors in sym (non-exauhstive)
-            for i = 1:numel(Dj); Dj{i} = wdv_(Dj{i}); end
-        end
 
         function E        = eval_energies_(tb,x,k)
             % get hamiltonians
