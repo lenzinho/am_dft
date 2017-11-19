@@ -924,6 +924,14 @@ classdef am_dft
             
             import am_dft.* am_lib.*
             
+            % test space group memory is up to date
+            for i = 1:237
+                [S1] = generate_sg(i,true);
+                [S2] = generate_sg(i,false);
+                criteria_S(i) = all_(eq_(S1,S2));
+            end
+            test_(all(criteria_S),'sg memory check',sprintf('failed to match symmetry with memory for sg:%s',sprintf(' %i',find(~criteria_S))));
+            
             % test point group memory is up to date
             for i = 1:32
                 [R1,W1] = generate_pg(i,true);
@@ -1015,10 +1023,10 @@ classdef am_dft
             if     s(1)==3 && s(2)==3 % point symmetry
                 apply_ = @(R,tau) cat(1, ...
                     reshape(matmul_(R(1:3,1:3,:),tau),3,[],size(R,3))                  , repmat(tau(4:end,:),1,1,size(S,3)) );
-            elseif s(1)==4 && s(2)==4 % seitz symmetry
+            elseif s(1)==4 && s(2)==4 && all_(eq_(S(4,1:4,:), [0,0,0,1])) % seitz symmetry
                 apply_ = @(S,tau) cat(1, ...
                     reshape(matmul_(S(1:3,1:3,:),tau(1:3,:)),3,[],size(S,3))+S(1:3,4,:), repmat(tau(4:end,:),1,1,size(S,3)) );
-            elseif s(1)==1 && s(2)==2 % composit symmetry Q
+            elseif s(1)==1 && s(2)==2 && iscell(S) % composit symmetry Q
                 apply_ = @(Q,tau) apply_composite_symmetry_(Q,tau);
                 [s(1),s(2),s(3)] = size(S{1});
             end
@@ -1112,43 +1120,31 @@ classdef am_dft
             
             s = size(S); if numel(s)<3; s(3) = 1; end
             
-            if   s(1)==1
-                % seitz operator combined with permutation (represented as a two-part cell)
-                s = size(S{1});
-                if     s(1)==4 && s(2)==4
-                    % seitz operator (applies mod to translational components)
+            if iscell(S)  % seitz operator combined with permutation (represented as a two-part cell)
+                s = size(S{1}); if numel(s)<3; s(3) = 1; end
+                if     s(1)==4 && s(2)==4 && all_(eq_(S{1}(4,1:4,:), [0,0,0,1], tol)) % seitz operator (applies mod to translational components)
                     md_ = @(X) [X(1:12,:);mod_(X(13:15,:),tol);X(16:end,:)];
-                    rs_ = @(X) md_(reshape(X,s(1)*s(2),[]));
-                    nsyms = s(3);
+                    rs_ = @(X) md_(reshape(X,s(1)*s(2),[])); nsyms = s(3);
 
                     ref = [rs_(S{1});reshape(S{2},size(S{2},1),[])];
                     opr = [rs_(matmulp_(S{1},permute(S{1},[1,2,4,3]))); reshape(operm_(S{2},S{2}),size(S{2},1),[])];
 
                     MT = reshape( member_( opr , ref, tol), s(3), s(3)); 
-                elseif s(1)==3 && s(2)==3
-                    % point operator
-                    rs_ = @(X) reshape(X,s(1)*s(2),[]);
-                    nsyms = s(3);
+                elseif s(1)==3 && s(2)==3                                          % point operator
+                    rs_ = @(X) reshape(X,s(1)*s(2),[]); nsyms = s(3);
 
                     ref = [rs_(S{1});reshape(S{2},size(S{2},1),[])];
                     opr = [rs_(matmulp_(S{1},permute(S{1},[1,2,4,3]))); reshape(operm_(S{2},S{2}),size(S{2},1),[])];
 
                     MT = reshape( member_( opr , ref, tol), s(3), s(3));
                 end
-                
-            elseif s(1)==4 && s(2)==4
-                % seitz operator (applies mod to translational components)
+            elseif s(1)==4 && s(2)==4 && all_(eq_(S(4,1:4,:), [0,0,0,1], tol))     % seitz operator (applies mod to translational components)
                 md_ = @(X) [X(1:12,:);mod_(X(13:15,:),tol);X(16:end,:)];
-                rs_ = @(X) md_(reshape(X,s(1)*s(2),[]));
-                nsyms = s(3);
+                rs_ = @(X) md_(reshape(X,s(1)*s(2),[])); nsyms = s(3);
                 
                 MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))), rs_(S), tol) , nsyms, nsyms);
-            else
-                % point operator
-                % s(1)==3 && s(2)==3
-                % but also others...
-                rs_ = @(X) reshape(X,s(1)*s(2),[]);
-                nsyms = s(3); 
+            else                                                                   % point operator
+                rs_ = @(X) reshape(X,s(1)*s(2),[]); nsyms = s(3); 
 
                 MT = reshape( member_( rs_(matmulp_(S,permute(S,[1,2,4,3]))), rs_(S), tol ) , nsyms, nsyms);
             end
@@ -1285,7 +1281,6 @@ classdef am_dft
                             ex_(i) = true;
                             ulist(:,i) = u;
                             break;
-                            %
                         case numel(x)
                             ex_(i) = false;
                             % exausted all possibiltiies
@@ -1422,7 +1417,7 @@ classdef am_dft
                 error('Character table is not orthogonal')
             end
         end
-        
+
         function                print_character_table(R,CT,cc_id)
             % clear;clc
             % R=generate_pg(32,true);
@@ -2068,7 +2063,6 @@ classdef am_dft
 
             if from_memory
                 % ~ 500x faster for large space groups
-                %{
                 switch sg_code
                 case 1; S=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
                 case 2; S=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,-1,0,0,0,0,-1,0,0,0,0,-1,0,0,0,0,1];
@@ -2309,7 +2303,6 @@ classdef am_dft
                 case 237; S=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,-1,0,0,0,0,-1,0,0,0,0,-1,0,0,0,0,1,0,1,0,0,0,0,1,0,1,0,0,0,0,0,0,1,0,-1,0,0,-1,0,0,0,0,0,-1,0,1/2,1/2,1/2,1,0,-1,0,0,0,0,-1,0,-1,0,0,0,0,0,0,1,0,1,0,0,1,0,0,0,0,0,1,0,1/2,1/2,1/2,1,0,0,1,0,1,0,0,0,0,1,0,0,0,0,0,1,0,0,-1,0,0,-1,0,0,-1,0,0,0,1/2,1/2,1/2,1,-1,0,0,0,0,0,-1,0,0,-1,0,0,1/2,1/2,1/2,1,0,0,-1,0,-1,0,0,0,0,-1,0,0,0,0,0,1,0,0,1,0,0,1,0,0,1,0,0,0,1/2,1/2,1/2,1,1,0,0,0,0,0,1,0,0,1,0,0,1/2,1/2,1/2,1];
                 end
                 S = reshape(S,4,4,[]);
-                %}
             else
                 
                 % load recipe
@@ -2643,7 +2636,7 @@ classdef am_dft
             s=size(S); d=s(1)*s(2);
             
             % switch
-            if s(1)==4 && s(2)==4 && all_(eq_(S(1,1:4,:), [0,0,0,1], tol))
+            if s(1)==4 && s(2)==4 && all_(eq_(S(4,1:4,:), [0,0,0,1], tol))
                 algo = 2; % seitz symmetry
             else
                 algo = 1; % point symmetry
@@ -2865,27 +2858,6 @@ classdef am_dft
                 end;end
             end
         end
-
-
-        % DEVELOPMENT
-        
-            function MT = get_mt_(r_mt,t_mt,rt)
-                
-                import am_lib.*
-                 
-                % define multiplication
-                mult_ = @(a,b) [r_mt(a(1),b(1));t_mt(a(2),b(2))];
-                %
-                nsyms=size(rt,2);
-                % construct multiplication table
-                for j1 = 1:nsyms
-                for j2 = 1:nsyms
-                    MT(j1,j2) = member_(mult_(rt(:,j1),rt(:,j2)),rt);
-                end
-                end
-            end
-
-        % DEVELOPMENT
         
 
         % unit cells
@@ -3145,14 +3117,15 @@ classdef am_dft
             end
 
             function [uc]    = load_material(material)
-                % MATDAT
+                % LOAD_MAT
                 switch material
                     % toy models
                     case '1D-chain';        uc = create_cell(am_dft.abc2bas([10,1],'tetra'),                  [[0;0;0]],                                                  {'H'},1);
                     case '1D-dimer';        uc = create_cell(am_dft.abc2bas([10,1],'tetra'),                  [[0;0;0],[0;0;0.5]],                                        {'H','He'},1);
                     case '2D-BN';           uc = create_cell(am_dft.abc2bas([1,1,10],'hex'),                  [[0;0;0],[2/3;1/3;0]],                                      {'B','N'},187);
                     case '2D-graphene';     uc = create_cell(am_dft.abc2bas([1,1,10],'hex'),                  [[2/3;1/3;0]],                                              {'C'},191);
-                    case '3D-SC';           uc = create_cell(am_dft.abc2bas(1,'cubic')   ,                    [[0;0;0]],                                                  {'H'},1);
+                    case '3D-SC';           uc = create_cell(am_dft.abc2bas(1,'cubic'),                       [[0;0;0]],                                                  {'H'},1);
+                    case '3D-NaCl';         uc = create_cell(am_dft.abc2bas(1,'cubic'),                       [[0;0;0], [1;1;1]/2],                                       {'Na','Cl'}, 225);
                     % metals  
                     case 'fcc-Co';          uc = create_cell(am_dft.abc2bas(0.35441,'cubic'),                 [[0;0;0]],                                                  {'Co'},225); % ICSD 44989
                     case 'hcp-Co';          uc = create_cell(am_dft.abc2bas([0.25054,0.40893],'hex'),         [[1/3;2/3;1/4]],                                            {'Co'},194); % ICSD 44990
@@ -4404,7 +4377,122 @@ classdef am_dft
                     end
                 end
             end
-            
+                    
+            function                print_cluster(ip,flags)
+
+                if nargin<2; flags=''; end
+
+                if isfield(ip,'p2i'); isprimitive=true;  str_type='primitive';
+                else;                 isprimitive=false; str_type='irreducible'; end
+
+                % choose between fractional and cartesian coordinates
+                if contains(flags,'frac') || ~contains(flags,'cart'); ip.bas=eye(3); end
+
+                fprintf(' ... %s %i-atom clusters:\n', str_type, ip.nvertices);
+
+                fprintf('     '); 
+                    fprintf(['%-',num2str(4+3*ip.nvertices),'s'],'cluster');
+                    if contains(flags,'bond')
+                        fprintf('%24s',sprintf('atom #%i',1)); for i = 2:ip.nvertices; fprintf('%24s',sprintf('bond (1-%i)',i)); end
+                    else
+                        for i = 1:ip.nvertices; fprintf('%24s',sprintf('atom #%i',i)); end
+                    end
+                    fprintf('%8s','length'); 
+                    if isprimitive; fprintf('%5s','p2i'); end
+                fprintf('\n');  
+
+                % bar
+                fprintf('     '); 
+                    fprintf(['%-',num2str(4+3*ip.nvertices),'s'],repmat('-',4+3*ip.nvertices,1));
+                    for i = 1:ip.nvertices; fprintf('%8s%8s%8s','-------','--------','--------'); end
+                    fprintf('%8s','-------'); 
+                    if isprimitive; fprintf('%5s','----'); end
+                fprintf('\n');  
+
+                % table entries
+                switch ip.nvertices
+                    case 2
+                        REF = ip.bas*ip.tau(:,ip.cluster(1,:));
+                        POS = ip.bas*ip.tau(:,ip.cluster(2,:));
+                        d   = am_lib.normc_(REF-POS);
+                    case 3
+                        REF = reshape(ip.bas*ip.tau(:,ip.cluster(1,:)),[3,1           ,ip.nclusters]);
+                        POS = reshape(ip.bas*ip.tau(:,ip.cluster     ),[3,ip.nvertices,ip.nclusters]);
+                        d   = am_lib.normc_(REF-POS)/sqrt(ip.nvertices);
+                    otherwise 
+                        error('not yet implemented');
+                end
+
+                for i = 1:ip.nclusters
+                fprintf('     '); 
+                    % cluster number and symbols
+                    fprintf('%-4i %2s',i,ip.symb{ip.species(ip.cluster(1,i))}); fprintf('-%2s',ip.symb{ip.species(ip.cluster(2:end,i))}); 
+                    % center and bonds
+                    if contains(flags,'bond')
+                        fprintf(' %7.3f', ip.bas*ip.tau(:,ip.cluster(1,i)) ); 
+                        fprintf(' %7.3f', ip.bas*ip.tau(:,ip.cluster(2:end,i))-ip.bas*ip.tau(:,ip.cluster(1,i))); 
+                    else
+                        fprintf(' %7.3f', ip.bas*ip.tau(:,ip.cluster(:,i)));
+                    end
+                    % length
+                    fprintf(' %7.3f',d(i)); 
+                    % irreducible index if primitive
+                    if isprimitive; fprintf('%5i', ip.pp2ip(i)); end
+                fprintf('\n');
+                end
+                
+                % print orbit and stabilizer group generators
+                if ~isprimitive
+                    % get stabilizers and generators in fractional coordinates before performing change of basis
+                    [s_ck,g_ck] = am_dft.get_cluster_generators_and_stabilizers(ip);
+                    
+                    % print only generators of stabilizers and orbits
+                    Q_ex_ = @(ex_) deal(ip.Q{1}(:,:,ex_),ip.Q{2}(:,ex_));
+                    for i = 1:ip.nclusters
+                        [Q_{1:2}] = Q_ex_(s_ck(:,i)); tmp = am_dft.get_generators(am_dft.get_multiplication_table(Q_)); s_ck(:,i) = false; s_ck(tmp,i) = true;
+                    end
+                    
+                    % convert symmetries if necessary
+                    sym_rebase_ = @(B,S) [[ am_lib.matmul_(am_lib.matmul_(B,S(1:3,1:3,:)),inv(B)), ...
+                                    reshape(am_lib.matmul_(B,S(1:3,4,:)),3,[],size(S,3))]; S(4,1:4,:)];
+
+                    % get field properly
+                    if     isfield(ip,'S'); sym='S'; ip.(sym)    = sym_rebase_(ip.bas,ip.(sym));    ip.(sym)    = am_lib.wdv_(ip.(sym));
+                    elseif isfield(ip,'Q'); sym='Q'; ip.(sym){1} = sym_rebase_(ip.bas,ip.(sym){1}); ip.(sym){1} = am_lib.wdv_(ip.(sym){1}); end
+                    
+                    % get names
+                    sym_name = am_dft.get_long_ss_name(ip.(sym));
+
+                    % print generators and stabilizers (bond group + reversal group)
+                    for i = 1:ip.nclusters%; if am_lib.gt_(d(i),0)
+                        fprintf('     ----------------------------------------------------- cluster #%-3i\n', i);
+                        print_helper_(sym_name,'generators',g_ck(:,i));
+                        try
+                        print_helper_(sym_name,'stabilizers',s_ck(:,i));
+                        catch
+                            asdf
+                        end
+                        fprintf('\n');
+                    end%;end
+                end
+
+                function print_helper_(sym_name,name,x_)
+                    nGs = sum(x_); nentries_ = 2; print_length = 2+max(cellfun(@(x)numel(strtrim(x)),sym_name));
+                    if nGs>0
+                    fprintf('     %-12s',[name,':']);
+                        for j = 1:nGs
+                            G=sym_name(x_);
+                            fprintf('%*s',print_length,strtrim(G{j})); 
+                            if mod(j,nentries_)==0 && j~=numel(G)
+                                fprintf('\n'); 
+                                fprintf('     %-10s  ',' '); 
+                            end
+                        end
+                        fprintf('\n');
+                    end
+                end
+            end
+
             function [bvk]        = enforce_asr(bvk,pp)
                 % build force constants
                 phi = zeros(3,3,bvk.nclusters);
@@ -4450,40 +4538,35 @@ classdef am_dft
             [uc,uc.u2p,uc.p2u] = get_supercell(pc, diag(ceil(2*cutoff./normc_(pc.bas))) ); uc.u2i = pc.p2i(uc.u2p);
             
             % [pc-frac] get symmetries
-            [~,~,S] = get_symmetries(pc); [Q,nQs] = get_cluster_symmetries(S,nvertices);
+            [~,~,S] = get_symmetries(pc); Q = get_cluster_symmetries(S,nvertices);
 
             % get all possible clusters with natoms
             [L{1:(nvertices-1)}]=deal([1:uc.natoms]); [Y{nvertices:-1:1}] = ndgrid(L{:},uc.p2u); 
-            x = reshape(cat(nvertices+1,Y{1:nvertices}),[],nvertices).';
+            V = reshape(cat(nvertices+1,Y{1:nvertices}),[],nvertices).';
             
-            % [cart] exclude any cluster with at least one bond length longer than the cutoff
-            d_cart_ = @(dX) normc_(uc.bas*dX); bond_ij = nchoosek_(nvertices,2); nbonds = size(bond_ij,2); ex_ = true(1,size(x,2));            
-            for i = 1:nbonds; ex_(ex_) = d_cart_( uc.tau(:,x(bond_ij(1,i),ex_)) - uc.tau(:,x(bond_ij(2,i),ex_)) )<cutoff; end
-            
-            % get number of clusters
-            nclusters = size(x(:,ex_),2); 
+            % [cart] exclude any cluster for which at least one bond length is longer than the cutoff
+            d_cart_ = @(dX) normc_(uc.bas*dX); bond_ij = nchoosek_(nvertices,2); nbonds = size(bond_ij,2); ex_ = true(1,size(V,2));            
+            for i = 1:nbonds; ex_(ex_) = d_cart_( uc.tau(:,V(bond_ij(1,i),ex_)) - uc.tau(:,V(bond_ij(2,i),ex_)) )<cutoff; end
             
             % [pc-frac] create cluster tau = [X, natoms, nclusters]
-            X = [uc.tau2pc*uc.tau;uc.species;uc.u2i;uc.u2p]; 
-            tau = reshape(X(:,x(:,ex_)),size(X,1), nvertices, nclusters);
+            X = [uc.tau2pc*uc.tau;uc.species;uc.u2i;uc.u2p]; V=V(:,ex_);
 
-            % [pc-frac] apply transformation tau = [X, natoms, nclusters, nQs]
-            tau = apply_symmetry(Q,tau);
+            % get supercell cluster
+            sp_ = @(pc,X,V,cutoff,Q) struct('model',[],...
+                'units','frac-pc','bas',pc.bas, ...
+                'symb',{pc.symb},'mass',pc.mass, ...
+                'x2p',X(6,:),'x2i',X(5,:),'species',X(4,:),'tau',X(1:3,:), ...
+                'nQs',size(Q{1},3),'Q',{Q},'Dj',[], ...
+                'cutoff',cutoff,'nvertices',size(V,1),'nclusters',size(V,2),'cluster',V);
+            sp = sp_(pc, X, V, cutoff, Q);
 
-            % [pc-frac] shift reference atom to primitive cell 
-            tau(1:3,:,:,:) = tau(1:3,:,:,:) - floor(tau(1:3,1,:,:));
-            
-            % shift to positive octant so that positions are comparable and assign unique labels
-            positive_ = @(X) cat(1, matmul_(uc.tau2pc, mod_(matmul_(inv(uc.tau2pc), X(1:3,:,:,:) ) )), X(4:end,:,:,:));
-            [V,~,V_p2i]=uniquec_( member_(positive_(tau(1:4,:,:,:))/10,X(1:4,:,:,:)/10) ); 
-            
-            % get irreducible cluster indicies by connecting symmetrically equivalent clusters with a graph
-            PM = reshape(V_p2i,[nclusters,nQs]); [~,i2p,~] = get_connectivity( PM ); V = V(:,i2p);
+            % get action of symmetry operations on supercell cluster
+            [~,i2p] = get_action(sp);
 
-            % reassign position indices and recenter
-            [Z,~,IC] = uniquec_(V(:).'); V = reshape(IC,size(V)); X=X(:,Z);
+            % build
+            V = sp.cluster(:,i2p); [Z,~,IC] = uniquec_(V(:).'); V=reshape(IC,size(V)); X=X(:,Z);
 
-            % create structure
+            % build irreducible clusters 
             ip_ = @(pc,X,V,cutoff,Q) struct('model',[],...
                 'units','frac-pc','bas',pc.bas, ...
                 'symb',{pc.symb},'mass',pc.mass, ...
@@ -4497,6 +4580,11 @@ classdef am_dft
             POS = reshape(ip.bas*ip.tau(:,          ip.cluster     ),[3*ip.nvertices,ip.nclusters]);
             d = normc_(REF-POS)/sqrt(ip.nvertices); fwd = rankc_([d;min(sign(POS));min(sign(POS))]);
             ip.cluster = ip.cluster(:,fwd);
+
+            function [Q,nQs]      = get_cluster_symmetries(S,nvertices)
+                % combine space symmetry with permutation of atomic positions
+                M = perms([nvertices:-1:1]).'; Q{1} = repmat(S,1,1,size(M,2)); Q{2} = repelem(M,1,size(S,3)); nQs=size(Q{1},3);
+            end
         end
         
         function [pp]         = get_primitive_cluster(ip)
@@ -4827,7 +4915,7 @@ classdef am_dft
                 % build hamiltonian matrix 
                 % [make this pp.bas*rij(:) with pp.bas = (ones(3)-eye(3))/2 to reproduce the 
                 % tight binding hamiltonian of Vogl and of Chadi-Cohen]
-                H(mp,np,c) = H(mp,np,c) + matrix_ .* exp(sym(2i*pi) * sym(rij(:).','d') * kvec(:) );
+                H(mp,np,c) = H(mp,np,c) + matrix_ .* exp(sym(2i*pi) * sym(rij(:).') * kvec(:) );
             end
 
             % check that each irreducible part of the Hamilonian is Hermitian (simetimes this fails because it is unable to simplify the symbolic expression enough).
@@ -4839,7 +4927,7 @@ classdef am_dft
             % multiply mass factor to get the dynamical matrix
             if contains(ip.model,'bvk')
                 % get unique masses
-                mass = sym('m_%d',[1,unique(ip.species)],'real');
+                mass = sym('m_%d',[1,numel(unique(ip.species))],'real');
                 % get mass matrix
                 p2i=[]; p2i(ip.x2p)=ip.x2i; mass=mass(repelem(p2i,1,3)); mass=(mass.'*mass); 
                 % include mass
@@ -4855,18 +4943,12 @@ classdef am_dft
             end
         end
 
-        function [Q,nQs]      = get_cluster_symmetries(S,nvertices)
-            % combine space symmetry with permutation of atomic positions
-            M = perms([nvertices:-1:1]).'; Q{1} = repmat(S,1,1,size(M,2)); Q{2} = repelem(M,1,size(S,3)); nQs=size(Q{1},3);
-        end
-        
         function [PM,i2p,p2i] = get_action(ip)
             import am_dft.* am_lib.*
             
             % get field properly
             if     isfield(ip,'S'); sym='S'; nsyms='nSs';
-            elseif isfield(ip,'Q'); sym='Q'; nsyms='nQs';
-            end
+            elseif isfield(ip,'Q'); sym='Q'; nsyms='nQs'; end
             % composite vector
             X = [ip.tau;ip.species]; Xd = size(X,1);
             % apply symmetry
@@ -4896,123 +4978,6 @@ classdef am_dft
             g_ck = false(ip.(nsyms),ip.nclusters);
             s_ck = [PM(i2p,:)==PM(i2p,1)].';
             for i = 1:numel(i2p); [~,a,~]=unique(PM(i2p(i),:)); g_ck(a,i)=true; end
-        end
-        
-        function                print_cluster(ip,flags)
-
-            import am_lib.* am_dft.*
-            
-            if nargin<2; flags=''; end
-            
-            if isfield(ip,'p2i')
-                isprimitive=true; str_type='primitive';
-            else
-                isprimitive=false; str_type='irreducible';
-            end
-            
-            if contains(flags,'frac')
-                ip.bas=eye(3);
-            end
-            
-            fprintf(' ... %s %i-atom clusters:\n', str_type, ip.nvertices);
-
-            % fprintf('     atom %i: %i shells\n', m, sum(ex_));
-            fprintf('     '); 
-                fprintf(['%-',num2str(4+3*ip.nvertices),'s'],'cluster');
-                if contains(flags,'bond')
-                    fprintf('%24s',sprintf('atom #%i',1)); for i = 2:ip.nvertices; fprintf('%24s',sprintf('bond (1-%i)',i)); end
-                else
-                    for i = 1:ip.nvertices; fprintf('%24s',sprintf('atom #%i',i)); end
-                end
-                fprintf('%8s','length'); 
-                if isprimitive; fprintf('%5s','p2i'); end
-            fprintf('\n');  
-            
-            % bar
-            fprintf('     '); 
-                fprintf(['%-',num2str(4+3*ip.nvertices),'s'],repmat('-',4+3*ip.nvertices,1));
-                for i = 1:ip.nvertices; fprintf('%8s%8s%8s','-------','--------','--------'); end
-                fprintf('%8s','-------'); 
-                if isprimitive; fprintf('%5s','----'); end
-            fprintf('\n');  
-            
-            % table entries
-            switch ip.nvertices
-                case 2
-                    REF = ip.bas*ip.tau(:,ip.cluster(1,:));
-                    POS = ip.bas*ip.tau(:,ip.cluster(2,:));
-                    d = normc_(REF-POS);
-                case 3
-                    REF = reshape(ip.bas*ip.tau(:,ip.cluster(1,:)),[3,1        ,ip.nclusters]);
-                    POS = reshape(ip.bas*ip.tau(:,ip.cluster     ),[3,ip.nvertices,ip.nclusters]);
-                    d = normc_(REF-POS)/sqrt(ip.nvertices);
-                otherwise 
-                error('not yet implemented');
-            end
-            
-            
-            for i = 1:ip.nclusters
-            fprintf('     '); 
-                % cluster number and symbols
-                fprintf('%-4i %2s',i,ip.symb{ip.species(ip.cluster(1,i))}); fprintf('-%2s',ip.symb{ip.species(ip.cluster(2:end,i))}); 
-                % center and bonds
-                if contains(flags,'bond')
-                    fprintf(' %7.3f', ip.bas*ip.tau(:,ip.cluster(1,i)) ); 
-                    fprintf(' %7.3f', ip.bas*ip.tau(:,ip.cluster(2:end,i))-ip.bas*ip.tau(:,ip.cluster(1,i))); 
-                else
-                    fprintf(' %7.3f',ip.bas*ip.tau(:,ip.cluster(:,i)));
-                end
-                % length
-                fprintf(' %7.3f',d(i)); 
-                % irreducible index if primitive
-                if isprimitive; fprintf('%5i', ip.pp2ip(i)); end
-            fprintf('\n');
-            end
-            
-            % print stabilizers
-            if ~isprimitive
-                
-                % covert symmetries if necessary
-                sym_rebase_ = @(B,S) [[ matmul_(matmul_(B,S(1:3,1:3,:)),inv(B)), ...
-                    reshape(matmul_(B,S(1:3,4,:)),3,[],size(S,3))]; S(4,1:4,:)];
-                
-                % get field properly
-                if     isfield(ip,'S')
-                    sym='S'; ip.(sym) = sym_rebase_(ip.bas,ip.(sym)); ip.(sym) = wdv_(ip.(sym));
-                elseif isfield(ip,'Q')
-                    sym='Q'; ip.(sym){1} = sym_rebase_(ip.bas,ip.(sym){1}); ip.(sym){1} = wdv_(ip.(sym){1});
-                end
-                
-                % get names
-                sym_name = am_dft.get_long_ss_name(ip.(sym));
-                
-                % get stabilizers and generators
-                [s_ck,g_ck] = get_cluster_generators_and_stabilizers(ip);
-
-                % print generators and stabilizers (bond group + reversal group)
-                for i = 1:ip.nclusters; if gt_(d(i),0)
-                    fprintf('     ----------------------------------------------------- cluster #%-3i\n', i);
-                    print_helper_(sym_name,'generators',g_ck(:,i));
-                    print_helper_(sym_name,'stabilizers',s_ck(:,i));
-                    fprintf('\n');
-                end;end
-            end
-            
-            function print_helper_(sym_name,name,x_)
-                nGs = sum(x_); nentries_ = 2; print_length = 2+max(cellfun(@(x)numel(strtrim(x)),sym_name));
-                if nGs>0
-                fprintf('     %-12s',[name,':']);
-                    for j = 1:nGs
-                        G=sym_name(x_);
-                        fprintf('%*s',print_length,strtrim(G{j})); 
-                        if mod(j,nentries_)==0 && j~=numel(G)
-                            fprintf('\n'); 
-                            fprintf('     %-10s  ',' '); 
-                        end
-                    end
-                    fprintf('\n');
-                end
-            end
         end
 
         function [bz]         = get_dispersion(ip,bz)
