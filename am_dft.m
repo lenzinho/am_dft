@@ -161,6 +161,39 @@ classdef am_dft
             
         end
         
+        function [varargout] = demo_toy_models(flag)
+            
+            switch flag
+                case '1D-chain'
+                    [uc,pc] = load_cell('material','1D-chain');
+                    sc = get_supercell(uc,diag([1,1,5])); plot_cell(sc)
+                case '1D-dimer'
+                    [uc,pc] = load_cell('material','1D-dimer');
+                    sc = get_supercell(uc,diag([1,1,5])); plot_cell(sc)
+                case '2D-BN'
+                    clear;clc;import am_dft.*
+                    [uc] = load_cell('material','2D-BN');
+                    sc = get_supercell(uc,diag([5,5,1])); plot_cell(sc)
+                    %
+                    cutoff = 1.1; spdf={'p','p'}; flag = 'toy,tb';
+                    ip = get_model(flag, uc, cutoff, spdf);
+                case '2D-graphene'
+                    clear;clc;import am_dft.*
+                    [uc,pc] = load_cell('material','2D-graphene');
+                    sc = get_supercell(uc,diag([5,5,1])); plot_cell(sc)
+                    %
+                    cutoff = 1.1; spdf={'p'}; flag = 'toy,tb';
+                    ip = get_model(flag, pc, cutoff, spdf);
+                case '3D-SC'
+                    % nearest neighbor tight binding on a simple cubic lattice
+                    clear;clc;import am_dft.*
+                    [~,pc] = load_cell('material','3D-SC');
+                    cutoff = 1.1; spdf={'s'}; flag = 'toy,tb';
+                    ip = get_model(flag, pc, cutoff, spdf);
+                    varargout{1} = ip;
+            end
+            
+        end
     end
     
     
@@ -2031,7 +2064,7 @@ classdef am_dft
 
             import am_lib.* am_dft.*
 
-            if nargin<2; from_memory=true; end
+            if nargin<2; from_memory=false; end
 
             if from_memory
                 % ~ 500x faster for large space groups
@@ -2275,8 +2308,8 @@ classdef am_dft
                 case 236; S=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,-1,0,0,0,0,-1,0,0,0,0,-1,0,0,0,0,1,0,1,0,0,0,0,1,0,1,0,0,0,0,0,0,1,0,-1,0,0,-1,0,0,0,0,0,-1,0,0,0,0,1,0,-1,0,0,0,0,-1,0,-1,0,0,0,0,0,0,1,0,1,0,0,1,0,0,0,0,0,1,0,0,0,0,1,0,0,1,0,1,0,0,0,0,1,0,0,0,0,0,1,0,0,-1,0,0,-1,0,0,-1,0,0,0,0,0,0,1,-1,0,0,0,0,0,-1,0,0,-1,0,0,0,0,0,1,0,0,-1,0,-1,0,0,0,0,-1,0,0,0,0,0,1,0,0,1,0,0,1,0,0,1,0,0,0,0,0,0,1,1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1];
                 case 237; S=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,-1,0,0,0,0,-1,0,0,0,0,-1,0,0,0,0,1,0,1,0,0,0,0,1,0,1,0,0,0,0,0,0,1,0,-1,0,0,-1,0,0,0,0,0,-1,0,1/2,1/2,1/2,1,0,-1,0,0,0,0,-1,0,-1,0,0,0,0,0,0,1,0,1,0,0,1,0,0,0,0,0,1,0,1/2,1/2,1/2,1,0,0,1,0,1,0,0,0,0,1,0,0,0,0,0,1,0,0,-1,0,0,-1,0,0,-1,0,0,0,1/2,1/2,1/2,1,-1,0,0,0,0,0,-1,0,0,-1,0,0,1/2,1/2,1/2,1,0,0,-1,0,-1,0,0,0,0,-1,0,0,0,0,0,1,0,0,1,0,0,1,0,0,1,0,0,0,1/2,1/2,1/2,1,1,0,0,0,0,0,1,0,0,1,0,0,1/2,1/2,1/2,1];
                 end
-                %}
                 S = reshape(S,4,4,[]);
+                %}
             else
                 
                 % load recipe
@@ -2833,7 +2866,7 @@ classdef am_dft
             end
         end
 
-        
+
         % DEVELOPMENT
         
             function MT = get_mt_(r_mt,t_mt,rt)
@@ -2874,15 +2907,14 @@ classdef am_dft
             switch flag
                 case {'poscar','cif'};  if exist(arg,'file')~=2; fprintf('\n'); error('File does not exist: %s',arg); end
             end
+            
+            % convert bas from [Ang] to [nm] when loading from cif/poscar
             switch flag
-                case 'poscar';   [uc]     = load_poscar(arg);
-                case 'cif';      [uc,str] = load_cif(arg);
+                case 'poscar';   [uc]     = load_poscar(arg);   uc.bas = uc.bas*0.1;
+                case 'cif';      [uc,str] = load_cif(arg);      uc.bas = uc.bas*0.1;
                 case 'material'; [uc]     = load_material(arg);
                 case 'create';   [uc]     = am_dft.create_cell(arg{:});
             end
-            
-            % convert bas from [Ang] to [nm]
-            uc.bas = uc.bas*0.1;
             
             % set default numerical tolerance
             if nargin < 3; tol = am_dft.tiny; end
@@ -3062,7 +3094,7 @@ classdef am_dft
                 nSs = size(S,3);
                 
                 % save this cell?
-                str_bas = sprintf('am_dft.abc2bas([%g,%g,%g,%g,%g,%g])',[abc,angles]);
+                str_bas = sprintf('am_dft.abc2bas([%g,%g,%g,%g,%g,%g])',[abc/10,angles]);
                 str_tau = sprintf('[%g;%g;%g],',tau); str_tau = ['[',str_tau(1:(end-1)),']'];
                 str_spc = sprintf('''%s'',',symb{:}); str_spc = ['{',str_spc(1:(end-1)),'}'];
                 str = sprintf('create_cell(%s,%s,%s,%i)', str_bas, str_tau, str_spc, sg_id);
@@ -3113,34 +3145,41 @@ classdef am_dft
             end
 
             function [uc]    = load_material(material)
+                % MATDAT
                 switch material
-                    % metals
-                    case 'fcc-Co';          uc = create_cell(am_dft.abc2bas(3.5441,'cubic'),               [[0;0;0]],                                                  {'Co'},225); % ICSD 44989
-                    case 'hcp-Co';          uc = create_cell(am_dft.abc2bas([2.5054,4.0893],'hex'),        [[1/3;2/3;1/4]],                                            {'Co'},194); % ICSD 44990
-                    case 'CsCl-CoFe';       uc = create_cell(am_dft.abc2bas(2.8570,'cubic'),               [[0;0;0],[1;1;1]/2],                                        {'Co','Fe'},221); % ICSD 56273
-                    case 'Cu';              uc = create_cell(am_dft.abc2bas(3.6151,'cubic'),                [0;0;0],                                                   {'Cu'},225); % ICSD 43493
-                    case 'fcc-Fe';          uc = create_cell(am_dft.abc2bas(3.6468,'cubic'),               [[0;0;0]],                                                  {'Fe'},225); % ICSD 44862
-                    case 'bcc-Fe';          uc = create_cell(am_dft.abc2bas(2.9315,'cubic'),               [[0;0;0]],                                                  {'Fe'},229); % ICSD 44863
-                    % salts
-                    case 'NaCl';            uc = create_cell(am_dft.abc2bas(5.4533,'cubic'),               [[0;0;0], [1;1;1]/2],                                       {'Na','Cl'}, 225);
-                    % oxides
-                    case 'Al2O3';           uc = create_cell(am_dft.abc2bas([4.7617,12.9990],'hex'),       [[0;0;0.3522],[0.6936;0;0.2500]],                           {'Al','O'}, 167); % ICSD 10425
-                    case 'gamma-Al2O3';     uc = create_cell(am_dft.abc2bas(7.9110,'cubic'),               [[1;1;1]*0.37970,[5;5;5]/8,[0;0;0],[1;1;1]*0.15220],        {'O','Al','Al','Al'},227); % ICSD 66558 - CIF has different origin choice
-                    case 'eta-Al2O3';       uc = create_cell(am_dft.abc2bas(7.9140,'cubic'),               [[1;1;1]*0.37990,[5;5;5]/8,[1;0;0]*0.77390,[1;1;1]*0.19490],{'O','Al','Al','Al'},227); % ICSD 66559 - CIF has different origin choice
-                    case 'BiAlO3';          uc = create_cell(am_dft.abc2bas([5.37546,13.3933],'hex'),      [[0;0;0],[0;0;0.2222],[0.5326;0.0099;0.9581]],              {'Bi','Al','O'},161); % ICSD 171708
-                    case 'Bi2Al4O9';        uc = create_cell(am_dft.abc2bas([7.7134,8.1139,5.6914],'orth'),[[0.1711;0.1677;0],[0.5;0;0.2645],[0.3545;0.3399;0.5],[0;0;0.5],[0.3718;0.2056;0.2503],[0.1364;0.412;0.5],[0.1421;0.4312;0]],{'Bi','Al','Al','O','O','O','O'},55); % ICSD 88775
-                    case 'SrTiO3';          uc = create_cell(am_dft.abc2bas(3.9010,'cubic'),               [[0;0;0], [1;1;1]/2, [1;1;0]/2],                            {'Sr','Ti','O'}, 221); % ICSD 80873
-                    case 'SrRuO3';          uc = create_cell(am_dft.abc2bas([5.5729,7.8518,5.5346],'orth'),[[0;0;0],[0.5;0.25;0.99],[0.55;0.25;0.5],[0.22;0.03;0.21]], {'Ru','Sr','O','O'}, 62); % ICSD 56697
+                    % toy models
+                    case '1D-chain';        uc = create_cell(am_dft.abc2bas([10,1],'tetra'),                  [[0;0;0]],                                                  {'H'},1);
+                    case '1D-dimer';        uc = create_cell(am_dft.abc2bas([10,1],'tetra'),                  [[0;0;0],[0;0;0.5]],                                        {'H','He'},1);
+                    case '2D-BN';           uc = create_cell(am_dft.abc2bas([1,1,10],'hex'),                  [[0;0;0],[2/3;1/3;0]],                                      {'B','N'},187);
+                    case '2D-graphene';     uc = create_cell(am_dft.abc2bas([1,1,10],'hex'),                  [[2/3;1/3;0]],                                              {'C'},191);
+                    case '3D-SC';           uc = create_cell(am_dft.abc2bas(1,'cubic')   ,                    [[0;0;0]],                                                  {'H'},1);
+                    % metals  
+                    case 'fcc-Co';          uc = create_cell(am_dft.abc2bas(0.35441,'cubic'),                 [[0;0;0]],                                                  {'Co'},225); % ICSD 44989
+                    case 'hcp-Co';          uc = create_cell(am_dft.abc2bas([0.25054,0.40893],'hex'),         [[1/3;2/3;1/4]],                                            {'Co'},194); % ICSD 44990
+                    case 'CsCl-CoFe';       uc = create_cell(am_dft.abc2bas(0.28570,'cubic'),                 [[0;0;0],[1;1;1]/2],                                        {'Co','Fe'},221); % ICSD 56273
+                    case 'Cu';              uc = create_cell(am_dft.abc2bas(0.36151,'cubic'),                 [[0;0;0]],                                                  {'Cu'},225); % ICSD 43493
+                    case 'fcc-Fe';          uc = create_cell(am_dft.abc2bas(0.36468,'cubic'),                 [[0;0;0]],                                                  {'Fe'},225); % ICSD 44862
+                    case 'bcc-Fe';          uc = create_cell(am_dft.abc2bas(0.29315,'cubic'),                 [[0;0;0]],                                                  {'Fe'},229); % ICSD 44863
+                    % salts  
+                    case 'NaCl';            uc = create_cell(am_dft.abc2bas(0.54533,'cubic'),                 [[0;0;0], [1;1;1]/2],                                       {'Na','Cl'}, 225);
+                    % oxides  
+                    case 'Al2O3';           uc = create_cell(am_dft.abc2bas([0.47617,1.29990],'hex'),         [[0;0;0.3522],[0.6936;0;0.2500]],                           {'Al','O'}, 167); % ICSD 10425
+                    case 'gamma-Al2O3';     uc = create_cell(am_dft.abc2bas(0.79110,'cubic'),                 [[1;1;1]*0.37970,[5;5;5]/8,[0;0;0],[1;1;1]*0.15220],        {'O','Al','Al','Al'},227); % ICSD 66558 - CIF has different origin choice
+                    case 'eta-Al2O3';       uc = create_cell(am_dft.abc2bas(0.79140,'cubic'),                 [[1;1;1]*0.37990,[5;5;5]/8,[1;0;0]*0.77390,[1;1;1]*0.19490],{'O','Al','Al','Al'},227); % ICSD 66559 - CIF has different origin choice
+                    case 'BiAlO3';          uc = create_cell(am_dft.abc2bas([0.537546,1.33933],'hex'),        [[0;0;0],[0;0;0.2222],[0.5326;0.0099;0.9581]],              {'Bi','Al','O'},161); % ICSD 171708
+                    case 'Bi2Al4O9';        uc = create_cell(am_dft.abc2bas([0.77134,0.81139,0.56914],'orth'),[[0.1711;0.1677;0],[0.5;0;0.2645],[0.3545;0.3399;0.5],[0;0;0.5],[0.3718;0.2056;0.2503],[0.1364;0.412;0.5],[0.1421;0.4312;0]],{'Bi','Al','Al','O','O','O','O'},55); % ICSD 88775
+                    case 'SrTiO3';          uc = create_cell(am_dft.abc2bas(0.39010,'cubic'),                 [[0;0;0], [1;1;1]/2, [1;1;0]/2],                            {'Sr','Ti','O'}, 221); % ICSD 80873
+                    case 'SrRuO3';          uc = create_cell(am_dft.abc2bas([0.55729,0.78518,0.55346],'orth'),[[0;0;0],[0.5;0.25;0.99],[0.55;0.25;0.5],[0.22;0.03;0.21]], {'Ru','Sr','O','O'}, 62); % ICSD 56697
                     % semiconductors
-                    case 'Si';              uc = create_cell(am_dft.abc2bas(5.4209,'cubic'),                [0;0;0],                                                   {'Si'},227); % ICSD 51688
-                    % nitrides
-                    case 'VN';              uc = create_cell(am_dft.abc2bas(4.134,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'V','N'},  225);
-                    case 'ScN';             uc = create_cell(am_dft.abc2bas(4.501,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'Sc','N'}, 225);
-                    case 'TiN';             uc = create_cell(am_dft.abc2bas(4.240,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'Ti','N'}, 225);
-                    case 'ZrN';             uc = create_cell(am_dft.abc2bas(4.573,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'Zr','N'}, 225);
-                    case 'HfN';             uc = create_cell(am_dft.abc2bas(4.524,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'Hf','N'}, 225);
-                    case 'CeN';             uc = create_cell(am_dft.abc2bas(5.043,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'Ce','N'}, 225);
-                    case 'CrN';             uc = create_cell(am_dft.abc2bas(4.162,'cubic'),                [[0;0;0], [1;1;1]/2],                                       {'Cr','N'}, 225);
+                    case 'Si';              uc = create_cell(am_dft.abc2bas(0.54209,'cubic'),                 [[0;0;0]],                                                  {'Si'},227); % ICSD 51688
+                    % nitrides  
+                    case 'VN';              uc = create_cell(am_dft.abc2bas(0.4134,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'V','N'},  225);
+                    case 'ScN';             uc = create_cell(am_dft.abc2bas(0.4501,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Sc','N'}, 225);
+                    case 'TiN';             uc = create_cell(am_dft.abc2bas(0.4240,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Ti','N'}, 225);
+                    case 'ZrN';             uc = create_cell(am_dft.abc2bas(0.4573,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Zr','N'}, 225);
+                    case 'HfN';             uc = create_cell(am_dft.abc2bas(0.4524,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Hf','N'}, 225);
+                    case 'CeN';             uc = create_cell(am_dft.abc2bas(0.5043,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Ce','N'}, 225);
+                    case 'CrN';             uc = create_cell(am_dft.abc2bas(0.4162,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Cr','N'}, 225);
                     otherwise; error('load_material: unknown material'); 
                 end
                 
@@ -3864,74 +3903,6 @@ classdef am_dft
             bzl = bzl_(recbas,n,nks,x,k);
         end
 
-        function [bz]         = get_dispersion(model,bz)
-            % Get phonon and electron dispersions on bz.
-            % model is either bvk or tb
-            %
-            % Q: Are the eigenvalues and eigenvectors the same at
-            %    symmetry-equivalent positions in reciprocal space?
-            % A: Eigenvalues, yes; eigenvectors are (to within a sign)
-            %    rotated by the same point symmetry relating the different
-            %    k-points. Check it out with:
-            %
-            %     % generate point symmetries [recp-frac]
-            %     [~,~,~,R] = get_symmetries(pc); nRs = size(R,3); R = permute(R,[2,1,3]);
-            %     % get orbit of a rank k point
-            %     k = matmul_(R,rand(3,1)); nks = size(k,2);
-            %     % get eigenvectors and eigenvalues at each orbit point
-            %     for i = 1:nks
-            %     input = num2cell([bvk.fc{:},(pc.bas.'\k(:,i)).',bvk.mass]); % [cart]
-            %     [U(:,:,i),hw(:,i)] = eig( force_hermiticity_(bvk.D(input{:})) ,'vector');
-            %     end
-            %
-            %     % covert symmetries [recp-frac] -> [recp-cart]
-            %     sym_rebase_ = @(B,R) matmul_(matmul_(B,R),inv(B));
-            %     R_cart = sym_rebase_(inv(pc.bas).',R);
-            %
-            %     % rotate the first eigenvector and compare with other kpoints
-            %     X = matmul_( blkdiag_(R_cart,R_cart) ,  U(:,1,1) );
-            %     abs(X) - abs(squeeze(U(:,1,:))) < am_lib.eps
-            %
-            %     % compare eigenvalues
-            %     hw-hw(:,1) < am_lib.eps
-            %
-
-            import am_lib.* am_dft.*
-
-            fprintf(' ... computing dispersion '); tic;
-            if     isfield(model,'vsk')
-                % get eigenvalues
-                bz.nbands = model.nbands;
-                bz.E = zeros(bz.nbands,bz.nks);
-                bz.V = zeros(bz.nbands,bz.nbands,bz.nks);
-                for i = 1:bz.nks
-                    % define input ...
-                    input = num2cell([model.vsk{:},[bz.recbas*bz.k(:,i)].']);
-                    % ... and evaluate (V are column vectors)
-                    [bz.V(:,:,i),bz.E(:,i)] = eig(  force_hermiticity_(model.H(input{:})) ,'vector');
-                    % sort energies
-                    [bz.E(:,i),inds]=sort(bz.E(:,i)); bz.V(:,:,i)=bz.V(:,inds,i);
-                end
-            elseif isfield(model,'phi')
-                % get eigenvalues
-                bz.nbranches = model.nbranches;
-                bz.hw = zeros(bz.nbranches,bz.nks);
-                bz.U  = zeros(bz.nbranches,bz.nbranches,bz.nks);
-                for i = 1:bz.nks
-                    % define input ...
-                    % input = num2cell([bvk.fc{:},bz.k(:,i).',bvk.mass]); % [pc-frac]
-                    input = num2cell([model.fc{:},(bz.recbas*bz.k(:,i)).',model.mass]); % [cart]
-                    % ... and evaluate (U are column vectors)
-                    [bz.U(:,:,i),bz.hw(:,i)] = eig( force_hermiticity_(model.D(input{:})) ,'vector');
-                    % correct units
-                    bz.hw(:,i) = sqrt(real(bz.hw(:,i))) * am_lib.units_eV;
-                    % sort energies
-                    [bz.hw(:,i),inds]=sort(bz.hw(:,i)); bz.U(:,:,i)=bz.U(:,inds,i);
-                end
-            end
-            fprintf('(%.f secs)\n',toc);
-        end
-
         function [nesting]    = get_nesting(fbz,ibz,degauss,Ep)
             % get nesting function on ibz at probing energies Ep using smearing degauss
             % degauss, degauss = 0.04 61x61x61 kpoint mesh
@@ -3976,33 +3947,6 @@ classdef am_dft
             % plot results
             plot(bzp.x,fftinterp_(x,bzp.k,fbz.n), varargin{:});
             axs_(gca,bzp.qt,bzp.ql); axis tight; xlabel('Wavevector k');
-        end
-
-        function plot_dispersion(model, bzp, varargin)
-            % model is either bvk or tb
-
-            import am_lib.* am_dft.*
-
-            % define figure properties
-            fig_ = @(h)       set(h,'color','white');
-            axs_ = @(h,qt,ql) set(h,'Box','on','XTick',qt,'Xticklabel',ql);
-            fig_(gcf);
-
-            if     isfield(model,'vsk')
-                % get electron band structure along path
-                bzp = get_dispersion(model,bzp);
-                % plot results
-                plot(bzp.x,sort(bzp.E), varargin{:});
-                axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [eV]'); xlabel('Wavevector k');
-            elseif isfield(model,'phi')
-                % get phonon band structure along path
-                bzp = get_dispersion(model,bzp);
-                % plot results
-                plot(bzp.x,sort(real(bzp.hw)*1E3),'-k',bzp.x,-sort(abs(imag(bzp.hw))), varargin{:});
-                axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [meV]'); xlabel('Wavevector k');
-            else 
-                error('model unknown');
-            end
         end
 
         function plot_dispersion_orbital_character(dft,bzp)
@@ -4189,20 +4133,28 @@ classdef am_dft
 
         % clusters
         
-        % get_model('tb' , pc, cutoff, dft, spdf, nskips)
+        % get_model('toy tb' , pc, cutoff, spdf)
+        % get_model('toy bvk', pc, cutoff)
+        % get_model('tb' , pc, cutoff, spdf, dft, nskips)
         % get_model('bvk', pc, cutoff, uc, md)
         function [ip,pp]      = get_model(flag,varargin)
 
             import am_lib.* am_dft.*
             
             % parse input
-            if     contains(flag,'tb')
-                [pc,cutoff,dft,spdf,nskips] = deal(varargin{:}); 
-                M_ = 'vsk'; N_ = 'nbands';    H_F_ = 'H'; H_C_ = 'Hc';
-            elseif contains(flag,'bvk')
-                [pc,cutoff,uc,md] = deal(varargin{:});          
-                M_ = 'phi'; N_ = 'nbranches'; H_F_ = 'D'; H_C_ = 'Dc'; 
+            if     contains(flag,'toy')
+                if     contains(flag,'tb');  [pc, cutoff, spdf] = deal(varargin{:}); 
+                elseif contains(flag,'bvk'); [pc, cutoff] = deal(varargin{:});
+                end                
+            else
+                if     contains(flag,'tb');  [pc, cutoff, spdf, dft, nskips] = deal(varargin{:}); 
+                elseif contains(flag,'bvk'); [pc, cutoff, uc, md] = deal(varargin{:});
+                end
             end
+            
+            % set variable names
+            if     contains(flag,'tb');  M_ = 'vsk'; N_ = 'nbands';    H_F_ = 'H'; H_C_ = 'Hc';
+            elseif contains(flag,'bvk'); M_ = 'phi'; N_ = 'nbranches'; H_F_ = 'D'; H_C_ = 'Dc'; end
 
             % get irreducible pairs
             fprintf(' ... identifying irreducible pairs'); tic;
@@ -4218,8 +4170,7 @@ classdef am_dft
             % get irreducible shells
             fprintf(' ... analyzing matrix element symmetries'); tic;
             if     contains(flag,'tb');  [~,ip.W,ip.(M_),ip.Dj] = get_cluster_matrix_elements(ip,spdf);
-            elseif contains(flag,'bvk'); [~,ip.W,ip.(M_),ip.Dj] = get_cluster_matrix_elements(ip);
-            end
+            elseif contains(flag,'bvk'); [~,ip.W,ip.(M_),ip.Dj] = get_cluster_matrix_elements(ip); end
             fprintf(' (%.f secs)\n',toc);
 
             % get hamiltonian
@@ -4228,26 +4179,27 @@ classdef am_dft
             ip.(N_) = size(H,1); ip.(H_C_) = H; ip.(H_F_) = matlabFunction(ssum_(ip.(H_C_))); if contains(flag,'bvk'); ip.ASR = ASR; end
             fprintf(' (%.f secs)\n',toc);
             
-            if contains(flag,'bvk')
-            % get primitive pairs
-            fprintf(' ... generating pairs'); tic;
-            pp = get_primitive_cluster(ip);
-            fprintf(' (%.f secs)\n',toc);
-            
-            % get map between primitive pairs and unit cell
-            fprintf(' ... identifying pairs in unit cell'); tic;
-            pp.pc_natoms=[];pp.ncenters=[];pp.norbits=[];
-            [pp.c_id,pp.o_id,pp.q_id,pp.pp_id,pp.ip_id] = get_cluster_map(pp,uc); 
-            [pp.norbits,pp.ncenters] = cellfun(@(x)size(x),pp.o_id); pp.pc_natoms=numel(pp.norbits);
-            fprintf(' (%.f secs)\n',toc);
+            if ~contains(flag,'toy')
+                if  contains(flag,'bvk')
+                % get primitive pairs
+                fprintf(' ... generating pairs'); tic;
+                pp = get_primitive_cluster(ip);
+                fprintf(' (%.f secs)\n',toc);
+
+                % get map between primitive pairs and unit cell
+                fprintf(' ... identifying pairs in unit cell'); tic;
+                pp.pc_natoms=[];pp.ncenters=[];pp.norbits=[];
+                [pp.c_id,pp.o_id,pp.q_id,pp.pp_id,pp.ip_id] = get_cluster_map(pp,uc); 
+                [pp.norbits,pp.ncenters] = cellfun(@(x)size(x),pp.o_id); pp.pc_natoms=numel(pp.norbits);
+                fprintf(' (%.f secs)\n',toc);
+                end
+
+                % tight binding model
+                fprintf(' ... solving for matrix element values '); tic;
+                if     contains(flag,'tb');  ip = get_tb_parameters(ip,dft,nskips);
+                elseif contains(flag,'bvk'); ip = get_bvk_parameters(ip,pp,uc,md,1); end
+                fprintf(' (%.f secs)\n',toc);
             end
-            
-            % tight binding model
-            fprintf(' ... solving for matrix element values '); tic;
-            if     contains(flag,'tb');  ip = get_tb_parameters(ip,dft,nskips);
-            elseif contains(flag,'bvk'); ip = get_bvk_parameters(ip,pp,uc,md,1);
-            end
-            fprintf(' (%.f secs)\n',toc);
             
             function [ip]         = get_tb_parameters(ip,dft,nskips)
                 % nskips : number of dft bands to skip (e.g. 5)
@@ -4867,7 +4819,7 @@ classdef am_dft
                 n = pp.x2p(cluster(2)); j = pp.x2i(cluster(2)); np = S(n):E(n); % dn = E(n)-S(n)+1;
 
                 % get bond vector
-                rij = pp.tau(:,cluster(2)) - pp.tau(:,cluster(1)); rij = wdv_(rij,am_dft.tiny);
+                rij = pp.tau(:,cluster(2)) - pp.tau(:,cluster(1)); rij = wdv_(rij,am_dft.tiny); 
                 
                 % transform matrix elements
                 matrix_ = sym(ip.Dj{i}(:,:,s)) * permute(ip.(matrix_element_){c},ip.Q{2}(:,s)) * sym(ip.Dj{j}(:,:,s))';
@@ -4875,14 +4827,14 @@ classdef am_dft
                 % build hamiltonian matrix 
                 % [make this pp.bas*rij(:) with pp.bas = (ones(3)-eye(3))/2 to reproduce the 
                 % tight binding hamiltonian of Vogl and of Chadi-Cohen]
-                H(mp,np,c) = H(mp,np,c) + matrix_ .* exp(sym(2i*pi) * sym(rij(:).','f') * kvec(:) );
+                H(mp,np,c) = H(mp,np,c) + matrix_ .* exp(sym(2i*pi) * sym(rij(:).','d') * kvec(:) );
             end
 
-            % check that each irreducible part of the Hamilonian is Hermitian
-            for i = 1:ip.nclusters; if any(any(simplify(H(:,:,i)-H(:,:,i)'~=0))); error('Hamiltonian is not Hermitian!'); end; end
+            % check that each irreducible part of the Hamilonian is Hermitian (simetimes this fails because it is unable to simplify the symbolic expression enough).
+            % parfor i = 1:ip.nclusters; if any(any(simplify(H(:,:,i)-H(:,:,i)'~=0))); warning('Hamiltonian section %i is not Hermitian!',i); end; end
             
             % simplify (speeds evaluation up significantly later)
-            for i = 1:ip.nclusters; H(:,:,i) = simplify(rewrite(H(:,:,i),'cos'),'steps',20); end
+            parfor i = 1:ip.nclusters; H(:,:,i) = simplify(rewrite(H(:,:,i),'cos'),'steps',3); end
 
             % multiply mass factor to get the dynamical matrix
             if contains(ip.model,'bvk')
@@ -5060,6 +5012,105 @@ classdef am_dft
                     end
                     fprintf('\n');
                 end
+            end
+        end
+
+        function [bz]         = get_dispersion(ip,bz)
+            % Get phonon and electron dispersions on bz.
+            % model is either bvk or tb
+            %
+            % Q: Are the eigenvalues and eigenvectors the same at
+            %    symmetry-equivalent positions in reciprocal space?
+            % A: Eigenvalues, yes; eigenvectors are (to within a sign)
+            %    rotated by the same point symmetry relating the different
+            %    k-points. Check it out with:
+            %
+            %     % generate point symmetries [recp-frac]
+            %     [~,~,~,R] = get_symmetries(pc); nRs = size(R,3); R = permute(R,[2,1,3]);
+            %     % get orbit of a rank k point
+            %     k = matmul_(R,rand(3,1)); nks = size(k,2);
+            %     % get eigenvectors and eigenvalues at each orbit point
+            %     for i = 1:nks
+            %     input = num2cell([bvk.fc{:},(pc.bas.'\k(:,i)).',bvk.mass]); % [cart]
+            %     [U(:,:,i),hw(:,i)] = eig( force_hermiticity_(bvk.D(input{:})) ,'vector');
+            %     end
+            %
+            %     % covert symmetries [recp-frac] -> [recp-cart]
+            %     sym_rebase_ = @(B,R) matmul_(matmul_(B,R),inv(B));
+            %     R_cart = sym_rebase_(inv(pc.bas).',R);
+            %
+            %     % rotate the first eigenvector and compare with other kpoints
+            %     X = matmul_( blkdiag_(R_cart,R_cart) ,  U(:,1,1) );
+            %     abs(X) - abs(squeeze(U(:,1,:))) < am_lib.eps
+            %
+            %     % compare eigenvalues
+            %     hw-hw(:,1) < am_lib.eps
+            %
+
+            import am_lib.* am_dft.*
+
+            fprintf(' ... computing dispersion '); tic;
+            if     contains(ip.model,'tb')
+                % get eigenvalues
+                bz.nbands = ip.nbands;
+                bz.E = zeros(bz.nbands,bz.nks);
+                bz.V = zeros(bz.nbands,bz.nbands,bz.nks);
+                for i = 1:bz.nks
+                    % define input ...
+                    input = num2cell([ip.vsk{:},bz.k(:,i).']);
+                    % ... and evaluate (V are column vectors)
+                    [bz.V(:,:,i),bz.E(:,i)] = eig(  ip.H(input{:}) ,'vector');
+                    % check hermicity of hamiltonian
+                    if any(imag(bz.E(:,i)))>am_dft.eps; fprintf('\n'); error('H is not Hermitian (%g,%i)\n',max(imag(bz.E(:,i))),i); end
+                    % sort energies
+                    [~,fwd]=sort(bz.E(:,i)); bz.E(:,i)=bz.E(fwd,i); bz.V(:,:,i)=bz.V(:,fwd,i);
+                end
+            elseif contains(ip.model,'bvk')
+                % get eigenvalues
+                bz.nbranches = ip.nbranches;
+                bz.hw = zeros(bz.nbranches,bz.nks);
+                bz.U  = zeros(bz.nbranches,bz.nbranches,bz.nks);
+                for i = 1:bz.nks
+                    % define input ...
+                    % input = num2cell([bvk.fc{:},bz.k(:,i).',bvk.mass]); % [pc-frac]
+                    input = num2cell([ip.fc{:},bz.k(:,i).',ip.mass]); % [cart]
+                    % ... and evaluate (U are column vectors)
+                    [bz.U(:,:,i),bz.hw(:,i)] = eig( ip.D(input{:}) ,'vector');
+                    % check hermicity of hamiltonian
+                    if any(imag(bz.hw(:,i)))>am_dft.eps; fprintf('\n'); error('H is not Hermitian (%g,%i)\n',max(imag(bz.hw(:,i))),i); end
+                    % sort energies
+                    [~,fwd]=sort(bz.hw(:,i)); bz.hw(:,i)=bz.hw(fwd,i); bz.U(:,:,i)=bz.U(:,fwd,i);
+                    % correct units
+                    bz.hw(:,i) = sqrt(real(bz.hw(:,i))) * am_lib.units_eV;
+                end
+            end
+            fprintf('(%.f secs)\n',toc);
+        end
+
+        function                plot_dispersion(ip, bzp, varargin)
+            % model is either bvk or tb
+
+            import am_lib.* am_dft.*
+
+            % define figure properties
+            fig_ = @(h)       set(h,'color','white');
+            axs_ = @(h,qt,ql) set(h,'Box','on','XTick',qt,'Xticklabel',ql);
+            fig_(gcf);
+
+            if     isfield(ip,'vsk')
+                % get electron band structure along path
+                bzp = get_dispersion(ip,bzp);
+                % plot results
+                plot(bzp.x,sort(bzp.E), varargin{:});
+                axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [eV]'); xlabel('Wavevector k');
+            elseif isfield(ip,'phi')
+                % get phonon band structure along path
+                bzp = get_dispersion(ip,bzp);
+                % plot results
+                plot(bzp.x,sort(real(bzp.hw)*1E3),'-k',bzp.x,-sort(abs(imag(bzp.hw))), varargin{:});
+                axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [meV]'); xlabel('Wavevector k');
+            else 
+                error('model unknown');
             end
         end
 
@@ -5558,7 +5609,6 @@ classdef am_dft
                        flatten_( eval_energies_(tb,[tb.vsk{:}],dft.k) ) );
             xlabel('dft energies [eV]'); ylabel('tb energies [eV]');
         end
-
 
         % pairs and triplets
 
@@ -6289,7 +6339,7 @@ classdef am_dft
 
             if nargin ~= 4; algo=1; end
 
-            switch 2
+            switch 1
                 case 1
                     % get U matrix and indexing
                     [U,I] = get_bvk_U_matrix(bvk,pp,u);
