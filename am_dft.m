@@ -14,10 +14,54 @@ classdef am_dft
         potdir    = '/Users/lenzinho/Linux/vasp.5.4/potcars/PBE.54/';
     end
 
+    % materials database
+    
+    methods (Static)
+    function [uc]    = load_material(material)
+        switch material
+            % toy models
+            case '1D-chain';        uc = create_cell(am_dft.abc2bas([10,1],'tetra'),                  [[0;0;0]],                                                  {'H'},1);
+            case '1D-dimer';        uc = create_cell(am_dft.abc2bas([10,1],'tetra'),                  [[0;0;0],[0;0;0.5]],                                        {'H','He'},1);
+            case '2D-BN';           uc = create_cell(am_dft.abc2bas([1,1,10],'hex'),                  [[0;0;0],[2/3;1/3;0]],                                      {'B','N'},187);
+            case '2D-graphene';     uc = create_cell(am_dft.abc2bas([1,1,10],'hex'),                  [[2/3;1/3;0]],                                              {'C'},191);
+            case '3D-SC';           uc = create_cell(am_dft.abc2bas(1,'cubic'),                       [[0;0;0]],                                                  {'H'},1);
+            case '3D-NaCl';         uc = create_cell(am_dft.abc2bas(1,'cubic'),                       [[0;0;0], [1;1;1]/2],                                       {'Na','Cl'}, 225);
+            % metals  
+            case 'fcc-Co';          uc = create_cell(am_dft.abc2bas(0.35441,'cubic'),                 [[0;0;0]],                                                  {'Co'},225); % ICSD 44989
+            case 'hcp-Co';          uc = create_cell(am_dft.abc2bas([0.25054,0.40893],'hex'),         [[1/3;2/3;1/4]],                                            {'Co'},194); % ICSD 44990
+            case 'CsCl-CoFe';       uc = create_cell(am_dft.abc2bas(0.28570,'cubic'),                 [[0;0;0],[1;1;1]/2],                                        {'Co','Fe'},221); % ICSD 56273
+            case 'Cu';              uc = create_cell(am_dft.abc2bas(0.36151,'cubic'),                 [[0;0;0]],                                                  {'Cu'},225); % ICSD 43493
+            case 'fcc-Fe';          uc = create_cell(am_dft.abc2bas(0.36468,'cubic'),                 [[0;0;0]],                                                  {'Fe'},225); % ICSD 44862
+            case 'bcc-Fe';          uc = create_cell(am_dft.abc2bas(0.29315,'cubic'),                 [[0;0;0]],                                                  {'Fe'},229); % ICSD 44863
+            % salts  
+            case 'NaCl';            uc = create_cell(am_dft.abc2bas(0.54533,'cubic'),                 [[0;0;0], [1;1;1]/2],                                       {'Na','Cl'}, 225);
+            % oxides  
+            case 'Al2O3';           uc = create_cell(am_dft.abc2bas([0.47617,1.29990],'hex'),         [[0;0;0.3522],[0.6936;0;0.2500]],                           {'Al','O'}, 167); % ICSD 10425
+            case 'gamma-Al2O3';     uc = create_cell(am_dft.abc2bas(0.79110,'cubic'),                 [[1;1;1]*0.37970,[5;5;5]/8,[0;0;0],[1;1;1]*0.15220],        {'O','Al','Al','Al'},227); % ICSD 66558 - CIF has different origin choice
+            case 'eta-Al2O3';       uc = create_cell(am_dft.abc2bas(0.79140,'cubic'),                 [[1;1;1]*0.37990,[5;5;5]/8,[1;0;0]*0.77390,[1;1;1]*0.19490],{'O','Al','Al','Al'},227); % ICSD 66559 - CIF has different origin choice
+            case 'BiAlO3';          uc = create_cell(am_dft.abc2bas([0.537546,1.33933],'hex'),        [[0;0;0],[0;0;0.2222],[0.5326;0.0099;0.9581]],              {'Bi','Al','O'},161); % ICSD 171708
+            case 'Bi2Al4O9';        uc = create_cell(am_dft.abc2bas([0.77134,0.81139,0.56914],'orth'),[[0.1711;0.1677;0],[0.5;0;0.2645],[0.3545;0.3399;0.5],[0;0;0.5],[0.3718;0.2056;0.2503],[0.1364;0.412;0.5],[0.1421;0.4312;0]],{'Bi','Al','Al','O','O','O','O'},55); % ICSD 88775
+            case 'SrTiO3';          uc = create_cell(am_dft.abc2bas(0.39010,'cubic'),                 [[0;0;0], [1;1;1]/2, [1;1;0]/2],                            {'Sr','Ti','O'}, 221); % ICSD 80873
+            case 'SrRuO3';          uc = create_cell(am_dft.abc2bas([0.55729,0.78518,0.55346],'orth'),[[0;0;0],[0.5;0.25;0.99],[0.55;0.25;0.5],[0.22;0.03;0.21]], {'Ru','Sr','O','O'}, 62); % ICSD 56697
+            % semiconductors
+            case 'Si';              uc = create_cell(am_dft.abc2bas(0.54209,'cubic'),                 [[0;0;0]],                                                  {'Si'},227); % ICSD 51688
+            % nitrides  
+            case 'VN';              uc = create_cell(am_dft.abc2bas(0.4134,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'V','N'},  225);
+            case 'ScN';             uc = create_cell(am_dft.abc2bas(0.4501,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Sc','N'}, 225);
+            case 'TiN';             uc = create_cell(am_dft.abc2bas(0.4240,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Ti','N'}, 225);
+            case 'ZrN';             uc = create_cell(am_dft.abc2bas(0.4573,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Zr','N'}, 225);
+            case 'HfN';             uc = create_cell(am_dft.abc2bas(0.4524,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Hf','N'}, 225);
+            case 'CeN';             uc = create_cell(am_dft.abc2bas(0.5043,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Ce','N'}, 225);
+            case 'CrN';             uc = create_cell(am_dft.abc2bas(0.4162,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Cr','N'}, 225);
+            otherwise; error('load_material: unknown material'); 
+        end
+    end 
+    end
+    
     % program level
 
     methods (Static)
-
+        
         function [uc,pc,md,bvk,pp,bvt,pt] = get_phonons(opts)
             %
             % clear; clc;
@@ -215,6 +259,7 @@ classdef am_dft
             end
             
         end
+        
     end
     
     
@@ -487,7 +532,7 @@ classdef am_dft
                 % open file
                 fid=fopen(fname,'w');
                     % header
-                    fprintf(fid,'%s',load_cell_formula(uc));
+                    fprintf(fid,'%s',get_cell_formula(uc));
                     if n ~= 1; fprintf(fid,' %i of %i',i,n); end
                     fprintf(fid,'\n');
                     % print body
@@ -2730,14 +2775,14 @@ classdef am_dft
             verbose = true;
             if verbose
                 fprintf(' (%.3f s) \n',toc);
-                fprintf('     %-15s = %s\n','formula',load_cell_formula(uc));
+                fprintf('     %-15s = %s\n','formula',get_cell_formula(uc));
                 fprintf('     %-15s = %s\n','primitive',decode_bravais(bv_code));
                 fprintf('     %-15s = %s\n','holohodry',decode_holohodry(hg_code));
                 fprintf('     %-15s = %s\n','point group',decode_pg(pg_code));
                 fprintf('     %-15s = %s\n','space group',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
-                fprintf('     %-15s = %-8.3f [g/cm3] \n','mass density',load_cell_mass_density(uc));
-                fprintf('     %-15s = %-8.3f [atoms/nm3]\n','number density',load_cell_atomic_density(uc));
-                fprintf('     %-15s = %-8.3f [f.u./nm3]\n','formula density',load_cell_formula_density(uc));
+                fprintf('     %-15s = %-8.3f [g/cm3] \n','mass density',get_cell_mass_density(uc));
+                fprintf('     %-15s = %-8.3f [atoms/nm3]\n','number density',get_cell_atomic_density(uc));
+                fprintf('     %-15s = %-8.3f [f.u./nm3]\n','formula density',get_cell_formula_density(uc));
                 if contains(flag,'cif')
                     fprintf('     %-15s = %s\n','create command',str);
                 end
@@ -2911,94 +2956,6 @@ classdef am_dft
                 fclose(fid);
             end
 
-            function [uc]    = load_material(material)
-                % LOAD_MAT
-                switch material
-                    % toy models
-                    case '1D-chain';        uc = create_cell(am_dft.abc2bas([10,1],'tetra'),                  [[0;0;0]],                                                  {'H'},1);
-                    case '1D-dimer';        uc = create_cell(am_dft.abc2bas([10,1],'tetra'),                  [[0;0;0],[0;0;0.5]],                                        {'H','He'},1);
-                    case '2D-BN';           uc = create_cell(am_dft.abc2bas([1,1,10],'hex'),                  [[0;0;0],[2/3;1/3;0]],                                      {'B','N'},187);
-                    case '2D-graphene';     uc = create_cell(am_dft.abc2bas([1,1,10],'hex'),                  [[2/3;1/3;0]],                                              {'C'},191);
-                    case '3D-SC';           uc = create_cell(am_dft.abc2bas(1,'cubic'),                       [[0;0;0]],                                                  {'H'},1);
-                    case '3D-NaCl';         uc = create_cell(am_dft.abc2bas(1,'cubic'),                       [[0;0;0], [1;1;1]/2],                                       {'Na','Cl'}, 225);
-                    % metals  
-                    case 'fcc-Co';          uc = create_cell(am_dft.abc2bas(0.35441,'cubic'),                 [[0;0;0]],                                                  {'Co'},225); % ICSD 44989
-                    case 'hcp-Co';          uc = create_cell(am_dft.abc2bas([0.25054,0.40893],'hex'),         [[1/3;2/3;1/4]],                                            {'Co'},194); % ICSD 44990
-                    case 'CsCl-CoFe';       uc = create_cell(am_dft.abc2bas(0.28570,'cubic'),                 [[0;0;0],[1;1;1]/2],                                        {'Co','Fe'},221); % ICSD 56273
-                    case 'Cu';              uc = create_cell(am_dft.abc2bas(0.36151,'cubic'),                 [[0;0;0]],                                                  {'Cu'},225); % ICSD 43493
-                    case 'fcc-Fe';          uc = create_cell(am_dft.abc2bas(0.36468,'cubic'),                 [[0;0;0]],                                                  {'Fe'},225); % ICSD 44862
-                    case 'bcc-Fe';          uc = create_cell(am_dft.abc2bas(0.29315,'cubic'),                 [[0;0;0]],                                                  {'Fe'},229); % ICSD 44863
-                    % salts  
-                    case 'NaCl';            uc = create_cell(am_dft.abc2bas(0.54533,'cubic'),                 [[0;0;0], [1;1;1]/2],                                       {'Na','Cl'}, 225);
-                    % oxides  
-                    case 'Al2O3';           uc = create_cell(am_dft.abc2bas([0.47617,1.29990],'hex'),         [[0;0;0.3522],[0.6936;0;0.2500]],                           {'Al','O'}, 167); % ICSD 10425
-                    case 'gamma-Al2O3';     uc = create_cell(am_dft.abc2bas(0.79110,'cubic'),                 [[1;1;1]*0.37970,[5;5;5]/8,[0;0;0],[1;1;1]*0.15220],        {'O','Al','Al','Al'},227); % ICSD 66558 - CIF has different origin choice
-                    case 'eta-Al2O3';       uc = create_cell(am_dft.abc2bas(0.79140,'cubic'),                 [[1;1;1]*0.37990,[5;5;5]/8,[1;0;0]*0.77390,[1;1;1]*0.19490],{'O','Al','Al','Al'},227); % ICSD 66559 - CIF has different origin choice
-                    case 'BiAlO3';          uc = create_cell(am_dft.abc2bas([0.537546,1.33933],'hex'),        [[0;0;0],[0;0;0.2222],[0.5326;0.0099;0.9581]],              {'Bi','Al','O'},161); % ICSD 171708
-                    case 'Bi2Al4O9';        uc = create_cell(am_dft.abc2bas([0.77134,0.81139,0.56914],'orth'),[[0.1711;0.1677;0],[0.5;0;0.2645],[0.3545;0.3399;0.5],[0;0;0.5],[0.3718;0.2056;0.2503],[0.1364;0.412;0.5],[0.1421;0.4312;0]],{'Bi','Al','Al','O','O','O','O'},55); % ICSD 88775
-                    case 'SrTiO3';          uc = create_cell(am_dft.abc2bas(0.39010,'cubic'),                 [[0;0;0], [1;1;1]/2, [1;1;0]/2],                            {'Sr','Ti','O'}, 221); % ICSD 80873
-                    case 'SrRuO3';          uc = create_cell(am_dft.abc2bas([0.55729,0.78518,0.55346],'orth'),[[0;0;0],[0.5;0.25;0.99],[0.55;0.25;0.5],[0.22;0.03;0.21]], {'Ru','Sr','O','O'}, 62); % ICSD 56697
-                    % semiconductors
-                    case 'Si';              uc = create_cell(am_dft.abc2bas(0.54209,'cubic'),                 [[0;0;0]],                                                  {'Si'},227); % ICSD 51688
-                    % nitrides  
-                    case 'VN';              uc = create_cell(am_dft.abc2bas(0.4134,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'V','N'},  225);
-                    case 'ScN';             uc = create_cell(am_dft.abc2bas(0.4501,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Sc','N'}, 225);
-                    case 'TiN';             uc = create_cell(am_dft.abc2bas(0.4240,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Ti','N'}, 225);
-                    case 'ZrN';             uc = create_cell(am_dft.abc2bas(0.4573,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Zr','N'}, 225);
-                    case 'HfN';             uc = create_cell(am_dft.abc2bas(0.4524,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Hf','N'}, 225);
-                    case 'CeN';             uc = create_cell(am_dft.abc2bas(0.5043,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Ce','N'}, 225);
-                    case 'CrN';             uc = create_cell(am_dft.abc2bas(0.4162,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Cr','N'}, 225);
-                    otherwise; error('load_material: unknown material'); 
-                end
-                
-                function [uc]         = create_cell(bas,tau,symb,sg_code)
-                    % create_cell(bas,tau,symb,sg_code) creates cell based on wyckoff positions and standard crystallographic setting
-                    %
-                    % Example input for BiFeO3 P63cm (hypothetical polymorph):
-                    %     % define basis, atomic positions, species, and elements
-                    %     a = 6.200; c = 12.076;
-                    %     bas = abc2bas([a,a,c,90,90,120]);
-                    %     tau=[0.00000 0.00000 0.48021; 0.33333 0.66667 0.01946; ...
-                    %       0.29931 0.00000 0.15855; 0.63457 0.00000 0.34439; ...
-                    %       0.33440 0.00000 0.00109; 0.00000 0.00000 0.27855; ...
-                    %       0.33333 0.66667 0.23206].';
-                    %     symb = {'O','O','O','O','Fe','Bi','Bi'}; sg_code=185;
-                    %     % create cell
-                    %     [uc] = create_cell(bas,tau,symb,sg_code); [bragg] = get_bragg(uc);
-                    %     plot_bragg(bragg); tabulate_bragg(bragg,10);
-                    %     % save poscar
-                    %     write_poscar(uc,'BiFeO3_P63cm_dft.poscar');
-                    %
-
-                    import am_dft.* am_lib.*
-
-                    % identify atomic types and assign a number label
-                    [symb,~,species]=unique(symb,'stable');
-
-                    % get space symmetries in conventional setting
-                    S = am_dft.generate_sg(sg_code);
-
-                    % define function to apply symmetries to position vectors
-                    seitz_apply_ = @(S,tau) am_lib.mod_(reshape(am_lib.matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
-
-                    % apply symmetry operations to all atoms
-                    natoms = size(tau,2); nSs = size(S,3); c_i2u = repmat([1:natoms].',1,nSs); c_i2u=c_i2u(:).';
-                    tau = reshape(seitz_apply_(S,tau),3,[]); species = repmat(species(:),1,nSs); species=species(:).';
-
-                    % get unique species
-                    [~,ind] = am_lib.uniquec_(tau); tau = tau(:,ind); species = species(ind); c_i2u = c_i2u(ind);
-
-                    % sort by species
-                    [~,ind] = sort(c_i2u);  tau = tau(:,ind); species = species(ind); % c_i2u = c_i2u(ind);
-
-                    % define irreducible cell creation function and make structure
-                    uc_ = @(bas,tau,symb,species) struct('units','frac','bas',bas,...
-                        'symb',{symb},'mass',am_dft.get_atomic_mass(am_dft.get_atomic_number(symb)),...
-                        'nspecies',sum(unique(species).'==species,2).', ...
-                        'natoms',size(tau,2),'tau',tau,'species',species);
-                    uc = uc_(bas,tau,symb,species);
-                end
-            end 
         end
 
         function [dc,idc]     = get_displaced_cell(pc,bvk,n,kpt,amp,mode,nsteps)
@@ -3921,8 +3878,8 @@ classdef am_dft
             end
             
             % set variable names
-            if     contains(flag,'tb');  M_ = 'vsk'; N_ = 'nbands';    H_F_ = 'H'; H_C_ = 'Hc';
-            elseif contains(flag,'bvk'); M_ = 'phi'; N_ = 'nbranches'; H_F_ = 'D'; H_C_ = 'Dc'; end
+            if     contains(flag,'tb');  M_ = 'v_sk'; ME_='sk'; N_ = 'nbands';    H_F_ = 'H'; H_C_ = 'Hc';
+            elseif contains(flag,'bvk'); M_ = 'v_fc'; ME_='fc'; N_ = 'nbranches'; H_F_ = 'D'; H_C_ = 'Dc'; end
 
             % get irreducible pairs
             fprintf(' ... identifying irreducible pairs'); tic;
@@ -3964,16 +3921,13 @@ classdef am_dft
 
                 % tight binding model
                 fprintf(' ... solving for matrix element values '); tic;
-                if     contains(flag,'tb');  ip = get_tb_parameters(ip,dft,nskips);
-                elseif contains(flag,'bvk'); ip = get_bvk_parameters(ip,pp,uc,md,1); end
+                if     contains(flag,'tb');  ip.(ME_) =  get_tb_parameters(ip,dft,nskips);
+                elseif contains(flag,'bvk'); ip.(ME_) = get_bvk_parameters(ip,pp,uc,md,1); end
                 fprintf(' (%.f secs)\n',toc);
             end
             
-            function [ip]         = get_tb_parameters(ip,dft,nskips)
+            function [tb]          = get_tb_parameters(ip,dft,nskips)
                 % nskips : number of dft bands to skip (e.g. 5)
-
-                % copy number of bands to skip
-                ip.nskips = nskips;
 
                 % fit neighbor parameter at high symmetry points using poor man's simulated anneal
                 d = am_lib.normc_(ip.bas*(ip.tau(:,ip.cluster(2,:))-ip.tau(:,ip.cluster(1,:))));
@@ -3985,7 +3939,7 @@ classdef am_dft
                 opts = optimoptions('lsqnonlin','Display','None','MaxIter',7);
 
                 % select bands
-                bnd_id = [1:ip.nbands]+ip.nskips;
+                bnd_id = [1:ip.nbands]+nskips;
 
                 % define cost function
                 kpt_id = 1:max(round(dft.nks/20),1):dft.nks;
@@ -4022,10 +3976,10 @@ classdef am_dft
 
                 % save refined matrix elements and conform to ip
                 for i = [1:ip.nclusters]; d(i)=size(ip.W{i},2); end; Evsk=cumsum(d); Svsk=Evsk-d+1;
-                for i = [1:ip.nclusters]; ip.vsk{i} = x(Svsk(i):Evsk(i)); end
+                for i = [1:ip.nclusters]; tb{i} = x(Svsk(i):Evsk(i)); end
             end
 
-            function [ip]         = get_bvk_parameters(ip,pp,uc,md,algo)
+            function [bvk]         = get_bvk_parameters(ip,pp,uc,md,algo)
                 % Extracts symmetry adapted force constants.
                 %
                 % Q: What is the difference of these methods?
@@ -4083,9 +4037,11 @@ classdef am_dft
                         % solve for force constants
                         fc = - U \ f(I);
 
-                        % save force constants
+                        % get number of force constants per shell
                         s_id = repelem([1:ip.nclusters],cellfun(@(x)size(x,2),ip.W));
-                        for s = 1:ip.nclusters; ip.fc{s} = double(fc(s_id==s).'); end
+                        
+                        % save force constants
+                        for s = 1:ip.nclusters; bvk{s} = double(fc(s_id==s).'); end
                     case 2
                         % basic method using full 3x3 second-order tensor (ignores intrinsic force constant symmetry)
                         % F [3 * m] = - FC [3 * 3n] * U [3n * m]: n pairs, m atoms ==> FC = - F / U
@@ -4124,7 +4080,7 @@ classdef am_dft
                                 A = repmat(double(ip.W{i}),sum(ex_),1);
                                 B = reshape(phi(:,:,ex_),[],1);
                                 % get force constants as row vectors
-                                ip.fc{i} = reshape( A \ B , 1, []);
+                                bvk{i} = reshape( A \ B , 1, []);
                             end
                         end
                         
@@ -4408,33 +4364,34 @@ classdef am_dft
             PM = reshape(V_p2i, [ip.nclusters, ip.nQs] ); [~,ip2pp,pp2ip] = get_connectivity( PM ); 
 
             % get symmetries which take irrep to orbit
-            % pp_nclusters = max(PM(:)); i2o = zeros(1,pp_nclusters);
-            % for i = 1:pp_nclusters; i2o(i) = max(findrow_(PM==i)); end
-            
+            pp_nclusters = max(PM(:)); i2o = zeros(1,pp_nclusters);
+            for i = 1:pp_nclusters; i2o(i) = max(findrow_(PM==i)); end
+
             % create structure
             pp_ = @(ip,X,V,x2p,x2i,pp2ip,ip2pp,Q) struct('units','frac-pc','bas',ip.bas,...
                 'symb',{ip.symb},'mass',ip.mass,...
                 'x2p',x2p,'x2i',x2i,'species',X(4,:),'tau',X(1:3,:), ...
                 'nQs',size(Q{1},3),'Q',{Q}, ...
-                'cutoff',ip.cutoff,'nvertices',size(V,1),'nclusters',size(V,2),'cluster',V, ...
+                'cutoff',ip.cutoff,'nvertices',size(V,1),'nclusters',size(V,2),'cluster', V,'i2o',[],'o2i',[], ...
                 'pp2ip',pp2ip,'ip2pp',ip2pp);
             pp = pp_(ip,X,V,x2p,x2i,pp2ip,ip2pp,ip.Q);
             
             % get inverse elements from multiplication table 
-            [~,~,I] = get_multiplication_table(pp.Q); 
-            
-            % get symmetries
-            [PM,i2p,p2i]=get_action(pp);
+            [~,~,I] = get_multiplication_table(pp.Q); [PM,i2p,p2i]=get_action(pp);
             
             % figure out which symmetries take the orbit to the irrep
-            pp.o2i = findrow_(PM==i2p(p2i).'); % accessc_(PM2.',o2i(:).')
-            pp.i2o = I(pp.o2i);
+            pp.o2i = findrow_(PM==i2p(p2i).').'; % accessc_(PM2.',o2i(:).')
+            pp.i2o = I(pp.o2i).';
             
             % make sure that ip2pp matches exactly.
             for i = 1:ip.nclusters
                 if ~all_(eq_( ip.tau(:,ip.cluster(:,i)), pp.tau(:,pp.cluster(:,pp.ip2pp(i)))))
                     error('ip and pp clusters mismatch');
                 end
+            end
+            % make sure first occurance of pp matches ip
+            if ~all_(eq_( pp.ip2pp, find(pp.o2i==1) ))
+                error('first occuranc of equivalent pp must match ip');
             end
         end
 
@@ -4546,7 +4503,7 @@ classdef am_dft
                 T_ = zeros(9,9); T_(sub2ind([9,9],[1:9],[1,4,7,2,5,8,3,6,9])) = 1;
                 for i = 1:numel(z); Dj{i} = Q{1}(1:3,1:3,:); T{i}=T_; end; d(z) = 3; 
             end
-            
+
             % get form of force constants for irreducible prototypical bonds
             for p = 1:ip.nclusters
                 % get irreducible atom indicies
@@ -4685,8 +4642,8 @@ classdef am_dft
             digits(10); import am_dft.* am_lib.*
             
             % switch between phonon and electrons
-            if     contains(ip.model,'tb');  matrix_element_ = 'vsk'; 
-            elseif contains(ip.model,'bvk'); matrix_element_ = 'phi'; end
+            if     contains(ip.model,'tb');  matrix_element_ = 'v_sk'; 
+            elseif contains(ip.model,'bvk'); matrix_element_ = 'v_fc'; end
             
             % expand cluster
             pp = get_primitive_cluster(ip);
@@ -4863,13 +4820,13 @@ classdef am_dft
             axs_ = @(h,qt,ql) set(h,'Box','on','XTick',qt,'Xticklabel',ql);
             fig_(gcf);
 
-            if     isfield(ip,'vsk')
+            if     contains(ip.model,'tb')
                 % get electron band structure along path
                 bzp = get_dispersion(ip,bzp);
                 % plot results
                 plot(bzp.x,sort(bzp.E), varargin{:});
                 axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [eV]'); xlabel('Wavevector k');
-            elseif isfield(ip,'phi')
+            elseif contains(ip.model,'bvk')
                 % get phonon band structure along path
                 bzp = get_dispersion(ip,bzp);
                 % plot results
@@ -5946,6 +5903,54 @@ classdef am_dft
             % construct conventional cell
             [cc,c2p,p2c] = get_supercell(pc,C);
         end
+
+        function [uc]         = create_cell(bas,tau,symb,sg_code)
+            % create_cell(bas,tau,symb,sg_code) creates cell based on wyckoff positions and standard crystallographic setting
+            %
+            % Example input for BiFeO3 P63cm (hypothetical polymorph):
+            %     % define basis, atomic positions, species, and elements
+            %     a = 6.200; c = 12.076;
+            %     bas = abc2bas([a,a,c,90,90,120]);
+            %     tau=[0.00000 0.00000 0.48021; 0.33333 0.66667 0.01946; ...
+            %       0.29931 0.00000 0.15855; 0.63457 0.00000 0.34439; ...
+            %       0.33440 0.00000 0.00109; 0.00000 0.00000 0.27855; ...
+            %       0.33333 0.66667 0.23206].';
+            %     symb = {'O','O','O','O','Fe','Bi','Bi'}; sg_code=185;
+            %     % create cell
+            %     [uc] = create_cell(bas,tau,symb,sg_code); [bragg] = get_bragg(uc);
+            %     plot_bragg(bragg); tabulate_bragg(bragg,10);
+            %     % save poscar
+            %     write_poscar(uc,'BiFeO3_P63cm_dft.poscar');
+            %
+
+            import am_dft.* am_lib.*
+
+            % identify atomic types and assign a number label
+            [symb,~,species]=unique(symb,'stable');
+
+            % get space symmetries in conventional setting
+            S = am_dft.generate_sg(sg_code);
+
+            % define function to apply symmetries to position vectors
+            seitz_apply_ = @(S,tau) am_lib.mod_(reshape(am_lib.matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
+
+            % apply symmetry operations to all atoms
+            natoms = size(tau,2); nSs = size(S,3); c_i2u = repmat([1:natoms].',1,nSs); c_i2u=c_i2u(:).';
+            tau = reshape(seitz_apply_(S,tau),3,[]); species = repmat(species(:),1,nSs); species=species(:).';
+
+            % get unique species
+            [~,ind] = am_lib.uniquec_(tau); tau = tau(:,ind); species = species(ind); c_i2u = c_i2u(ind);
+
+            % sort by species
+            [~,ind] = sort(c_i2u);  tau = tau(:,ind); species = species(ind); % c_i2u = c_i2u(ind);
+
+            % define irreducible cell creation function and make structure
+            uc_ = @(bas,tau,symb,species) struct('units','frac','bas',bas,...
+                'symb',{symb},'mass',am_dft.get_atomic_mass(am_dft.get_atomic_number(symb)),...
+                'nspecies',sum(unique(species).'==species,2).', ...
+                'natoms',size(tau,2),'tau',tau,'species',species);
+            uc = uc_(bas,tau,symb,species);
+        end
         
         function [uc,inds]    = match_cell(uc,uc_ref)
 
@@ -5981,9 +5986,10 @@ classdef am_dft
             end
         end
 
+        
         % cell parameters
         
-        function formula         = load_cell_formula(uc)
+        function formula         = get_cell_formula(uc)
             import am_lib.*
             formula = ''; x = uc.nspecies./gcd_(uc.nspecies);
             for j = 1:numel(x)
@@ -5994,21 +6000,21 @@ classdef am_dft
             end
         end
 
-        function mass_density    = load_cell_mass_density(uc)
-            % mass_density = load_cell_mass_density(uc)
+        function mass_density    = get_cell_mass_density(uc)
+            % mass_density = get_cell_mass_density(uc)
             % [g/cm3]
             mass_density = sum(uc.mass(uc.species)) * am_dft.amu2gram / det(uc.bas * 1E-7);
         end
         
-        function num_density     = load_cell_atomic_density(uc)
+        function num_density     = get_cell_atomic_density(uc)
             % [atoms/nm3]
             num_density = uc.natoms / det(uc.bas);
         end
         
-        function formula_density = load_cell_formula_density(uc)
+        function formula_density = get_cell_formula_density(uc)
             % [f.u./nm3]
             import am_dft.* am_lib.*
-            formula_density = load_cell_atomic_density(uc)/(uc.natoms/gcd_(uc.nspecies));
+            formula_density = get_cell_atomic_density(uc)/(uc.natoms/gcd_(uc.nspecies));
         end
 
         
