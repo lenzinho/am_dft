@@ -1377,6 +1377,12 @@ classdef am_dft
             plot(digraph(i,j,'OmitSelfLoops'),'layout','subspace3');
         end
 
+        function [RR]         = get_regular_representation(S)
+            % get regular rep G by putting identity along diagonal of multiplciation table
+            [MT,~,I] = get_multiplication_table(S); nSs = size(MT,2);
+            RR = double(accessc_(MT,I)==permute([1:nSs],[1,3,2]));
+        end
+        
         function [IR]         = get_irreducible_representations(S)
             % s2c = identifies the class to which symmetries belong
             % CT = character table
@@ -1705,7 +1711,7 @@ classdef am_dft
             end
         end
 
-        function bv_code      = identify_bravais_lattice(bas, tol,algo)
+        function bv_code      = identify_bravais_lattice(bas, tol, algo)
             % bv_code = identify_bravais_lattice(bas, tol,algo)
             %
             % Identifies the type of crystal system given a basis. 
@@ -2119,7 +2125,7 @@ classdef am_dft
                 end
             end
         end
-            
+
         function S            = generate_sg(sg_code,from_memory)
 
             import am_lib.* am_dft.*
@@ -2528,7 +2534,7 @@ classdef am_dft
             % otherwise
             error('unable to decipher units of symmetry');
         end
-        
+
         function abc_angles   = bas2abc(bas)
             % [a,b,c,alpha,beta,gamma] = bas2abc(bas)
             M = bas.' * bas;
@@ -2701,7 +2707,7 @@ classdef am_dft
         
 
         % unit cells
-        
+
         function [uc,pc,ic,cc]= load_cell(flag, arg, tol)
             % [uc,pc,ic,cc]   = load_cell(fposcar)
             % fposcar can be a poscar or cif file
@@ -3244,7 +3250,7 @@ classdef am_dft
             fprintf('     %-10.3f %-7i %-7i %5.2f %5.2f %5.2f %5.2f %5.2f %5.2f %5.2f %5.2f %5.2f \n',v(1,i),d(v(2,i)),d(v(3,i)),T(:,:,i));
             end
         end
-        
+
         function [bas,T]      = get_niggli_basis(bas, tol)
             % [niggli_bas,T]  = get_niggli_(bas); 
             % niggli_bas == bas * T;
@@ -3332,7 +3338,7 @@ classdef am_dft
                 % fprintf('%7.2f %7.2f %7.2f %7.2f %7.2f %7.2f\n',a,b,c,x,y,z);
             end
         end
-        
+
         function [m]          = get_metric(bas, algo)
             % metric = get_metric(bas)
             % Compute metric tensors from unit cell column basis vector.
@@ -4089,13 +4095,6 @@ classdef am_dft
             end
             
             function [c_id,o_id,q_id,pp_id,ip_id] = get_cluster_map(pp,uc)
-
-                % get action (permutation matrix, stabilizers, and generators)
-                [PM,i2p,p2i] = am_dft.get_action(pp);
-
-                % get symmetry which takes irrep to orbit (and inverse elements)
-                qi = am_lib.findrow_(PM==i2p(p2i).');
-
                 % convert positions to [uc-frac]
                 pp_tau = uc.bas\pp.bas*pp.tau;
                 pc_tau = uc.tau(:,uc.p2u);
@@ -4108,13 +4107,13 @@ classdef am_dft
                     % record unit cell atoms of primitive type m
                     c_id{m} = find(uc.u2p==m); ncenters = numel(c_id{m});
                     % find orbits around c_id{m}(n), count their numbers
-                    ex_ = [pp.cluster(1,:)==pc2pp(m)].'; norbits = sum(ex_); 
+                    ex_ = [pp.cluster(1,:)==pc2pp(m)]; norbits = sum(ex_); 
                     % save ip and pp indicies
                     pp_id{m} = find(ex_(:));
                     ip_id{m} = pp.pp2ip(ex_).';
                     % allocate space
                     o_id{m} = zeros(norbits,ncenters);
-                    q_id{m}(1:norbits,:) =  qi(ex_);
+                    q_id{m}(1:norbits,1) =  pp.o2i(ex_);
                     % loop over centers
                     for n = 1:ncenters
                         % center clusters atoms on uc reference frame
@@ -4122,9 +4121,7 @@ classdef am_dft
                         % shift to positive octant
                         pp_tau = am_lib.mod_(pp_tau);
                         % compare to get indicies of pp atoms in uc
-                        pp2uc = am_lib.member_(pp_tau(:,pp.cluster(2,ex_)),uc_tau);
-                        % record uc id for the pairing atom for each orbit
-                        o_id{m}(:,n) = pp2uc;
+                        o_id{m}(:,n) = am_lib.member_(pp_tau(:,pp.cluster(2,ex_)),uc_tau);
                     end
                 end
             end
@@ -4244,43 +4241,43 @@ classdef am_dft
                 end
             end
 
-            function [bvk]        = enforce_asr(bvk,pp)
-                % build force constants
-                phi = zeros(3,3,bvk.nclusters);
-                for i = 1:bvk.nclusters; phi(:,:,i) = reshape(bvk.W{i}*bvk.fc{i}.',3,3); end
-
-                % enforce acoustic sum rule
-                for i = 1:bvk.nclusters
-                    % check if it is a 0-th neighbor shell
-                    if pp.cluster(1,i)==pp.cluster(2,i)
-                        % get index of primitive cell atom corresponding to this shell
-                        m = pp.x2p(pp.cluster(1,i));
-
-                        %
-                        %
-                        % STOPPED HERE.
-                        %
-                        %
-
-                        % get self forces
-                        asr = zeros(3,3,pp.npairs(m));
-                        for j = 1:pp.npairs(m)
-                            % get irrep->orbit symmetry
-                            iq = pp.iq{m}(j,1); q = pp.q{m}(j,1);
-                            % rotate force constants from irrep to orbit
-                            asr(:,:,j) = permute( pp.Q{1}(1:3,1:3,iq) * phi(:,:,pp.i{m}(j)) * pp.Q{1}(1:3,1:3,q), pp.Q{2}(:,iq) );
-                        end
-                        % impose asr on self-forces
-                        asr = -sum(asr(:,:,pp.o{m}(:,1)~=pp.c{m}(1)),3);
-                        % solve for symmetry-adapted force constants
-                        A = double(bvk.W{i}); B = reshape(asr,[],1);
-                        % get force constants as row vectors
-                        bvk.fc{i} = reshape( A \ B , 1, []);
-                    end
-                end
-            end
+%             function [bvk]        = enforce_asr(bvk,pp)
+%                 % build force constants
+%                 phi = zeros(3,3,bvk.nclusters);
+%                 for i = 1:bvk.nclusters; phi(:,:,i) = reshape(bvk.W{i}*bvk.fc{i}.',3,3); end
+% 
+%                 % enforce acoustic sum rule
+%                 for i = 1:bvk.nclusters
+%                     % check if it is a 0-th neighbor shell
+%                     if pp.cluster(1,i)==pp.cluster(2,i)
+%                         % get index of primitive cell atom corresponding to this shell
+%                         m = pp.x2p(pp.cluster(1,i));
+% 
+%                         %
+%                         %
+%                         % STOPPED HERE.
+%                         %
+%                         %
+% 
+%                         % get self forces
+%                         asr = zeros(3,3,pp.npairs(m));
+%                         for j = 1:pp.npairs(m)
+%                             % get irrep->orbit symmetry
+%                             iq = pp.iq{m}(j,1); q = pp.q{m}(j,1);
+%                             % rotate force constants from irrep to orbit
+%                             asr(:,:,j) = permute( pp.Q{1}(1:3,1:3,iq) * phi(:,:,pp.i{m}(j)) * pp.Q{1}(1:3,1:3,q), pp.Q{2}(:,iq) );
+%                         end
+%                         % impose asr on self-forces
+%                         asr = -sum(asr(:,:,pp.o{m}(:,1)~=pp.c{m}(1)),3);
+%                         % solve for symmetry-adapted force constants
+%                         A = double(bvk.W{i}); B = reshape(asr,[],1);
+%                         % get force constants as row vectors
+%                         bvk.fc{i} = reshape( A \ B , 1, []);
+%                     end
+%                 end
+%             end
         end
-        
+
         function [ip]         = get_irreducible_cluster(pc,nvertices,cutoff)
             
             import am_lib.* am_dft.*
@@ -4337,7 +4334,7 @@ classdef am_dft
                 M = perms([nvertices:-1:1]).'; Q{1} = repmat(S,1,1,size(M,2)); Q{2} = repelem(M,1,size(S,3)); nQs=size(Q{1},3);
             end
         end
-        
+
         function [pp]         = get_primitive_cluster(ip)
         
             import am_lib.* am_dft.*
@@ -4376,6 +4373,11 @@ classdef am_dft
                 'pp2ip',pp2ip,'ip2pp',ip2pp);
             pp = pp_(ip,X,V,x2p,x2i,pp2ip,ip2pp,ip.Q);
             
+            % now is the time to sort based on irreducible pairs and to create link irreducible and primitive pairs
+            % this sort may cause problems (if it does, just remove it); hence, the check below.
+            fwd = rankc_( pp.pp2ip ); pp.cluster = pp.cluster(:,fwd);
+            pp.pp2ip = pp.pp2ip(:,fwd); pp.ip2pp = findrow_(pp.ip2pp.'==pp.pp2ip).';
+            
             % get inverse elements from multiplication table 
             [~,~,I] = get_multiplication_table(pp.Q); [PM,i2p,p2i]=get_action(pp);
             
@@ -4383,7 +4385,7 @@ classdef am_dft
             pp.o2i = findrow_(PM==i2p(p2i).').'; % accessc_(PM2.',o2i(:).')
             pp.i2o = I(pp.o2i).';
             
-            % make sure that ip2pp matches exactly.
+            % make sure that ip2pp matches exactly (if it doesn't check SORT above)
             for i = 1:ip.nclusters
                 if ~all_(eq_( ip.tau(:,ip.cluster(:,i)), pp.tau(:,pp.cluster(:,pp.ip2pp(i)))))
                     error('ip and pp clusters mismatch');
@@ -4392,6 +4394,17 @@ classdef am_dft
             % make sure first occurance of pp matches ip
             if ~all_(eq_( pp.ip2pp, find(pp.o2i==1) ))
                 error('first occuranc of equivalent pp must match ip');
+            end
+            
+            % expand matrix elements as well
+            for matrix_element_ = {'v_sk','v_fc'}
+                if isfield(ip,matrix_element_{:})
+                    for p = 1:pp.nclusters
+                        c = pp.pp2ip(p); i = pp.x2i(pp.cluster(1,p)); j = pp.x2i(pp.cluster(2,p)); 
+                        pp.(matrix_element_{:}){p} = sym(ip.Dj{i}(:,:,pp.i2o(p))) * ...
+                            permute(ip.(matrix_element_{:}){c}, ip.Q{2}(:,pp.i2o(p))) * sym(ip.Dj{j}(:,:,pp.i2o(p)))';
+                    end
+                end
             end
         end
 
@@ -5333,6 +5346,7 @@ classdef am_dft
             xlabel('dft energies [eV]'); ylabel('tb energies [eV]');
         end
 
+        
         % pairs and triplets
 
         function [it,pt]      = get_triplets(pc,uc,cutoff)
@@ -5454,7 +5468,6 @@ classdef am_dft
             pt = pt_(uc,c_id,o_id,i_id,q_id,iq_id,Q);
 
         end
-
 
     end
 
