@@ -3868,7 +3868,7 @@ classdef am_dft
         % get_model('toy bvk', pc, cutoff)
         % get_model('tb' , pc, cutoff, spdf, dft, nskips)
         % get_model('bvk', pc, cutoff, uc, md)
-        function [ip,pp]      = get_model(flag,varargin)
+        function [ip]         = get_model(flag,varargin)
 
             import am_lib.* am_dft.*
             
@@ -3884,7 +3884,7 @@ classdef am_dft
             end
             
             % set variable names
-            if     contains(flag,'tb');  M_ = 'v_sk'; ME_='sk'; N_ = 'nbands';    H_F_ = 'H'; H_C_ = 'Hc';
+            if     contains(flag,'tb');  M_ = 'v_tb'; ME_='sk'; N_ = 'nbands';    H_F_ = 'H'; H_C_ = 'Hc';
             elseif contains(flag,'bvk'); M_ = 'v_fc'; ME_='fc'; N_ = 'nbranches'; H_F_ = 'D'; H_C_ = 'Dc'; end
 
             % get irreducible pairs
@@ -3910,31 +3910,20 @@ classdef am_dft
             fprintf(' (%.f secs)\n',toc);
 
             if ~contains(flag,'toy')
-                if  contains(flag,'bvk')
-                    % get primitive pairs
-                    fprintf(' ... generating pairs'); tic;
-                    pp = get_primitive_cluster(ip);
-                    fprintf(' (%.f secs)\n',toc);
-
-                    % get map between primitive pairs and unit cell
-                    fprintf(' ... identifying pairs in unit cell'); tic;
-                    pp.pc_natoms=[];pp.ncenters=[];pp.norbits=[];
-                    [pp.c_id,pp.o_id,pp.q_id,pp.pp_id,pp.ip_id] = get_cluster_map(pp,uc); 
-                    [pp.norbits,pp.ncenters] = cellfun(@(x)size(x),pp.o_id); pp.pc_natoms=numel(pp.norbits);
-                    fprintf(' (%.f secs)\n',toc);
-                end
-
+                
                 % tight binding model
                 fprintf(' ... solving for matrix element values '); tic;
                 if     contains(flag,'tb');  ip.(ME_) =  get_tb_parameters(ip,dft,nskips);
-                elseif contains(flag,'bvk'); ip.(ME_) = get_bvk_parameters(ip,pp,uc,md,1); end
+                elseif contains(flag,'bvk'); ip.(ME_) = get_bvk_parameters(ip,uc,md,1); end
                 fprintf(' (%.f secs)\n',toc);
                 
-%                 if  contains(flag,'bvk')
-%                     fprintf(' ... enforcing acoustic sum rules '); tic;
-%                     [ip.fc] = enforce_asr(ip,pp);
-%                     fprintf(' (%.f secs)\n',toc);
-%                 end
+                
+                if  contains(flag,'bvk')
+                    fprintf(' ... enforcing acoustic sum rules '); tic;
+                    [ip.fc] = enforce_asr(ip);
+                    fprintf(' (%.f secs)\n',toc);
+                end
+                
             end
             
             function [tb]          = get_tb_parameters(ip,dft,nskips)
@@ -3990,7 +3979,7 @@ classdef am_dft
                 for i = [1:ip.nclusters]; tb{i} = x(Svsk(i):Evsk(i)); end
             end
 
-            function [bvk]         = get_bvk_parameters(ip,pp,uc,md,algo)
+            function [bvk]         = get_bvk_parameters(ip,uc,md,algo)
                 % Extracts symmetry adapted force constants.
                 %
                 % Q: What is the difference of these methods?
@@ -4016,7 +4005,7 @@ classdef am_dft
                 % covert symmetries [pc-frac] to [cart] -- very important!
                 sym_rebase_ = @(B,S) [[ am_lib.matmul_(am_lib.matmul_(B,S(1:3,1:3,:)),inv(B)), ...
                     reshape(am_lib.matmul_(B,S(1:3,4,:)),3,[],size(S,3))]; S(4,1:4,:)];
-                Q_cart = pp.Q; Q_cart{1} = sym_rebase_(pp.bas, Q_cart{1}); Q_cart{1} = am_lib.wdv_(Q_cart{1});
+                Q_cart = ip.Q; Q_cart{1} = sym_rebase_(ip.bas, Q_cart{1}); Q_cart{1} = am_lib.wdv_(Q_cart{1});
 
                 % select a method (method 1 is the most accurate)
                 switch algo
@@ -4041,9 +4030,13 @@ classdef am_dft
                         %         % check with rotation
                         %         R*prep_(iR*u)*ip.W{j} - equationsToMatrix(R*reshape(ip.W{j}*c,3,3)*iR*u,c)
                         %
+                        pp = am_dft.get_primitive_cluster(ip); 
+                        pp.pc_natoms=[];pp.ncenters=[];pp.norbits=[];
+                        [pp.c_id,pp.o_id,pp.q_id,pp.pp_id,pp.ip_id] = am_dft.get_cluster_map(pp,uc); 
+                        [pp.norbits,pp.ncenters] = cellfun(@(x)size(x),pp.o_id); pp.pc_natoms=numel(pp.norbits);
 
                         % get U matrix and indexing I
-                        [U,I] = am_dft.get_bvk_U_matrix(ip,pp,u);
+                        [U,I] = am_dft.get_bvk_U_matrix(ip, pp, u);
 
                         % solve for force constants
                         fc = - U \ f(I);
@@ -4213,10 +4206,10 @@ classdef am_dft
                 end
             end
 
-            function [bvk]         = enforce_asr(ip,pp)
+            function [bvk]         = enforce_asr(ip)
 
-                % get force constants for each orbit 
-                M = am_lib.subs_(pp.v_fc, sort(symvar([ip.v_fc{:}])), [ip.fc{:}]);
+                % expand parameters over primitive clusters as well
+                pp = am_dft.get_primitive_cluster(ip);
 
                 % get self-force constants
                 uc_natoms = max(pp.x2p);
@@ -4224,7 +4217,7 @@ classdef am_dft
                 for m = 1:uc_natoms
                 for i = 1:pp.nclusters
                     if m == pp.x2p(pp.cluster(1,i))   &&   pp.cluster(1,i) ~= pp.cluster(2,i)
-                        phi(:,:,m) = phi(:,:,m) + M{i};
+                        phi(:,:,m) = phi(:,:,m) + pp.fc{i};
                     end
                 end
                 end
@@ -4366,12 +4359,23 @@ classdef am_dft
             end
             
             % expand matrix elements as well
-            for matrix_element_ = {'v_sk','v_fc'}
+            for matrix_element_ = {'v_tb','v_fc','fc','tb'}
                 if isfield(ip,matrix_element_{:})
+                    % get matrix sizes
+                    d = cellfun(@(x)size(x,1),ip.Dj);
+                    % 
                     for p = 1:pp.nclusters
                         c = pp.pp2ip(p); i = pp.x2i(pp.cluster(1,p)); j = pp.x2i(pp.cluster(2,p)); 
-                        pp.(matrix_element_{:}){p} = sym(ip.Dj{i}(:,:,pp.i2o(p))) * ...
-                            permute(ip.(matrix_element_{:}){c}, ip.Q{2}(:,pp.i2o(p))) * sym(ip.Dj{j}(:,:,pp.i2o(p)))';
+                        if contains(matrix_element_{:},'v')
+                            M  = ip.(matrix_element_{:}){c}; 
+                            Di = sym(ip.Dj{i}(:,:,pp.i2o(p)));
+                            Dj = sym(ip.Dj{j}(:,:,pp.i2o(p)));
+                        else
+                            M = reshape( double(ip.W{c}*ip.fc{c}(:)) , d(i), d(j) );
+                            Di = ip.Dj{i}(:,:,pp.i2o(p));
+                            Dj = ip.Dj{j}(:,:,pp.i2o(p));
+                        end
+                        pp.(matrix_element_{:}){p} = Di * permute(M, ip.Q{2}(:,pp.i2o(p))) * Dj';
                     end
                 end
             end
@@ -4624,7 +4628,7 @@ classdef am_dft
             digits(10); import am_dft.* am_lib.*
             
             % switch between phonon and electrons
-            if     contains(ip.model,'tb');  matrix_element_ = 'v_sk'; 
+            if     contains(ip.model,'tb');  matrix_element_ = 'v_tb'; 
             elseif contains(ip.model,'bvk'); matrix_element_ = 'v_fc'; end
             
             % expand cluster
@@ -6074,8 +6078,8 @@ classdef am_dft
 
         
         % aux phonons (harmonic)
-
-        function [f]   = get_bvk_forces(bvk, pp, u, algo)
+        
+        function [f]     = get_bvk_forces(bvk, pp, u, algo)
             %
             % Get forces f from the displacement u.
             %
@@ -6135,7 +6139,7 @@ classdef am_dft
             end
         end
 
-        function [U,I] = get_bvk_U_matrix(ip,pp,u)
+        function [U,I]   = get_bvk_U_matrix(ip, pp, u)
 
             import am_lib.* am_dft.*
 
@@ -6196,7 +6200,7 @@ classdef am_dft
             end
         end
 
-        function [q2u] = expand_bvk_eigenvectors(bvk,uc,bz)
+        function [q2u]   = expand_bvk_eigenvectors(bvk, uc, bz)
             % Expand primitive cell eigenvectors onto the unit cell; bz
             % must be the full mesh with the same dimensions as the
             % super unitcell (relative to that of the primitive cell).
