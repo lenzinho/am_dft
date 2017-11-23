@@ -1230,7 +1230,7 @@ classdef am_dft
             rev(fwd) = [1:size(MT,1)]; MT = rev(MT(fwd,fwd));
         end
         
-        function [subgroup,structure] = get_subgroups(MT)
+        function [subgroup,grph] = get_subgroups(MT)
             % clear;clc; import am_dft.* am_lib.*
             % [R,~]=generate_pg('o',false);
             % % get multiplication table
@@ -1287,7 +1287,7 @@ classdef am_dft
             subgroup = subgroup(:, rankc_(sum(subgroup,1)) );
 
             % structure(:,k) indicates subgroups contained within group k
-            structure = eq_((subgroup./normc_(subgroup).^2).'*subgroup,1);
+            grph = eq_((subgroup./normc_(subgroup).^2).'*subgroup,1);
 
         end
         
@@ -2084,7 +2084,7 @@ classdef am_dft
                 end
             end
         end
-        
+
         function ps_name_long = get_long_ps_name(R)
             import am_dft.* am_lib.*
             nsyms=size(R,3); 
@@ -2101,7 +2101,7 @@ classdef am_dft
                 end
             end
         end
-        
+
         function ss_name_long = get_long_ss_name(S)
             
             import am_dft.* am_lib.*
@@ -2717,6 +2717,9 @@ classdef am_dft
             % stupid matlab requires these symbolic variables to be initialized
             x=[];y=[];z=[]; %#ok<NASGU>
             
+            % set default numerical tolerance
+            if nargin < 3; tol = am_dft.tiny; end
+            
             % time
             fprintf(' ... getting cell'); tic
             
@@ -2733,9 +2736,6 @@ classdef am_dft
                 case 'material'; [uc]     = load_material(arg);
                 case 'create';   [uc]     = am_dft.create_cell(arg{:});
             end
-            
-            % set default numerical tolerance
-            if nargin < 3; tol = am_dft.tiny; end
 
             % get primitive cell
             [pc,p2u,u2p] = get_primitive_cell(uc, tol);
@@ -3906,8 +3906,7 @@ classdef am_dft
 
             % get hamiltonian
             fprintf(' ... building Hamiltonian'); tic;
-            [H,ASR] = get_cluster_hamiltonian(ip); 
-            ip.(N_) = size(H,1); ip.(H_C_) = H; ip.(H_F_) = matlabFunction(ssum_(ip.(H_C_))); if contains(flag,'bvk'); ip.ASR = ASR; end
+            H = get_cluster_hamiltonian(ip); ip.(N_) = size(H,1); ip.(H_C_) = H; ip.(H_F_) = matlabFunction(ssum_(ip.(H_C_))); 
             fprintf(' (%.f secs)\n',toc);
 
             if ~contains(flag,'toy')
@@ -3930,6 +3929,12 @@ classdef am_dft
                 if     contains(flag,'tb');  ip.(ME_) =  get_tb_parameters(ip,dft,nskips);
                 elseif contains(flag,'bvk'); ip.(ME_) = get_bvk_parameters(ip,pp,uc,md,1); end
                 fprintf(' (%.f secs)\n',toc);
+                
+%                 if  contains(flag,'bvk')
+%                     fprintf(' ... enforcing acoustic sum rules '); tic;
+%                     [ip.fc] = enforce_asr(ip,pp);
+%                     fprintf(' (%.f secs)\n',toc);
+%                 end
             end
             
             function [tb]          = get_tb_parameters(ip,dft,nskips)
@@ -4051,10 +4056,11 @@ classdef am_dft
                     case 2
                         % basic method using full 3x3 second-order tensor (ignores intrinsic force constant symmetry)
                         % F [3 * m] = - FC [3 * 3n] * U [3n * m]: n pairs, m atoms ==> FC = - F / U
+                        [c_id,o_id,q_id,pp_id,ip_id] = get_cluster_map(pp,uc);
 
                         % get sizes
-                        npairs   = cellfun(@(x)size(x,1),pp.o_id);
-                        ncenters = cellfun(@(x)size(x,2),pp.o_id);
+                        npairs   = cellfun(@(x)size(x,1),o_id);
+                        ncenters = cellfun(@(x)size(x,2),o_id);
                         pc_natoms= numel(uc.p2u);
 
                         % construct force constant matrices
@@ -4063,18 +4069,18 @@ classdef am_dft
                             % get forces : f = [ (x,y,z), (1:natoms)*nsteps ]
                             % get displacements : u [ (x,y,z)*orbits, (1:natoms)*nsteps ]
                             %  ... and solve for the generalized force constants: FC = - f / u
-                            fc = - reshape( f(:,pp.c_id{m},:) , 3            , ncenters(m) * md.nsteps) /...
-                                   reshape( u(:,pp.o_id{m},:) , 3 * npairs(m), ncenters(m) * md.nsteps);
+                            fc = - reshape( f(:,c_id{m},:) , 3            , ncenters(m) * md.nsteps) /...
+                                   reshape( u(:,o_id{m},:) , 3 * npairs(m), ncenters(m) * md.nsteps);
                             % reshape into 3x3 matrices
                             phi = double(cat(3,phi,reshape(fc,3,3,[])));
                         end
 
                         % reorder force constants to match pp (phi is ordered in terms of m 
                         % here, but pp is in terms of irreducible pairs)
-                        phi(:,:,cat(1,pp.pp_id{:})) = phi;
-                        
+                        phi(:,:,cat(1,pp_id{:})) = phi;
+
                         % transform force constants according to symmetries Q (used to go between orbit and irrep)
-                        q = cat(1,pp.q_id{:});
+                        q = cat(1,q_id{:});
                         for j = 1:size(phi,3); phi(:,:,j) = permute( phi(:,:,j), Q_cart{2}(:,q(j)) ); end
                         phi = am_lib.matmul_( am_lib.matmul_( Q_cart{1}(1:3,1:3,q) ,phi), permute(Q_cart{1}(1:3,1:3,q),[2,1,3]) );
 
@@ -4089,44 +4095,10 @@ classdef am_dft
                                 bvk{i} = reshape( A \ B , 1, []);
                             end
                         end
-                        
-                        % enforce asr by rebulding the matrix
                 end
             end
             
-            function [c_id,o_id,q_id,pp_id,ip_id] = get_cluster_map(pp,uc)
-                % convert positions to [uc-frac]
-                pp_tau = uc.bas\pp.bas*pp.tau;
-                pc_tau = uc.tau(:,uc.p2u);
-                uc_tau = uc.tau;
-                pc2pp  = am_lib.member_(pc_tau,pp_tau); % indicies of pc atoms in pp
-                pp_id  = [];
-
-                % loop over primitive cell atoms
-                for m = 1:numel(uc.p2u)
-                    % record unit cell atoms of primitive type m
-                    c_id{m} = find(uc.u2p==m); ncenters = numel(c_id{m});
-                    % find orbits around c_id{m}(n), count their numbers
-                    ex_ = [pp.cluster(1,:)==pc2pp(m)]; norbits = sum(ex_); 
-                    % save ip and pp indicies
-                    pp_id{m} = find(ex_(:));
-                    ip_id{m} = pp.pp2ip(ex_).';
-                    % allocate space
-                    o_id{m} = zeros(norbits,ncenters);
-                    q_id{m}(1:norbits,1) =  pp.o2i(ex_);
-                    % loop over centers
-                    for n = 1:ncenters
-                        % center clusters atoms on uc reference frame
-                        pp_tau = pp_tau - pp_tau(:,pc2pp(m)) + uc_tau(:,c_id{m}(n));
-                        % shift to positive octant
-                        pp_tau = am_lib.mod_(pp_tau);
-                        % compare to get indicies of pp atoms in uc
-                        o_id{m}(:,n) = am_lib.member_(pp_tau(:,pp.cluster(2,ex_)),uc_tau);
-                    end
-                end
-            end
-
-            function                print_cluster(ip,flags)
+            function                 print_cluster(ip,flags)
 
                 if nargin<2; flags=''; end
 
@@ -4192,7 +4164,7 @@ classdef am_dft
                 % print orbit and stabilizer group generators
                 if ~isprimitive
                     % get stabilizers and generators in fractional coordinates before performing change of basis
-                    [s_ck,g_ck] = am_dft.get_cluster_generators_and_stabilizers(ip);
+                    [~,~,~,s_ck,g_ck] = am_dft.get_action(ip);
                     
                     % print only generators of stabilizers and orbits
                     Q_ex_ = @(ex_) deal(ip.Q{1}(:,:,ex_),ip.Q{2}(:,ex_));
@@ -4241,41 +4213,38 @@ classdef am_dft
                 end
             end
 
-%             function [bvk]        = enforce_asr(bvk,pp)
-%                 % build force constants
-%                 phi = zeros(3,3,bvk.nclusters);
-%                 for i = 1:bvk.nclusters; phi(:,:,i) = reshape(bvk.W{i}*bvk.fc{i}.',3,3); end
-% 
-%                 % enforce acoustic sum rule
-%                 for i = 1:bvk.nclusters
-%                     % check if it is a 0-th neighbor shell
-%                     if pp.cluster(1,i)==pp.cluster(2,i)
-%                         % get index of primitive cell atom corresponding to this shell
-%                         m = pp.x2p(pp.cluster(1,i));
-% 
-%                         %
-%                         %
-%                         % STOPPED HERE.
-%                         %
-%                         %
-% 
-%                         % get self forces
-%                         asr = zeros(3,3,pp.npairs(m));
-%                         for j = 1:pp.npairs(m)
-%                             % get irrep->orbit symmetry
-%                             iq = pp.iq{m}(j,1); q = pp.q{m}(j,1);
-%                             % rotate force constants from irrep to orbit
-%                             asr(:,:,j) = permute( pp.Q{1}(1:3,1:3,iq) * phi(:,:,pp.i{m}(j)) * pp.Q{1}(1:3,1:3,q), pp.Q{2}(:,iq) );
-%                         end
-%                         % impose asr on self-forces
-%                         asr = -sum(asr(:,:,pp.o{m}(:,1)~=pp.c{m}(1)),3);
-%                         % solve for symmetry-adapted force constants
-%                         A = double(bvk.W{i}); B = reshape(asr,[],1);
-%                         % get force constants as row vectors
-%                         bvk.fc{i} = reshape( A \ B , 1, []);
-%                     end
-%                 end
-%             end
+            function [bvk]         = enforce_asr(ip,pp)
+
+                % get force constants for each orbit 
+                M = am_lib.subs_(pp.v_fc, sort(symvar([ip.v_fc{:}])), [ip.fc{:}]);
+
+                % get self-force constants
+                uc_natoms = max(pp.x2p);
+                phi = zeros(3,3,uc_natoms);
+                for m = 1:uc_natoms
+                for i = 1:pp.nclusters
+                    if m == pp.x2p(pp.cluster(1,i))   &&   pp.cluster(1,i) ~= pp.cluster(2,i)
+                        phi(:,:,m) = phi(:,:,m) + M{i};
+                    end
+                end
+                end
+                phi = - phi;
+
+                % copy 
+                bvk = ip.fc;
+                
+                % solve for symmetry-adapted self-force constants : A x = B
+                for m = 1:uc_natoms
+                for i  = 1:ip.nclusters
+                    if m == ip.x2p(ip.cluster(1,i))   &&   ip.cluster(1,i) == ip.cluster(2,i)
+                        A = double(ip.W{i});
+                        B = reshape(phi(:,:,m),[],1);
+                        % get force constants as row vectors
+                        bvk{i} = reshape( A \ B , 1, []);
+                    end
+                end
+                end
+            end
         end
 
         function [ip]         = get_irreducible_cluster(pc,nvertices,cutoff)
@@ -4492,7 +4461,7 @@ classdef am_dft
             if nargin>1; flag='tb'; else; flag='bvk'; end
 
             % get stabilizers for each irreducible cluster
-            [s_ck,~] = get_cluster_generators_and_stabilizers(ip); 
+            [~,~,~,s_ck] = get_action(ip);
             
             % reversal symmetries should not be ignored, however in the rare even that
             % one would want to ignore them, set ignore_reversal_symmerties to true.
@@ -4603,7 +4572,7 @@ classdef am_dft
             end
         end
 
-        function [H,ASR]      = get_cluster_hamiltonian(ip)
+        function [H]          = get_cluster_hamiltonian(ip)
             %
             % Q: What do the force constant matrices loop like when rotated from the
             %    irreducible bond to the orbit? 
@@ -4689,9 +4658,6 @@ classdef am_dft
                 H(mp,np,c) = H(mp,np,c) + matrix_ .* exp(sym(2i*pi) * sym(rij(:).') * kvec(:) );
             end
 
-            % check that each irreducible part of the Hamilonian is Hermitian (simetimes this fails because it is unable to simplify the symbolic expression enough).
-            % parfor i = 1:ip.nclusters; if any(any(simplify(H(:,:,i)-H(:,:,i)'~=0))); warning('Hamiltonian section %i is not Hermitian!',i); end; end
-            
             % simplify (speeds evaluation up significantly later)
             for i = 1:ip.nclusters; H(:,:,i) = simplify(rewrite(H(:,:,i),'cos'),'steps',3); end
 
@@ -4703,18 +4669,42 @@ classdef am_dft
                 p2i=[]; p2i(ip.x2p)=ip.x2i; mass=mass(repelem(p2i,1,3)); mass=(mass.'*mass); 
                 % include mass
                 for i = 1:ip.nclusters; H(:,:,i) = H(:,:,i)./sqrt(mass); end
-                
-                % enforce acoustic sum rule algebraically?
-                ASR = sym(zeros(nbands,nbands));
-                for i = 1:ip.nclusters; ASR = ASR + subs(subs(subs(H(:,:,i),kvec(1),0),kvec(2),0),kvec(3),0); end
-                % simplify and remove TRUE = TRUE (first term) from the set of equations
-                ASR = unique(simplify(ASR(:)==0)); ASR = ASR(2:end);
-            else
-                ASR = [];
             end
         end
 
-        function [PM,i2p,p2i] = get_action(ip)
+        function [c_id,o_id,q_id,pp_id,ip_id] = get_cluster_map(pp,uc)
+            % convert positions to [uc-frac]
+            pp_tau = uc.bas\pp.bas*pp.tau;
+            pc_tau = uc.tau(:,uc.p2u);
+            uc_tau = uc.tau;
+            pc2pp  = am_lib.member_(pc_tau,pp_tau); % indicies of pc atoms in pp
+            pp_id  = [];
+
+            % loop over primitive cell atoms
+            for m = 1:numel(uc.p2u)
+                % record unit cell atoms of primitive type m
+                c_id{m} = find(uc.u2p==m); ncenters = numel(c_id{m});
+                % find orbits around c_id{m}(n), count their numbers
+                ex_ = [pp.cluster(1,:)==pc2pp(m)]; norbits = sum(ex_); 
+                % save ip and pp indicies
+                pp_id{m} = find(ex_(:));
+                ip_id{m} = pp.pp2ip(ex_).';
+                % allocate space
+                o_id{m} = zeros(norbits,ncenters,pp.nvertices-1);
+                q_id{m}(1:norbits,1) =  pp.o2i(ex_);
+                % loop over centers
+                for n = 1:ncenters
+                    % center clusters atoms on uc reference frame
+                    pp_tau = pp_tau - pp_tau(:,pc2pp(m)) + uc_tau(:,c_id{m}(n));
+                    % shift to positive octant
+                    pp_tau = am_lib.mod_(pp_tau);
+                    % compare to get indicies of pp atoms in uc
+                    o_id{m}(:,n,:) = am_lib.member_(pp_tau(:,pp.cluster(2,ex_)),uc_tau);
+                end
+            end
+        end
+       
+        function [PM,i2p,p2i,s_ck,g_ck] = get_action(ip)
             import am_dft.* am_lib.*
             
             % get field properly
@@ -4732,18 +4722,6 @@ classdef am_dft
             PM = reshape(V_p2i, ip.nclusters, ip.(nsyms));
             % get connectivity
             [~,i2p,p2i] = get_connectivity( PM );
-        end
-        
-        function [s_ck,g_ck]  = get_cluster_generators_and_stabilizers(ip)
-            
-            import am_dft.* am_lib.*
-            
-            % get field properly
-            if     isfield(ip,'S'); nsyms='nSs'; % sym='S'; 
-            elseif isfield(ip,'Q'); nsyms='nQs'; % sym='Q'; 
-            end
-            % get action
-            [PM,i2p,~] = get_action(ip);
             % get stabilzier and generators [nQs, nclusters]
             s_ck = false(ip.(nsyms),ip.nclusters);
             g_ck = false(ip.(nsyms),ip.nclusters);
@@ -4970,7 +4948,7 @@ classdef am_dft
             % [cart] get aimd forces
             f_aimd= matmul_( md.bas, md.force );
             % [cart]  get harmonic forces
-            f_har = get_bvk_forces(bvk,pp,u,algo);
+            f_har = get_bvk_forces(bvk, pp, u, algo);
             % [cart] get anharmnoic forces
             f_anh = 0;
             if nargin == 6; if and(~isempty(bvt),~isempty(pt))
@@ -6018,7 +5996,7 @@ classdef am_dft
             % [g/cm3]
             mass_density = sum(uc.mass(uc.species)) * am_dft.amu2gram / det(uc.bas * 1E-7);
         end
-        
+
         function num_density     = get_cell_atomic_density(uc)
             % [atoms/nm3]
             num_density = uc.natoms / det(uc.bas);
@@ -6097,7 +6075,7 @@ classdef am_dft
         
         % aux phonons (harmonic)
 
-        function [f]   = get_bvk_forces(bvk,pp,u,algo)
+        function [f]   = get_bvk_forces(bvk, pp, u, algo)
             %
             % Get forces f from the displacement u.
             %
