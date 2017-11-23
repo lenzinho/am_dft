@@ -4001,11 +4001,14 @@ classdef am_dft
                 % [cart] get displacements and forces
                 u = am_lib.matmul_( md.bas, am_lib.mod_( md.tau-uc.tau +.5 )-.5 );
                 f = am_lib.matmul_( md.bas, md.force );
-
+                
                 % covert symmetries [pc-frac] to [cart] -- very important!
                 sym_rebase_ = @(B,S) [[ am_lib.matmul_(am_lib.matmul_(B,S(1:3,1:3,:)),inv(B)), ...
                     reshape(am_lib.matmul_(B,S(1:3,4,:)),3,[],size(S,3))]; S(4,1:4,:)];
                 Q_cart = ip.Q; Q_cart{1} = sym_rebase_(ip.bas, Q_cart{1}); Q_cart{1} = am_lib.wdv_(Q_cart{1});
+                
+                % expand irreducible pairs
+                pp = am_dft.get_primitive_cluster(ip); 
 
                 % select a method (method 1 is the most accurate)
                 switch algo
@@ -4030,7 +4033,6 @@ classdef am_dft
                         %         % check with rotation
                         %         R*prep_(iR*u)*ip.W{j} - equationsToMatrix(R*reshape(ip.W{j}*c,3,3)*iR*u,c)
                         %
-                        pp = am_dft.get_primitive_cluster(ip); 
                         pp.pc_natoms=[];pp.ncenters=[];pp.norbits=[];
                         [pp.c_id,pp.o_id,pp.q_id,pp.pp_id,pp.ip_id] = am_dft.get_cluster_map(pp,uc); 
                         [pp.norbits,pp.ncenters] = cellfun(@(x)size(x),pp.o_id); pp.pc_natoms=numel(pp.norbits);
@@ -4358,22 +4360,22 @@ classdef am_dft
                 error('first occuranc of equivalent pp must match ip');
             end
             
+            % get matrix element dimensions (to be used below)
+            for matrix_element_ = {'v_tb','v_fc'}; if isfield(ip,matrix_element_{:})
+                d(ip.x2p(ip.cluster(1,:))) = cellfun(@(x)size(x,1),ip.(matrix_element_{:})); 
+                d(ip.x2p(ip.cluster(2,:))) = cellfun(@(x)size(x,2),ip.(matrix_element_{:}));
+            end; end
+        
             % expand matrix elements as well
             for matrix_element_ = {'v_tb','v_fc','fc','tb'}
                 if isfield(ip,matrix_element_{:})
-                    % get matrix sizes
-                    d = cellfun(@(x)size(x,1),ip.Dj);
-                    % 
                     for p = 1:pp.nclusters
                         c = pp.pp2ip(p); i = pp.x2i(pp.cluster(1,p)); j = pp.x2i(pp.cluster(2,p)); 
+                        Di = ip.Dj{i}(:,:,pp.i2o(p)); Dj = ip.Dj{j}(:,:,pp.i2o(p));
                         if contains(matrix_element_{:},'v')
-                            M  = ip.(matrix_element_{:}){c}; 
-                            Di = sym(ip.Dj{i}(:,:,pp.i2o(p)));
-                            Dj = sym(ip.Dj{j}(:,:,pp.i2o(p)));
+                            M = ip.(matrix_element_{:}){c}; Di = sym(Di); Dj = sym(Dj);
                         else
                             M = reshape( double(ip.W{c}*ip.fc{c}(:)) , d(i), d(j) );
-                            Di = ip.Dj{i}(:,:,pp.i2o(p));
-                            Dj = ip.Dj{j}(:,:,pp.i2o(p));
                         end
                         pp.(matrix_element_{:}){p} = Di * permute(M, ip.Q{2}(:,pp.i2o(p))) * Dj';
                     end
@@ -4642,24 +4644,17 @@ classdef am_dft
             % construct symbolic Hamiltonian matrix
             H = sym(zeros(nbands,nbands,ip.nclusters)); kvec = sym('k%d',[3,1],'real'); 
             for p = 1:pp.nclusters
-                %    c   = irreducible cluster index
-                %    qi  = symmetry which takes ir -> orbit
-                %    i,j = irreducible cell atomic indicies
-                %    m,n =   primitive cell atomic indicies
-                c = pp.pp2ip(p); qi = pp.i2o(p); cluster = pp.cluster(:,p); % pp.cluster(ip.Q{2}(:,s),p);
-                m = pp.x2p(cluster(1)); i = pp.x2i(cluster(1)); mp = S(m):E(m); % dm = E(m)-S(m)+1;
-                n = pp.x2p(cluster(2)); j = pp.x2i(cluster(2)); np = S(n):E(n); % dn = E(n)-S(n)+1;
-
-                % get bond vector
-                rij = pp.tau(:,cluster(2)) - pp.tau(:,cluster(1)); rij = wdv_(rij,am_dft.tiny); 
+                %    c     = irreducible cluster index
+                %    m,n   =   primitive cell atomic indicies
+                c = pp.pp2ip(p); 
+                m = pp.x2p(pp.cluster(1,p)); mp = S(m):E(m);
+                n = pp.x2p(pp.cluster(2,p)); np = S(n):E(n); 
                 
-                % transform matrix elements [the permutation must come first since it needs shape the matrix in the correct way]
-                matrix_ = sym(ip.Dj{i}(:,:,qi)) * permute(ip.(matrix_element_){c}, ip.Q{2}(:,qi)) * sym(ip.Dj{j}(:,:,qi))';
-        
-                % build hamiltonian matrix 
-                % [make this pp.bas*rij(:) with pp.bas = (ones(3)-eye(3))/2 to reproduce the 
-                % tight binding hamiltonian of Vogl and of Chadi-Cohen]
-                H(mp,np,c) = H(mp,np,c) + matrix_ .* exp(sym(2i*pi) * sym(rij(:).') * kvec(:) );
+                % get bond vector
+                rij = pp.tau(:,pp.cluster(2,p)) - pp.tau(:,pp.cluster(1,p)); rij = wdv_(rij,am_dft.tiny);
+                
+                % fourier transform build hamiltonian matrix
+                H(mp,np,c) = H(mp,np,c) + pp.(matrix_element_){p} .* exp(sym(2i*pi) * sym(rij(:).') * kvec(:) );
             end
 
             % simplify (speeds evaluation up significantly later)
@@ -6079,7 +6074,7 @@ classdef am_dft
         
         % aux phonons (harmonic)
         
-        function [f]     = get_bvk_forces(bvk, pp, u, algo)
+        function [f]     = get_bvk_forces(ip, pp, u, algo)
             %
             % Get forces f from the displacement u.
             %
@@ -6105,16 +6100,19 @@ classdef am_dft
             import am_lib.* am_dft.*
 
             if nargin ~= 4; algo=1; end
-
-            switch 1
+            
+            switch algo
                 case 1
                     % get U matrix and indexing
-                    [U,I] = get_bvk_U_matrix(bvk,pp,u);
+                    [U,I] = get_bvk_U_matrix(ip, pp, u);
                     % solve for forces f [3m * 1] = - U [3m * nFcs] * FC [ nFCs * 1]: n pairs, m atoms
-                    f(I) = - U * [bvk.fc{:}].';
+                    f(I) = - U * [ip.fc{:}].';
                     % rearrange forces
                     f = reshape(f,size(u));
                 case 2
+                    
+                    pp = get_primitive_cluster(ip);
+                    
                     % get sizes
                     [~,natoms,nsteps] = size(u);
                     % build force constants
@@ -6124,7 +6122,7 @@ classdef am_dft
                         % get indicies
                         i = pp.i{m}(j); iq = pp.iq{m}(j);
                         % get irrep force constant indicies
-                        iphi = reshape(bvk.W{i}*bvk.fc{i}(:),3,3);
+                        iphi = reshape(ip.W{i}*ip.fc{i}(:),3,3);
                         % rotate force constants from irrep to orbit
                         phi{m}(1:3,[1:3]+3*(j-1)) = pp.Q{1}(1:3,1:3,iq) * permute(iphi,pp.Q{2}(:,iq)) * pp.Q{1}(1:3,1:3,iq).';
                     end
@@ -6132,7 +6130,7 @@ classdef am_dft
                     % compute forces on every atom at every step
                     f = zeros(3,natoms,nsteps);
                     for j = 1:nsteps
-                        for m = 1:bvk.natoms
+                        for m = 1:ip.natoms
                               f(1:3,pp.c{m},j) = - phi{m} * reshape(u(:,pp.o{m},j), size(pp.o{m}).*[3,1]);
                         end
                     end
