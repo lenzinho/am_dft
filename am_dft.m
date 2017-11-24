@@ -4302,10 +4302,11 @@ classdef am_dft
                             % incoprorating flip symmetry when atomic indicies are flipped, the matrix element is transposed. 
                             % T=zeros(9,9); T(sub2ind([9,9],[1:9],reshape(reshape([1:9],3,3).',1,9)))=1;
                             % a=sym('a',[3,3]); b=sym('b',[3,5]); c=sym('c',[5,5]); equationsToMatrix(a*b*c.',b(:))     - kron(c,a)
-                            % a=sym('a',[3,3]); b=sym('b',[3,3]); c=sym('c',[3,3]); equationsToMatrix(a*(b.')*c.',b(:)) - kron(c,a) * T
+                            % a=sym('a',[3,3]); b=sym('b',[3,3]); c=sym('c',[3,3]); equationsToMatrix(a*(b.')*c.',b(:)) - kron(c,a) * T  % FIRST TRANSPOSE THEN MULTIPLY
+                            % a=sym('a',[3,3]); b=sym('b',[3,3]); c=sym('c',[3,3]); equationsToMatrix( (a*b*c.').',b(:)) - T * kron(c,a) % FIRST MULTIPLY THEN TRANSPOSE
                             sym_list = find(s_ck(:,p)); W{p} = ones(1,1,sum(s_ck(:,p)));
                             for j  = ijk;    W{p} = am_lib.kron_( Dj{j}(:,:,sym_list) , W{p} ); end
-                            for wi = 1:numel(sym_list); W{p}(:,:,wi) = W{p}(:,:,wi) * am_lib.transpose_( d(ijk), Q_cart{2}(:,sym_list(wi)) ); end
+                            for wi = 1:numel(sym_list); W{p}(:,:,wi) = am_lib.transpose_( d(ijk), Q_cart{2}(:,sym_list(wi)) ) * W{p}(:,:,wi); end
                     end
                     % make equations
                     W{p} = sum( W{p} - eye(prod(d(ijk))), 3);
@@ -4721,15 +4722,22 @@ classdef am_dft
             % expand matrix elements as well
             for matrix_element_ = {'v_tb','v_fc','fc','tb'}
                 if isfield(ip,matrix_element_{:})
+                    % get dimensions
+                    d = cellfun(@(x)size(x,1),ip.Dj);
+                    % loop over clusters
                     for p = 1:pp.nclusters
-                        c = pp.pp2ip(p); i = pp.x2i(pp.cluster(1,p)); j = pp.x2i(pp.cluster(2,p)); 
-                        Di = ip.Dj{i}(:,:,pp.i2o(p)); Dj = ip.Dj{j}(:,:,pp.i2o(p));
-                        if contains(matrix_element_{:},'v')
-                            M = ip.(matrix_element_{:}){c}; Di = sym(Di); Dj = sym(Dj);
-                        else
-                            M = reshape( double(ip.W{c}*ip.fc{c}(:)) , d(i), d(j) );
+                        c = pp.pp2ip(p);
+                        % construct symmetry
+                        qi = pp.i2o(p); ijk = ip.x2i(ip.cluster(:,c));
+                        W = 1; for j = ijk; W = am_lib.kron_( ip.Dj{j}(:,:,qi), W ); end 
+                        W = am_lib.transpose_( d(ijk), ip.Q{2}(:,qi) ) * W; W = am_lib.wdv_(W);
+                        % get irreducible matrices
+                        if contains(matrix_element_{:},'v') % symbolic
+                            M = ip.(matrix_element_{:}){c}; W = wdv_(W);
+                        else                                % numeric
+                            M = double(ip.W{c}*ip.fc{c}(:));
                         end
-                        pp.(matrix_element_{:}){p} = Di * permute(M, ip.Q{2}(:,pp.i2o(p))) * Dj';
+                        pp.(matrix_element_{:}){p} = reshape( W * M(:) , d(ijk(ip.Q{2}(:,qi))));
                     end
                 end
             end
