@@ -3911,7 +3911,7 @@ classdef am_dft
             fprintf(' (%.f secs)\n',toc);
 
             if ~contains(flag,'toy')
-
+                
                 % tight binding model
                 fprintf(' ... solving for matrix element values '); tic;
                 if     contains(flag,'tb');  ip.(ME_) =  get_tb_parameters(ip,dft,nskips);
@@ -4032,7 +4032,7 @@ classdef am_dft
                         %         R*prep_(iR*u)*ip.W{j} - equationsToMatrix(R*reshape(ip.W{j}*c,3,3)*iR*u,c)
                         %
                         % get U matrix and indexing I
-                        [U,I] = am_dft.get_bvk_U_matrix(ip, uc, u);
+                        [U,I] = am_dft.get_U_matrix(ip, uc, u);
 
                         % solve for force constants
                         fc = - U \ f(I);
@@ -5193,7 +5193,7 @@ classdef am_dft
                     % harmonic forces.
 
                     % get U matrix and indexing I
-                    [Uh,Ih] = get_bvk_U_matrix(bvk,pp,u);
+                    [Uh,Ih] = get_U_matrix(bvk,pp,u);
                     % get U matrix and indexing I
                     [Ua,Ia] = get_bvt_U_matrix(bvt,pt,u);
                     % check that indicies match
@@ -5889,7 +5889,7 @@ classdef am_dft
             switch algo
                 case 1
                     % get U matrix and indexing
-                    [U,I] = get_bvk_U_matrix(ip, uc, u);
+                    [U,I] = get_U_matrix(ip, uc, u);
                     % solve for forces f [3m * 1] = - U [3m * nFcs] * FC [ nFCs * 1]: n pairs, m atoms
                     f(I) = - U * [ip.fc{:}].';
                     % rearrange forces
@@ -5909,15 +5909,29 @@ classdef am_dft
             end
         end
 
-        function [U,I]   = get_bvk_U_matrix(ip, uc, u)
+        function [U,I]   = get_U_matrix(ip, uc, u)
 
             import am_lib.* am_dft.*
 
-            % the Z matrix factors out force constants leaving displacements
-            Z = [1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0;
-                 0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0;
-                 0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1].';
+            %
+            Z{1} = [];
             
+            % the Z matrix factors out force constants leaving displacements
+            Z{2} = [1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0;
+                    0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0;
+                    0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1].';
+            
+            % the Z matrix factors out force constants leaving displacements
+            Z{3} = [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
+                    0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
+                    0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
+                    0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
+                    0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0;
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0;
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0;
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0;
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1].';
+              
             % get primitive pairs and link it to unit cell
             pp = get_primitive_cluster(ip,uc);
             
@@ -5954,42 +5968,35 @@ classdef am_dft
                fshp_ = @(X) reshape(X, 3,                     nFCs, natoms);
 
                % get rotation matrices
-                R  = Q_cart{1}(1:3,1:3,pp.q_id{m}(ex_));
-                iR = permute(R,[2,1,3]);
+                R  = Q_cart{1}(1:3,1:3,pp.q_id{m}(ex_)); iR = permute(R,[2,1,3]);
 
-                % get working matrix UW
-                UW = ushp_(u(:,pp.o_id{m}(ex_,:),:));
-                UW = matmul_(R,permute(UW,[1,4,2,3]));
-                UW =  shp_(matmul_(Z,UW));
+                % setup displacement matrix
+                switch ip.nvertices 
+                    case 2
+                        ux = u(:,pp.o_id{m}(ex_,:),:);
+                    case 3
+                        % construct displacement outer products
+                        ux = outerc_( reshape(u(:,flatten_(pt.o{m}(ex_,:,1)),:),3,[]) , ...
+                                      reshape(u(:,flatten_(pt.o{m}(ex_,:,2)),:),3,[]) );
+                end
+                
+                % 0) reshape ux [3 x 3 x (npairs*natoms)] -> [9 x npairs x natoms]
+                UW = ushp_(ux);
+                % 1) transform outer dispacement product to irreducible orientation
+                %    R^^2 [9 x 9] * UW [9 x 1  x npairs x natoms] = UW [9  x 1  x npairs x natoms]
+                UW = matmul_(kronpow_(R,ip.nvertices-1),permute(UW,[1,4,2,3]));
+                % 2) factor out force constants, leaving displacements
+                %    Z [81 x 9] * UW [9 x 1  x npairs x natoms] = UW [81 x 1  x npairs x natoms] reshaped to UW [3  x 27 x npairs x natoms]
+                UW =  shp_(matmul_(Z{ip.nvertices},UW));
+                % 3) return displacement to bond orientation
+                %    iR [3 x 3] * UW [3 x 27 x npairs x natoms] = UW [3  x 27 x npairs x natoms]
                 UW =  shp_(matmul_(iR,UW));
+                % 4) take into account intrinsic and crystallographic symmetries
+                %    UW [3 x 27 x npairs x natoms] * bvt.W [ 27 * nfcs ] = UW [3 x ncfs x npairs x natoms] sum over pairs -> UW [3 x ncfs x 1 x natoms]
                 UW = fshp_(matmul_(sum(UW,3),ip.W{s}));
-
-                % construct U
+                % 5) construct U
                 U(m_id==m,s_id==s) = reshape(permute(UW,[1,3,2]), 3*natoms, nFCs );
-                               
-
-%                     % construct displacement outer products
-%                     ux = outerc_( reshape(u(:,flatten_(pt.o{m}(ex_,:,1)),:),3,[]) , ...
-%                                   reshape(u(:,flatten_(pt.o{m}(ex_,:,2)),:),3,[]) );
-%                     % reshape ux [3 x 3 x (npairs*natoms)] -> [9 x npairs x natoms]
-%                     ux = ushp_(ux);
-% 
-%                     % construct U matrix in a four-step process using a working matrix W:
-%                     % 1) transform outer dispacement product to irreducible orientation
-%                     %    R^^2 [9 x 9] * UW [9 x 1  x npairs x natoms] = UW [9  x 1  x npairs x natoms]
-%                     W = matmul_(kron_(R,R),permute(ux,[1,4,2,3]));
-%                     % 2) factor out force constants, leaving displacements
-%                     %    Z [81 x 9] * UW [9 x 1  x npairs x natoms] = UW [81 x 1  x npairs x natoms] reshaped to UW [3  x 27 x npairs x natoms]
-%                     W = shp_(matmul_(Z,W));
-%                     % 3) return displacement to bond orientation
-%                     %    iR [3 x 3] * UW [3 x 27 x npairs x natoms] = UW [3  x 27 x npairs x natoms]
-%                     W = shp_(matmul_(iR,W));
-%                     % 4) take into account intrinsic and crystallographic symmetries
-%                     %    UW [3 x 27 x npairs x natoms] * bvt.W [ 27 * nfcs ] = UW [3 x ncfs x npairs x natoms] sum over pairs -> UW [3 x ncfs x 1 x natoms]
-%                     W = fshp_(matmul_(sum(W,3),bvt.W{s}));
-% 
-%                     % construct U
-%                     U(m_id==m,s_id==s) = reshape(permute(W,[1,3,2]), 3*natoms, nFCs );
+                
             end
             end
         end
@@ -6121,7 +6128,7 @@ classdef am_dft
             switch algo
                 case 1
                     % get U matrix and indexing
-                    [U,I] = get_bvt_U_matrix(bvt,pt,u);
+                    [U,I] = get_U_matrix(bvt,pt,u);
                     % solve for forces f [3m * 1] = - U [3m * nFcs] * FC [ nFCs * 1]: n pairs, m atoms
                     f(I) = - U * [bvt.fc{:}].';
                     % rearrange forces
@@ -6155,78 +6162,6 @@ classdef am_dft
                     end
             end
         end
-
-        function [U,I] = get_bvt_U_matrix(bvt,pt,u)
-
-            import am_lib.* am_dft.*
-
-            % the Z matrix factors out force constants leaving displacements
-            Z = [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
-                 0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
-                 0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
-                 0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
-                 0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0;
-                 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0;
-                 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0;
-                 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0;
-                 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1].';
-             
-            % initialize arrays
-            nsteps = size(u,3);
-            nFCs = sum(cellfun(@(x)size(x,2),bvt.W));
-            U = zeros(3*sum(nsteps*pt.ncenters),nFCs);
-            I = zeros(3*sum(nsteps*pt.ncenters),1);
-            X = reshape(1:numel(u),size(u));
-
-            % record which shell FCs belong to
-            s_id = repelem([1:bvt.nshells],cellfun(@(x)size(x,2),bvt.W));
-            m_id = repelem([1:bvt.natoms],3*nsteps*pt.ncenters);
-
-            % F [3m * 1] = - U [3m * nFcs] * FC [ nFCs * 1]: n pairs, m atoms ==> FC = - U \ F
-            for m = 1:bvt.natoms
-                % get inds to properly reordering of force constants
-                I(m_id==m) = reshape(X(:,pt.c{m},:),[],1);
-            for s = 1:bvt.nshells
-                ex_ = [pt.i{m}==s];
-                if any(ex_)
-                    % get number of things
-                    npairs = sum(ex_);
-                    nFCs   = size(bvt.W{s},2);
-                    natoms = pt.ncenters(m)*nsteps;
-                    % define array reshape functions
-                   ushp_ = @(X) reshape(X,9,   npairs,natoms);
-                    shp_ = @(X) reshape(X,3,27,npairs,natoms);
-                   fshp_ = @(X) reshape(X,3,     nFCs,natoms);
-                    % get rotation matrices
-                    R  = pt.Q{1}(1:3,1:3, pt.q{m}(ex_));
-                    iR = pt.Q{1}(1:3,1:3,pt.iq{m}(ex_));
-                    % construct displacement outer products
-                    ux = outerc_( reshape(u(:,flatten_(pt.o{m}(ex_,:,1)),:),3,[]) , ...
-                                  reshape(u(:,flatten_(pt.o{m}(ex_,:,2)),:),3,[]) );
-                    % reshape ux [3 x 3 x (npairs*natoms)] -> [9 x npairs x natoms]
-                    ux = ushp_(ux);
-
-                    % construct U matrix in a four-step process using a working matrix W:
-                    % 1) transform outer dispacement product to irreducible orientation
-                    %    R^^2 [9 x 9] * UW [9 x 1  x npairs x natoms] = UW [9  x 1  x npairs x natoms]
-                    W = matmul_(kron_(R,R),permute(ux,[1,4,2,3]));
-                    % 2) factor out force constants, leaving displacements
-                    %    Z [81 x 9] * UW [9 x 1  x npairs x natoms] = UW [81 x 1  x npairs x natoms] reshaped to UW [3  x 27 x npairs x natoms]
-                    W = shp_(matmul_(Z,W));
-                    % 3) return displacement to bond orientation
-                    %    iR [3 x 3] * UW [3 x 27 x npairs x natoms] = UW [3  x 27 x npairs x natoms]
-                    W = shp_(matmul_(iR,W));
-                    % 4) take into account intrinsic and crystallographic symmetries
-                    %    UW [3 x 27 x npairs x natoms] * bvt.W [ 27 * nfcs ] = UW [3 x ncfs x npairs x natoms] sum over pairs -> UW [3 x ncfs x 1 x natoms]
-                    W = fshp_(matmul_(sum(W,3),bvt.W{s}));
-
-                    % construct U
-                    U(m_id==m,s_id==s) = reshape(permute(W,[1,3,2]), 3*natoms, nFCs );
-                end
-            end
-            end
-        end
-
 
         % aux electrons
 
