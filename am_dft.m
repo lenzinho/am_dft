@@ -4159,6 +4159,105 @@ classdef am_dft
                 %        X=equationsToMatrix(a*b*c.',b(:)); 
                 %        simplify(equationsToMatrix(a*(b.')*c.',b(:)) - X(:,[1,4,7,2,5,8,3,6,9]))
                 % 
+                % --------------------------------------------------------------------------------
+                %
+                % Q: What is the intrinsict symmetry of third-order force
+                %    constants due to permutation of coordinate axes x,y,z?
+                % A: Each page of the tensor is symmetry.
+                %
+                %     phi(:,:,1) =				   phi(1,:,:) =
+                %         [ c_111, c_211, c_311]   		[ c_111, c_211, c_311]
+                %         [ c_211, c_221, c_321]   		[ c_211, c_221, c_321]
+                %         [ c_311, c_321, c_331]   		[ c_311, c_321, c_331]
+                %     phi(:,:,2) =				   phi(2,:,:) =
+                %         [ c_211, c_221, c_321]   		[ c_211, c_221, c_321]
+                %         [ c_221, c_222, c_322]   		[ c_221, c_222, c_322]
+                %         [ c_321, c_322, c_332]   		[ c_321, c_322, c_332]
+                %     phi(:,:,3) =				   phi(3,:,:) =
+                %         [ c_311, c_321, c_331]   		[ c_311, c_321, c_331]
+                %         [ c_321, c_322, c_332]   		[ c_321, c_322, c_332]
+                %         [ c_331, c_332, c_333]   		[ c_331, c_332, c_333]
+                %
+                %    And the same thing for the middle phi(:,1:3,:). Check if out with the code:
+                %
+                %         % get [x,y,z] flip/permutation operators
+                %         a = reshape([1:27],3,3,3); p = perms(1:3).'; nps = size(p,2); F = zeros(27,27,nps);
+                %         for i = 1:nps; F(:,:,i) = sparse( flatten_(a), flatten_(permute(a,p(:,i))), ones(27,1), 27, 27); end
+                %         % enforce intrinsic symmetry (immaterial order of differentiation: c == c.')
+                %         W = sum(F-eye(27),3);
+                %         % get linearly-independent nullspace and normalize to first nonzero element
+                %         W=real(null(W)); W=frref_(W.').'; W(abs(W)<am_lib.eps)=0; W(abs(W-1)<am_lib.eps)=1; W=W./accessc_(W,findrow_(W.').');
+                %         % define parameters
+                %         c = sym(sprintf('c_%%d%%d%%d',i),[3,3,3],'real'); c = c(findrow_(double(W).'));
+                %         % get symmetry adapted force constants
+                %         phi = reshape( sym(W)*c(:), [3,3,3]);
+                %
+                % Q: How do second and third rank tensors rotate?
+                % A:
+                %         %% rotate 2nd rank tensor A
+                %         clear;clc;rng(1); R=rand(3,3); A = rand(3,3);
+                %         AR = zeros(3,3);
+                %         for m = 1:3; for n = 1:3;
+                %         for i = 1:3; for j = 1:3
+                %             AR(m,n) = AR(m,n) + A(i,j)*R(m,i)*R(n,j);
+                %         end; end
+                %         end; end
+                %         AR - R*A*R.'
+                %         AR - reshape(kron(R,R)*A(:),3,3)
+                %
+                %         %% rotate 3rd rank tensor A
+                %         clear;clc;rng(1); R=rand(3,3); A = rand(3,3,3);
+                %         AR = zeros(3,3,3);
+                %         for m = 1:3; for n = 1:3; for o = 1:3
+                %         for i = 1:3; for j = 1:3; for k = 1:3
+                %             AR(m,n,o) = AR(m,n,o) + A(i,j,k)*R(m,i)*R(n,j)*R(o,k);
+                %         end; end; end
+                %         end; end; end
+                %         AR - reshape(kron(kron(R,R),R)*A(:),[3,3,3])
+                %
+                % Q: How do triple dot products work? For example, when
+                %    fourier-transforming third-order force constants.
+                % A: The triple dot product PHI ... u1 u2 u3, as described by Ziman,
+                %    produces as a scalar and is given in Einstein summation as
+                %    PHI(ijk) u1(i) u2(j) u3(k).
+                %
+                %         % apply double dot product
+                %         F = zeros(3,1);
+                %         for m = 1:3
+                %         for i = 1:3; for j = 1:3
+                %             F(m) = F(m) + AR(i,j,m)*u(i)*w(j);
+                %         end; end
+                %         end
+                %
+                % Q: What about a double dot product? For example, when
+                %    third-order force constants multiply displacements to
+                %    obtain forces.
+                % A: Check it out with the code below:
+                %
+                %         % double dot product of rotated 3rd rank tensor
+                %         clear;clc;rng(1); R=rand(3,3); u = rand(3,1); w = rand(3,1); A = rand(3,3,3);
+                %         % rotate A
+                %         AR = zeros(3,3,3);
+                %         for m = 1:3; for n = 1:3; for o = 1:3
+                %         for i = 1:3; for j = 1:3; for k = 1:3
+                %             AR(m,n,o) = AR(m,n,o) + A(i,j,k)*R(m,i)*R(n,j)*R(o,k);
+                %         end; end; end
+                %         end; end; end
+                %         % apply double dot product
+                %         F = zeros(3,1);
+                %         for m = 1:3
+                %         for i = 1:3; for j = 1:3
+                %             F(m) = F(m) + AR(i,j,m)*u(i)*w(j);
+                %         end; end
+                %         end
+                %         % equivalent formulations incorproating rotation:
+                %         F - reshape(kron(kron(R,R),R)*A(:),9,3).'*reshape(u(:)*w(:).',[],1)
+                %         % equivalent formulations without incorporating rotation
+                %         F - reshape(          AR          ,9,3).'*reshape(u(:)*w(:).',[],1)
+                %         F - [ u.'*AR(:,:,1)*w;  u.'*AR(:,:,2)*w ; u.'*AR(:,:,3)*w ]
+                %         F - matmul_(AR,w).'*u
+                %         F - reshape(AR,9,3).'*flatten_(u*w.')
+                %         F - squeeze(sum(sum( AR.*(u*w.') ,1),2))
 
                 digits(10); 
 
@@ -5130,128 +5229,6 @@ classdef am_dft
             xlabel('dft energies [eV]'); ylabel('tb energies [eV]');
         end
 
-        
-        % pairs and triplets
-
-        function [it,pt]      = get_triplets(pc,uc,cutoff)
-
-            import am_lib.* am_dft.*
-
-            % readjust cutoff based on unitcell
-            cutoff = min([normc_(uc.bas)/2,cutoff]);
-
-            % step 1: get pair symmetries symmetries [pc-frac]
-
-                % get space symmetries
-                [~,~,S] = get_symmetries(pc); nSs = size(S,3);
-
-                % save space symmetry combined with permutation of atomic positions as Q
-                M = perms([1:3]).'; Q{1} = repmat(S,1,1,size(M,2)); Q{2} = repelem(M,1,nSs);
-
-                % get multiplication table, list of inverse elements, and identity
-                [MT,E,I]= get_multiplication_table(Q); nQs = size(MT,1);
-
-            % step 2: [PM, V, ip2pp, and pt2it]
-
-                % get all possible triplets for which every bond length is below the cutoff
-                [Y{1:3}]=ndgrid(1:uc.natoms,1:uc.natoms,uc.p2u); x=[Y{3}(:),Y{2}(:),Y{1}(:)].'; ex_=true(1,size(x,2));
-                ex_(ex_) = normc_(uc2ws(uc.bas*(uc.tau(:,x(2,ex_))-uc.tau(:,x(1,ex_))),uc.bas))<cutoff;
-                ex_(ex_) = normc_(uc2ws(uc.bas*(uc.tau(:,x(3,ex_))-uc.tau(:,x(2,ex_))),uc.bas))<cutoff;
-                ex_(ex_) = normc_(uc2ws(uc.bas*(uc.tau(:,x(1,ex_))-uc.tau(:,x(3,ex_))),uc.bas))<cutoff;
-
-                % [pc-frac] compute action of space symmetries on pair positions
-                % NOTE: Q{1} is active and Q{2} is passive!
-                seitz_apply_ = @(S,tau) reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:);
-                pc_tau = uc.tau2pc*mod_(uc.tau);
-                tau(:,:,:,1) = seitz_apply_(Q{1},pc_tau(:,x(1,ex_)));
-                tau(:,:,:,2) = seitz_apply_(Q{1},pc_tau(:,x(2,ex_)));
-                tau(:,:,:,3) = seitz_apply_(Q{1},pc_tau(:,x(3,ex_)));
-                for iq = 1:nQs; tau(:,:,iq,Q{2}(:,iq)) = tau(1:3,:,iq,:); end
-
-                % [uc-frac] shift reference atom to primitive cell and record uc index
-                G_ = @(tau) tau - mod_(tau); tau = mod_(matmul_(inv(uc.tau2pc),tau-G_(tau(:,:,:,1))));
-                P1 = member_(tau(:,:,:,1)/10,uc.tau/10);
-                P2 = member_(tau(:,:,:,2)/10,uc.tau/10);
-                P3 = member_(tau(:,:,:,3)/10,uc.tau/10);
-
-                % create a unique pair label
-                [V,~,V_p2i]=unique([P1(:),P2(:),P3(:)],'rows','stable'); V=V.';
-
-                % get permutation representation (entries are unique pair indicies)
-                PM = reshape(V_p2i,size(P1)); A = get_connectivity(PM);
-
-                % get map
-                it2pt = findrow_(A); pt2it = [1:size(A,1)]*A;
-
-            % step 3: [xy, qi, iqi]
-
-                % get symmetry which takes irrep to orbit
-                qi = findrow_(PM==PM(it2pt(pt2it),E)); iqi = I(qi); % i=2; X=accessc_(PM(pt2it==i,:).',MT(:,qi(pt2it==i))).'
-
-                % get uc indicies, vectors, and stabilizers
-                xyz = V(:,PM(:,E)); s_ck = [PM==PM(:,E)].';
-
-                % create "irreducible" structure
-                it_ = @(uc,s_ck,xyz) struct('units','cart','bas',uc.bas2pc*uc.bas, ...
-                    'cutoff',cutoff,'symb',{uc.symb},'mass',uc.mass,'natoms',numel(uc.p2u),'species',uc.species(uc.p2u),...
-                    'nshells',size(xyz,2),'s_ck',s_ck,'xyz',xyz);
-                it = it_(uc,s_ck(:,it2pt),xyz(:,it2pt));
-
-            % step 4: [c_id, o_id, i_id, q_id]
-
-                mno = uc.u2p(xyz); pc_natoms = numel(uc.p2u);
-                for m = 1:pc_natoms
-                    % record unit cell atoms of primitive type m
-                    c_id{m} = find(uc.u2p==m); ncenters = numel(c_id{m});
-                    % count number of orbits involving primitive cell atom m
-                    npairs = sum(mno(1,:)==m);
-                    % allocate space
-                    o_id{m} = zeros(npairs,ncenters,2);
-                    i_id{m} = zeros(npairs,1);
-                    q_id{m} = zeros(npairs,1);
-                   iq_id{m} = zeros(npairs,1);
-                    % loop over centers
-                    for n = 1:ncenters
-                        % [uc-frac] find the closest primitive lattice vector to atom n
-                        G = uc.tau(:,c_id{m}(n))-uc.tau(:,uc.p2u(m));
-                        % [uc-frac] shift atom n to the primitive cell
-                        tau = mod_(uc.tau - G);
-                        % find orbits around c_id{m}(n)
-                        ex_ = member_(uc.tau(:,xyz(1,:)),tau).'==c_id{m}(n);
-                        % record uc id for the pairing atom for each orbit
-                        o_id{m}(:,n,:) = reshape(member_(uc.tau(:,xyz(2:3,ex_)),tau).',2,[]).';
-                    end
-                    % irreducible pair index (independent of n)
-                    i_id{m}(:) = pt2it(ex_);
-                    % symmetry which takes bond to irrep (independent of n)
-                    q_id{m}(:) =  qi(ex_);
-                   iq_id{m}(:) = iqi(ex_);
-                end
-
-            % define primitive pair saving function
-            pt_ = @(uc,c_id,o_id,i_id,q_id,iq_id,Q) struct(...
-                'units','cart',...
-                'bas',uc.bas,'bas2pc',uc.bas2pc,'tau2pc',uc.tau2pc,...
-                'symb',{uc.symb},'mass',uc.mass,'natoms',uc.natoms,'tau',uc.bas*uc.tau,'species',uc.species,...
-                'u2p',uc.u2p,'u2i',uc.u2i,'p2u',uc.p2u,'i2u',uc.i2u, ...
-                'cutoff',cutoff,'pc_natoms',numel(uc.p2u),...
-                'npairs',cellfun(@(x)size(x,1),o_id),...
-                'ncenters',cellfun(@(x)size(x,2),o_id), ...
-                'c',{c_id},'o',{o_id},'i',{i_id},'q',{q_id},'iq',{iq_id},...
-                'nQs',size(Q{1},3),'Q',{Q});
-
-            % covert symmetries [pc-frac] -> [cart]
-            sym_rebase_ = @(B,S) [[ matmul_(matmul_(B,S(1:3,1:3,:)),inv(B)), ...
-                reshape(matmul_(B,S(1:3,4,:)),3,[],size(S,3))]; S(4,1:4,:)];
-            Q{1} = sym_rebase_(uc.bas2pc*uc.bas,Q{1});
-
-            % correct rounding errors in cart
-            Q{1} = wdv_(Q{1});
-
-            % save "primitive" pairs
-            pt = pt_(uc,c_id,o_id,i_id,q_id,iq_id,Q);
-
-        end
 
     end
 
@@ -5948,10 +5925,7 @@ classdef am_dft
             sym_rebase_ = @(B,S) [[ matmul_(matmul_(B,S(1:3,1:3,:)),inv(B)), ...
                 reshape(matmul_(B,S(1:3,4,:)),3,[],size(S,3))]; S(4,1:4,:)];
             Q_cart{1} = sym_rebase_(pp.bas,pp.Q{1});
-             
-            % get sizes
-            pc_natoms = numel(unique(pp.x2p));
-             
+            
             % initialize arrays
             nsteps = size(u,3);
             nFCs = sum(cellfun(@(x)size(x,2),ip.W));
@@ -5960,6 +5934,7 @@ classdef am_dft
             X = reshape(1:numel(u),size(u));
 
             % record which cluster FCs belong to
+            pc_natoms = numel(unique(pp.x2p));
             m_id = repelem([1:pc_natoms]   ,3*nsteps*pp.ncenters);
             s_id = repelem([1:ip.nclusters],cellfun(@(x)size(x,2),ip.W));
 
@@ -5974,9 +5949,9 @@ classdef am_dft
                 natoms = pp.ncenters(m)*nsteps;
 
                 % define array reshape functions
-               ushp_ = @(X) reshape(X,3,  npairs,natoms);
-                shp_ = @(X) reshape(X,3,9,npairs,natoms);
-               fshp_ = @(X) reshape(X,3,    nFCs,natoms);
+               ushp_ = @(X) reshape(X, 3.^(ip.nvertices-1), npairs, natoms);
+                shp_ = @(X) reshape(X, 3, 3.^ip.nvertices , npairs, natoms);
+               fshp_ = @(X) reshape(X, 3,                     nFCs, natoms);
 
                % get rotation matrices
                 R  = Q_cart{1}(1:3,1:3,pp.q_id{m}(ex_));
@@ -5991,6 +5966,30 @@ classdef am_dft
 
                 % construct U
                 U(m_id==m,s_id==s) = reshape(permute(UW,[1,3,2]), 3*natoms, nFCs );
+                               
+
+%                     % construct displacement outer products
+%                     ux = outerc_( reshape(u(:,flatten_(pt.o{m}(ex_,:,1)),:),3,[]) , ...
+%                                   reshape(u(:,flatten_(pt.o{m}(ex_,:,2)),:),3,[]) );
+%                     % reshape ux [3 x 3 x (npairs*natoms)] -> [9 x npairs x natoms]
+%                     ux = ushp_(ux);
+% 
+%                     % construct U matrix in a four-step process using a working matrix W:
+%                     % 1) transform outer dispacement product to irreducible orientation
+%                     %    R^^2 [9 x 9] * UW [9 x 1  x npairs x natoms] = UW [9  x 1  x npairs x natoms]
+%                     W = matmul_(kron_(R,R),permute(ux,[1,4,2,3]));
+%                     % 2) factor out force constants, leaving displacements
+%                     %    Z [81 x 9] * UW [9 x 1  x npairs x natoms] = UW [81 x 1  x npairs x natoms] reshaped to UW [3  x 27 x npairs x natoms]
+%                     W = shp_(matmul_(Z,W));
+%                     % 3) return displacement to bond orientation
+%                     %    iR [3 x 3] * UW [3 x 27 x npairs x natoms] = UW [3  x 27 x npairs x natoms]
+%                     W = shp_(matmul_(iR,W));
+%                     % 4) take into account intrinsic and crystallographic symmetries
+%                     %    UW [3 x 27 x npairs x natoms] * bvt.W [ 27 * nfcs ] = UW [3 x ncfs x npairs x natoms] sum over pairs -> UW [3 x ncfs x 1 x natoms]
+%                     W = fshp_(matmul_(sum(W,3),bvt.W{s}));
+% 
+%                     % construct U
+%                     U(m_id==m,s_id==s) = reshape(permute(W,[1,3,2]), 3*natoms, nFCs );
             end
             end
         end
