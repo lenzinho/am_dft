@@ -3863,7 +3863,7 @@ classdef am_dft
         
 
         % clusters
-        
+
         % get_model('toy tb' , pc, cutoff, spdf)
         % get_model('toy bvk', pc, cutoff)
         % get_model('toy bvt', pc, cutoff)
@@ -5918,6 +5918,33 @@ classdef am_dft
         end
 
         function [U,I]   = get_U_matrix(ip, uc, u)
+            %     Formalism
+            %
+            %     % get Z matrix
+            %     FC=sym('FC',[3,3]); u=sym('U',[3,1]); Z = double(equationsToMatrix(equationsToMatrix(FC*u,FC(:)),u(:)));
+            %     
+            %     % evaluate numerically
+            %     rng(1); norbits=4; ncenters=30; nsteps = 2; nvertices=2;
+            %     u = rand(3,norbits,ncenters,nsteps); FC = rand(3,3,norbits); R_o2i = rand(3,3,norbits); 
+            %     
+            %     for i = 1:norbits;   iR_o2i(:,:,i) = inv(R_o2i(:,:,i)); end
+            %     for i = 1:norbits; FC_proto(:,:,i) = iR_o2i(:,:,i)*FC(:,:,i)*R_o2i(:,:,i); end
+            %     
+            %     % explicit
+            %     F1(1:3,1:ncenters*nsteps) = reshape(FC,3,3*norbits) * reshape(u,3*norbits,ncenters*nsteps);
+            %     
+            %     % using U matriz
+            %     U = reshape(matmul_(Z,iR_o2i)   , 3, 9, 3, norbits, 1);
+            %     U = matmul_(       reshape(R_o2i, 3, 3, 1, norbits, 1), U);
+            %     U = sum_(     U .* reshape(u    , 1, 1, 3, norbits, ncenters*nsteps), 3);
+            %     U =                 reshape(U   , 3, 3* 3* norbits, ncenters*nsteps);
+            %     U = reshape(permute(U,[1,3,2])  , 3               * ncenters*nsteps, 9*norbits);
+            %     
+            %     X = U * FC_proto(:);
+            %     
+            %     U \ X - FC_proto(:)
+            %     
+            %     F1 - reshape(X,3,ncenters*nsteps)
 
             import am_lib.* am_dft.*
 
@@ -5925,20 +5952,25 @@ classdef am_dft
             Z{1} = [];
             
             % the Z matrix factors out force constants leaving displacements
-            Z{2} = [1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0;
-                    0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0;
-                    0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1].';
+            % FC=sym('FC',[3,3]); U=sym('U',[3,1]); equationsToMatrix(equationsToMatrix(FC*U,FC(:)),U(:))
+            Z{2} = [1,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
+                    0,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0;
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,1].';
             
             % the Z matrix factors out force constants leaving displacements
-            Z{3} = [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
-                    0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
-                    0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
-                    0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
-                    0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0;
-                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0;
-                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0;
-                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0;
-                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1].';
+            % THIS MATRIX IS PROBABLY WORNG. NEED TO DOUBLE CHECK.
+            % THIS MATRIX IS PROBABLY WORNG. NEED TO DOUBLE CHECK.
+            FC=sym('FC',[3,3,3]); U=sym('U',[3,3]); Z{3} = double(equationsToMatrix(equationsToMatrix(FC(:,:,1)*U+FC(:,:,2)*U+FC(:,:,3)*U,FC(:)),U(:)));
+            % Matrix below generated with: FC=sym('FC',[3,3]); U=sym('U',[3,3]); Z{3} = double(equationsToMatrix(equationsToMatrix(FC*U,FC(:)),U(:)));
+            Z{3} = [1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0;
+                    0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0;
+                    0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;
+                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1].';
               
             % get primitive pairs and link it to unit cell
             pp = get_primitive_cluster(ip,uc);
@@ -5965,15 +5997,12 @@ classdef am_dft
                 % get inds to properly reorder force constants
                 I(m_id==m) = reshape(X(:,pp.c_id{m},:),[],1);
             for s = 1:ip.nclusters
-                ex_    = [pp.ip_id{m}==s];
-                npairs = sum(ex_);
-                nFCs   = size(ip.W{s},2);
-                natoms = pp.ncenters(m)*nsteps;
+                ex_ = [pp.ip_id{m}==s]; norbits= sum(ex_); nFCs = size(ip.W{s},2); ncenters = pp.ncenters(m);
 
                 % define array reshape functions
-               ushp_ = @(X) reshape(X, 3.^(ip.nvertices-1), npairs, natoms);
-                shp_ = @(X) reshape(X, 3, 3.^ip.nvertices , npairs, natoms);
-               fshp_ = @(X) reshape(X, 3,                     nFCs, natoms);
+               ushp_ = @(X) reshape(X, 3.^(ip.nvertices-1), norbits, ncenters*nsteps);
+                shp_ = @(X) reshape(X, 3, 3.^ip.nvertices , norbits, ncenters*nsteps);
+               fshp_ = @(X) reshape(X, 3,                      nFCs, ncenters*nsteps);
 
                % get rotation matrices
                 R  = Q_cart{1}(1:3,1:3,pp.q_id{m}(ex_)); iR = permute(R,[2,1,3]);
@@ -5994,16 +6023,16 @@ classdef am_dft
                 %    R^^2 [9 x 9] * UW [9 x 1  x npairs x natoms] = UW [9  x 1  x npairs x natoms]
                 UW = matmul_(kronpow_(R,ip.nvertices-1),permute(UW,[1,4,2,3]));
                 % 2) factor out force constants, leaving displacements
-                %    Z [81 x 9] * UW [9 x 1  x npairs x natoms] = UW [81 x 1  x npairs x natoms] reshaped to UW [3  x 27 x npairs x natoms]
+                %    Z [81 x 9] * UW [9 x 1  x npairs x natoms] =   UW [81 x 1  x npairs x natoms] reshaped to UW [3  x 27 x npairs x natoms]
                 UW =  shp_(matmul_(Z{ip.nvertices},UW));
                 % 3) return displacement to bond orientation
-                %    iR [3 x 3] * UW [3 x 27 x npairs x natoms] = UW [3  x 27 x npairs x natoms]
+                %    iR [3 x 3] * UW [3 x 27 x npairs x natoms] =   UW [3  x 27 x npairs x natoms]
                 UW =  shp_(matmul_(iR,UW));
                 % 4) take into account intrinsic and crystallographic symmetries
                 %    UW [3 x 27 x npairs x natoms] * bvt.W [ 27 * nfcs ] = UW [3 x ncfs x npairs x natoms] sum over pairs -> UW [3 x ncfs x 1 x natoms]
                 UW = fshp_(matmul_(sum(UW,3),ip.W{s}));
                 % 5) construct U
-                U(m_id==m,s_id==s) = reshape(permute(UW,[1,3,2]), 3*natoms, nFCs );
+                U(m_id==m,s_id==s) = reshape(permute(UW,[1,3,2]), 3*ncenters*nsteps, nFCs );
                 
             end
             end
