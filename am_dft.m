@@ -1127,11 +1127,15 @@ classdef am_dft
             check_ = @(A) all(all(abs(A)<tol,1),2);
 
             % define function to sort atoms and species into a unique order (reference)
-            X_ = @(species,tau) sortc_([species;mod_(tau)]); X = X_(pc.species,pc.tau(:,:,1));
+            X_ = @(tau,species) sortc_([mod_(tau);species]); X = X_(pc.tau(:,:,1),pc.species);
 
-            % get vectors that preserve periodic boundary conditions
-            N = 1; V=mod_(pc.tau(:,pc.species==pc.species(N))-pc.tau(:,N), tol);  nVs=size(V,2); ex_=false(1,nVs);
-            for j = 1:nVs; ex_(j) = check_( X_(pc.species,pc.tau(1:3,:,1)-V(:,j))-X ); end
+            % get all vectors connecting atom N to all other atoms
+            % V = []; for N = 1:pc.natoms; V = [V, pc.tau(:,pc.species==pc.species(N))-pc.tau(:,N)]; end; nVs=size(V,2);
+            N = 1; V = mod_( pc.tau(:,pc.species==pc.species(N))-pc.tau(:,N) + 1/2, tol) - 1/2; nVs=size(V,2);
+            
+            % find out which subset of vectors V preserve periodic boundary conditions
+            ex_=false(1,nVs); 
+            for j = 1:nVs; ex_(j) = check_( X_(pc.tau(1:3,:,1)-V(:,j),pc.species)-X ); end
             T=[V(:,ex_),eye(3)]; T=T(:,rankc_(normc_(T)));
 
             if nargout == 1; return; end
@@ -1147,7 +1151,7 @@ classdef am_dft
                 % get seitz operators which leave the atomic basis invariant
                 S = zeros(4,4,nHs*nVs); S(4,4,:)=1; nSs=0;
                 for i = 1:nHs; for j = 1:nVs
-                    if check_( X_(pc.species,H(:,:,i)*pc.tau+V(:,j)) - X ); nSs=nSs+1; S(1:3,1:4,nSs)=[ H(:,:,i), V(:,j) ]; end
+                    if check_( X_(H(:,:,i)*pc.tau+V(:,j),pc.species) - X ); nSs=nSs+1; S(1:3,1:4,nSs)=[ H(:,:,i), V(:,j) ]; end
                 end; end; S = S(:,:,1:nSs);
 
                 % set identity first
@@ -2771,7 +2775,7 @@ classdef am_dft
             % print basic symmetry info
             [~,H,~,R] = get_symmetries(pc, tol);
             bv_code = identify_bravais_lattice(pc.bas, tol);
-            
+
             % holohodry should give same info as bravais lattice
             hg_code = identify_pointgroup(H); 
             pg_code = identify_pointgroup(R); 
@@ -2793,9 +2797,9 @@ classdef am_dft
                     fprintf('     %-15s = %s\n','create command',str);
                 end
             end
-            
+
             % sub functions
-            
+
             function [uc, str]    = load_cif(fcif)
 
                 % load file into memory
@@ -3911,19 +3915,19 @@ classdef am_dft
             fprintf(' (%.f secs)\n',toc);
 
             if ~contains(flag,'toy')
-                
                 % tight binding model
                 fprintf(' ... solving for matrix element values '); tic;
                 if     contains(flag,'tb');  ip.(ME_) =  get_tb_parameters(ip,dft,nskips);
-                elseif contains(flag,'bvk'); ip.(ME_) = get_bvk_parameters(ip,uc,md,1); 
+                elseif contains(flag,'bvk'); ip.(ME_) = get_bvk_parameters(ip,uc,md); 
                 end
                 fprintf(' (%.f secs)\n',toc);
 
-                if  contains(flag,'bvk')
-                    fprintf(' ... enforcing acoustic sum rules '); tic;
-                    [ip.fc] = enforce_asr(ip);
-                    fprintf(' (%.f secs)\n',toc);
-                end
+%                 if  contains(flag,'bvk')
+%                     fprintf(' ... enforcing acoustic sum rules'); tic;
+%                     fc_before = [ip.fc{:}]; [ip.fc] = enforce_asr(ip); fc_after = [ip.fc{:}]; 
+%                     fprintf(', max difference = %.2f%%',max(abs(fc_before-fc_after)./abs(fc_before))*100);
+%                     fprintf(' (%.f secs)\n',toc);
+%                 end
 
             end
             
@@ -3980,7 +3984,7 @@ classdef am_dft
                 for i = [1:ip.nclusters]; tb{i} = x(Svsk(i):Evsk(i)); end
             end
 
-            function [bvk]         = get_bvk_parameters(ip,uc,md,algo)
+            function [bvk]         = get_bvk_parameters(ip,uc,md)
                 % Extracts symmetry adapted force constants.
                 %
                 % Q: What is the difference of these methods?
@@ -3997,8 +4001,6 @@ classdef am_dft
 
                 import am_lib.* am_dft.*
 
-                if nargin<5; algo=1; end
-
                 % [cart] get displacements and forces
                 u = am_lib.matmul_( md.bas, am_lib.mod_( md.tau-uc.tau +.5 )-.5 );
                 f = am_lib.matmul_( md.bas, md.force );
@@ -4009,7 +4011,7 @@ classdef am_dft
                 Q_cart = ip.Q; Q_cart{1} = sym_rebase_(ip.bas, Q_cart{1}); Q_cart{1} = am_lib.wdv_(Q_cart{1});
 
                 % select a method (method 1 is the most accurate)
-                switch algo
+                switch 2
                     case 1
                         % Method incorporating full intrinsic and crystalographic symmetries
                         % Note that ASR are automatically enforced when this method is used!
@@ -4692,8 +4694,8 @@ classdef am_dft
             
             % now is the time to sort based on irreducible pairs and to create link irreducible and primitive pairs
             % this sort may cause problems (if it does, just remove it); hence, the check below.
-            fwd = rankc_( pp.pp2ip ); pp.cluster = pp.cluster(:,fwd);
-            pp.pp2ip = pp.pp2ip(:,fwd); pp.ip2pp = findrow_(pp.ip2pp.'==pp.pp2ip).';
+            % fwd = rankc_( pp.pp2ip ); pp.cluster = pp.cluster(:,fwd);
+            % pp.pp2ip = pp.pp2ip(:,fwd); pp.ip2pp = findrow_(pp.ip2pp.'==pp.pp2ip).';
             
             % get inverse elements from multiplication table 
             [~,~,I] = get_multiplication_table(pp.Q); [PM,i2p,p2i]=get_action(pp);
@@ -4737,7 +4739,8 @@ classdef am_dft
                         else                                % numeric
                             M = double(ip.W{c}*ip.fc{c}(:));
                         end
-                        pp.(matrix_element_{:}){p} = reshape( W * M(:) , d(ijk(ip.Q{2}(:,qi))));
+                        % transform to primitive matrices
+                        pp.(matrix_element_{:}){p} = reshape( W * M(:) , d(ijk(ip.Q{2}(:,qi))) );
                     end
                 end
             end
@@ -5446,10 +5449,6 @@ classdef am_dft
 
             % set tolerance if not specified
             if nargin<2; tol = am_dft.tiny; end
-
-            % translate one atom to the origin if there isn't one already
-            % COMMENTING THIS OUT HAS NOT BE THOROUGHLY TESTED
-            % if all(sum(uc.tau,1)>am_dft.tiny); uc.tau = uc.tau-uc.tau(:,1); end
 
             % build permutation matrix for atoms related by translations
             T = get_symmetries(uc); nTs=size(T,2); PM=zeros(uc.natoms,nTs);
