@@ -18,6 +18,7 @@ classdef am_dft
     
     methods (Static)
     function [uc]    = load_material(material)
+        import am_dft.*
         switch material
             % toy models
             case '1D-chain';        uc = create_cell(am_dft.abc2bas([10,1],'tetra'),                  [[0;0;0]],                                                  {'H'},1);
@@ -1130,7 +1131,6 @@ classdef am_dft
             X_ = @(tau,species) sortc_([mod_(tau);species]); X = X_(pc.tau(:,:,1),pc.species);
 
             % get all vectors connecting atom N to all other atoms
-            % V = []; for N = 1:pc.natoms; V = [V, pc.tau(:,pc.species==pc.species(N))-pc.tau(:,N)]; end; nVs=size(V,2);
             N = 1; V = mod_( pc.tau(:,pc.species==pc.species(N))-pc.tau(:,N) + 1/2, tol) - 1/2; nVs=size(V,2);
             
             % find out which subset of vectors V preserve periodic boundary conditions
@@ -1871,6 +1871,91 @@ classdef am_dft
             end
         end
 
+        function [c_code,C]   = identify_centering(pc)
+            
+            % this checks the lattice for primitive cell vectors which are expected for different centerings. If the cell is of a wierd shape or a supercell, this function will not work.
+            
+            import am_lib.* am_dft.*
+            
+            % symmetries
+            [~,~,~,R] = get_symmetries(pc); tol=am_dft.tiny;
+            
+            % get number of point symmetries
+            nRs = size(R,3);
+
+            % % basic centring vectors
+            T = [  0,1/2,1/2, 1/2, 2/3, 1/3, 2/3, 1/3, 1/3, 2/3;
+                 1/2,  0,1/2, 1/2, 1/3, 2/3, 1/3, 2/3, 1/3, 2/3;
+                 1/2,1/2,  0, 1/2, 1/3, 2/3,   0,   0, 1/3, 2/3;
+                   1   2,  3,   4,   5,   5,   6,   7,   8,   9];
+
+            % substrate centering vecotrs
+            X = [ 0, 0,-1,-1,-1, 0,-1, 0;
+                  0,-1, 0,-1, 0,-1,-1, 0;
+                 -1, 0, 0, 0,-1,-1,-1, 0;
+                  0, 0, 0, 0, 0, 0, 0, 0];
+
+            % subtract 1 from nonzero values and append identity
+            C = osum_(T,X,2); C = [C(:,~any(eq_(C,-1),1)),[eye(3);0,0,0]]; nCs = size(C,2);
+
+            % eliminate vectors that are collinear
+            ex_ = false(nCs,nCs); is_collinear_ = @(X,Y) all(eq_(cross(X(1:3),Y(1:3)),0)); 
+            for i = 1:nCs; for j = i:nCs; if i ~= j
+                ex_(i,j) = is_collinear_(C(:,i),C(:,j));
+            end; end; end
+            C = C(:,~any(ex_,1)); nCs = size(C,2);
+            
+            % find out which subset of vectors V preserve periodic boundary conditions
+            check_ = @(A) all(all(abs(A)<tol,1),2); ex_=false(1,nCs); 
+            X_ = @(tau,species) sortc_([mod_(tau);species]); X = X_(pc.tau(:,:,1),pc.species);
+            for j = 1:nCs; ex_(j) = check_( X_(pc.tau(1:3,:,1)-C(1:3,j),pc.species)-X ); end
+            C=C(:,ex_); nCs = size(C,2);
+
+            % rank vectors in increasing length
+            C = C(:,rankc_(normc_(C(1:3,:))));
+
+            % get all combinations of vectors
+            ijk = am_lib.permn_(1:nCs,3).'; 
+            ex_ = ~any([ijk(1,:)==ijk(2,:); 
+                        ijk(2,:)==ijk(3,:); 
+                        ijk(3,:)==ijk(1,:)],1);
+            ijk = ijk(:,ex_); nijks = sum(ex_); 
+
+            % check which combination of three vectors produces symmetries which have only integer components
+            for i = 1:nijks         
+                Z = C(1:3,ijk(1:3,i)); d = det(Z);
+                % check collinearity
+                if eq_(d,0); continue; end
+                % flip to get right-handed if necessary
+                if d<0; Z = fliplr(Z); d = -d; ijk(1:3,i) = flipud(ijk(1:3,i)); end
+                % check multiplicity (number of nodes per unit cell)
+                if ~any(eq_(1/d,[1,2,3,4])); continue; end 
+                % check that symmetries contain only integers
+                go = true; iZ=inv(Z);
+                for j = 1:nRs
+                    Rp = Z*R(:,:,j)*iZ;
+                    if any_( ~any(eq_(abs(Rp(:)),[0,1]),2) )
+                        go = false; break; 
+                    end
+                end
+                if ~go; continue; end
+                % transformation found: separate vector code and centering matrix
+                v_code = C(4,ijk(:,i)); C = C(1:3,ijk(:,i)); break;
+            end
+
+            % centering matrix
+            if     all(any(v_code==[ 1; 2; 3],1)); c_code = 1; % face-centered
+            elseif all(any(v_code==[ 1; 0; 0],1)); c_code = 2; % A-centered 
+            elseif all(any(v_code==[ 2; 0; 0],1)); c_code = 3; % B-centered 
+            elseif all(any(v_code==[ 3; 0; 0],1)); c_code = 4; % C-centered 
+            elseif all(v_code==4);                 c_code = 5; % body-centered 
+            elseif all(any(v_code==[ 5; 6; 0],1)); c_code = 6; % rhombohedral (hexagonal)
+            elseif all(any(v_code==[ 7; 8; 0],1)); c_code = 7; % hexagonal
+            elseif all(any(v_code==[ 9;10; 0],1)); c_code = 8; % rhombohedral
+            else; c_code = 0; % unknown
+            end
+        end
+        
         function sg_code      = identify_spacegroup(pg_code)
             % NOTE: THIS CODE IS INCOMPLETE. the idea was to narrow down
             % the possible space groups by requiring that 1) the point
@@ -1963,6 +2048,33 @@ classdef am_dft
             sg_code = find( (pg_database==pg_code) ); 
         end
 
+        function lg_code      = identify_laue(pg_code)
+            import am_dft.*
+            if numel(pg_code)==1
+                % laue group dataset
+                lg=[1,1,2,2,2,3,3,3, 4,4,5,5,5,6,6,6, 7,7,7,7,8,8,8,9, 9,9,9,10,10,11,11,11];
+                % print point group name
+                lg_code = lg{pg_code};
+            else
+                for i = 1:numel(pg_code)
+                    lg_code{i} = identify_laue(pg_code(i));
+                end
+            end
+        end
+        
+        function c_name       = decode_centering(c_code)
+            % F face-centered
+            % A-centered 
+            % B-centered 
+            % C-centered 
+            % I body-centered 
+            % R rhombohedral (hexagonal)
+            % H hexagonal
+            % D rhombohedral	
+            c_database={'F','A','B','C','I','R','H','D'}; 
+            c_name = c_database{c_code};
+        end
+        
         function bv_name      = decode_bravais(bv_code)
             % bravais lattices dataset
             bv={'triclinic','hexagonal','monoclinic','tetragonal',...
@@ -1978,6 +2090,20 @@ classdef am_dft
                   '','','','','','','hexagonal','','','','','cubic'};
             % print point group name
             brv_name = brav{pg_code};
+        end
+        
+        function lg_name      = decode_laue(lg_code)
+            import am_dft.*
+            if numel(pg_code)==1
+                % laue group dataset
+                lg = {'-1' ,'2/m' ,'mmm' ,'-3','-3m','4/m' ,'4/mmm','6/m', '6/mmm' ,'m-3' ,'d_3' ,'m-3m'};
+                % print point group name
+                lg_name = lg{lg_code};
+            else
+                for i = 1:numel(lg_code)
+                    lg_name{i} = decode_pg(lg_code(i));
+                end
+            end
         end
 
         function pg_name      = decode_pg(pg_code)
