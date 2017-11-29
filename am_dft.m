@@ -1781,8 +1781,8 @@ classdef am_dft
             end
             
             % if an algo is not solicited, run both and check for match.
-            if nargin < 3; if identify_bravais_lattice(bas, tol,1)~=identify_bravais_lattice(bas, tol,2)
-                warning('Algorithm mismatch. \n')
+            if nargin < 3; if identify_bravais_lattice(bas, tol, 1) ~= identify_bravais_lattice(bas, tol, 2)
+                error('Algorithm mismatch. \n')
             end; end
         end
 
@@ -2049,17 +2049,18 @@ classdef am_dft
         end
 
         function lg_code      = identify_laue(pg_code)
-            import am_dft.*
-            if numel(pg_code)==1
-                % laue group dataset
-                lg=[1,1,2,2,2,3,3,3, 4,4,5,5,5,6,6,6, 7,7,7,7,8,8,8,9, 9,9,9,10,10,11,11,11];
-                % print point group name
-                lg_code = lg{pg_code};
-            else
-                for i = 1:numel(pg_code)
-                    lg_code{i} = identify_laue(pg_code(i));
-                end
-            end
+            % pg={'c_1' ,'s_2' ,'c_2' ,'c_1h','c_2h','d_2' ,'c_2v','d_2h', ...
+            %     'c_3' ,'s_6' ,'d_3' ,'c_3v','d_3d','c_4' ,'s_4' ,'c_4h', ...
+            %     'd_4' ,'c_4v','d_2d','d_4h','c_6' ,'c_3h','c_6h','d_6' , ...
+            %     'c_6v','d_3h','d_6h','t'   ,'t_h' ,'o'   ,'t_d' ,'o_h'};
+            
+            % laue group dataset
+            lg=[1,1,2,2,2,3,3,3, ...
+                4,4,5,5,5,6,6,6, ...
+                7,7,7,7,8,8,8,9, ...
+                9,9,9,10,10,11,11,11];
+            % print point group name
+            lg_code = lg(pg_code);
         end
         
         function c_name       = decode_centering(c_code)
@@ -2094,33 +2095,20 @@ classdef am_dft
         
         function lg_name      = decode_laue(lg_code)
             import am_dft.*
-            if numel(pg_code)==1
-                % laue group dataset
-                lg = {'-1' ,'2/m' ,'mmm' ,'-3','-3m','4/m' ,'4/mmm','6/m', '6/mmm' ,'m-3' ,'d_3' ,'m-3m'};
-                % print point group name
-                lg_name = lg{lg_code};
-            else
-                for i = 1:numel(lg_code)
-                    lg_name{i} = decode_pg(lg_code(i));
-                end
-            end
+            % laue group dataset
+            lg = {'-1' ,'2/m' ,'mmm' ,'-3','-3m','4/m' ,'4/mmm','6/m', '6/mmm' ,'m-3' , 'm-3m'};
+            % print point group name
+            lg_name = lg{lg_code};
         end
 
         function pg_name      = decode_pg(pg_code)
-            import am_dft.*
-            if numel(pg_code)==1
-                % point group dataset
-                pg={'c_1' ,'s_2' ,'c_2' ,'c_1h','c_2h','d_2' ,'c_2v','d_2h', ...
-                    'c_3' ,'s_6' ,'d_3' ,'c_3v','d_3d','c_4' ,'s_4' ,'c_4h', ...
-                    'd_4' ,'c_4v','d_2d','d_4h','c_6' ,'c_3h','c_6h','d_6' , ...
-                    'c_6v','d_3h','d_6h','t'   ,'t_h' ,'o'   ,'t_d' ,'o_h'};
-                % print point group name
-                pg_name = pg{pg_code};
-            else
-                for i = 1:numel(pg_code)
-                    pg_name{i} = decode_pg(pg_code(i));
-                end
-            end
+            % point group dataset
+            pg={'c_1' ,'s_2' ,'c_2' ,'c_1h','c_2h','d_2' ,'c_2v','d_2h', ...
+                'c_3' ,'s_6' ,'d_3' ,'c_3v','d_3d','c_4' ,'s_4' ,'c_4h', ...
+                'd_4' ,'c_4v','d_2d','d_4h','c_6' ,'c_3h','c_6h','d_6' , ...
+                'c_6v','d_3h','d_6h','t'   ,'t_h' ,'o'   ,'t_d' ,'o_h'};
+            % print point group name
+            pg_name = pg{pg_code};
         end
 
         function sg_name      = decode_sg(sg_code)
@@ -2911,14 +2899,17 @@ classdef am_dft
             verbose = true;
             if verbose
                 fprintf(' (%.3f s) \n',toc);
-                fprintf('     %-15s = %s\n','formula',get_cell_formula(uc));
-                fprintf('     %-15s = %s\n','primitive',decode_bravais(bv_code));
-                fprintf('     %-15s = %s\n','holohodry',decode_holohodry(hg_code));
-                fprintf('     %-15s = %s\n','point group',decode_pg(pg_code));
-                fprintf('     %-15s = %s\n','space group',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
-                fprintf('     %-15s = %-8.3f [g/cm3] \n','mass density',get_cell_mass_density(uc));
-                fprintf('     %-15s = %-8.3f [atoms/nm3]\n','number density',get_cell_atomic_density(uc));
-                fprintf('     %-15s = %-8.3f [f.u./nm3]\n','formula density',get_cell_formula_density(uc));
+                fprintf('     %-16s = %s\n','formula',get_cell_formula(uc));
+                fprintf('     %-16s = %s\n','primitive',decode_bravais(bv_code));
+                fprintf('     %-16s = %s\n','holohodry',decode_holohodry(hg_code));
+                fprintf('     %-16s = %s\n','point group',decode_pg(pg_code));
+                fprintf('     %-16s = %s\n','laue group',decode_laue(identify_laue(pg_code)));
+                fprintf('     %-16s = %s\n','space group',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
+                fprintf('     %-16s = %-8.3f [g/cm3] \n','mass density',get_cell_mass_density(uc));
+                fprintf('     %-16s = %-8.3f [atoms/nm3]\n','number density',get_cell_atomic_density(uc));
+                fprintf('     %-16s = %-8.3f [f.u./nm3]\n','formula density',get_cell_formula_density(uc));
+                fprintf('     %-16s = %-8.3f [amu/f.u.]\n','molecular weight',get_cell_molecular_weight(uc));
+                
                 if contains(flag,'cif')
                     fprintf('     %-15s = %s\n','create command',str);
                 end
@@ -5859,6 +5850,21 @@ classdef am_dft
             uc = uc_(bas,tau,symb,species);
         end
         
+        function [uc]         = create_xrr_cell(symb,nspecies,mass_density)
+            % used for XRR
+            
+            import am_dft.*
+            
+            mass = get_atomic_mass(get_atomic_number(symb));
+            % simple cubic basis
+            bas = eye(3) * ( sum( mass .* nspecies / mass_density ) * am_dft.amu2gram ).^(1/3) * 1E7;
+            
+            % define irreducible cell creation function and make structure
+            uc_ = @(symb,nspecies,mass,bas) struct('units','frac','bas',bas,...
+                'symb',{symb},'mass',mass,'nspecies',nspecies,'natoms',sum(nspecies),'tau',[],'species',[]);
+            uc = uc_(symb,nspecies,mass,bas);
+        end
+        w
         function [uc,inds]    = match_cell(uc,uc_ref)
 
             import am_lib.* am_dft.*
@@ -5910,9 +5916,14 @@ classdef am_dft
         function mass_density    = get_cell_mass_density(uc)
             % mass_density = get_cell_mass_density(uc)
             % [g/cm3]
-            mass_density = sum(uc.mass(uc.species)) * am_dft.amu2gram / det(uc.bas * 1E-7);
+            mass_density = sum( uc.mass .* uc.nspecies ) * am_dft.amu2gram / det(uc.bas * 1E-7);
         end
 
+        function mol_weight      = get_cell_molecular_weight(uc)
+            import am_dft.*
+            mol_weight = sum(get_atomic_mass(uc.symb) .* uc.nspecies); 
+        end
+        
         function num_density     = get_cell_atomic_density(uc)
             % [atoms/nm3]
             num_density = uc.natoms / det(uc.bas);
