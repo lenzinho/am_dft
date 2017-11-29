@@ -5352,7 +5352,6 @@ classdef am_dft
             xlabel('dft energies [eV]'); ylabel('tb energies [eV]');
         end
 
-
     end
 
     
@@ -5542,6 +5541,124 @@ classdef am_dft
             daspect([1 1 1]); axis tight; box on;
         end
         
+        function [I]        = simulate_xrr(eta,th,hv,thickness,filling,roughness,sample_length,algo)
+            %
+            % R = simulate_xray_reflectivity(layer,th,hv,thickness,filling,roughness)
+            % 
+            % eta       [unit-less]     x-ray refractive index
+            % th        [deg]           angles
+            % thickness [nm]            thickness
+            % filling   [unitless]      multiplies density
+            % roughness [nm]            inteface roughness
+            % method    [1,2]           transfer matrix (explicit,slow), recursive parratt (default,fast)
+            
+            import am_mbe.*
+            
+            if nargin < 8; algo = 2; end
+            if nargin < 7; sample_length = []; end
+            if size(th,2)>size(th,1); th=th.'; end
+            
+            % get number of layers and number of angles
+            nlayers = numel(thickness); nths = numel(th); kz = zeros(nths,nlayers);
+            
+            % get photon wavelength
+            lambda  = get_photon_wavelength(hv);
+            
+            % get kx and kz
+            % Note: k are incident wavevectors and not diffraction vectors
+            get_kz = @(th,lambda) sind(th)./lambda;
+            get_kx = @(th,lambda) cosd(th)./lambda;
+
+            switch algo
+                case 1 % explicit transfer matrix (slower)
+                    % [nths,nlayers] solve wavevector boundary conditions to get
+                    % out-of-plane wavevector component in layer kz [nths,nlayers]
+                    % 1. k2  = (n2/n1) k1  is  snell's law
+                    % 2. k1x = k2x
+                    get_kz_in_layer = @(n1,n2,k1z,k1x) sqrt( (n2./n1).^2 .* k1z.^2 + ((n2./n1).^2-1) .* k1x.^2 );
+                    for i = 1:nlayers
+                        kz(:,i) = get_kz_in_layer(1,filling(i).*(eta(:,i)-1)+1,get_kz(th,lambda),get_kx(th,lambda));
+                    end
+
+                    % get transfer matricies R and T which describe propagation
+                    % across interfaces and media
+                    % syms a b c d k1 k2 z
+                    % % boundary conditions for plane waves at an interface
+                    % eq(1) = a * exp(1i*k1*z) + b * exp(-1i*k1*z) == c*exp(1i*k2*z) + d*exp(-1i*k2*z);
+                    % eq(2) = diff(eq(1),z);
+                    % solution = solve(eq,a,b);
+                    % % transfer matrix
+                    % T(1,1:2) = simplify(equationsToMatrix(solution.a,c,d));
+                    % T(2,1:2) = simplify(equationsToMatrix(solution.b,c,d));
+                    % % set interface at 0 for simplicity
+                    % T = subs(T,z,0)
+                    % simplify
+                    % T = simplify(expand(T));
+                    % % This is exact when there is no roughness.
+                    % get_transfer_matrix_at_interface = @(k1,k2,sigma) [ ... 
+                    %       [ exp(1i*( - k1 + k2 )) * (k1 + k2), exp(1i*( - k1 - k2 ))*(k1 - k2)]
+                    %       [ exp(1i*( + k1 + k2 )) * (k1 - k2), exp(1i*( + k1 - k2 ))*(k1 + k2)] ] ./ (2*k1)];
+                    % to add roughness, see below.
+                    % hmm .. these two methods seem to be equivalent (when sigma == 1 and z == 1)? as they should be. 
+
+                    get_transfer_matrix_at_interface = @(k1,k2,sigma) [ ...
+                        [ (exp(-(k1 - k2).^2*(sigma*2*pi).^2/2) * (k1 + k2))/(2*k1), (exp(-(k1 + k2).^2*(sigma*2*pi).^2/2) * (k1 - k2))/(2*k1)]
+                        [ (exp(-(k1 + k2).^2*(sigma*2*pi).^2/2) * (k1 - k2))/(2*k1), (exp(-(k1 - k2).^2*(sigma*2*pi).^2/2) * (k1 + k2))/(2*k1)] ];
+
+                    get_transfer_matrix_in_medium = @(k,l) [ ...
+                            [ exp(-2i.*pi.*k.*l), 0]
+                            [ 0, exp(+2i.*pi.*k.*l)]];
+
+                    % get reflection at each theta value
+                    I = zeros(nths,1);
+                    for j = 1:nths
+                        % vacuum/first layer
+                        M =     get_transfer_matrix_at_interface(get_kz(th(j),lambda), kz(j,1), roughness(1) );
+                        M = M * get_transfer_matrix_in_medium(                         kz(j,1), thickness(1) );
+                        % first layer ... nth layer
+                        if nlayers > 1
+                            for i = 2:nlayers
+                                M = M * get_transfer_matrix_at_interface( kz(j,i-1)  , kz(j,i), roughness(i) );
+                                M = M * get_transfer_matrix_in_medium(                 kz(j,i), thickness(i) );
+                            end
+                        end
+                        I(j) = abs(M(2,1)./M(1,1)).^2;
+                    end
+                case 2 % recursive Parratt method without transfer matrix (faster)
+                    thickness = thickness*2;
+                    roughness = roughness*4*pi;
+                    % initialize matrices
+                    r = zeros(nths,nlayers); R = zeros(nths,nlayers-1);
+                    %----- Wavevector transfer in each layer
+                    kz(:,1) = get_kz(th,lambda);
+                    for j=1:nlayers
+                        kz(:,j+1)= sqrt(kz(:,1).^2 + 2*(1/lambda).^2 * (eta(:,j)-1) * filling(j) );
+                    end
+                    %----- Reflection coefficients (no multiple scattering)
+                    for j=1:nlayers
+                        r(:,j)=(  (kz(:,j)-kz(:,j+1))./(kz(:,j)+kz(:,j+1)) ) .* exp(-0.5*(kz(:,j).*kz(:,j+1))*roughness(j)^2);
+                    end
+                    %----- Reflectivity
+                    if nlayers>1
+                        R(:,1) =  (r(:,nlayers-1)  + r(:,nlayers) .* exp(2i*pi*kz(:,nlayers)*thickness(nlayers-1)) ) ...
+                              ./(1+r(:,nlayers-1) .* r(:,nlayers) .* exp(2i*pi*kz(:,nlayers)*thickness(nlayers-1)) );
+                    end
+                    if nlayers>2; for j=2:nlayers-1
+                        R(:,j) =  (r(:,nlayers-j)  + R(:,j-1) .* exp(2i*pi*kz(:,nlayers-j+1)*thickness(nlayers-j)) ) ...
+                              ./(1+r(:,nlayers-j) .* R(:,j-1) .* exp(2i*pi*kz(:,nlayers-j+1)*thickness(nlayers-j)) );
+                    end; end
+                    %------ Intensity reflectivity
+                    if nlayers==1; I = abs(r(:,1)).^2; else; I = abs(R(:,nlayers-1)).^2; end
+            end
+            
+            % add intensity correction due to finite sample width
+            if ~isempty(sample_length)
+                xray_beam_height = 0.1; % [mm] height of x-ray beam
+                th_b = asind(xray_beam_height/sample_length);
+                I(th<th_b) = sind(th(th<th_b)) ./ sind(th_b) .* I(th<th_b);
+            end
+        end
+
     end
 
     % aux library
