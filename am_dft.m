@@ -5659,6 +5659,32 @@ classdef am_dft
             end
         end
 
+        function [n]       = get_xray_refractive_index(uc,hv,k)
+            %
+            % n = get_xray_refractive_index(uc,hv,k)
+            % 
+            % n              [unitless]     delta contribution to real part of dielectric function (n = 1 - delta + i beta)
+            % hv             [eV]           photon energy
+            % k              [1/Ang]        wavevector
+            %
+            % Eq. 3 in B. L. Henke, E. M. Gullikson, and J. C. Davis,
+            % Atomic Data and Nuclear Data Tables 54, 181 (1993). 
+            %
+
+            import am_mbe.* am_dft.*
+            
+            % atomic number density per species [atoms/nm^3/species]
+            atomic_density = get_cell_atomic_density(uc) .* uc.nspecies ./ sum(uc.nspecies);
+            
+            % atomic form factors [nZs,nhvs,nks]
+            [f0,f1,f2] = get_atomic_xray_form_factor(get_atomic_number(uc.symb), hv, k); 
+            
+            % refractive index
+            n = 1 - am_mbe.r_0 ./ (2*pi) .* get_photon_wavelength(hv).^2 .* sum(( + f0 + f1 - f2*1i ).*atomic_density(:),1);
+            
+            n = permute(n,[3,2,1]); % [nhvs,nks]
+        end
+
     end
 
     % aux library
@@ -6538,7 +6564,7 @@ classdef am_dft
             nZs = numel(Z); mass = zeros(1,nZs);
             for i = 1:nZs; mass(i) = mass_database(Z(i)); end
         end
-
+    
         function [hv]   = get_atomic_emission_line_energy(Z,emission_line)
             %
             % hv = get_xray_energy(Z,emission_line)
