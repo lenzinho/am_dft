@@ -4808,12 +4808,7 @@ classdef am_dft
                 'cutoff',ip.cutoff,'nvertices',size(V,1),'nclusters',size(V,2),'cluster', V,'i2o',[],'o2i',[], ...
                 'pp2ip',pp2ip,'ip2pp',ip2pp);
             pp = pp_(ip,X,V,x2p,x2i,pp2ip,ip2pp,ip.Q);
-            
-            % now is the time to sort based on irreducible pairs and to create link irreducible and primitive pairs
-            % this sort may cause problems (if it does, just remove it); hence, the check below.
-            % fwd = rankc_( pp.pp2ip ); pp.cluster = pp.cluster(:,fwd);
-            % pp.pp2ip = pp.pp2ip(:,fwd); pp.ip2pp = findrow_(pp.ip2pp.'==pp.pp2ip).';
-            
+
             % get inverse elements from multiplication table 
             [~,~,I] = get_multiplication_table(pp.Q); [PM,i2p,p2i]=get_action(pp);
             
@@ -5864,7 +5859,7 @@ classdef am_dft
                 'symb',{symb},'mass',mass,'nspecies',nspecies,'natoms',sum(nspecies),'tau',[],'species',[]);
             uc = uc_(symb,nspecies,mass,bas);
         end
-        w
+
         function [uc,inds]    = match_cell(uc,uc_ref)
 
             import am_lib.* am_dft.*
