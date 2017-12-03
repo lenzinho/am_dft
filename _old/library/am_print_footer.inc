@@ -1,1 +1,0 @@
-        if (present(filename)) close(fid)
