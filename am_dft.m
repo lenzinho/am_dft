@@ -42,8 +42,9 @@ classdef am_dft
             case 'eta-Al2O3';       uc = create_cell(am_dft.abc2bas(0.79140,'cubic'),                 [[1;1;1]*0.37990,[5;5;5]/8,[1;0;0]*0.77390,[1;1;1]*0.19490],{'O','Al','Al','Al'},227); % ICSD 66559 - CIF has different origin choice
             case 'BiAlO3';          uc = create_cell(am_dft.abc2bas([0.537546,1.33933],'hex'),        [[0;0;0],[0;0;0.2222],[0.5326;0.0099;0.9581]],              {'Bi','Al','O'},161); % ICSD 171708
             case 'Bi2Al4O9';        uc = create_cell(am_dft.abc2bas([0.77134,0.81139,0.56914],'orth'),[[0.1711;0.1677;0],[0.5;0;0.2645],[0.3545;0.3399;0.5],[0;0;0.5],[0.3718;0.2056;0.2503],[0.1364;0.412;0.5],[0.1421;0.4312;0]],{'Bi','Al','Al','O','O','O','O'},55); % ICSD 88775
-            case 'SrTiO3';          uc = create_cell(am_dft.abc2bas(0.39010,'cubic'),                 [[0;0;0], [1;1;1]/2, [1;1;0]/2],                            {'Sr','Ti','O'}, 221); % ICSD 80873
-            case 'SrRuO3';          uc = create_cell(am_dft.abc2bas([0.55729,0.78518,0.55346],'orth'),[[0;0;0],[0.5;0.25;0.99],[0.55;0.25;0.5],[0.22;0.03;0.21]], {'Ru','Sr','O','O'}, 62); % ICSD 56697
+            % case 'SrTiO3';          uc = create_cell(am_dft.abc2bas(0.39010,'cubic'),                 [[0;0;0], [1;1;1]/2, [1;1;0]/2],                            {'Sr','Ti','O'}, 221); % ICSD 80873
+            % case 'SrRuO3';          uc = create_cell(am_dft.abc2bas([0.55729,0.78518,0.55346],'orth'),[[0;0;0],[0.5;0.25;0.99],[0.55;0.25;0.5],[0.22;0.03;0.21]], {'Ru','Sr','O','O'}, 62); % ICSD 56697
+            % case 'PbTiO3';          uc = create_cell(am_dft.abc2bas([0.3902,0.4156],'tetra'),         [[0;0;0],[0.5;0.5;0.5377],[0.5;0.5;0.1118],[0;0.5;0.6174]], {'Pb','Ti','O'},99); % ICSD 61168
             % semiconductors
             case 'Si';              uc = create_cell(am_dft.abc2bas(0.54209,'cubic'),                 [[0;0;0]],                                                  {'Si'},227); % ICSD 51688
             % nitrides  
@@ -1773,7 +1774,7 @@ classdef am_dft
                             bv_code = 3; % monoclinic   (a!=b!=c, gamma!=(alpha=beta=90))
                             end
                         end
-                    elseif ~eq_(abc(1),abc(2), tol) && ~eq_(abc(1),abc(3), tol) && ~eq_(abc(2),abc(3), tol)
+                    elseif  eq_(abc(1),abc(2), tol) && ~eq_(abc(1),abc(3), tol) && ~eq_(abc(2),abc(3), tol)
                             bv_code = 4; % tetragonal   (a=b!=c, alpha=beta=gamma!=90)
                     else
                             bv_code = 2; % hexagonal    (a=b!=c, alpha=beta=90,gamma=120)
@@ -2995,9 +2996,9 @@ classdef am_dft
                     if ~isempty(tau); break; end
                 end; end
                 % replace symbolic species with a numerical value
-                [~,~,species]=unique(species_symb,'stable'); species=species(:).'; 
+                [~,u2i_species,species]=unique(species_symb,'stable'); species=species(:).'; symb = species_symb(u2i_species);
                 % make sure there is only one atom at each site
-                [~,i]=am_lib.uniquec_(tau); tau=tau(:,i); species=species(i); symb=species_symb(i); Z=am_dft.get_atomic_number(symb);
+                [~,i]=am_lib.uniquec_(tau); tau=tau(:,i); species=species(i);
 
                 % get space group symmetries
                 position_aliases = {...
@@ -3024,7 +3025,7 @@ classdef am_dft
                             sg_id = [];
                         case '_symmetry_Int_Tables_number'
                             % true == generate from memory
-                            sg_id = am_lib.extract_token_(str,'_symmetry_Int_Tables_number',true); S_generated = am_dft.generate_sg(sg_id,true);
+                            sg_id = am_lib.extract_token_(str,'_symmetry_Int_Tables_number',true); S_generated = am_dft.generate_sg(sg_id);
                             if any(any( ~am_lib.eq_(am_lib.sortc_(reshape(S,16,[])),am_lib.sortc_(reshape(S_generated,16,[]))) ))
                                 fprintf('\n'); warning('Generate space symmetries do not match those in cif file!');
                             end
@@ -3045,10 +3046,10 @@ classdef am_dft
                 [species,i]=sort(species); tau=tau(:,i);
 
                 % define primitive cell creation function and make structure
-                uc_ = @(bas,symb,Z,species) struct('units','frac','bas',bas, ...
-                    'symb',{symb},'mass',am_dft.get_atomic_mass(Z),'nspecies',sum(unique(species).'==species,2).', ...
+                uc_ = @(bas,symb,species,tau) struct('units','frac','bas',bas, ...
+                    'symb',{symb},'mass',am_dft.get_atomic_mass(symb),'nspecies',sum(unique(species).'==species,2).', ...
                     'natoms',numel(species),'tau',tau,'species',species);
-                uc = uc_(bas,symb,Z,species);
+                uc = uc_(bas,symb,species,tau);
             end
             
             function [uc]    = load_poscar(fposcar)
@@ -3513,7 +3514,7 @@ classdef am_dft
                 'n',n,'nks',size(k,2),'k',k,'w',ones([1,size(k,2)]));
             fbz = fbz_(pc,n,k);
         end
-        
+
         function [ibz,i2f,f2i]= get_ibz(fbz,pc,flag)
 
             import am_lib.* am_dft.*
@@ -3548,7 +3549,7 @@ classdef am_dft
                 'n',[],'nks',numel(i2f),'k',fbz.k(:,i2f),'w',w);
             ibz = ibz_(fbz,i2f,w);
             % pass along additional parameters if they exist
-            for f = {'n','hv','Fk','Fk2'}
+            for f = {'n','hv','F','F2'}
                 if isfield(fbz,f) && ~isempty(fbz.(f{:}))
                     ibz.(f{:}) = fbz.(f{:}); 
                 end
@@ -3754,67 +3755,49 @@ classdef am_dft
             bzl = bzl_(recbas,n,nks,x,k);
         end
 
-        function [fbs,ibs]    = get_bz_bragg(uc,hv,N,threshold)
+        function [fbs,ibs]    = get_bz_bragg(uc,k_max,hv,threshold)
             % bragg brillouin zone
             import am_lib.* am_dft.*
-           
-            if nargin < 2 || isempty(hv); hv = get_atomic_emission_line_energy(get_atomic_number('Cu'),'kalpha1'); end
-            if nargin < 3 || isempty(N); N = 6; end
-            if nargin < 4 || isempty(threshold); threshold = am_dft.tiny; end
-            
-            fprintf(' ... getting diffraction intensities'); tic
 
-            [fbs] = get_fbs(uc,hv,N,threshold);
+            % k max is the largest wavevector magntiude considered
+            if nargin < 2 || isempty(k_max); th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
+            if nargin < 3 || isempty(hv); hv = get_atomic_emission_line_energy(get_atomic_number('Cu'),'kalpha1'); end
+            if nargin < 4 || isempty(threshold); threshold = am_lib.tiny; end
+
+            fbs = get_fbs(uc,k_max,N);
+            
+            % get structure factors and scattering intensity
+                [fbs.F,fbs.L,fbs.P] = get_structure_factor(uc,recbas*k,hv);
+                fbs.I = Fk2.*fbs.L.*P.*fbs.w; fbs.I = fbs.I ./ max(fbs.I(:))*100;
+                % exlcude stuff above threshold
+                ex_ = fbs.I > threshold;
+                [fbs.F,fbs.F2,fbs.L,fbs.P,fbs.I,fbs.w,fbs.k,fbs.nks] = ...
+                    deal(fbs.F(ex_),fbs.F2(ex_),fbs.L(ex_),fbs.P(ex_),fbs.I(ex_),fbs.w(ex_),fbs.k(:,ex_),sum(ex_));
             
             % get symmetrically equivalent bragg spots
-            % save "irreducible bragg spots" structure 
+            % save "irreducible bragg spots" structure
             [ibs,i2b,b2i] = get_ibz(fbs,uc,'nomod,addinv');
-            ibs.i2b = i2b; ibs.b2i = b2i; ibs.Fk2 = ibs.Fk2(i2b);
+            ibs.i2b = i2b; ibs.b2i = b2i;
             fbs.i2b = i2b; fbs.b2i = b2i; 
-            
-            % print stuff
-            fprintf(' (%.3f s) \n',toc);
-            tabulate_bragg(ibs,hv,threshold)
-
-            function           tabulate_bragg(ibs,hv,threshold)
-                fprintf('     %5s %5s %5s %10s %5s %10s\n','h','k','l','2th [deg]','w','Fhkl^2 [%]');
-                fprintf('     %5s %5s %5s %10s %5s %10s\n','-----','-----','-----','----------','-----','----------');
-                th_ = @(kz,hv) asind(get_photon_wavelength(hv)*kz/2);
-                for j = 1:ibs.nks
-                    % exclude everything with peak height smaller than threshold
-                    if abs(ibs.Fk2(j))>threshold
-                        th2 = 2*th_( norm(ibs.recbas*ibs.k(:,j)), hv );
-                        fprintf('     %5i %5i %5i %10.3f %5i %10.3f\n',ibs.k(:,j),th2,ibs.w(j),ibs.Fk2(j));
-                    end
-                end
-            end
-            
         end
-
-        function [fbs]        = get_fbs(uc,hv,N,threshold)
+        
+        function [fbs]        = get_fbs(uc,k_max,N)
             
-            if nargin < 2 || isempty(hv); hv = get_atomic_emission_line_energy(get_atomic_number('Cu'),'kalpha1'); end
-            if nargin < 3 || isempty(N); N = 6; end
-            if nargin < 4 || isempty(threshold); threshold = am_dft.tiny; end
-
-            % generate hkl list
-            lambda = get_photon_energy(hv);
+            if nargin < 2 || isempty(k_max); th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
+            if nargin < 2 || isempty(N); N = 6; end 
+            
             % get miller indicies [hkl] excluding gamma
             k=permn_([N:-1:-N],3).'; k=k(:,~all(k==0,1)); 
-            % get reciprocal basis vectors [1/Ang]
-            recbas = inv(uc.bas).'; k_cart = recbas*k;
-            % covert to cart [1/nm] and sort by distances
-            [~,i]=sort(normc_(k_cart)); k=k(:,i); k_cart=k_cart(:,i); 
+            % get reciprocal basis vectors [1/nm]
+            recbas = inv(uc.bas).';
+            % sort by distance
+            k = k(:,rankc_(normc_(recbas*k)));               
             % identify values which cannot be reached by diffractometer
-            th2_max=180; d=normc_(k_cart); ex_ = lambda*d/2 < sind(th2_max/2); k=k(:,ex_); k_cart=k_cart(:,ex_); d=d(ex_);
-            % get structure factors
-            Fk = get_structure_factor(uc,hv,k_cart);
-            % incorporate texture and exclude reflections with diffraction intensities below threshold
-            Fk2 = abs(Fk).^2; Fk2 = Fk2./max(Fk2)*100; ex_ = Fk2>threshold;
+            k = k(:,normc_(recbas*k)<k_max); 
             % save "full bragg spots" structure 
-            bb_ = @(hv,recbas,k,Fk2) struct('units','frac-recp',...
-                'hv',hv,'recbas',recbas,'nks',size(k,2),'k',k,'w',ones(1,size(k,2)),'Fk2',Fk2);
-            fbs = bb_(hv,recbas,k(:,ex_),Fk2(ex_));
+            bb_ = @(recbas,k) struct('units','frac-recp',...
+                'recbas',recbas,'nks',size(k,2),'k',k,'w',ones(1,size(k,2)));
+            fbs = bb_(recbas,k);
             
         end
         
@@ -5422,78 +5405,33 @@ classdef am_dft
     
     methods (Static)
         
-        function [fbs,ibs] = get_bragg(uc,k_max)
-            % bragg brillouin zone
+        function [F,L,P] = get_structure_factor(uc,k,hv)
+            % k must be in [cart]
+            
             import am_lib.* am_dft.*
 
-            % k max is the largest wavevector magntiude considered
-            if nargin < 2; th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
-
-            % get miller indicies [hkl] excluding gamma
-            N=6; k=permn_([N:-1:-N],3).'; k=k(:,~all(k==0,1)); 
-            % get reciprocal basis vectors [1/nm]
-            recbas = inv(uc.bas).';
-            % sort by distance
-            k = k(:,rankc_(normc_(recbas*k)));               
-            % identify values which cannot be reached by diffractometer
-            k = k(:,normc_(recbas*k)<k_max); 
-            % save "full bragg spots" structure 
-            bb_ = @(recbas,k) struct('units','frac-recp',...
-                'recbas',recbas,'nks',size(k,2),'k',k,'w',ones(1,size(k,2)));
-            fbs = bb_(recbas,k);
-
-            % get symmetrically equivalent bragg spots
-            % save "irreducible bragg spots" structure
-            [ibs,i2b,b2i] = get_ibz(fbs,uc,'nomod,addinv');
-            ibs.i2b = i2b; ibs.b2i = b2i;
-            fbs.i2b = i2b; fbs.b2i = b2i; 
-        end
-
-        function [fbs]     = get_structure_factor(uc,fbs,hv,threshold)
-
-            import am_lib.* am_dft.*
-
-            if nargin < 4 || isempty(threshold); threshold = am_lib.tiny; end
-
+            % get atoms
             [Z,~,inds] = unique(get_atomic_number({uc.symb{uc.species}}));
 
-            % get wavevector [1/nm]
-            q = normc_(fbs.recbas*fbs.k);
-
             % get atomic form factors
-            [f0,f1,f2] = get_atomic_xray_form_factor(Z,hv,q);
-            
-            f = permute(f0+f1+f2*1i,[1,3,2]);
+            [f0,f1,f2] = get_atomic_xray_form_factor(Z,hv,normc_(k)); f = permute(f0+f1+f2*1i,[1,3,2]);
 
             % compute structure factor
-            Fk = sum(f(inds,:).*exp(2i*pi*uc.tau.'*fbs.k),1); 
+            F = sum(f(inds,:).*exp(2i*pi*(uc.bas*uc.tau).'*k),1);
 
-            % get structure factor squared
-            Fk2 = abs(Fk).^2; Fk2 = Fk2./max(Fk2)*100; 
-
-            % get lorentz-polarization factors [Warren p 3 eq 1.3, p 44 eq 4.6]
-            th_ = @(hv,q) asind(get_photon_wavelength(hv)*q/2); th = th_(hv,q);
-          
-            P_  = {@(th) cosd(2*th).^2, ...             % polarized in the scattering plane
-                   @(th) 1, ...                         % polarized perpendicular to the scattering plane
-                   @(th) (1 + cosd(2*th).^2) ./ 2};     % unpolarized 
-            P = P_{3}(th);
+            if nargout < 2; return; end           
+                % get lorentz-polarization factors [Warren p 3 eq 1.3, p 44 eq 4.6]
+                th_ = @(hv,k) asind(get_photon_wavelength(hv)*k/2); th = th_(hv,normc_(k));
+                L_  = {@(th) 1./(sind(th).*sind(2*th)), ... % Lorentz factor [warren p 49, eq 4.11]
+                       @(th) 1./(sind(th).^2.*cosd(th))};
+                L = L_{1}(th); 
             
-            L_  = {@(th) 1./(sind(th).*sind(2*th)), ... % Lorentz factor [warren p 49, eq 4.11]
-                   @(th) 1./(sind(th).^2.*cosd(th))};
-            L = L_{1}(th); 
-            
-            % augment_uc
-            fbs.hv = hv;
-            fbs.Fk = Fk;
-            fbs.Fk2= Fk2;
-            fbs.L  = L;
-            fbs.P  = P;
-            fbs.intensity = Fk2.*L.*P.*fbs.w; fbs.intensity=fbs.intensity./max(fbs.intensity)*100;
-            
-            % exlcude stuff above threshold
-            ex_ = fbs.intensity > threshold;
-            [fbs.Fk,fbs.Fk2,fbs.L,fbs.P,fbs.intensity,fbs.w,fbs.k,fbs.nks] = deal(fbs.Fk(ex_),fbs.Fk2(ex_),fbs.L(ex_),fbs.P(ex_),fbs.intensity(ex_),fbs.w(ex_),fbs.k(:,ex_),sum(ex_));
+            if nargout < 3; return; end
+                % get polarization factor
+                P_  = {@(th) cosd(2*th).^2, ...             % polarized in the scattering plane
+                       @(th) 1, ...                         % polarized perpendicular to the scattering plane
+                       @(th) (1 + cosd(2*th).^2) ./ 2};     % unpolarized 
+                P = P_{3}(th);
         end
         
         function             print_bragg_table(fbs,hv)
@@ -5895,8 +5833,14 @@ classdef am_dft
                    otherwise; error('Invalid lattice transformation.');
                end
             end
+            
+            % check if only diagonal entries are supplied
+            if numel(B) == 3; B = diag(B); end
+            
+            % check size
+            if size(B,1) ~= 3 || size(B,2) ~= 3; error('B must be a 3x3 matrix.'); end
 
-            % basic check
+            % check that B has integers
             if abs(mod_(det(B)))>am_lib.eps; error('determinant of B must be an integer'); end
 
             % generate primitive lattice vectors
@@ -6067,6 +6011,26 @@ classdef am_dft
             uc = uc_(symb,nspecies,mass,bas);
         end
 
+        function [uc]         = stack_cell(uc)
+            % put one cell on top of the other along the z direction
+            if numel(uc)==1; return; end
+            
+            % stack along z = [0;0;1] direction
+            bas = [uc{1}.bas(:,1:2), uc{1}.bas(:,3) + uc{2}.bas(:,3)];
+            tau = [uc{1}.tau,[0;0;1]+uc{1}.bas\[uc{1}.bas(:,1:2),uc{2}.bas(:,3)]*uc{2}.tau];
+            tau = bas\uc{1}.bas*tau;
+
+            % get symbols and species
+            symb = [uc{1}.symb(uc{1}.species),uc{2}.symb(uc{2}.species)];
+            [~,u2i,species]=unique(symb,'stable'); symb=symb(u2i); species=species(:).';
+
+            % define primitive cell creation function and make structure
+            uc_ = @(bas,symb,species,tau) struct('units','frac','bas',bas, ...
+                'symb',{symb},'mass',am_dft.get_atomic_mass(symb),'nspecies',sum(unique(species).'==species,2).', ...
+                'natoms',numel(species),'tau',tau,'species',species);
+            uc = uc_(bas,symb,species,tau);
+        end
+        
         function [uc,inds]    = match_cell(uc,uc_ref)
 
             import am_lib.* am_dft.*
