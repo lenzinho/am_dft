@@ -5555,7 +5555,7 @@ classdef am_dft
             
             if nargin < 8; algo = 2; end
             if nargin < 7; sample_length = []; end
-            if size(th,2)>size(th,1); th=th.'; end
+            if size(th,2)>size(th,1); th=th.'; end 
             
             % get number of layers and number of angles
             nlayers = numel(thickness); nths = numel(th); kz = zeros(nths,nlayers);
@@ -5612,16 +5612,19 @@ classdef am_dft
                     I = zeros(nths,1);
                     for j = 1:nths
                         % vacuum/first layer
-                        M =     get_transfer_matrix_at_interface(get_kz(th(j),lambda), kz(j,1), roughness(1) );
-                        M = M * get_transfer_matrix_in_medium(                         kz(j,1), thickness(1) );
+                        M{1} =        get_transfer_matrix_at_interface(get_kz(th(j),lambda), kz(j,1), roughness(1) );
+                        M{1} = M{1} * get_transfer_matrix_in_medium(                         kz(j,1), thickness(1) );
                         % first layer ... nth layer
                         if nlayers > 1
                             for i = 2:nlayers
-                                M = M * get_transfer_matrix_at_interface( kz(j,i-1)  , kz(j,i), roughness(i) );
-                                M = M * get_transfer_matrix_in_medium(                 kz(j,i), thickness(i) );
+                                M{i} =        get_transfer_matrix_at_interface( kz(j,i-1)  , kz(j,i), roughness(i) );
+                                M{i} = M{i} * get_transfer_matrix_in_medium(                 kz(j,i), thickness(i) );
                             end
                         end
-                        I(j) = abs(M(2,1)./M(1,1)).^2;
+                        % apply 
+                        TM = mtimes_(M{:});
+                        % calculate intensity
+                        I(j) = abs(TM(2,1)./TM(1,1)).^2;
                     end
                 case 2 % recursive Parratt method without transfer matrix (faster)
                     thickness = thickness*2;
