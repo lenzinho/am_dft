@@ -3510,7 +3510,7 @@ classdef am_dft
             Q_ = @(i) [0:(n(i)-1)]./n(i); [Y{1:3}]=ndgrid(Q_(1),Q_(2),Q_(3)); k=reshape(cat(3+1,Y{:}),[],3).';
 
             % define irreducible cell creation function and make structure
-            fbz_ = @(uc,n,k) struct('units','k=frac-recp; bas=ang-recp','recbas',inv(uc.bas).',...
+            fbz_ = @(uc,n,k) struct('units','frac','recbas',inv(uc.bas).',...
                 'n',n,'nks',size(k,2),'k',k,'w',ones([1,size(k,2)]));
             fbz = fbz_(pc,n,k);
         end
@@ -3691,7 +3691,7 @@ classdef am_dft
             [k,x,qt] = get_path(recbas*qs,recbas*qe,nqs,n); k=recbas\k;
 
             % create path object
-            bzp_ = @(recbas,ql,qt,nks,x,k) struct('units','k=frac-recp; bas=ang-recp', ...
+            bzp_ = @(recbas,ql,qt,nks,x,k) struct('units','frac', ...
                 'recbas',recbas,'ql',{{ql{:}}},'qt',qt,'nks',nks,'x',x,'k',k);
             bzp = bzp_(recbas,ql,qt,size(k,2),x,k);
 
@@ -3728,7 +3728,7 @@ classdef am_dft
             k = Y{1}(:).'.*vx + Y{2}(:).'.*vy; k = recbas\k;
 
             % create path object
-            bzs_ = @(recbas,n,nks,k) struct('units','k=frac-recp; bas=ang-recp', ...
+            bzs_ = @(recbas,n,nks,k) struct('units','frac', ...
                 'recbas',recbas,'nks',nks,'n',n,'k',k);
             bzs = bzs_(recbas,n,nks,k);
         end
@@ -3750,9 +3750,28 @@ classdef am_dft
             x(    :) =    x_(ve-vs,[0;0;0],n); x = cumsum(x);
 
             % create path object
-            bzl_ = @(recbas,n,nks,x,k) struct('units','k=frac-recp; bas=ang-recp',...
+            bzl_ = @(recbas,n,nks,x,k) struct('units','frac',...
                 'recbas',recbas,'nks',nks,'n',n,'x',x,'k',k);
             bzl = bzl_(recbas,n,nks,x,k);
+        end
+
+        function [bza]        = get_bz_angles(pc,hv,n,th_s,th_e)
+
+            import am_lib.* am_dft.*
+
+            % get number of kpoints
+            nks=n; recbas = inv(pc.bas).';
+
+            % convert 2-theta into k points
+            th2 = linspace(th_s,th_e,n); k = zeros(3,numel(th2)); k(3,:) = 2*get_kz(th2/2,hv);
+            
+            % build path in recp.-frac
+            k = recbas\k;
+
+            % create path object
+            bza_ = @(recbas,n,nks,x,k) struct('units','frac',...
+                'recbas',recbas,'nks',nks,'n',n,'x',x,'k',k);
+            bza = bza_(recbas,n,nks,th2,k);
         end
 
         function [fbs,ibs]    = get_bz_bragg(uc,k_max,hv,threshold)
@@ -5405,23 +5424,33 @@ classdef am_dft
     
     methods (Static)
         
-        function [F,L,P] = get_structure_factor(uc,k,hv)
-            % k must be in [cart]
+        function [F,L,P] = get_structure_factor(uc,bz,hv,N)
             
             import am_lib.* am_dft.*
+            
+            % create a "slab" with N unit cells if desired
+            if nargin<4; N = 1; end 
+
+            % convet to cartesian units
+            k_cart = bz.recbas*bz.k; k_cart_magnitude = normc_(k_cart);
 
             % get atoms
             [Z,~,inds] = unique(get_atomic_number({uc.symb{uc.species}}));
 
             % get atomic form factors
-            [f0,f1,f2] = get_atomic_xray_form_factor(Z,hv,normc_(k)); f = permute(f0+f1+f2*1i,[1,3,2]);
+            [f0,f1,f2] = get_atomic_xray_form_factor(Z,hv,k_cart_magnitude); f = permute(f0+f1+f2*1i,[1,3,2]);
 
             % compute structure factor
-            F = sum(f(inds,:).*exp(2i*pi*(uc.bas*uc.tau).'*k),1);
+            F = sum(f(inds,:).*exp(2i*pi*(uc.bas*uc.tau).'*k_cart),1);
+            
+            % multiply slab component
+            F = F.*expsum_(2*pi*normc_(bz.k),N);
 
             if nargout < 2; return; end           
+                % get theta value
+                th_ = @(hv,k) asind(get_photon_wavelength(hv)*k/2); th = th_(hv,k_cart_magnitude);
+                
                 % get lorentz-polarization factors [Warren p 3 eq 1.3, p 44 eq 4.6]
-                th_ = @(hv,k) asind(get_photon_wavelength(hv)*k/2); th = th_(hv,normc_(k));
                 L_  = {@(th) 1./(sind(th).*sind(2*th)), ... % Lorentz factor [warren p 49, eq 4.11]
                        @(th) 1./(sind(th).^2.*cosd(th))};
                 L = L_{1}(th); 
