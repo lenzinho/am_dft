@@ -21,40 +21,41 @@ classdef am_dft
         import am_dft.*
         switch material
             % toy models
-            case '1D-chain';        uc = create_cell(am_dft.abc2bas([10,1],'tetra'),                  [[0;0;0]],                                                  {'H'},1);
-            case '1D-dimer';        uc = create_cell(am_dft.abc2bas([10,1],'tetra'),                  [[0;0;0],[0;0;0.5]],                                        {'H','He'},1);
-            case '2D-BN';           uc = create_cell(am_dft.abc2bas([1,1,10],'hex'),                  [[0;0;0],[2/3;1/3;0]],                                      {'B','N'},187);
-            case '2D-graphene';     uc = create_cell(am_dft.abc2bas([1,1,10],'hex'),                  [[2/3;1/3;0]],                                              {'C'},191);
-            case '3D-SC';           uc = create_cell(am_dft.abc2bas(1,'cubic'),                       [[0;0;0]],                                                  {'H'},1);
-            case '3D-NaCl';         uc = create_cell(am_dft.abc2bas(1,'cubic'),                       [[0;0;0], [1;1;1]/2],                                       {'Na','Cl'}, 225);
+            case '1D-chain';        uc = create_cell(abc2bas([10,1],'tetra'),                  [[0;0;0]],                                                  {'H'},1);
+            case '1D-dimer';        uc = create_cell(abc2bas([10,1],'tetra'),                  [[0;0;0],[0;0;0.5]],                                        {'H','He'},1);
+            case '2D-BN';           uc = create_cell(abc2bas([1,1,10],'hex'),                  [[0;0;0],[2/3;1/3;0]],                                      {'B','N'},187);
+            case '2D-graphene';     uc = create_cell(abc2bas([1,1,10],'hex'),                  [[2/3;1/3;0]],                                              {'C'},191);
+            case '3D-SC';           uc = create_cell(abc2bas(1,'cubic'),                       [[0;0;0]],                                                  {'H'},1);
+            case '3D-NaCl';         uc = create_cell(abc2bas(1,'cubic'),                       [[0;0;0], [1;1;1]/2],                                       {'Na','Cl'}, 225);
             % metals  
-            case 'fcc-Co';          uc = create_cell(am_dft.abc2bas(0.35441,'cubic'),                 [[0;0;0]],                                                  {'Co'},225); % ICSD 44989
-            case 'hcp-Co';          uc = create_cell(am_dft.abc2bas([0.25054,0.40893],'hex'),         [[1/3;2/3;1/4]],                                            {'Co'},194); % ICSD 44990
-            case 'CsCl-CoFe';       uc = create_cell(am_dft.abc2bas(0.28570,'cubic'),                 [[0;0;0],[1;1;1]/2],                                        {'Co','Fe'},221); % ICSD 56273
-            case 'Cu';              uc = create_cell(am_dft.abc2bas(0.36151,'cubic'),                 [[0;0;0]],                                                  {'Cu'},225); % ICSD 43493
-            case 'fcc-Fe';          uc = create_cell(am_dft.abc2bas(0.36468,'cubic'),                 [[0;0;0]],                                                  {'Fe'},225); % ICSD 44862
-            case 'bcc-Fe';          uc = create_cell(am_dft.abc2bas(0.29315,'cubic'),                 [[0;0;0]],                                                  {'Fe'},229); % ICSD 44863
+            case 'fcc-Co';          uc = create_cell(abc2bas(0.35441,'cubic'),                 [[0;0;0]],                                                  {'Co'},225); % ICSD 44989
+            case 'hcp-Co';          uc = create_cell(abc2bas([0.25054,0.40893],'hex'),         [[1/3;2/3;1/4]],                                            {'Co'},194); % ICSD 44990
+            case 'CsCl-CoFe';       uc = create_cell(abc2bas(0.28570,'cubic'),                 [[0;0;0],[1;1;1]/2],                                        {'Co','Fe'},221); % ICSD 56273
+            case 'Cu';              uc = create_cell(abc2bas(0.36151,'cubic'),                 [[0;0;0]],                                                  {'Cu'},225); % ICSD 43493
+            case 'fcc-Fe';          uc = create_cell(abc2bas(0.36468,'cubic'),                 [[0;0;0]],                                                  {'Fe'},225); % ICSD 44862
+            case 'bcc-Fe';          uc = create_cell(abc2bas(0.29315,'cubic'),                 [[0;0;0]],                                                  {'Fe'},229); % ICSD 44863
             % salts  
-            case 'NaCl';            uc = create_cell(am_dft.abc2bas(0.54533,'cubic'),                 [[0;0;0], [1;1;1]/2],                                       {'Na','Cl'}, 225);
+            case 'NaCl';            uc = create_cell(abc2bas(0.54533,'cubic'),                 [[0;0;0], [1;1;1]/2],                                       {'Na','Cl'}, 225);
             % oxides  
-            case 'Al2O3';           uc = create_cell(am_dft.abc2bas([0.47617,1.29990],'hex'),         [[0;0;0.3522],[0.6936;0;0.2500]],                           {'Al','O'}, 167); % ICSD 10425
-            case 'gamma-Al2O3';     uc = create_cell(am_dft.abc2bas(0.79110,'cubic'),                 [[1;1;1]*0.37970,[5;5;5]/8,[0;0;0],[1;1;1]*0.15220],        {'O','Al','Al','Al'},227); % ICSD 66558 - CIF has different origin choice
-            case 'eta-Al2O3';       uc = create_cell(am_dft.abc2bas(0.79140,'cubic'),                 [[1;1;1]*0.37990,[5;5;5]/8,[1;0;0]*0.77390,[1;1;1]*0.19490],{'O','Al','Al','Al'},227); % ICSD 66559 - CIF has different origin choice
-            case 'BiAlO3';          uc = create_cell(am_dft.abc2bas([0.537546,1.33933],'hex'),        [[0;0;0],[0;0;0.2222],[0.5326;0.0099;0.9581]],              {'Bi','Al','O'},161); % ICSD 171708
-            case 'Bi2Al4O9';        uc = create_cell(am_dft.abc2bas([0.77134,0.81139,0.56914],'orth'),[[0.1711;0.1677;0],[0.5;0;0.2645],[0.3545;0.3399;0.5],[0;0;0.5],[0.3718;0.2056;0.2503],[0.1364;0.412;0.5],[0.1421;0.4312;0]],{'Bi','Al','Al','O','O','O','O'},55); % ICSD 88775
-            % case 'SrTiO3';          uc = create_cell(am_dft.abc2bas(0.39010,'cubic'),                 [[0;0;0], [1;1;1]/2, [1;1;0]/2],                            {'Sr','Ti','O'}, 221); % ICSD 80873
-            % case 'SrRuO3';          uc = create_cell(am_dft.abc2bas([0.55729,0.78518,0.55346],'orth'),[[0;0;0],[0.5;0.25;0.99],[0.55;0.25;0.5],[0.22;0.03;0.21]], {'Ru','Sr','O','O'}, 62); % ICSD 56697
-            % case 'PbTiO3';          uc = create_cell(am_dft.abc2bas([0.3902,0.4156],'tetra'),         [[0;0;0],[0.5;0.5;0.5377],[0.5;0.5;0.1118],[0;0.5;0.6174]], {'Pb','Ti','O'},99); % ICSD 61168
+            case 'Al2O3';           uc = create_cell(abc2bas([0.47617,1.29990],'hex'),         [[0;0;0.3522],[0.6936;0;0.2500]],                           {'Al','O'}, 167); % ICSD 10425
+            case 'gamma-Al2O3';     uc = create_cell(abc2bas(0.79110,'cubic'),                 [[1;1;1]*0.37970,[5;5;5]/8,[0;0;0],[1;1;1]*0.15220],        {'O','Al','Al','Al'},227); % ICSD 66558 - CIF has different origin choice
+            case 'eta-Al2O3';       uc = create_cell(abc2bas(0.79140,'cubic'),                 [[1;1;1]*0.37990,[5;5;5]/8,[1;0;0]*0.77390,[1;1;1]*0.19490],{'O','Al','Al','Al'},227); % ICSD 66559 - CIF has different origin choice
+            case 'BiAlO3';          uc = create_cell(abc2bas([0.537546,1.33933],'hex'),        [[0;0;0],[0;0;0.2222],[0.5326;0.0099;0.9581]],              {'Bi','Al','O'},161); % ICSD 171708
+            case 'Bi2Al4O9';        uc = create_cell(abc2bas([0.77134,0.81139,0.56914],'orth'),[[0.1711;0.1677;0],[0.5;0;0.2645],[0.3545;0.3399;0.5],[0;0;0.5],[0.3718;0.2056;0.2503],[0.1364;0.412;0.5],[0.1421;0.4312;0]],{'Bi','Al','Al','O','O','O','O'},55); % ICSD 88775
+            case 'SrTiO3';          uc = create_cell(abc2bas(0.39010,'cubic'),                 [[0;0;0], [1;1;1]/2, [1;1;0]/2],                            {'Sr','Ti','O'}, 221); % ICSD 80873
+            % case 'SrRuO3';          uc = create_cell(abc2bas([0.55729,0.78518,0.55346],'orth'),[[0;0;0],[0.5;0.25;0.99],[0.55;0.25;0.5],[0.22;0.03;0.21]], {'Ru','Sr','O','O'}, 62); % ICSD 56697
+            case 'PbTiO3';          uc = create_cell(abc2bas([0.3902,0.4156],'tetra'),         [[0;0;0],[0.5;0.5;0.5377],[0.5;0.5;0.1118],[0;0.5;0.6174]], {'Pb','Ti','O'},99); % ICSD 61168
             % semiconductors
-            case 'Si';              uc = create_cell(am_dft.abc2bas(0.54209,'cubic'),                 [[0;0;0]],                                                  {'Si'},227); % ICSD 51688
+            case 'Si';              uc = create_cell(abc2bas(0.54305,'cubic'),                 [[0;0;0]],                                                  {'Si'}, 227); % ICSD 51688
+            case 'GaAs';            uc = create_cell(abc2bas(0.5652,'cubic'),                  [[0;0;0], [1;1;1]/4],                                        {'Ga','As'}, 216); % ICSD 107946  
             % nitrides  
-            case 'VN';              uc = create_cell(am_dft.abc2bas(0.4134,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'V','N'},  225);
-            case 'ScN';             uc = create_cell(am_dft.abc2bas(0.4501,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Sc','N'}, 225);
-            case 'TiN';             uc = create_cell(am_dft.abc2bas(0.4240,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Ti','N'}, 225);
-            case 'ZrN';             uc = create_cell(am_dft.abc2bas(0.4573,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Zr','N'}, 225);
-            case 'HfN';             uc = create_cell(am_dft.abc2bas(0.4524,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Hf','N'}, 225);
-            case 'CeN';             uc = create_cell(am_dft.abc2bas(0.5043,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Ce','N'}, 225);
-            case 'CrN';             uc = create_cell(am_dft.abc2bas(0.4162,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Cr','N'}, 225);
+            case 'VN';              uc = create_cell(abc2bas(0.4134,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'V','N'},  225);
+            case 'ScN';             uc = create_cell(abc2bas(0.4501,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Sc','N'}, 225);
+            case 'TiN';             uc = create_cell(abc2bas(0.4240,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Ti','N'}, 225);
+            case 'ZrN';             uc = create_cell(abc2bas(0.4573,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Zr','N'}, 225);
+            case 'HfN';             uc = create_cell(abc2bas(0.4524,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Hf','N'}, 225);
+            case 'CeN';             uc = create_cell(abc2bas(0.5043,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Ce','N'}, 225);
+            case 'CrN';             uc = create_cell(abc2bas(0.4162,'cubic'),                  [[0;0;0], [1;1;1]/2],                                       {'Cr','N'}, 225);
             otherwise; error('load_material: unknown material'); 
         end
     end 
@@ -3050,6 +3051,12 @@ classdef am_dft
                     'symb',{symb},'mass',am_dft.get_atomic_mass(symb),'nspecies',sum(unique(species).'==species,2).', ...
                     'natoms',numel(species),'tau',tau,'species',species);
                 uc = uc_(bas,symb,species,tau);
+                
+                uc_gen = [];
+                eval(['uc_gen = am_dft.',str]);
+                if am_lib.any_(~am_lib.eq_(am_lib.sortc_(uc_gen.tau),am_lib.sortc_(uc.tau)))
+                    str = 'Mismatch';
+                end
             end
             
             function [uc]    = load_poscar(fposcar)
@@ -5424,12 +5431,19 @@ classdef am_dft
     
     methods (Static)
         
+        % [F,L,P] = get_structure_factor(uc,bz,hv,N)
+        % [F,L,P] = get_structure_factor(uc,k,hv,N)
         function [F,L,P] = get_structure_factor(uc,bz,hv,N)
             
             import am_lib.* am_dft.*
             
             % create a "slab" with N unit cells if desired
             if nargin<4; N = 1; end 
+            
+            % accept a kpoint [frac] instead of a brillouin zone
+            if isnumeric(bz)
+                bz = struct('k',bz,'recbas',inv(uc.bas).');
+            end
 
             % convet to cartesian units
             k_cart = bz.recbas*bz.k; k_cart_magnitude = normc_(k_cart);
@@ -5663,7 +5677,7 @@ classdef am_dft
                     %----- Wavevector transfer in each layer
                     kz(:,1) = get_kz(th,lambda);
                     for j=1:nlayers
-                        kz(:,j+1)= sqrt(kz(:,1).^2 + 2*(1/lambda).^2 * (eta(:,j)-1) * filling(j) );
+                        kz(:,j+1)= sqrt( kz(:,1).^2 + 2*(1/lambda).^2 * (eta(:,j)-1) * filling(j) );
                     end
                     %----- Reflection coefficients (no multiple scattering)
                     for j=1:nlayers
@@ -5680,6 +5694,26 @@ classdef am_dft
                     end; end
                     %------ Intensity reflectivity
                     if nlayers==1; I = abs(r(:,1)).^2; else; I = abs(R(:,nlayers-1)).^2; end
+                case 3 % vectorized
+                    % Note that there are many typographical mistakes in Matt's paper.
+                    thickness=thickness*2*pi;
+                    roughness=roughness*2*pi;
+                    % get wave vector transfer (simplifies to: sind(th)/lambda for eta = 1); Wormington Eq 4.3
+                    kz_ = @(lambda,eta,th) sqrt(eta.^2 - cosd(th).^2)/lambda;
+                    % Frensel reflection coefficients; Wormington Eq 4.4
+                    r_ = @(kz,roughness) (kz(:,1:(end-1))-kz(:,2:end))./(kz(:,1:(end-1))+kz(:,2:end)) .* exp(-2.*kz(:,1:(end-1)).*kz(:,2:end).*roughness.^2);
+                    % Parratt recursion; Wormington Eq 4.2
+                    X_ = @(X,r,kz,thickness) (r + X .* exp(2i*kz*thickness))./(1 + r.*X .* exp(2i*kz*thickness));
+
+                    % compute wave vector and Frensel coefficients
+                    kz = kz_(lambda,[ones(nths,1),(eta-1).*filling+1],th); r = r_(kz,roughness);
+
+                    X = r(:,nlayers);
+                    for j = nlayers-1:-1:1
+                        X = X_(X,r(:,j),kz(:,j+1),thickness(j));
+                    end
+                    
+                    I = abs(X).^2;
             end
             
             % add intensity correction due to finite sample width
@@ -5711,9 +5745,9 @@ classdef am_dft
             [f0,f1,f2] = get_atomic_xray_form_factor(get_atomic_number(uc.symb), hv, k); 
             
             % get the effective form factor averaged over species
-            f = sum( ( f0 + f1 + f2*1i ) .* atomic_density_per_species(:) , 1 );
+            f = sum( ( f0 + f1 + f2 * 1i ) .* atomic_density_per_species(:) , 1 );
             
-            % refractive index
+            % refractive index Wormington eq 4.1
             n = 1 - am_lib.r_0 ./ (2*pi) .* get_photon_wavelength(hv).^2 .* f;
             
             n = permute(n,[3,2,1]); % [nhvs,nks]
