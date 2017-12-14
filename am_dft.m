@@ -5455,7 +5455,7 @@ classdef am_dft
             [f0,f1,f2] = get_atomic_xray_form_factor(Z,hv,k_cart_magnitude); f = permute(f0+f1+f2*1i,[1,3,2]);
 
             % compute structure factor
-            F = sum(f(inds,:).*exp(2i*pi*(uc.bas*uc.tau).'*k_cart),1);
+            F = sum(f(inds,:).*exp(2i*pi*uc.tau.'*bz.k),1);
             
             % multiply slab component
             F = F.*expsum_(2*pi*normc_(bz.k),N);
@@ -5706,7 +5706,7 @@ classdef am_dft
                     X_ = @(X,r,kz,thickness) (r + X .* exp(2i*kz*thickness))./(1 + r.*X .* exp(2i*kz*thickness));
 
                     % compute wave vector and Frensel coefficients
-                    kz = kz_(lambda,[ones(nths,1),(eta-1).*filling+1],th); r = r_(kz,roughness);
+                    kz = kz_(lambda,[ones(nths,1),(eta-1).*filling+1],th); r = r_(kz,roughness); 
 
                     X = r(:,nlayers);
                     for j = nlayers-1:-1:1
@@ -5724,6 +5724,95 @@ classdef am_dft
             end
         end
 
+        function [I]       = simulated_xrd(layer,bz,hv,thickness,flag)
+            % dynamical simulation of x-ray diffraction intensity
+            % i = 0; t = [30, 1E8];
+            % i=i+1;layer(i) = load_cell('material','GaAs'); 
+            % i=i+1;layer(i) = load_cell('material','Si');
+            % bz = get_bz_angles(layer(1),hv,100000,30,180);
+            % I  = simulated_xrd(layer,bz,hv,t);
+            
+            import am_dft.* am_lib.* 
+            
+            if nargin<5; flag=''; end
+            
+            % define equations according to:
+            % M. Wormington, C. Panaccione, K. M. Matney, and D. K. Bowen, Philosophical Transactions of 
+            % the Royal Society A: Mathematical, Physical and Engineering Sciences 357, 2827 (1999).
+                % Eq 5.3, Authier Eq 8
+                get_susceptibility_ = @(lambda,vol,F) (-am_lib.r_0*lambda.^2./(pi.*vol)).*F;
+                % Eq 5.1 asymmetry factor
+                get_asymmetry_factor_ = @(w,th2) -sind(w)./sind(th2-w);
+                % Eq 5.1 polarization factor, Bartels after Eq 5
+                get_polarization_ = @(th2_bragg) abs(cosd(th2_bragg));
+                % Eq 5.2 angular deviation parameter, Bartels Eq 3
+                get_angular_deviation_ = @(th2,th2_bragg) -4*(sind(th2/2)-sind(th2_bragg/2)).*sind(th2_bragg/2);
+                % Eq 5.1 get complex deviation parameter eta, Authier Eq 25
+                get_complex_deviation_ = @(alpha,b,C,chi_0,chi_H) (    alpha - chi_0.*(1-b)    ) ./ ( 2.*abs(C).*sqrt(abs(b)).*abs(chi_H) );
+                % Eq 5.7; Bartels Eq 4 [OK]
+                get_T_ = @(lambda, C, w, th2, chi_H, t) pi*C.*abs(chi_H)./sqrt(abs(sind(w).*sind(th2-w))) .* (t/lambda);
+                % Eq 5.6; Bartels Eqs 7,8; Birkholz Eq 7.45 [OK]
+                get_S1_= @(X,T,eta) (X - eta + sqrt(eta.^2-1)).*exp(-1i.*T.*sqrt(eta.^2-1));
+                get_S2_= @(X,T,eta) (X - eta - sqrt(eta.^2-1)).*exp(+1i.*T.*sqrt(eta.^2-1));
+                % Eq 5.5; Bartels Eq 6,9; Birkholz Eq 7.44, 7.46 Darwin-Prins formula [OK]
+                get_X_infinite = @(eta)       eta -  sign(real(eta)) .* sqrt(eta.^2-1);
+                get_X_finite   = @(eta,S1,S2) eta + (S1+S2)./(S1-S2) .* sqrt(eta.^2-1);
+                % Bartels Eq 12, 13
+                kinematical_algorithm = 1;
+                switch kinematical_algorithm
+                case 1
+                    get_X_kinematical = @(X,eta,T)  X.*exp(-2i.*eta.*T) + (1-exp(-2i.*eta.*T))./(2.*eta);
+                case 2
+                    get_X_kinematical = @(X,eta,T)  X.*exp(-2i.*eta.*T) + exp(-1i.*eta.*T).*sin(eta.*T)./eta;
+                end
+
+            % evaluate recusively
+            nlayers = numel(layer); lambda = get_photon_wavelength(hv); clf; set(gca,'yscale','log');
+            for i = nlayers:-1:1
+                % get bragg points
+                k = linspacen_([0;0;1],[0;0;10],10);
+                k_cart_magnitude = normc_(inv(layer(i).bas).'*k);
+                [~,th2_bragg]=kxkz2angle(0,k_cart_magnitude,hv,'w2th');
+                th2_bragg = reshape(th2_bragg(th2_bragg<180),1,1,[]); 
+
+                % evaluate everything
+                vol   = det(layer(i).bas);
+                C     = get_polarization_(0);
+                F_0   = get_structure_factor(layer(i),[0;0;0], hv);
+                % consider all hkl reflections or select one
+                switch true
+                case true 
+                    F_H   = get_structure_factor(layer(i), bz    , hv); 
+                case false % used in bede
+                    reflection_ = 4; k = k(:,reflection_); th2_bragg=th2_bragg(reflection_);
+                    F_H   = get_structure_factor(layer(i), k     , hv); 
+                end
+
+                chi_0 = get_susceptibility_(lambda, vol, F_0);
+                chi_H = get_susceptibility_(lambda, vol, F_H);
+                b     = get_asymmetry_factor_(bz.x/2, bz.x);
+                alpha = get_angular_deviation_(bz.x, th2_bragg);
+                eta   = get_complex_deviation_(alpha, b, C, chi_0, chi_H);
+
+                if thickness(i) > 1E5
+                    X = get_X_infinite(eta);
+                else
+                    if i==nlayers
+                        X = zeros(1,bz.nks);
+                    end
+                    T  = get_T_(lambda, C, th2_bragg/2, th2_bragg, chi_H, thickness(i));
+                    S1 = get_S1_(X,T,eta); S2 = get_S2_(X,T,eta);
+                    % "kinematical" simulation
+                    if contains(flag,'kinematical')
+                        X  = get_X_kinematical(X,eta,T);
+                    else
+                        X  = get_X_finite(eta,S1,S2);
+                    end
+                end
+            end
+            I = sum(abs(X).^2,3);
+        end
+        
         function [n]       = get_xray_refractive_index(uc,hv,k)
             %
             % n = get_xray_refractive_index(uc,hv,k)
@@ -6840,6 +6929,9 @@ classdef am_dft
             
             % initialize
             nZs = numel(Z); nks = numel(k); nhvs = numel(hv); f0 = zeros(nZs,nhvs,nks);  
+            
+            % convert to 1/Angstroms
+            k=k*0.1;
             
             if     contains(flag,'CM')
                 for i = 1:nZs
