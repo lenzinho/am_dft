@@ -1729,7 +1729,7 @@ classdef am_dft
             % 
             % Antonio Mei Sep 20 2017
             
-            import am_dft.bas2abc am_lib.eq_ am_dft.identify_bravais_lattice
+            import am_dft.bas2abc am_lib.eq_ am_dft.identify_bravais_lattice am_lib.uniquetol_
             
             % set default numerical tolerance
             if nargin < 2; tol = am_dft.tiny; end
@@ -1743,8 +1743,8 @@ classdef am_dft
                     M  = bas.'*bas;
                     ii = [M(1,1),M(2,2),M(3,3)];
                     ij = [M(1,2),M(1,3),M(2,3)];
-                    t  = numel(uniquetol(ii, tol));
-                    o  = numel(uniquetol(ij, tol));
+                    t  = numel(uniquetol_(ii, tol));
+                    o  = numel(uniquetol_(ij, tol));
                     z  = sum(abs(ij)<am_dft.tiny);
 
                     if     all([t == 3, o == 3, z == 0]); bv_code = 1; % triclinic
@@ -2911,9 +2911,8 @@ classdef am_dft
                 fprintf('     %-16s = %-8.3f [atoms/nm3]\n','number density',get_cell_atomic_density(uc));
                 fprintf('     %-16s = %-8.3f [f.u./nm3]\n','formula density',get_cell_formula_density(uc));
                 fprintf('     %-16s = %-8.3f [amu/f.u.]\n','molecular weight',get_cell_molecular_weight(uc));
-                
                 if contains(flag,'cif')
-                    fprintf('     %-15s = %s\n','create command',str);
+                fprintf('     %-16s = %s\n','create command',str);
                 end
             end
 
@@ -2968,7 +2967,7 @@ classdef am_dft
                     j=find(ex_); i=1; tau=[];
                     switch alias{:}
                         case {'_atom_site_fract_z','_atom_site_U_iso_or_equiv'}
-                            while and(~any(strmatchi_(str{j+i},{'_','#','loop_'})),lt(i+j,nlines))
+                            while and(~any(am_lib.strmatchi_(str{j+i},{'_','#','loop_'})),lt(i+j,nlines))
                                 buffer = strsplit(str{j+i},' ');
                                 tau(1,i) = sscanf(buffer{4},'%f');
                                 tau(2,i) = sscanf(buffer{5},'%f');
@@ -3037,7 +3036,7 @@ classdef am_dft
                 % save this cell?
                 str_bas = sprintf('am_dft.abc2bas([%g,%g,%g,%g,%g,%g])',[abc/10,angles]);
                 str_tau = sprintf('[%g;%g;%g],',tau); str_tau = ['[',str_tau(1:(end-1)),']'];
-                str_spc = sprintf('''%s'',',symb{:}); str_spc = ['{',str_spc(1:(end-1)),'}'];
+                str_spc = sprintf('''%s'',',symb{species}); str_spc = ['{',str_spc(1:(end-1)),'}'];
                 str = sprintf('create_cell(%s,%s,%s,%i)', str_bas, str_tau, str_spc, sg_id);
 
                 % generate all positions based on symmetry operations
@@ -3054,7 +3053,8 @@ classdef am_dft
                 
                 uc_gen = [];
                 eval(['uc_gen = am_dft.',str]);
-                if am_lib.any_(~am_lib.eq_(am_lib.sortc_(uc_gen.tau),am_lib.sortc_(uc.tau)))
+                if uc_gen.natoms ~= uc.natoms || ...
+                   am_lib.any_(~am_lib.eq_(am_lib.sortc_(uc_gen.tau),am_lib.sortc_(uc.tau)))
                     str = 'Mismatch';
                 end
             end
@@ -6125,23 +6125,22 @@ classdef am_dft
             import am_dft.* am_lib.*
 
             % identify atomic types and assign a number label
-            [symb,~,species]=unique(symb,'stable');
+            [symb,~,species]=unique(symb,'stable'); species=species(:).';
 
             % get space symmetries in conventional setting
             S = am_dft.generate_sg(sg_code);
 
-            % define function to apply symmetries to position vectors
-            seitz_apply_ = @(S,tau) am_lib.mod_(reshape(am_lib.matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
-
-            % apply symmetry operations to all atoms
-            natoms = size(tau,2); nSs = size(S,3); c_i2u = repmat([1:natoms].',1,nSs); c_i2u=c_i2u(:).';
-            tau = reshape(seitz_apply_(S,tau),3,[]); species = repmat(species(:),1,nSs); species=species(:).';
+            % define function to sort atoms and species into a unique order (reference)
+            X_ = @(tau,species,c_i2u) sortc_([mod_(tau);species;c_i2u]); 
+            
+            % apply symmetry operations to all atoms            
+            natoms = size(tau,2); X = X_(tau,species,[1:natoms]); X = apply_symmetry(S,X); X(1:3,:)=mod_(X(1:3,:));
 
             % get unique species
-            [~,ind] = am_lib.uniquec_(tau); tau = tau(:,ind); species = species(ind); c_i2u = c_i2u(ind);
+            [~,ind] = am_lib.uniquec_(X(1:4,:)); tau = X(1:3,ind); species = X(4,ind); c_i2u = X(5,ind);
 
             % sort by species
-            [~,ind] = sort(c_i2u);  tau = tau(:,ind); species = species(ind); % c_i2u = c_i2u(ind);
+            [~,fwd] = sort(c_i2u); tau = tau(:,fwd); species = species(fwd); c_i2u = c_i2u(fwd);
 
             % define irreducible cell creation function and make structure
             uc_ = @(bas,tau,symb,species) struct('units','frac','bas',bas,...
