@@ -44,7 +44,7 @@ classdef am_dft
             case 'Bi2Al4O9';        uc = create_cell(abc2bas([0.77134,0.81139,0.56914],'orth'),[[0.1711;0.1677;0],[0.5;0;0.2645],[0.3545;0.3399;0.5],[0;0;0.5],[0.3718;0.2056;0.2503],[0.1364;0.412;0.5],[0.1421;0.4312;0]],{'Bi','Al','Al','O','O','O','O'},55); % ICSD 88775
             case 'SrTiO3';          uc = create_cell(abc2bas(0.39010,'cubic'),                 [[0;0;0], [1;1;1]/2, [1;1;0]/2],                            {'Sr','Ti','O'}, 221); % ICSD 80873
             % case 'SrRuO3';          uc = create_cell(abc2bas([0.55729,0.78518,0.55346],'orth'),[[0;0;0],[0.5;0.25;0.99],[0.55;0.25;0.5],[0.22;0.03;0.21]], {'Ru','Sr','O','O'}, 62); % ICSD 56697
-            case 'PbTiO3';          uc = create_cell(abc2bas([0.3902,0.4156],'tetra'),         [[0;0;0],[0.5;0.5;0.5377],[0.5;0.5;0.1118],[0;0.5;0.6174]], {'Pb','Ti','O'},99); % ICSD 61168
+            case 'PbTiO3';          uc = create_cell(abc2bas([0.3902,0.4156],'tetra'),         [[0;0;0],[0.5;0.5;0.5377],[0.5;0.5;0.1118],[0;0.5;0.6174]], {'Pb','Ti','O','O'},99); % ICSD 61168
             % semiconductors
             case 'Si';              uc = create_cell(abc2bas(0.54305,'cubic'),                 [[0;0;0]],                                                  {'Si'}, 227); % ICSD 51688
             case 'GaAs';            uc = create_cell(abc2bas(0.5652,'cubic'),                  [[0;0;0], [1;1;1]/4],                                        {'Ga','As'}, 216); % ICSD 107946  
@@ -1775,8 +1775,9 @@ classdef am_dft
                             bv_code = 3; % monoclinic   (a!=b!=c, gamma!=(alpha=beta=90))
                             end
                         end
-                    elseif  eq_(abc(1),abc(2), tol) && ~eq_(abc(1),abc(3), tol) && ~eq_(abc(2),abc(3), tol)
-                            bv_code = 4; % tetragonal   (a=b!=c, alpha=beta=gamma!=90)
+                    elseif  eq_(abc(1),abc(2), tol) && ~eq_(abc(1),abc(3), tol) && ~eq_(abc(2),abc(3), tol) && ...
+                            eq_(abc(4),abc(5), tol) &&  eq_(abc(4),abc(6), tol) &&  eq_(abc(4),    90, tol)
+                            bv_code = 4; % tetragonal   (a=b!=c, alpha=beta=gamma=90)
                     else
                             bv_code = 2; % hexagonal    (a=b!=c, alpha=beta=90,gamma=120)
                     end
@@ -1784,7 +1785,7 @@ classdef am_dft
             
             % if an algo is not solicited, run both and check for match.
             if nargin < 3; if identify_bravais_lattice(bas, tol, 1) ~= identify_bravais_lattice(bas, tol, 2)
-                error('Algorithm mismatch. \n')
+                warning('Algorithm mismatch. \n')
             end; end
         end
 
@@ -2655,6 +2656,20 @@ classdef am_dft
             error('unable to decipher units of symmetry');
         end
 
+        function [bas]        = bas_hex2rhomb(bas)
+            import am_dft.abc2bas am_dft.bas2abc
+            abc=bas2abc(bas); c=abc(3); a=abc(1);
+            abc(4:6) = acosd((2*c^2-3*a^2)/(2*c^2+6*a^2));
+            abc(1:3) = sqrt(c^2+3*a^2)/3;
+            bas = abc2bas(abc);
+            
+            a=abc(6);
+            bas=abc(1)*[...
+             cosd(a/2),-sind(a/2),0; 
+             cosd(a/2),+sind(a/2),0;
+             cosd(a)/cosd(a/2),0,sqrt(1-cosd(a)^2/cosd(a/2)^2)].';
+        end
+        
         function abc_angles   = bas2abc(bas)
             % [a,b,c,alpha,beta,gamma] = bas2abc(bas)
             M = bas.' * bas;
@@ -3762,23 +3777,23 @@ classdef am_dft
             bzl = bzl_(recbas,n,nks,x,k);
         end
 
-        function [bza]        = get_bz_angles(pc,hv,n,th_s,th_e)
+        function [bza]        = get_bz_angles(pc,hv,th2)
 
             import am_lib.* am_dft.*
 
             % get number of kpoints
-            nks=n; recbas = inv(pc.bas).';
+            nks=numel(th2); recbas = inv(pc.bas).';
 
             % convert 2-theta into k points
-            th2 = linspace(th_s,th_e,n); k = zeros(3,numel(th2)); k(3,:) = 2*get_kz(th2/2,hv);
-            
+            [kx,kz]=angle2kxkz(th2/2,th2,hv); k = [kx(:).';zeros(1,nks);kz(:).']; 
+
             % build path in recp.-frac
             k = recbas\k;
 
             % create path object
-            bza_ = @(recbas,n,nks,x,k) struct('units','frac',...
-                'recbas',recbas,'nks',nks,'n',n,'x',x,'k',k);
-            bza = bza_(recbas,n,nks,th2,k);
+            bza_ = @(recbas,nks,x,k) struct('units','frac',...
+                'recbas',recbas,'nks',nks,'n',[],'x',x,'k',k);
+            bza = bza_(recbas,nks,th2(:).',k);
         end
 
         function [fbs,ibs]    = get_bz_bragg(uc,k_max,hv,threshold)
@@ -5724,17 +5739,25 @@ classdef am_dft
             end
         end
 
-        function [I]       = simulated_xrd(layer,bz,hv,thickness,flag)
+        function [I]       = simulate_xrd(layer,bz,hv,thickness,strain,flag)
             % dynamical simulation of x-ray diffraction intensity
             % i = 0; t = [30, 1E8];
             % i=i+1;layer(i) = load_cell('material','GaAs'); 
             % i=i+1;layer(i) = load_cell('material','Si');
             % bz = get_bz_angles(layer(1),hv,100000,30,180);
-            % I  = simulated_xrd(layer,bz,hv,t);
+            % I  = simulate_xrd(layer,bz,hv,t);
             
             import am_dft.* am_lib.* 
             
-            if nargin<5; flag=''; end
+            if nargin<6; flag=''; end
+            
+            % get lambda an number of layers
+            lambda = get_photon_wavelength(hv); nlayers = numel(layer); 
+            
+            % apply strains out of plane
+            for i = 1:nlayers
+                layer(i).bas(:,3) = layer(i).bas(:,3)*(1+strain(i));
+            end
             
             % define equations according to:
             % M. Wormington, C. Panaccione, K. M. Matney, and D. K. Bowen, Philosophical Transactions of 
@@ -5767,7 +5790,6 @@ classdef am_dft
                 end
 
             % evaluate recusively
-            nlayers = numel(layer); lambda = get_photon_wavelength(hv); clf; set(gca,'yscale','log');
             for i = nlayers:-1:1
                 % get bragg points
                 k = linspacen_([0;0;1],[0;0;10],10);
@@ -5775,10 +5797,6 @@ classdef am_dft
                 [~,th2_bragg]=kxkz2angle(0,k_cart_magnitude,hv,'w2th');
                 th2_bragg = reshape(th2_bragg(th2_bragg<180),1,1,[]); 
 
-                % evaluate everything
-                vol   = det(layer(i).bas);
-                C     = get_polarization_(0);
-                F_0   = get_structure_factor(layer(i),[0;0;0], hv);
                 % consider all hkl reflections or select one
                 switch true
                 case true 
@@ -5788,6 +5806,10 @@ classdef am_dft
                     F_H   = get_structure_factor(layer(i), k     , hv); 
                 end
 
+                % evaluate everything
+                vol   = det(layer(i).bas);
+                C     = get_polarization_(0);
+                F_0   = get_structure_factor(layer(i),[0;0;0], hv);
                 chi_0 = get_susceptibility_(lambda, vol, F_0);
                 chi_H = get_susceptibility_(lambda, vol, F_H);
                 b     = get_asymmetry_factor_(bz.x/2, bz.x);
@@ -5803,6 +5825,7 @@ classdef am_dft
                     T  = get_T_(lambda, C, th2_bragg/2, th2_bragg, chi_H, thickness(i));
                     S1 = get_S1_(X,T,eta); S2 = get_S2_(X,T,eta);
                     % "kinematical" simulation
+                    
                     if contains(flag,'kinematical')
                         X  = get_X_kinematical(X,eta,T);
                     else
