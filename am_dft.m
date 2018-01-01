@@ -12,6 +12,7 @@ classdef am_dft
         
         usemex    = false;
         potdir    = '/Users/lenzinho/Linux/vasp.5.4/potcars/PBE.54/';
+        cifdir    = '/Users/lenzinho/Developments/_materials/cif/';
     end
 
     % materials database
@@ -20,12 +21,13 @@ classdef am_dft
     function [uc]    = load_material(material)
         import am_dft.*
         switch material
-            % toy models
+            % toy models % NOTE: CONTINUOUS SYMMETRIES ARE NOT CHECKED FOR.
             case '1D-chain';        uc = create_cell(abc2bas([10,1],'tetra'),                  [[0;0;0]],                                                  {'H'},1);
             case '1D-dimer';        uc = create_cell(abc2bas([10,1],'tetra'),                  [[0;0;0],[0;0;0.5]],                                        {'H','He'},1);
+            case '2D-square';       uc = create_cell(abc2bas([1,10],'tetra'),                  [[0;0;0],[1;1;0]/2,[1;0;0]/2,[0;1;0]/2,[0;0;1]/4],          {'H','H','H','H','H'},1); % the last atom at [0,0,1/4] breaks z-mirror symmety so that only in-plane symmetries are considered
             case '2D-BN';           uc = create_cell(abc2bas([1,1,10],'hex'),                  [[0;0;0],[2/3;1/3;0]],                                      {'B','N'},187);
             case '2D-graphene';     uc = create_cell(abc2bas([1,1,10],'hex'),                  [[2/3;1/3;0]],                                              {'C'},191);
-            case '3D-SC';           uc = create_cell(abc2bas(1,'cubic'),                       [[0;0;0]],                                                  {'H'},1);
+            case '3D-cube';         uc = create_cell(abc2bas(1,'cubic'),                       [[0;0;0]],                                                  {'H'},1);
             case '3D-NaCl';         uc = create_cell(abc2bas(1,'cubic'),                       [[0;0;0], [1;1;1]/2],                                       {'Na','Cl'}, 225);
             % metals  
             case 'fcc-Co';          uc = create_cell(abc2bas(0.35441,'cubic'),                 [[0;0;0]],                                                  {'Co'},225); % ICSD 44989
@@ -3805,15 +3807,15 @@ classdef am_dft
             if nargin < 3 || isempty(hv); hv = get_atomic_emission_line_energy(get_atomic_number('Cu'),'kalpha1'); end
             if nargin < 4 || isempty(threshold); threshold = am_lib.tiny; end
 
-            fbs = get_fbs(uc,k_max,N);
+            fbs = get_fbs(uc,k_max);
             
             % get structure factors and scattering intensity
-                [fbs.F,fbs.L,fbs.P] = get_structure_factor(uc,recbas*k,hv);
-                fbs.I = Fk2.*fbs.L.*P.*fbs.w; fbs.I = fbs.I ./ max(fbs.I(:))*100;
+                [fbs.F,fbs.L,fbs.P] = get_structure_factor(uc,fbs.recbas*fbs.k,hv);
+                fbs.I = abs(fbs.F).^2.*fbs.L.*fbs.P.*fbs.w; fbs.I = fbs.I ./ max(fbs.I(:))*100;
                 % exlcude stuff above threshold
                 ex_ = fbs.I > threshold;
-                [fbs.F,fbs.F2,fbs.L,fbs.P,fbs.I,fbs.w,fbs.k,fbs.nks] = ...
-                    deal(fbs.F(ex_),fbs.F2(ex_),fbs.L(ex_),fbs.P(ex_),fbs.I(ex_),fbs.w(ex_),fbs.k(:,ex_),sum(ex_));
+                [fbs.F,fbs.L,fbs.P,fbs.I,fbs.w,fbs.k,fbs.nks] = ...
+                    deal(fbs.F(ex_),fbs.L(ex_),fbs.P(ex_),fbs.I(ex_),fbs.w(ex_),fbs.k(:,ex_),sum(ex_));
             
             % get symmetrically equivalent bragg spots
             % save "irreducible bragg spots" structure
@@ -3824,8 +3826,10 @@ classdef am_dft
         
         function [fbs]        = get_fbs(uc,k_max,N)
             
+            import am_lib.* 
+            
             if nargin < 2 || isempty(k_max); th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
-            if nargin < 2 || isempty(N); N = 6; end 
+            if nargin < 3 || isempty(N); N = 6; end 
             
             % get miller indicies [hkl] excluding gamma
             k=permn_([N:-1:-N],3).'; k=k(:,~all(k==0,1)); 
@@ -5428,7 +5432,7 @@ classdef am_dft
 
 
         % tight binding
-
+  
         function                plot_tb_vs_dft(tb,dft)
 
             import am_lib.* am_dft.*
@@ -5439,6 +5443,22 @@ classdef am_dft
             xlabel('dft energies [eV]'); ylabel('tb energies [eV]');
         end
 
+        
+        % tensors
+        
+        function [M] = get_second_rank_tensor_symmetry(R)
+            % get sizes
+            n = size(R,1); m = size(R,1); d = [n,m];
+            % build equations
+            W = am_lib.kron_( R , R ); 
+            W = sum( W - eye(n^2,m^2), 3);
+            % get nullspace
+            W = null(W); W = am_lib.frref_(W.').'; W = W./am_lib.accessc_(W,am_lib.findrow_(W.').'); W = am_lib.wdv_(W); 
+            % % define parameters
+            C = sym('c%d%d', d); C = C(am_lib.findrow_(W.'));
+            % get tensor 
+            M = reshape( sym(W)*C(:), d );
+        end
     end
 
     
@@ -5504,7 +5524,7 @@ classdef am_dft
             end
         end
         
-        function [h]       = plot_ibs_1D(ibs,labels,label_threshold,varargin)
+        function [h]       = plot_ibs_1D(ibs,labels,hv,label_threshold,varargin)
             import am_lib.* am_dft.*
             % set default maximum range in plot
             max_th2_range = 110;
@@ -5512,7 +5532,7 @@ classdef am_dft
             % yscaler_ = @(x) x.^0.1;
             yscaler_ = @(x) x;
             % set threshold
-            if nargin<3 || isempty(label_threshold); label_threshold = 0; end
+            if nargin<4 || isempty(label_threshold); label_threshold = 0; end
             if nargin<2 || isempty(labels); labels = cell(1,numel(ibs)); end
             % number of bragg structures (one for each cell)
             nibss=numel(ibs);
@@ -5533,12 +5553,12 @@ classdef am_dft
                 set(gcf,'color','w'); 
                 h=hggroup;
                 for i = 1:ibs.nks
-                    th2 = 2*get_th(norm(ibs.recbas*ibs.k(:,i)),ibs.hv);
+                    th2 = 2*get_th(norm(ibs.recbas*ibs.k(:,i)),hv);
                     if th2 < max_th2_range
-                        line([th2,th2],[0,yscaler_(ibs.Fk2(i))],'linewidth',2,varargin{:},'Parent',h);
-                        if ibs.Fk2(i) > label_threshold
+                        line([th2,th2],[0,yscaler_(abs(ibs.F(i)).^2)],'linewidth',2,varargin{:},'Parent',h);
+                        if abs(ibs.F(i)).^2 > label_threshold
                             % text(th2,ibs.Fk2(i),sprintf('  [%i%i%i]  %.2f^\\circ  %i', ibs.k(:,i),th2,ibs.w(i)),'Parent',h);
-                            text(th2,ibs.Fk2(i)+2,sprintf('[%i%i%i]  %.2f^\\circ', ibs.k(:,i),th2),'EdgeColor','k','BackgroundColor','w','Parent',h);
+                            text(th2,abs(ibs.F(i)).^2+2,sprintf('[%i%i%i]  %.2f^\\circ', ibs.k(:,i),th2),'EdgeColor','k','BackgroundColor','w','Parent',h);
                             % text(th2,yscaler_(ibs.Fk2(i)),sprintf('  [%i%i%i]', ibs.k(:,i)),varargin{:},'Parent',h);
                         end
                     end
@@ -6097,7 +6117,7 @@ classdef am_dft
                         % get null space (axis of rotation)
                         T(:,i) = R_axis_(R(:,:,inds(i)));
                         % convert vector to all integers
-                        T(:,i) = round_(T(:,i));
+                        % T(:,i) = round_(T(:,i));
                     end
 
                     % sort rotation axes:
