@@ -3015,7 +3015,8 @@ classdef am_dft
                 % replace symbolic species with a numerical value
                 [~,u2i_species,species]=unique(species_symb,'stable'); species=species(:).'; symb = species_symb(u2i_species);
                 % make sure there is only one atom at each site
-                [~,i]=am_lib.uniquec_(tau); tau=tau(:,i); species=species(i);
+                [~,i]=am_lib.uniquec_(tau); tau=tau(:,i); species=species(i); 
+                % [~,i,j]=unique(species); symb=symb(i); species=j(:).';
 
                 % get space group symmetries
                 position_aliases = {...
@@ -3287,7 +3288,7 @@ classdef am_dft
             set(gcf,'color','w'); hold on;
 
             % plot atoms
-            clist=color_(max(pc.species));
+            clist=cmap_('spectral',max(pc.species));
             for i = 1:max(pc.species)
                 ex_ = pc.species==i; radius = ones(1,sum(ex_)) * get_crystal_radius(get_atomic_number(pc.symb{i})) * 5000;
                 h(i) = scatter3_(pc.bas*pc.tau(:,ex_), radius,'MarkerEdgeColor','k','MarkerFaceColor',clist(i,:));
@@ -5538,7 +5539,7 @@ classdef am_dft
             nibss=numel(ibs);
             % plot results
             if nibss>1
-                clist = am_lib.color_(nibss).';
+                clist = am_lib.cmap_('spectral',nibss).';
                 for j = 1:nibss
                     ax(j) = axes('position',[0.025 (0.1+0.87*(j-1)/nibss) 0.95 0.85/nibss]);
                     h=plot_ibs_1D(ibs(j),[],label_threshold,'color',clist(:,j)); 
@@ -5618,7 +5619,7 @@ classdef am_dft
             daspect([1 1 1]); axis tight; box on;
         end
         
-        function [I]       = simulate_xrr(eta,th,hv,thickness,filling,roughness,sample_length,algo)
+        function [I]       = simulate_xrr_engine_(eta,th,hv,thickness,filling,roughness,sample_length,algo)
             %
             % R = simulate_xray_reflectivity(layer,th,hv,thickness,filling,roughness)
             % 
@@ -5731,8 +5732,7 @@ classdef am_dft
                     if nlayers==1; I = abs(r(:,1)).^2; else; I = abs(R(:,nlayers-1)).^2; end
                 case 3 % vectorized
                     % Note that there are many typographical mistakes in Matt's paper.
-                    thickness=thickness*2*pi;
-                    roughness=roughness*2*pi;
+                    thickness=thickness*2*pi; roughness=roughness*2*pi;
                     % get wave vector transfer (simplifies to: sind(th)/lambda for eta = 1); Wormington Eq 4.3
                     kz_ = @(lambda,eta,th) sqrt(eta.^2 - cosd(th).^2)/lambda;
                     % Frensel reflection coefficients; Wormington Eq 4.4
@@ -5757,6 +5757,32 @@ classdef am_dft
                 th_b = asind(xray_beam_height/sample_length);
                 I(th<th_b) = sind(th(th<th_b)) ./ sind(th_b) .* I(th<th_b);
             end
+        end
+
+        function [I]       = simulate_xrr(layer,th,hv,W,Imax,I0)
+            import am_mbe.* am_lib.* am_dft.*
+            
+            if nargin<2; th = [0:0.005:4].'; end
+            if nargin<3; hv = get_atomic_emission_line_energy(am_dft.get_atomic_number('Cu'),'kalpha1'); end
+            if nargin<4; W=1; Imax=1; I0=0; end
+            
+            % get number of layers
+            nlayers = numel(layer);
+
+            % get dielectric contributions
+            for i = 1:nlayers; xray_refractive_index(:,i) = get_xray_refractive_index(layer(i), hv, get_kz(th,hv)); end
+            
+            % compute intensity
+            I = simulate_xrr_engine_(...
+                xray_refractive_index, th, hv,...
+                am_lib.field2array_(layer,'thickness'), ...
+                am_lib.field2array_(layer,'filling')  , ...
+                am_lib.field2array_(layer,'roughness'), ...
+                W)*Imax+I0;
+            
+            % plot final result            
+            semilogy(th,I,'k.-'); set(gca,'linewidth',1);set(gcf,'color','w');
+            axis tight; xlabel('\theta [deg.]'); ylabel('Intensity [a.u.]');
         end
 
         function [I]       = simulate_xrd(layer,bz,hv,thickness,strain,flag)
@@ -5843,6 +5869,13 @@ classdef am_dft
                         X = zeros(1,bz.nks);
                     end
                     T  = get_T_(lambda, C, th2_bragg/2, th2_bragg, chi_H, thickness(i));
+                    
+                    % ad-hoc correction to make sure sizes are the same
+                    % this is not the correct way to do it. ideally need to figure out how ot match each theta with each other.
+                    % for this reason Taupin-Tagaki equations are not that great...
+                        m = min([size(X,3),size(T,3),size(eta,3)]); 
+                        X=X(:,:,1:m); T=T(:,:,1:m); eta=eta(:,:,1:m); 
+                        
                     S1 = get_S1_(X,T,eta); S2 = get_S2_(X,T,eta);
                     % "kinematical" simulation
                     
@@ -6094,7 +6127,7 @@ classdef am_dft
                     % find a transformation matrix which takes g to the standard setting h
                     [~,M] = find_pointgroup_transformation(R,generate_pg(identify_pointgroup(R)),1);
                     % get integer inverse matrices
-                    C = inv(M); round_(C);
+                    C = inv(M); C = C/det(C);
                     
                 case 2
                     % Sets the non-collinear triplet of highest rotation axes as edges of the
