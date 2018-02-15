@@ -47,6 +47,12 @@ classdef am_dft
             case 'SrTiO3';          uc = create_cell(abc2bas(0.39010,'cubic'),                 [[0;0;0], [1;1;1]/2, [1;1;0]/2],                            {'Sr','Ti','O'}, 221); % ICSD 80873
             % case 'SrRuO3';          uc = create_cell(abc2bas([0.55729,0.78518,0.55346],'orth'),[[0;0;0],[0.5;0.25;0.99],[0.55;0.25;0.5],[0.22;0.03;0.21]], {'Ru','Sr','O','O'}, 62); % ICSD 56697
             case 'PbTiO3';          uc = create_cell(abc2bas([0.3902,0.4156],'tetra'),         [[0;0;0],[0.5;0.5;0.5377],[0.5;0.5;0.1118],[0;0.5;0.6174]], {'Pb','Ti','O','O'},99); % ICSD 61168
+            case 'TbScO3';          bas = am_dft.abc2bas([5.72920,7.91700,5.46540,90,90,90]);
+                                    tau = [    0.0595         0    0.4449    0.2993
+                                               0.2500         0    0.2500    0.4436
+                                               0.0164    0.5000    0.8798    0.3082];
+                                    symb={'Tb','Sc','O','O'}; sg_code = 62;
+                                    uc = am_dft.create_cell(bas,tau,symb,sg_code);
             % semiconductors
             case 'Si';              uc = create_cell(abc2bas(0.54305,'cubic'),                 [[0;0;0]],                                                  {'Si'}, 227); % ICSD 51688
             case 'GaAs';            uc = create_cell(abc2bas(0.5652,'cubic'),                  [[0;0;0], [1;1;1]/4],                                        {'Ga','As'}, 216); % ICSD 107946  
@@ -3065,9 +3071,12 @@ classdef am_dft
 
                 % define primitive cell creation function and make structure
                 uc_ = @(bas,symb,species,tau) struct('units','frac','bas',bas, ...
-                    'symb',{symb},'mass',am_dft.get_atomic_mass(symb),'nspecies',sum(unique(species).'==species,2).', ...
+                    'symb',{symb},'mass',am_dft.get_atomic_mass(symb),'nspecies',sum(1:max(species(:))==species(:),1), ...
                     'natoms',numel(species),'tau',tau,'species',species);
                 uc = uc_(bas,symb,species,tau);
+                
+                if numel(uc.mass) ~= numel(uc.symb); error('mass and symb mismatch'); end 
+                if numel(uc.mass) ~= numel(uc.nspecies); error('mass and nspecies mismatch'); end 
                 
                 uc_gen = [];
                 eval(['uc_gen = am_dft.',str]);
@@ -6106,7 +6115,7 @@ classdef am_dft
             import am_dft.* am_lib.*
 
             if nargin < 2; tol = am_dft.tiny; end
-            if nargin < 3; algo = 2; end 
+            if nargin < 3; algo = 1; end 
             % 2 seems more robust, at least for VN, Fe2O3, and Al2O3
             
             % get point symmetries
@@ -6312,7 +6321,7 @@ classdef am_dft
         function mass_density    = get_cell_mass_density(uc)
             % mass_density = get_cell_mass_density(uc)
             % [g/cm3]
-            mass_density = sum( uc.mass .* uc.nspecies ) * am_dft.amu2gram / det(uc.bas * 1E-7);
+                mass_density = sum( uc.mass .* uc.nspecies ) * am_dft.amu2gram / det(uc.bas * 1E-7);
         end
 
         function mol_weight      = get_cell_molecular_weight(uc)
