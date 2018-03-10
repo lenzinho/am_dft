@@ -469,7 +469,7 @@ classdef am_dft
                         'isif'   , '3'       , 'lorbit'    , '11'      , 'nblock'  , '1'       , 'addgrid', '.FALSE.'   , ...
                         'lreal'  , '.FALSE.' , 'lwave'     , '.FALSE.' , 'lcharg'  , '.FALSE.' , 'lvtot'  , '.FALSE.' };
                         incar = generate_incar('base',opts_);
-                    case 'rlx'
+                    case {'rlx','relax'}
                         % Setting the convergence criterion based on forces
                         % being below < 0.005 eV/Ang (based on G. Kresse's
                         % PHYSICAL REVIEW B 78, 104116 2008) works only if
@@ -571,7 +571,7 @@ classdef am_dft
                 '  ' ,'  ' ,'K_sv' ,'Ca_sv' ,'Sc_sv_GW' ,'Ti_pv' ,'V_sv_GW' ,'  ' , ... %  cl    ar    k     ca    sc    ti    v     cr
                 'Mn_GW' ,'Fe_GW' ,'  ' ,'Ni_sv_GW' ,'  ' ,'  ' ,'Ga_sv_GW' ,'  ' , ... %  mn    fe    co    ni    cu    zn    ga    ge
                 '  ' ,'  ' ,'  ' ,'  ' ,'Rb_sv' ,'Sr_sv' ,'Y_sv' ,'  ' , ... %  as    se    br    kr    rb    sr    y     zr
-                '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  nb    mo    tc    ru    rh    pd    ag    cd
+                '  ' ,'  ' ,'  ' ,'  ' ,'Rh_GW' ,'  ' ,'  ' ,'  ' , ... %  nb    mo    tc    ru    rh    pd    ag    cd
                 'In_sv_GW' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'Cs_sv' ,'Ba_sv' , ... %  in    sn    sb    te    i     xe    cs    ba
                 'La_GW' ,'Ce_3' ,'Pr_3' ,'Nd_3' ,'Pm_3' ,'Sm_3' ,'Eu_3' ,'Gd_3' , ... %  la    ce    pr    nd    pm    sm    eu    gd
                 'Tb_3' ,'Dy_3' ,'Ho_3' ,'Er_3' ,'Tm_3' ,'Yb_3' ,'Lu' ,'  ' , ... %  tb    dy    ho    er    tm    yb    lu    hf
@@ -2860,6 +2860,9 @@ classdef am_dft
             % stupid matlab requires these symbolic variables to be initialized
             x=[];y=[];z=[]; %#ok<NASGU>
             
+            % do not get conventional cell. it is full if bugs
+            do_cc = false; cc=[];
+            
             % set default numerical tolerance
             if nargin < 3; tol = am_dft.tiny; end
             
@@ -2887,29 +2890,35 @@ classdef am_dft
             [ic,i2p,p2i] = get_irreducible_cell(pc, tol);
 
             % get conventional cell
-            [cc,c2p,p2c] = get_conventional_cell(pc,tol);
+            if do_cc
+            [cc,c2p,p2c] = get_conventional_cell(pc,tol); 
+            end
 
             % complete mapping
             u2i = p2i(u2p); i2u = p2u(i2p);
+            if do_cc
             u2c = p2c(u2p); c2u = p2u(c2p);
-            c2i = p2i(c2p); i2c = p2c(i2p);
+            c2i = p2i(c2p); i2c = p2c(i2p); 
+            end
 
             % sace mapping to cells
-            pc.p2i = p2i; pc.p2u = p2u; pc.p2c = p2c;
-            pc.i2p = i2p; pc.u2p = u2p; pc.c2p = c2p; 
+            pc.p2i = p2i; pc.p2u = p2u; if do_cc; pc.p2c = p2c; end
+            pc.i2p = i2p; pc.u2p = u2p; if do_cc; pc.c2p = c2p; end
 
-            ic.i2p = i2p; ic.i2u = i2u; ic.i2c = i2c;
-            ic.p2i = p2i; ic.u2i = u2i; ic.u2i = c2i;
+            ic.i2p = i2p; ic.i2u = i2u; if do_cc; ic.i2c = i2c; end
+            ic.p2i = p2i; ic.u2i = u2i; if do_cc; ic.u2i = c2i; end
 
-            uc.u2p = u2p; uc.u2i = u2i; uc.u2c = u2c;
-            uc.p2u = p2u; uc.i2u = i2u; uc.c2u = c2u;
-
-            cc.c2i = c2i; cc.c2u = c2u; cc.c2p = c2p;
-            cc.i2c = i2c; cc.u2c = u2c; cc.p2c = p2c;
-
+            uc.u2p = u2p; uc.u2i = u2i; if do_cc; uc.u2c = u2c; end
+            uc.p2u = p2u; uc.i2u = i2u; if do_cc; uc.c2u = c2u; end
+           
+            if do_cc; cc.c2i = c2i; cc.c2u = c2u; cc.c2p = c2p; end
+            if do_cc; cc.i2c = i2c; cc.u2c = u2c; cc.p2c = p2c; end
+            
             % save bas2pc and tau2pc to convert [uc/cc-frac] to [pc-frac]
             uc.bas2pc = pc.bas/uc.bas; uc.tau2pc = pc.bas\uc.bas;
+            if do_cc
             cc.bas2pc = pc.bas/cc.bas; cc.tau2pc = pc.bas\cc.bas;
+            end
 
             % print basic symmetry info
             [~,H,~,R] = get_symmetries(pc, tol);
@@ -3290,21 +3299,19 @@ classdef am_dft
         end
 
         function [h]          = plot_cell(pc)
-
-            import am_lib.* am_dft.*
-
+            
             % initialize figure
             set(gcf,'color','w'); hold on;
 
             % plot atoms
-            clist=cmap_('spectral',max(pc.species));
+            clist=am_lib.colormap_('spectral',max(pc.species));
             for i = 1:max(pc.species)
-                ex_ = pc.species==i; radius = ones(1,sum(ex_)) * get_crystal_radius(get_atomic_number(pc.symb{i})) * 5000;
-                h(i) = scatter3_(pc.bas*pc.tau(:,ex_), radius,'MarkerEdgeColor','k','MarkerFaceColor',clist(i,:));
+                ex_ = pc.species==i; radius = ones(1,sum(ex_)) * am_dft.get_crystal_radius(am_dft.get_atomic_number(pc.symb{i})) * 5000;
+                h(i) = am_lib.scatter3_(pc.bas*pc.tau(:,ex_), radius,'MarkerEdgeColor','k','MarkerFaceColor',clist(i,:));
             end
             
             % plot pc boundaries
-            plothull_(pc.bas*[0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1]);
+            am_lib.plothull_(pc.bas*[0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1]);
             
             hold off; daspect([1 1 1]); box on;
 
@@ -3820,7 +3827,7 @@ classdef am_dft
             fbs = get_fbs(uc,k_max);
             
             % get structure factors and scattering intensity
-                [fbs.F,fbs.L,fbs.P] = get_structure_factor(uc,fbs.recbas*fbs.k,hv);
+                [fbs.F,fbs.L,fbs.P] = get_structure_factor(uc,fbs,hv);
                 fbs.I = abs(fbs.F).^2.*fbs.L.*fbs.P.*fbs.w; fbs.I = fbs.I ./ max(fbs.I(:))*100;
                 % exlcude stuff above threshold
                 ex_ = fbs.I > threshold;
@@ -3839,7 +3846,7 @@ classdef am_dft
             import am_lib.* 
             
             if nargin < 2 || isempty(k_max); th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
-            if nargin < 3 || isempty(N); N = 6; end 
+            if nargin < 3 || isempty(N); N = ceil((max(k_max./(1./am_lib.normc_(uc.bas))))); end 
             
             % get miller indicies [hkl] excluding gamma
             k=permn_([N:-1:-N],3).'; k=k(:,~all(k==0,1)); 
@@ -5152,6 +5159,7 @@ classdef am_dft
             u = single(zeros(3,uc.natoms,nsteps)); KE=zeros(1,nsteps);
             v = single(zeros(3,uc.natoms,nsteps)); PE=zeros(1,nsteps);
             f = single(zeros(3,uc.natoms,nsteps));
+            a = single(zeros(3,uc.natoms,nsteps));
 
             % set initial value conditions: small displacement just to get atoms moving
             u(:,:,1) = (.5-rand(3,uc.natoms))*0.00001;
@@ -5180,12 +5188,12 @@ classdef am_dft
                 nosehoover = v(:,:,j)/Q * ( Tj - T ) / uc.natoms;
 
                 % 6) get acceleration
-                acc = f(:,:,j) ./ uc.mass(uc.species);
+                a(:,:,j+1) = f(:,:,j) ./ uc.mass(uc.species);
 
                 % ***) update md [frac]: x' = x + v * dt; v' = v + a * dt; Nose-Hoover dv/dt becomes a - p_eta / Q * v;
                 if j ~= nsteps
-                    u(:,:,j+1) = u(:,:,j) + dt * v(:,:,j);
-                    v(:,:,j+1) = v(:,:,j) + dt * (acc - nosehoover);
+                    u(:,:,j+1) = u(:,:,j) + v(:,:,j) .* dt + a(:,:,j)./2 .* dt^2;
+                    v(:,:,j+1) = v(:,:,j) + dt * ( (a(:,:,j)+a(:,:,j+1))./2 - nosehoover);
                 end
 
                 % print
@@ -5490,7 +5498,7 @@ classdef am_dft
                 bz = struct('k',bz,'recbas',inv(uc.bas).');
             end
 
-            % convet to cartesian units
+            % convert to cartesian units
             k_cart = bz.recbas*bz.k; k_cart_magnitude = normc_(k_cart);
 
             % get atoms
@@ -5592,7 +5600,7 @@ classdef am_dft
             % plot_fbs_2D(fbs,v1,v2)
             % include edge points 
             N = 201; euler = exp(2i*pi*[0:N]/N);
-            x = real(euler);y = imag(euler); 
+            x = real(euler);y = imag(euler); ibs.Fk2 = abs(ibs.F).^2;
             figure(1); set(gcf,'color','w'); h=hggroup;
             for i = 1:ibs.nks
                 r = norm(ibs.recbas*ibs.k(:,i));
@@ -5602,24 +5610,40 @@ classdef am_dft
             daspect([1 1 1]); axis tight; box on;
         end
         
-        function [h]       = plot_fbs_2D(fbs,v1,v2,varargin)
+        function [h]       = plot_fbs_2D(fbs,v1,v2,flag)
             import am_lib.*
+            % check for orthogonality
+            if ~am_lib.isorthogonal_(v1,v2); error('v1 and v2 must be orthogonal'); end
+            % normalize v1 and v2
+            v1 = v1(:)./norm(v1); v2 = v2(:)./norm(v2);
             % see which points lie on the plane
             for i = 1:fbs.nks
-                if eq_(det([v1(:),v2(:),fbs.k(:,i)]),0)
+                if eq_(det([v1,v2,fbs.k(:,i)]),0)
                     ex_(i) = true;
                 else
                     ex_(i) = false;
                 end
             end
-            % exclude points not on the line
-            fbs.k = fbs.k(:,ex_); fbs.Fk2 = fbs.Fk2(ex_); 
-            fbs.x = v1*fbs.recbas*fbs.k/norm(v1); fbs.y = v2*fbs.recbas*fbs.k/norm(v2);
+            % exclude points not on the plane
+            fbs.k = fbs.k(:,ex_); fbs.Fk2 = abs(fbs.F(ex_)).^2; 
             fbs.b2i = fbs.b2i(ex_); fbs.w = fbs.w(ex_); fbs.nks = sum(ex_); 
-            % plot points
+            % convert to cartesian coordinates
+            v1_cart = fbs.recbas*v1(:); v1_cart = v1_cart./normc_(v1_cart); 
+            v2_cart = fbs.recbas*v2(:); v2_cart = v2_cart./normc_(v2_cart); 
+            k_cart = fbs.recbas*fbs.k; 
+            % project points onto the diffraction plane
+            fbs.x = v1_cart.'*k_cart; fbs.y = v2_cart.'*k_cart;
+            % plot only accessible points?
+            if contains(flag,'half')
+                ex_ = fbs.y>0;
+                fbs.x = fbs.x(ex_); fbs.y = fbs.y(ex_);
+                fbs.k = fbs.k(:,ex_); fbs.Fk2 = abs(fbs.F(ex_)).^2; 
+                fbs.b2i = fbs.b2i(ex_); fbs.w = fbs.w(ex_); fbs.nks = sum(ex_); 
+            end
+            % plot plane with points
             figure(1); set(gcf,'color','w'); h=hggroup; 
             hold on; 
-                scatter(fbs.x,fbs.y,rescale(log10(fbs.Fk2),20,100),'filled','linewidth',2,varargin{:},'Parent',h); 
+                scatter(fbs.x,fbs.y,rescale(log10(fbs.Fk2),20,100),'filled','linewidth',1.5,'Parent',h); 
                 scatter(0,0,log10(100)*100,'k','filled','linewidth',2,'Parent',h); 
             hold off;
             for i = 1:fbs.nks
@@ -6115,7 +6139,7 @@ classdef am_dft
             import am_dft.* am_lib.*
 
             if nargin < 2; tol = am_dft.tiny; end
-            if nargin < 3; algo = 1; end 
+            if nargin < 3; algo = 2; end 
             % 2 seems more robust, at least for VN, Fe2O3, and Al2O3
             
             % get point symmetries
@@ -6308,12 +6332,13 @@ classdef am_dft
         % cell parameters
         
         function formula         = get_cell_formula(uc)
-            import am_lib.*
-            formula = ''; x = uc.nspecies./gcd_(uc.nspecies);
+            formula = ''; x = uc.nspecies./am_lib.gcd_(uc.nspecies);
             for j = 1:numel(x)
-                formula = [formula,strtrim(uc.symb{j})];
-                if x(j)~=1
-                    formula=[formula,strtrim(num2str(x(j)))];
+                if x(j)~=0
+                    formula = [formula,strtrim(uc.symb{j})];
+                    if x(j)~=1
+                        formula=[formula,strtrim(num2str(x(j)))];
+                    end
                 end
             end
         end
