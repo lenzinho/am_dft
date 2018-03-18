@@ -270,7 +270,7 @@ classdef am_dft
             end
             
         end
-        
+         
     end
     
     
@@ -358,7 +358,9 @@ classdef am_dft
             [str,~] = load_file_('DOSCAR');
                 % get energies, density of states, and integration DOS
                 t=sscanf(str{1},'%i'); natoms = t(1);
-                t=sscanf(str{6},'%f'); nEs = round(t(3)); if nargin<1; Ef = t(4); end
+                if exist('INCAR','file')==2; nEs=am_dft.get_vasp('incar:nedos'); else
+                t=sscanf(str{6},'%f'); nEs = round(t(3)); end
+                if nargin<1; Ef = t(4); end
                 nspins = round((numel(strsplit(strtrim(str{7}),' '))-1)/2);
                 t=sscanf(sprintf('%s\n',str{6+[1:nEs]}),'%f'); t=reshape(t,1+2*nspins,nEs).';
                 dos.E = t(:,1)-Ef; dos.D = sum(t(:,1+[1:nspins]),2); dos.iD = sum(t(:,1+nspins+[1:nspins]),2);
@@ -572,7 +574,7 @@ classdef am_dft
                 'Mn_GW' ,'Fe_GW' ,'  ' ,'Ni_sv_GW' ,'  ' ,'  ' ,'Ga_sv_GW' ,'  ' , ... %  mn    fe    co    ni    cu    zn    ga    ge
                 '  ' ,'  ' ,'  ' ,'  ' ,'Rb_sv' ,'Sr_sv' ,'Y_sv' ,'  ' , ... %  as    se    br    kr    rb    sr    y     zr
                 '  ' ,'  ' ,'  ' ,'  ' ,'Rh_GW' ,'  ' ,'  ' ,'  ' , ... %  nb    mo    tc    ru    rh    pd    ag    cd
-                'In_sv_GW' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'Cs_sv' ,'Ba_sv' , ... %  in    sn    sb    te    i     xe    cs    ba
+                'In_sv_GW' ,'Sn_sv_GW' ,'  ' ,'  ' ,'  ' ,'  ' ,'Cs_sv' ,'Ba_sv' , ... %  in    sn    sb    te    i     xe    cs    ba
                 'La_GW' ,'Ce_3' ,'Pr_3' ,'Nd_3' ,'Pm_3' ,'Sm_3' ,'Eu_3' ,'Gd_3' , ... %  la    ce    pr    nd    pm    sm    eu    gd
                 'Tb_3' ,'Dy_3' ,'Ho_3' ,'Er_3' ,'Tm_3' ,'Yb_3' ,'Lu' ,'  ' , ... %  tb    dy    ho    er    tm    yb    lu    hf
                 '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  ta    w     re    os    ir    pt    au    hg
@@ -686,10 +688,10 @@ classdef am_dft
                     error('Invalid bz shape.');
                 end
             elseif isstruct(bz)
-                if field(bz,'w')
+                if isfield(bz,'w')
                     weights = bz.w;
                 else
-                    weights = zeros(1,bz.nks);
+                    weights = zeros(1,bz.nks); weights(:) = 1;
                 end
                 % explicit kpoints based
                     fid = fopen(fkpoints,'w');
@@ -762,7 +764,8 @@ classdef am_dft
                 % INCAR
                 case 'incar:potim'
                     [~,x] = system('awk ''/POTIM/ { print $3 }'' INCAR');  x = sscanf(x,'%f');
-                
+                case 'incar:nedos'
+                    [~,x] = system('awk ''/nedos/ { print $3 }'' INCAR');  x = sscanf(x,'%f');
                 
                 % OUTCAR
             	case 'outcar:site_occupancy' % for DFT+U
@@ -794,7 +797,14 @@ classdef am_dft
                     % x( natoms , {s,p,d,f} )
                     natoms = get_vasp('vasprun:natoms');
                     [~,x] = system(sprintf('grep -A %i ''total charge'' OUTCAR | tail -n %i | awk ''{print $2 " " $3 " " $4 " " $5}''',natoms+3,natoms)); x = sscanf(x,'%f'); x = reshape(x,[],natoms).';
-                    
+                case 'outcar:real_df'
+                    natoms = get_vasp('vasprun:natoms');
+                    [~,x] = system(sprintf('grep -A %i ''total charge'' OUTCAR | tail -n %i | awk ''{print $2 " " $3 " " $4 " " $5}''',natoms+3,natoms)); x = sscanf(x,'%f'); x = reshape(x,[],natoms).';
+%                     REAL DIELECTRIC FUNCTION
+%                     
+%                     IMAGINARY DIELECTRIC FUNCTION
+%                     
+%                     plasma frequency squared (from interband transitions, int dw w eps(2)(w)
                 % POTCAR
                 case 'potcar:zval'  % valence on each atom in potcar
                     [~,x] = system('awk ''/ZVAL/{print $6}'' POTCAR'); x = sscanf(x,'%f');
@@ -3705,6 +3715,13 @@ classdef am_dft
                 ql={'G','X','W','K','G','L','U','W','L','K'};
                 qs=[G,X1,W,K,G,L,U,W,L];
                 qe=[X1,W,K,G,L,U,W,L,K];
+            elseif contains( lower(brav), 'tetra' )
+                G=[0;0;0]; Z=[0;0;1]/2; A=[1;1;1]/2; 
+                M=[1;1;0]/2; X=[0;1;0]/2; R=[0;1;1]/2;
+                % ?-X-M-?-Z-R
+                ql={'G','X','M','G','Z','R','A','Z'};
+                qs=[G,X,M,G,Z,R,A];
+                qe=[X,M,G,Z,R,A,Z];
             elseif contains( lower(brav), 'sc' )
                 G=[0;0;0];   X=[0;1;0]/2;
                 M=[1;1;0]/2; R=[1;1;1]/2;
@@ -3909,73 +3926,43 @@ classdef am_dft
             axs_(gca,bzp.qt,bzp.ql); axis tight; xlabel('Wavevector k');
         end
 
-        function plot_dispersion_orbital_character(dft,bzp)
+        function plot_dispersion_projected(dft,bzp,pc,flag)
             % FPOSCAR = 'POSCAR'; Ef = 5.0740;
             % [~,pc] = load_cells(FPOSCAR);
             % [dft]   = load_procar('evk/PROCAR',Ef);
             % [bzp]   = get_bz_path(pc,40,'sc');
 
-            import am_lib.*
-
             % normalize columns of matrix
             normc_ = @(m) ones(size(m,1),1)*sqrt(1./sum(m.*m)).*m;
 
             % get eigenvalues and band character weights
-            c = zeros(dft.nbands,dft.nks); character_labels = {'s','p','d','f'};
-            for i = 1:dft.nks
-                %    s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3
-                % l-PROJECTION (sum over spin, atoms, m-quantum numbers)
-                % lmproj(nspins,norbitals,nions,nbands,nkpts)
-                Vp(1,:) = squeeze(sum(sum(sum(dft.lmproj(:,   [1],:,:,i),1),2),3)); % s
-                Vp(2,:) = squeeze(sum(sum(sum(dft.lmproj(:, [2:4],:,:,i),1),2),3)); % p
-                Vp(3,:) = squeeze(sum(sum(sum(dft.lmproj(:, [5:9],:,:,i),1),2),3)); % d
-                Vp(4,:) = squeeze(sum(sum(sum(dft.lmproj(:,[9:16],:,:,i),1),2),3)); % f
-                c(:,i) = assign_color_(normc_(Vp));
-            end
-
-            % define figure properties
-            fig_ = @(h)       set(h,'color','white');
-            axs_ = @(h,qt,ql) set(h,'Box','on','XTick',qt,'Xticklabel',ql);
-            fig_(gcf);
-
-            % plot band structure
-            figure(1); clf; fig_(gcf); hold on;
-            for j = 1:dft.nbands; plotc_(bzp.x,dft.E(j,:),c(j,:)); end
-            hold off;
-
-            % label axes
-            axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [eV]'); xlabel('Wavevector k');
-
-            % plot fermi level
-            line([0,bzp.x(end)],[0,0],'linewidth',2,'color',[1,1,1]*0.5,'linestyle',':');
-
-            % apply color map and label axes
-            colormap( get_colormap('spectral',100).^(2) ); h = colorbar; caxis([0,1]);
-            cticks = assign_color_(eye(size(Vp,1))); [~,inds] = sort( cticks );
-            set(h,'Ticks',cticks(inds),'TickLabels',character_labels(inds));
-        end
-
-        function plot_dispersion_atomic_character(dft,bzp,pc)
-            % FPOSCAR = 'POSCAR'; Ef = 5.0740;
-            % [~,pc] = load_cells(FPOSCAR);
-            % [dft]   = load_procar('evk/PROCAR',Ef);
-            % [bzp]   = get_bz_path(pc,40,'sc');
-
-            import am_lib.*
-
-            % normalize columns of matrix
-            normc_ = @(m) ones(size(m,1),1)*sqrt(1./sum(m.*m)).*m;
-
-            % get eigenvalues and band character weights
-            c = zeros(dft.nbands,dft.nks); character_labels = pc.symb;
-            for i = 1:dft.nks
-                %    s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3
-                % atomic-PROJECTION: project on irreducible atoms
-                % lmproj(nspins,norbitals,nions,nbands,nkpts)
-                for j = 1:numel(unique(pc.p2i))
-                    Vp(j,:) = squeeze(sum(sum(sum(dft.lmproj(:,:,j==pc.p2i,:,i),1),2),3));
+            c = zeros(dft.nbands,dft.nks);
+            
+            if contains(flag,'orbital') % projected on orbitals
+                character_labels = {'s','p','d','f'};
+                for i = 1:dft.nks
+                    %    s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3
+                    % l-PROJECTION (sum over spin, atoms, m-quantum numbers)
+                    % lmproj(nspins,norbitals,nions,nbands,nkpts)
+                    Vp(1,:) = squeeze(sum(sum(sum(dft.lmproj(:,   [1],:,:,i),1),2),3)); % s
+                    Vp(2,:) = squeeze(sum(sum(sum(dft.lmproj(:, [2:4],:,:,i),1),2),3)); % p
+                    Vp(3,:) = squeeze(sum(sum(sum(dft.lmproj(:, [5:9],:,:,i),1),2),3)); % d
+                    Vp(4,:) = squeeze(sum(sum(sum(dft.lmproj(:,[9:16],:,:,i),1),2),3)); % f
+                    c(:,i) = am_lib.assign_cmap_(normc_(Vp));
                 end
-                c(:,i) = assign_color_(normc_(Vp));
+            elseif contains(flag,'atom') % projected on atoms
+                character_labels = pc.symb; 
+                for i = 1:dft.nks
+                    % l-PROJECTION (sum over spin, atoms, m-quantum numbers)
+                    % lmproj(nspins,norbitals,nions,nbands,nkpts)
+                    for j = 1:numel(unique(pc.p2i))
+                        Vp(j,:) = squeeze(sum(sum(sum(dft.lmproj(:,:,pc.p2i==j,:,i),1),2),3));
+                    end
+                    c(:,i) = am_lib.assign_cmap_(normc_(Vp));
+                end
+            else % just plot bands straight up
+                character_labels=''; Vp = 1;
+                c = ones(dft.nbands,dft.nks); 
             end
 
             % define figure properties
@@ -3985,7 +3972,7 @@ classdef am_dft
 
             % plot band structure
             figure(1); clf; fig_(gcf); hold on;
-            for j = 1:dft.nbands; plotc_(bzp.x,dft.E(j,:),c(j,:)); end
+            for j = 1:dft.nbands; am_lib.plotc_(bzp.x,dft.E(j,:),c(j,:)); end
             hold off;
 
             % label axes
@@ -3995,8 +3982,8 @@ classdef am_dft
             line([0,bzp.x(end)],[0,0],'linewidth',2,'color',[1,1,1]*0.5,'linestyle',':');
 
             % apply color map and label axes
-            colormap( get_colormap('spectral',100).^(2) ); h = colorbar; caxis([0,1]);
-            cticks = assign_color_(eye(size(Vp,1))); [~,inds] = sort( cticks );
+            colormap( am_lib.colormap_('spectral',100).^(2) ); h = colorbar; caxis([0,1]);
+            cticks = am_lib.assign_cmap_(eye(size(Vp,1))); [~,inds] = sort( cticks );
             set(h,'Ticks',cticks(inds),'TickLabels',character_labels(inds));
         end
 
@@ -5877,10 +5864,18 @@ classdef am_dft
                 th2_bragg = reshape(th2_bragg(th2_bragg<180),1,1,[]); 
 
                 % consider all hkl reflections or select one
-                switch true
-                case true 
+                switch 'all'
+                case 'custom'
+                    % SnO(001)/Al2O3(1 -1 0 2)
+                    switch i
+                    case 1
+                        F_H   = get_structure_factor(layer(i), [0 0 1].' , hv); % SnO (0 0 1)
+                    case 2
+                        F_H   = get_structure_factor(layer(i), [1 -1 2].', hv); % Al2O3 (1 -1 0 2)
+                    end
+                case 'all'
                     F_H   = get_structure_factor(layer(i), bz    , hv); 
-                case false % used in bede
+                case 'bede' % used in bede
                     reflection_ = 4; k = k(:,reflection_); th2_bragg=th2_bragg(reflection_);
                     F_H   = get_structure_factor(layer(i), k     , hv); 
                 end
