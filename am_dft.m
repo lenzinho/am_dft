@@ -442,6 +442,37 @@ classdef am_dft
             end
         end
 
+        function [bz]    = load_ibzkpt(uc)
+            [str,~] = am_lib.load_file_('IBZKPT');
+            % number of kpoints, units
+            t=sscanf(str{2},'%i'); nks = t(1);
+            if     contains(str{3},'R'); units = 'frac'; 
+            elseif contains(str{3},'C'); units = 'cart'; 
+            else;  error('units unknown'); end
+            % parse points and weights
+            t=sscanf(strjoin({str{[1:nks]+3}},' '),'%f'); t = reshape(t,4,[]); k = t(1:3,:); w = t(4,:);
+            if strcmp(units,'cart')
+                if nargin == 0
+                    error('unit cell is required to convert to fractional coordinates');
+                else
+                    recbas=inv(uc.bas).';
+                    k = recbas\k;
+                end
+            end
+            % create structure
+            bz_ = @(n,k,w) struct('units','frac','recbas',recbas,...
+                'n',n,'nks',size(k,2),'k',k,'w',w);
+            bz = bz_(nks,k,w);
+            % save tetrahedra information?
+            if contains(str{nks+4},'Tetra')
+               t=sscanf(str{nks+5},'%i'); ntets = t(1);
+               t=sscanf(strjoin({str{nks+5+[1:ntets]}},' '),'%i'); t = reshape(t,5,[]); tet = t(2:5,:); tetw = t(1,:);
+               bz.ntets= ntets;
+               bz.tet  = tet;
+               bz.tetw = tetw;
+            end
+        end
+        
         function incar   = generate_incar(flag,nondefault_incar_opts_)
             
             import am_dft.*
@@ -781,6 +812,10 @@ classdef am_dft
                     [~,x] = system('awk ''/pressure/ { print $4 }'' OUTCAR'); x = sscanf(x,'%f');
                 case 'outcar:temperature'
                     [~,x] = system('awk ''/EKIN_LAT/ { print $6 }'' OUTCAR'); x = sscanf(x,'%f');
+                case 'outcar:nedos'
+                    [~,x] = system('awk ''/NEDOS/ { print $6 }'' OUTCAR'); x = sscanf(x,'%f');
+                case 'outcar:nions'
+                    [~,x] = system('awk ''/NIONS/ { print $12 }'' OUTCAR'); x = sscanf(x,'%f');
                 case 'outcar:ispin'
                     [~,x] = system('awk ''/ISPIN/ { print $3 }'' OUTCAR'); x = sscanf(x,'%f');
                 case 'outcar:nbands'
@@ -798,13 +833,13 @@ classdef am_dft
                     natoms = get_vasp('vasprun:natoms');
                     [~,x] = system(sprintf('grep -A %i ''total charge'' OUTCAR | tail -n %i | awk ''{print $2 " " $3 " " $4 " " $5}''',natoms+3,natoms)); x = sscanf(x,'%f'); x = reshape(x,[],natoms).';
                 case 'outcar:real_df'
-                    natoms = get_vasp('vasprun:natoms');
-                    [~,x] = system(sprintf('grep -A %i ''total charge'' OUTCAR | tail -n %i | awk ''{print $2 " " $3 " " $4 " " $5}''',natoms+3,natoms)); x = sscanf(x,'%f'); x = reshape(x,[],natoms).';
-%                     REAL DIELECTRIC FUNCTION
-%                     
-%                     IMAGINARY DIELECTRIC FUNCTION
-%                     
-%                     plasma frequency squared (from interband transitions, int dw w eps(2)(w)
+                    nedos = get_vasp('outcar:nedos');
+                    [~,x] = system(sprintf('grep -A %i ''REAL DIELECTRIC FUNCTION'' OUTCAR | tail -n %i | awk ''{print $1 " " $2 " " $3 " " $4 " " $5 " " $6 " " $7}''',nedos+2,nedos)); x = sscanf(x,'%f'); x = reshape(x,[],nedos).';
+                case 'outcar:imag_df'
+                    nedos = get_vasp('outcar:nedos');
+                    [~,x] = system(sprintf('grep -A %i ''IMAGINARY DIELECTRIC FUNCTION'' OUTCAR | tail -n %i | awk ''{print $1 " " $2 " " $3 " " $4 " " $5 " " $6 " " $7}''',nedos+2,nedos)); x = sscanf(x,'%f'); x = reshape(x,[],nedos).';
+                case 'outcar:plasma_frequency_inter'
+                    [~,x] = system(sprintf('grep -A %i ''interband'' OUTCAR | tail -n %i | awk ''{print $1 " " $2 " " $3}''',3+2,3)); x = sscanf(x,'%f'); x = reshape(x,[],3).';
                 % POTCAR
                 case 'potcar:zval'  % valence on each atom in potcar
                     [~,x] = system('awk ''/ZVAL/{print $6}'' POTCAR'); x = sscanf(x,'%f');
@@ -1151,12 +1186,22 @@ classdef am_dft
             X_ = @(tau,species) sortc_([mod_(tau);species]); X = X_(pc.tau(:,:,1),pc.species);
 
             % get all vectors connecting atom N to all other atoms
-            N = 1; V = mod_( pc.tau(:,pc.species==pc.species(N))-pc.tau(:,N) + 1/2, tol) - 1/2; nVs=size(V,2);
+            % maybe expanding over supercells isn't necessary?
+            % sc = pc;
+            sc = get_supercell(pc,[2,2,2]);
+                N = 1; V =    mod_( sc.tau(:,sc.species==sc.species(N))-sc.tau(:,N) + 1/2, tol) - 1/2; 
+                N = 1; V = [V,mod_( sc.tau(:,sc.species==sc.species(N))+sc.tau(:,N) + 1/2, tol) - 1/2]; 
+                nVs=size(V,2);
+            V = V*2;
             
             % find out which subset of vectors V preserve periodic boundary conditions
             ex_=false(1,nVs); 
             for j = 1:nVs; ex_(j) = check_( X_(pc.tau(1:3,:,1)-V(:,j),pc.species)-X ); end
             T=[V(:,ex_),eye(3)]; T=T(:,rankc_(normc_(T)));
+            
+            % condense and get unique 
+                % maybe this isn't necessary?
+                T = am_lib.mod_(T); T = am_lib.uniquec_(T); T = wdv_(T); T = [T,eye(3)];
 
             if nargout == 1; return; end
 
@@ -1174,6 +1219,14 @@ classdef am_dft
                     if check_( X_(H(:,:,i)*pc.tau+V(:,j),pc.species) - X ); nSs=nSs+1; S(1:3,1:4,nSs)=[ H(:,:,i), V(:,j) ]; end
                 end; end; S = S(:,:,1:nSs);
 
+                % condense and get unique 
+                    % maybe this isn't necessary?
+                    S(1:3,4,:) = am_lib.mod_(S(1:3,4,:));
+                    S = reshape(am_lib.uniquec_(reshape(S,16,[])),4,4,[]); nSs = size(S,3);
+
+                % set well defined values
+                S=am_lib.wdv_(S);
+                 
                 % set identity first
                 id = member_(flatten_(eye(4)),reshape(S,4^2,[])); S(:,:,[1,id])=S(:,:,[id,1]);
 
@@ -3544,7 +3597,7 @@ classdef am_dft
             [fbz] = get_fbz(pc,n);
 
             % get irreducible zone
-            [ibz,i2f,f2i] = get_ibz(fbz,pc);
+            [ibz,i2f,f2i] = get_ibz(fbz,pc,'tetra');
 
             % save mapping to zones
             fbz.f2i = f2i; fbz.i2f = i2f;
@@ -3596,7 +3649,7 @@ classdef am_dft
             if abs(sum(w)-fbz.nks)>am_lib.eps; error('mismatch: kpoint mesh and point group symmetry'); end
 
             % define irreducible cell creation function and make structure
-            ibz_ = @(fbz,i2f,w,tet,tetw) struct('units','k=frac-recp; bas=ang-recp','recbas',fbz.recbas,...
+            ibz_ = @(fbz,i2f,w,tet,tetw) struct('units','frac','recbas',fbz.recbas,...
                 'n',[],'nks',numel(i2f),'k',fbz.k(:,i2f),'w',w);
             ibz = ibz_(fbz,i2f,w);
             % pass along additional parameters if they exist
@@ -3609,7 +3662,8 @@ classdef am_dft
             % if requested
             if contains(flag,'tetra')
                 % get irreducible tetrahedra
-                [tet,~,tet_f2i] = unique(sort(f2i(get_tetrahedra(fbz.recbas,fbz.n))).','rows'); tet=tet.'; tetw = hist(tet_f2i,[1:size(tet,2)].'-.5);
+                [tet,~,tet_f2i] = unique(sort(f2i(get_tetrahedra(fbz.recbas,fbz.n))).','rows'); 
+                tet=tet.'; tetw = hist(tet_f2i,[1:size(tet,2)].'-.5);
                 % augment structure with tetrahedron
                 ibz.ntets = size(tet,2);
                 ibz.tet   = tet; 
