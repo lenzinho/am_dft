@@ -10,7 +10,7 @@ classdef am_dft
         amu2gram  = 1/6.02214E23;
         ev2nm     = 1239.842;
         
-        usemex    = false;
+        usemex    = true;
         potdir    = '/Users/lenzinho/Linux/vasp.5.4/potcars/PBE.54/';
         cifdir    = '/Users/lenzinho/Developments/_materials/cif/';
     end
@@ -444,6 +444,9 @@ classdef am_dft
 
         function [bz]    = load_ibzkpt(uc)
             [str,~] = am_lib.load_file_('IBZKPT');
+            % set reciprocal lattice                    
+            recbas=inv(uc.bas).';
+
             % number of kpoints, units
             t=sscanf(str{2},'%i'); nks = t(1);
             if     contains(str{3},'R'); units = 'frac'; 
@@ -451,18 +454,12 @@ classdef am_dft
             else;  error('units unknown'); end
             % parse points and weights
             t=sscanf(strjoin({str{[1:nks]+3}},' '),'%f'); t = reshape(t,4,[]); k = t(1:3,:); w = t(4,:);
-            if strcmp(units,'cart')
-                if nargin == 0
-                    error('unit cell is required to convert to fractional coordinates');
-                else
-                    recbas=inv(uc.bas).';
-                    k = recbas\k;
-                end
-            end
+            % convert to fractional
+            if strcmp(units,'cart'); k = recbas\k; units = 'frac'; end
             % create structure
-            bz_ = @(n,k,w) struct('units','frac','recbas',recbas,...
-                'n',n,'nks',size(k,2),'k',k,'w',w);
-            bz = bz_(nks,k,w);
+            bz_ = @(k,w,units) struct('units',units,'recbas',recbas,...
+                'n',[],'nks',size(k,2),'k',k,'w',w);
+            bz = bz_(k,w,units);
             % save tetrahedra information?
             if contains(str{nks+4},'Tetra')
                t=sscanf(str{nks+5},'%i'); ntets = t(1);
@@ -3661,13 +3658,17 @@ classdef am_dft
 
             % if requested
             if contains(flag,'tetra')
+                % get all tetrahedron
+                tet = get_tetrahedra(fbz.recbas,fbz.n); 
+                vol = abs(det([fbz.k(:,tet(:,1));[1,1,1,1]]))/factorial(3);
                 % get irreducible tetrahedra
-                [tet,~,tet_f2i] = unique(sort(f2i(get_tetrahedra(fbz.recbas,fbz.n))).','rows'); 
+                [tet,~,tet_f2i] = unique(sort(f2i(tet)).','rows'); 
                 tet=tet.'; tetw = hist(tet_f2i,[1:size(tet,2)].'-.5);
                 % augment structure with tetrahedron
                 ibz.ntets = size(tet,2);
                 ibz.tet   = tet; 
                 ibz.tetw  = tetw;
+                ibz.tetv  = vol;
             end
 
             % subfunctions
@@ -4130,7 +4131,6 @@ classdef am_dft
 
             hold off; daspect([1 1 1]); box on;
         end
-        
 
         % clusters
 
@@ -7926,7 +7926,7 @@ classdef am_dft
             % define mex parameters
             FC        = 'ifort';
             FFLAGS    = '-O3 -parallel -fpp -fPIC -lmx -lmex -lmat -nofor_main -bundle -implicitnone -assume realloc_lhs';
-            MPATH     = '/Applications/MATLAB_R2016b.app';
+            MPATH     = '/Applications/MATLAB_R2017b.app';
             LIBS      = ['-L',MPATH,'/bin/maci64 -I',MPATH,'/extern/include'];
             EXT       = '.mexmaci64';
             DEBUG     = '-debug';
@@ -9633,10 +9633,11 @@ subroutine mexFunction(nlhs, plhs, nrhs, prhs)
     ! [D] = get_dos_tet(Ep,E,tet,tetw)
     if(nrhs .ne. 5) call mexErrMsgIdAndTxt ('MATLAB:get_pdos_tet_mex','Five inputs required.')
     if(nlhs .gt. 1) call mexErrMsgIdAndTxt ('MATLAB:get_pdos_tet_mex','One output produced.')
+    ! M x N
     if(mxGetM(prhs(3)) .ne. 4) call mexErrMsgIdAndTxt ('MATLAB:get_pdos_tet_mex','Connectivity list requires four numbers in each column.')
     if(mxGetN(prhs(3)) .ne. mxGetN(prhs(4))) call mexErrMsgIdAndTxt ('MATLAB:get_pdos_tet_mex','Mismatched number of tetrahedra in weights and connectivity list.')
-    if(mxGetN(prhs(2)) .ne. mxGetN(prhs(5))) call mexErrMsgIdAndTxt ('MATLAB:get_pdos_tet_mex','Mismatched number of kpoints in projections weights and connectivity list.')
-
+    ! if(mxGetN(prhs(2)) .ne. mxGetN(prhs(5))) call mexErrMsgIdAndTxt ('MATLAB:get_pdos_tet_mex','Mismatched number of kpoints in projections weights and connectivity list.')
+    
     ! inputs
     i=0
     ! 1) Ep
@@ -9673,8 +9674,6 @@ end subroutine mexFunction
 %}
 
 
-
-
             % compile everything
 
             fprintf('Building mex library:\n')
@@ -9695,11 +9694,11 @@ end subroutine mexFunction
 
         end
 
-        function [K] = uc2ws(K,M)
+        function [K]   = uc2ws(K,M,flag)
             % uc2ws uses M real (reciprocal) lattice vectors to reduces K(1:3,:) vectors
             % in cartesian (reciprocal) coordinates to the definiging Wigner-Seitz cell.
-
-            if  and( am_lib.usemex , which('uc2ws_mex') )
+            if nargin<3; flag='mex'; end
+            if  contains(flag,'mex') && am_dft.usemex && exist('uc2ws_mex','file')==3
                 % use mex function if available
                 K = uc2ws_mex(K,M,am_lib.eps);
             else
@@ -9725,17 +9724,21 @@ end subroutine mexFunction
             end
         end
 
-        function [D] = get_dos_tet(Ep,E,tet,tetw)
-            %
-            if  and( am_lib.usemex , which('get_dos_tet_mex') )
-                % use mex function if available
-                D = get_dos_tet_mex(Ep,E,tet,tetw);
+        function [D]   = get_dos_tet(Ep,E,tet,tetw,tetv,flag)
+            % this is working!
+            if nargin<6; flag='mex'; end
+            if  contains(flag,'mex') && am_dft.usemex && exist('get_dos_tet_mex','file')==3
+                D = get_dos_tet_mex(Ep,E,tet,tetw*tetv);
             else
                 nEps = numel(Ep); D = zeros(nEps,1);
+                h = waitbar(0,'Integrating...');
                 for m = 1:nEps
+                    waitbar(m./nEps,h,'Integrating...');
                     D(m) = get_dos_tet_engine(Ep(m),E,tet,tetw);
                 end
                 D = reshape(D,size(Ep));
+                D = D * tetv;
+                close(h);
             end
 
             function [dosEp] = get_dos_tet_engine(Ep,E,tet,tetw)
@@ -9768,19 +9771,23 @@ end subroutine mexFunction
             end
         end
 
-        function [D] = get_idos_tet(Ep,E,tet,tetw)
-            %
-            if  and( am_lib.usemex , which('get_idos_tet_mex') )
-                % use mex function if available
-                D = get_idos_tet_mex(Ep,E,tet,tetw);
+        function [iD]  = get_idos_tet(Ep,E,tet,tetw,tetv,flag)
+            % this is working!
+            if nargin<7; flag='mex'; end
+            if  contains(flag,'mex') && am_dft.usemex && exist('get_idos_tet_mex','file')==3
+                iD = get_idos_tet_mex(Ep,E,tet,tetw*tetv);
             else
-                nEps = numel(Ep); D = zeros(nEps,1);
+                nEps = numel(Ep); iD = zeros(nEps,1);
+                h = waitbar(0,'Integrating...');
                 for m = 1:nEps
-                    D(m) = get_dos_tet_engine(Ep(m),E,tet,tetw);
+                    waitbar(m./nEps,h,'Integrating...');
+                    iD(m) = get_dos_tet_engine(Ep(m),E,tet,tetw);
                 end
-                D = reshape(D,size(Ep));
+                iD = reshape(iD,size(Ep));
+                iD = iD * tetv;
+                close(h);
             end
-
+            
             function [idos] = get_dos_tet_engine(Ep,E,tet,tetw)
                 nbands = size(E,1);
                 ntets = size(tet,2);
@@ -9810,17 +9817,209 @@ end subroutine mexFunction
                 end
             end
         end
-
-        function [D] = get_pdos_tet(Ep,E,tet,tetw)
+        
+        function [pD]  = get_pdos_tet(Ep,E,tet,tetw,tetv,projw,flag)
             %
-            if  and( am_lib.usemex , which('get_pdos_tet_mex') )
-                % use mex function if available
-                D = get_pdos_tet_mex(Ep,E,tet,tetw);
+            if nargin<7; flag='mex'; end
+            if  contains(flag,'mex') && am_dft.usemex && exist('get_pdos_tet_mex','file')==3
+                pD = get_pdos_tet_mex(Ep,E,tet,tetw*tetv,projw);
             else
-                error('matlab version not yet implemented. mex is required for pdos');
+                % works well.
+                % get number of probing energies
+                nEps = numel(Ep);
+                % get n of band
+                nbands = size(E,1);
+                % get number of tetrahedra
+                ntets = size(tet,2);
+                % get number of projections: projw(nprojections,nbands,nkpts)
+                nprojections = size(projw,1);
+                % initalize
+                pD = zeros(nprojections,nEps);
+                % define flat sum
+                sum_ = @(x) sum(x(:));
+                % loop over energies, bands, tetrahedra
+                h = waitbar(0,'Integrating...');
+                for i = 1:nEps
+                waitbar(i./nEps,h,'Integrating...');
+                for j = 1:nbands
+                for k = 1:ntets
+                    % get tetrahedron corner weights
+                    wc = get_delta_wc(Ep(i),E(j,tet(:,k)));
+                    % loop over projections, increment pDOS with contributions from band j in tetrahedron k
+                    for m = 1:nprojections
+                        pD(m,i) = pD(m,i) + tetw(k) * sum_(wc .* projw(m,j,tet(:,k)));
+                    end
+                end
+                end
+                end
+                pD = pD*tetv/4;
+                close(h);
+            end
+
+            function wc = get_delta_wc(Ep,Ec)
+                % tested. works well
+                % get linear tetrahedron corner weights for delta function with Blochl corrections
+                % rank corner weights in increasing order
+                inds = am_lib.rank4_(Ec);
+                % sort weights
+                e1 = Ec(inds(1)); e2 = Ec(inds(2)); e3 = Ec(inds(3)); e4 = Ec(inds(4));
+                % k1-k4 are the irreducible k-points corresponding to e1-e4
+                k1 = inds(1);     k2 = inds(2);     k3 = inds(3);     k4 = inds(4);
+                % calculate weights wc
+                if Ep<e1
+                    % Eq B1 from Blochl's PhysRevB.49.16223
+                    wc(k1)=0; wc(k2)=0; wc(k3)=0; wc(k4)=0;
+                elseif Ep<e2
+                    o13 = 1/3;
+                    f12 = (Ep-e2)/(e1-e2); f21 = 1 - f12;
+                    f13 = (Ep-e3)/(e1-e3); f31 = 1 - f13;
+                    f14 = (Ep-e4)/(e1-e4); f41 = 1 - f14;
+                    dosEp  = 3 * f21 * f31 * f41 / (Ep-e1);
+                    wc(k1) = o13 * (f12 + f13 + f14);
+                    wc(k2) = o13 * f21;
+                    wc(k3) = o13 * f31;
+                    wc(k4) = o13 * f41;
+                    wc = wc * dosEp;
+                elseif Ep<e3
+                    o13 = 1/3;
+                    f13 = (Ep-e3)/(e1-e3); f31 = 1 - f13;
+                    f14 = (Ep-e4)/(e1-e4); f41 = 1 - f14;
+                    f23 = (Ep-e3)/(e2-e3); f32 = 1 - f23;
+                    f24 = (Ep-e4)/(e2-e4); f42 = 1 - f24;
+                    dosEp  = 3 * (f23*f31 + f32*f24);
+                    wc(k1) = f14 * o13 + f13*f31*f23 / dosEp;
+                    wc(k2) = f23 * o13 + f24*f24*f32 / dosEp;
+                    wc(k3) = f32 * o13 + f31*f31*f23 / dosEp;
+                    wc(k4) = f41 * o13 + f42*f24*f32 / dosEp;
+                    dosEp  = dosEp / (e4-e1);
+                    wc = wc * dosEp;
+                elseif Ep<e4
+                    o13 = 1/3;
+                    f14 = (Ep-e4)/(e1-e4);
+                    f24 = (Ep-e4)/(e2-e4);
+                    f34 = (Ep-e4)/(e3-e4);
+                    dosEp  = 3 * f14 * f24 * f34 / (e4-Ep);
+                    wc(k1) = f14 * o13;
+                    wc(k2) = f24 * o13;
+                    wc(k3) = f34 * o13;
+                    wc(k4) = (3 - f14 - f24 - f34 ) * o13;
+                    wc = wc * dosEp;
+                elseif Ep>=e4
+                    wc(k1)=0; wc(k2)=0; wc(k3)=0; wc(k4)=0;
+                end
             end
         end
 
+        function [ipD] = get_ipdos_tet(Ep,E,tet,tetw,tetv,projw,flag)
+            % this is working!
+            if nargin<7; flag='mex'; end
+            if  contains(flag,'mex') && am_dft.usemex && exist('get_pdos_tet_mex','file')==3
+                % use mex function if available
+                error('not yet implemented');
+            else
+                % get number of probing energies
+                nEps = numel(Ep);
+                % get n of band
+                nbands = size(E,1);
+                % get number osf tetrahedra
+                ntets = size(tet,2);
+                % get number of projections: projw(nprojections,nbands,nkpts)
+                nprojections = size(projw,1);
+                % initalize
+                ipD = zeros(nprojections,nEps);
+                % define flat sum
+                sum_ = @(x) sum(x(:));
+                % loop over energies, bands, tetrahedra
+                h = waitbar(0,'Integrating...');
+                for i = 1:nEps
+                waitbar(i./nEps,h,'Integrating...');
+                for j = 1:nbands
+                for k = 1:ntets
+                    % get tetrahedron corner weights
+                    wc = get_theta_wc(Ep(i),E(j,tet(:,k)),ntets);
+                    % loop over projections, increment pDOS with contributions from band j in tetrahedron k
+                    for m = 1:nprojections
+                        ipD(m,i) = ipD(m,i) + tetw(k) * sum_(wc .* projw(m,j,tet(:,k)));
+                    end
+                end
+                end
+                end
+                ipD = ipD*tetv/4;
+                close(h);
+            end
+
+            function wc = get_theta_wc(Ep,Ec,ntets)
+                % not yet tested.
+                % get linear tetrahedron corner weights for delta function with Blochl corrections
+                % rank corner weights in increasing order
+                inds = am_lib.rank4_(Ec);
+                % sort weights
+                e1 = Ec(inds(1)); e2 = Ec(inds(2)); e3 = Ec(inds(3)); e4 = Ec(inds(4));
+                % k1-k4 are the irreducible k-points corresponding to e1-e4
+                k1 = inds(1);     k2 = inds(2);     k3 = inds(3);     k4 = inds(4);
+                % calculate weights wc
+                if     Ep<e1
+                    % Eq B1 from Blochl's PhysRevB.49.16223
+                    wc(k1)=0; wc(k2)=0; wc(k3)=0; wc(k4)=0;
+                elseif Ep<e2
+                    % Eq B6 from Blochl's PhysRevB.49.16223
+                    c4=0.25/ntets*(Ep-e1)^3/(e2-e1)/(e3-e1)/(e4-e1);
+                    % Eq C2 from Blochl's PhysRevB.49.16223
+                    dosEp=3/ntets*(Ep-e1)^2/(e2-e1)/(e3-e1)/(e4-e1);
+                    % shortcut for Blochl corrections (Eq.22 PhysRevB.49.16223)
+                    etot=e1+e2+e3+e4;
+                    % Eq B2 from Blochl's PhysRevB.49.16223
+                    wc(k1)=c4*(4-(Ep-e1)*(1/(e2-e1)+1/(e3-e1)+1/(e4-e1)))+dosEp*(etot-4*e1)*025;
+                    % Eq B3 from Blochl's PhysRevB.49.16223
+                    wc(k2)=c4*(Ep-e1)/(e2-e1)+dosEp*(etot-4*e2)*025;
+                    % Eq B4 from Blochl's PhysRevB.49.16223
+                    wc(k3)=c4*(Ep-e1)/(e3-e1)+dosEp*(etot-4*e3)*025;
+                    % Eq B5 from Blochl's PhysRevB.49.16223
+                    wc(k4)=c4*(Ep-e1)/(e4-e1)+dosEp*(etot-4*e4)*025;
+                elseif Ep<e3
+                    % Eq B11 from Blochl's PhysRevB.49.16223
+                    c1=0.25/ntets*(Ep-e1)^2/(e4-e1)/(e3-e1);
+                    % Eq B12 from Blochl's PhysRevB.49.16223
+                    c2=0.25/ntets*(Ep-e1)*(Ep-e2)*(e3-Ep)/(e4-e1)/(e3-e2)/(e3-e1);
+                    % Eq B13 from Blochl's PhysRevB.49.16223
+                    c3=0.25/ntets*(Ep-e2)^2*(e4-Ep)/(e4-e2)/(e3-e2)/(e4-e1);
+                    % Eq C3 from Blochl's PhysRevB.49.16223
+                    dosEp=1/ntets/(e3-e1)/(e4-e1)*(3*(e2-e1)+6*(Ep-e2)-3*(e3-e1+e4-e2)*(Ep-e2)^2/(e3-e2)/(e4-e2));
+                    % shortcut for Blochl corrections (Eq.22 PhysRevB.49.16223)
+                    etot=e1+e2+e3+e4;
+                    % Eq B7 from Blochl's PhysRevB.49.16223
+                    wc(k1)=c1+(c1+c2)*(e3-Ep)/(e3-e1)+(c1+c2+c3)*(e4-Ep)/(e4-e1)+dosEp*(etot-4*e1)*025;
+                    % Eq B8 from Blochl's PhysRevB.49.16223
+                    wc(k2)=c1+c2+c3+(c2+c3)*(e3-Ep)/(e3-e2)+c3*(e4-Ep)/(e4-e2)+dosEp*(etot-4*e2)*025;
+                    % Eq B9 from Blochl's PhysRevB.49.16223
+                    wc(k3)=(c1+c2)*(Ep-e1)/(e3-e1)+(c2+c3)*(Ep-e2)/(e3-e2)+dosEp*(etot-4*e3)*025;
+                    % Eq B10 from Blochl's PhysRevB.49.16223
+                    wc(k4)=(c1+c2+c3)*(Ep-e1)/(e4-e1)+c3*(Ep-e2)/(e4-e2)+dosEp*(etot-4*e4)*025;
+                elseif Ep<e4
+                    % Eq B18 from Blochl's PhysRevB.49.16223
+                    c4=0.25/ntets*(e4-Ep)^3/(e4-e1)/(e4-e2)/(e4-e3);
+                    % Eq C4 from Blochl's PhysRevB.49.16223
+                    dosEp=3/ntets*(e4-Ep)^2/(e4-e1)/(e4-e2)/(e4-e3);
+                    % shortcut for Blochl corrections (Eq.22 PhysRevB.49.16223)
+                    etot=e1+e2+e3+e4;
+                    % Eq B14 from Blochl's PhysRevB.49.16223
+                    wc(k1)=0.25/ntets-c4*(e4-Ep)/(e4-e1)+dosEp*(etot-4*e1)*025;
+                    % Eq B15 from Blochl's PhysRevB.49.16223
+                    wc(k2)=0.25/ntets-c4*(e4-Ep)/(e4-e2)+dosEp*(etot-4*e2)*025;
+                    % Eq B16 from Blochl's PhysRevB.49.16223
+                    wc(k3)=0.25/ntets-c4*(e4-Ep)/(e4-e3)+dosEp*(etot-4*e3)*025;
+                    % Eq B17 from Blochl's PhysRevB.49.16223
+                    wc(k4)=0.25/ntets-c4*(4-(e4-Ep)*(1/(e4-e1)+1/(e4-e2)+1/(e4-e3)))+dosEp*(etot-4*e4)*025;
+                elseif Ep>=e4
+                    % Eq B19 from Blochl's PhysRevB.49.16223
+                    wc(k1)=0.25/ntets; wc(k2)=0.25/ntets; wc(k3)=0.25/ntets; wc(k4)=0.25/ntets;
+                end
+                %
+                wc = wc * ntets;
+                %
+            end
+        end
+        
     end
 
 end
