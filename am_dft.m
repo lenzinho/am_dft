@@ -3962,6 +3962,20 @@ classdef am_dft
             end
         end
 
+        function [dos]        = get_dos(dft,ibz,Ep,flag)
+            if nargin<4; flag = 'dos'; end
+            if     contains(flag,'optical')
+                % only consider transitions from the valence band (E<0) to the conduction band (E>0)
+                E = reshape(permute(dft.E .* (dft.E>0),[1,3,2])-permute(dft.E  .* (dft.E<0),[3,1,2]),dft.nbands^2,dft.nks); E = sort(E);
+            elseif contains(flag,'jdos')
+                E = reshape(permute(dft.E,[1,3,2])-permute(dft.E,[3,1,2]),dft.nbands^2,dft.nks); E = sort(E);
+            elseif contains(flag,'dos')
+                E = dft.E;
+            end
+            dos.E = Ep;
+            dos.D = am_dft.get_dos_tet(Ep,E,ibz.tet,ibz.tetw,ibz.tetv);
+        end
+        
         function plot_interpolated(fbz,bzp,x, varargin)
             % interpolate x, defined on the monkhorst-pack fbz, on [frac] path
             %
