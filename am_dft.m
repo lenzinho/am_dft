@@ -4146,6 +4146,50 @@ classdef am_dft
             hold off; daspect([1 1 1]); box on;
         end
 
+        function plot_fermi_surface(ibz,fbz,dft)
+            k  = reshape(fbz.recbas*fbz.k,[3,fbz.n]); 
+            dk = fbz.recbas;
+            E  = reshape( am_dft.ibz2fbz(fbz,ibz,dft.E) ,[dft.nbands,fbz.n]); 
+            Ef = [-0.3,0.3];
+            w  = [0,0,0]; % dw = [4,4,1];
+            m  = 3;
+            flag = 'cubic,center';
+
+            % % color based on curvature? (each band is a scalar field: hessian is diagonal)
+            % r = ndgrid(1:fbz.n(1),1:fbz.n(2),1:fbz.n(3)); r = permute(r,[4,1,2,3]);
+            % for i = 1:dft.nbands; C(i,:,:,:) = ifftn( fftn(E(i,:,:,:)).*(1i*r).^2 ); end; C = abs(real(C));
+
+            am_lib.plot_isosurface_(k,dk,E,Ef,[],w,m,flag);
+
+            daspect([1 1 1]); axis tight; axis off;
+            am_dft.draw_bz_boundary(fbz,'tetra');
+
+            campos([10.7135,23.0003,9.4299]); 
+            camlight('right','infinite');
+            camproj('perspective');
+        end
+        
+        function draw_bz_boundary(fbz,flag)
+            switch flag
+                case 'tetra'; draw_tetragonal_bz_boundary(fbz)
+                otherwise; error('unknown geometry');
+            end
+            
+            function draw_tetragonal_bz_boundary(fbz)
+                R3 = [ 0,-1, 0;-1, 0, 0; 0, 0,-1];
+                s = [1,1,1];
+                xy = fbz.recbas*[[0;0;0],[s(1);0;0],[s(1);s(2);0],[0;s(2);0]];
+                xz = fbz.recbas*[[0;0;0],[0;0;s(3)],[s(1);0;s(3)],[s(1);0;0]];
+                alpha = 0.015;
+                patch('Faces',[1:4],'Vertices',(xy)','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
+                patch('Faces',[1:4],'Vertices',(xz)','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
+                patch('Faces',[1:4],'Vertices',(xy+fbz.recbas*[0;0;s(3)])','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
+                patch('Faces',[1:4],'Vertices',(xz+fbz.recbas*[0;s(2);0])','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
+                patch('Faces',[1:4],'Vertices',(R3*xz+fbz.recbas*[0;s(2);s(3)])','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
+                patch('Faces',[1:4],'Vertices',(R3*xz+fbz.recbas*[s(1);s(2);s(3)])','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
+            end
+        end
+        
         % clusters
 
         % get_model('toy tb' , pc, cutoff, spdf)
