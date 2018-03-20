@@ -4001,14 +4001,61 @@ classdef am_dft
             % [dft]   = load_procar('evk/PROCAR',Ef);
             % [bzp]   = get_bz_path(pc,40,'sc');
 
-            % normalize columns of matrix
-            normc_ = @(m) ones(size(m,1),1)*sqrt(1./sum(m.*m)).*m;
-
             % get eigenvalues and band character weights
-            c = zeros(dft.nbands,dft.nks);
+            c = zeros(dft.nbands,dft.nks); w = [];
             
-            if contains(flag,'orbital') % projected on orbitals
-                character_labels = {'s','p','d','f'};
+            if     contains(flag,'orbital') % projected on orbitals
+                character_labels = {'s','p','d','f'}; c = projections2color_(dft,pc,'orbital');
+                if contains(flag,'atom')
+                    if numel(pc.i2p)~=2; error('cannot broaden width in more than 2 dimensions'); end
+                    w = projections2color_(dft,pc,'atom')/2;
+                end
+            elseif contains(flag,'atom') % projected on atoms
+                character_labels = pc.symb; c = projections2color_(dft,pc,'atom');
+            else % just plot bands straight up
+                flag = [flag,'none'];
+                character_labels=''; c = ones(dft.nbands,dft.nks); 
+            end
+
+            % define figure properties
+            fig_ = @(h)       set(h,'color','white');
+            axs_ = @(h,qt,ql) set(h,'Box','on','XTick',qt,'Xticklabel',ql);
+            fig_(gcf);
+
+            % plot band structure
+            fig_(gcf); 
+            if contains(flag,'none')
+                plot(bzp.x,dft.E,'-','color','b');
+            else
+                hold on;
+                for m = 1:dft.nbands
+                    if isempty(w)
+                        am_lib.plotc_(bzp.x,dft.E(m,:),c(m,:));
+                    else
+                        am_lib.plotc_(bzp.x,dft.E(m,:),c(m,:),w(m,:));
+                        plot(bzp.x,dft.E,'-w','linewidth',0.1);
+                    end
+                end
+                hold off;
+                % apply color map and label axes
+                colormap( am_lib.colormap_('spectral',100).^(2) ); h = colorbar; caxis([0,1]);
+                cticks = am_lib.assign_cmap_(eye(numel(character_labels))); [~,inds] = sort( cticks );
+                set(h,'Ticks',cticks(inds),'TickLabels',character_labels(inds));
+            end
+            
+            % label axes
+            axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [eV]'); xlabel('Wavevector k');
+
+            % plot fermi level
+            line([0,bzp.x(end)],[0,0],'linewidth',2,'color',[1,1,1]*0.5,'linestyle',':');
+            
+            
+            
+            function c = projections2color_(dft,pc,flag)
+                % normalize columns of matrix
+                normc_ = @(m) ones(size(m,1),1)*sqrt(1./sum(m.*m)).*m;
+                % colorize
+                if     contains(flag,'orbital')
                 for i = 1:dft.nks
                     %    s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3
                     % l-PROJECTION (sum over spin, atoms, m-quantum numbers)
@@ -4019,41 +4066,18 @@ classdef am_dft
                     Vp(4,:) = squeeze(sum(sum(sum(dft.lmproj(:,[9:16],:,:,i),1),2),3)); % f
                     c(:,i) = am_lib.assign_cmap_(normc_(Vp));
                 end
-            elseif contains(flag,'atom') % projected on atoms
-                character_labels = pc.symb; 
-                for i = 1:dft.nks
-                    % l-PROJECTION (sum over spin, atoms, m-quantum numbers)
-                    % lmproj(nspins,norbitals,nions,nbands,nkpts)
-                    for j = 1:numel(unique(pc.p2i))
-                        Vp(j,:) = squeeze(sum(sum(sum(dft.lmproj(:,:,pc.p2i==j,:,i),1),2),3));
+                elseif contains(flag,'atom')
+                    for i = 1:dft.nks
+                        % l-PROJECTION (sum over spin, atoms, m-quantum numbers)
+                        % lmproj(nspins,norbitals,nions,nbands,nkpts)
+                        for j = 1:numel(unique(pc.p2i))
+                            Vp(j,:) = squeeze(sum(sum(sum(dft.lmproj(:,:,pc.p2i==j,:,i),1),2),3));
+                        end
+                        c(:,i) = am_lib.assign_cmap_(normc_(Vp));
                     end
-                    c(:,i) = am_lib.assign_cmap_(normc_(Vp));
                 end
-            else % just plot bands straight up
-                character_labels=''; Vp = 1;
-                c = ones(dft.nbands,dft.nks); 
+            
             end
-
-            % define figure properties
-            fig_ = @(h)       set(h,'color','white');
-            axs_ = @(h,qt,ql) set(h,'Box','on','XTick',qt,'Xticklabel',ql);
-            fig_(gcf);
-
-            % plot band structure
-            figure(1); clf; fig_(gcf); hold on;
-            for j = 1:dft.nbands; am_lib.plotc_(bzp.x,dft.E(j,:),c(j,:)); end
-            hold off;
-
-            % label axes
-            axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [eV]'); xlabel('Wavevector k');
-
-            % plot fermi level
-            line([0,bzp.x(end)],[0,0],'linewidth',2,'color',[1,1,1]*0.5,'linestyle',':');
-
-            % apply color map and label axes
-            colormap( am_lib.colormap_('spectral',100).^(2) ); h = colorbar; caxis([0,1]);
-            cticks = am_lib.assign_cmap_(eye(size(Vp,1))); [~,inds] = sort( cticks );
-            set(h,'Ticks',cticks(inds),'TickLabels',character_labels(inds));
         end
 
         function plot_nesting(ibz,fbz,bzp,degauss,Ep, varargin)
@@ -4146,24 +4170,27 @@ classdef am_dft
             hold off; daspect([1 1 1]); box on;
         end
 
-        function plot_fermi_surface(ibz,fbz,dft)
-            k  = reshape(fbz.recbas*fbz.k,[3,fbz.n]); 
-            dk = fbz.recbas;
-            E  = reshape( am_dft.ibz2fbz(fbz,ibz,dft.E) ,[dft.nbands,fbz.n]); 
-            Ef = [-0.3,0.3];
-            w  = [0,0,0]; % dw = [4,4,1];
-            m  = 3;
-            flag = 'cubic,center';
+        function plot_fermi_surface(ibz,fbz,dft,Ef,flag)
+            if nargin < 5; flag=''; end
+            
+            if contains(flag,'jdos')
+                E = reshape(permute(dft.E,[1,3,2])-permute(dft.E,[3,1,2]),dft.nbands^2,dft.nks); E = sort(E);
+                E = reshape( am_dft.ibz2fbz(fbz,ibz,E) ,[dft.nbands.^2,fbz.n]); 
+            else % just regular dos
+                E = reshape( am_dft.ibz2fbz(fbz,ibz,dft.E) ,[dft.nbands,fbz.n]); 
+            end
 
             % % color based on curvature? (each band is a scalar field: hessian is diagonal)
             % r = ndgrid(1:fbz.n(1),1:fbz.n(2),1:fbz.n(3)); r = permute(r,[4,1,2,3]);
             % for i = 1:dft.nbands; C(i,:,:,:) = ifftn( fftn(E(i,:,:,:)).*(1i*r).^2 ); end; C = abs(real(C));
-
-            am_lib.plot_isosurface_(k,dk,E,Ef,[],w,m,flag);
-
+            C = [];
+            
+            %                                                                                  [4,4,1]  2
+            am_lib.plot_isosurface_(reshape(fbz.recbas*fbz.k,[3,fbz.n]), fbz.recbas, E, Ef, C, [4,4,1], 3, 'cubic,center');
+            % plot bz boundary
+            if contains(flag,'tetra'); am_dft.draw_bz_boundary(fbz,'tetra'); end
+            % set lighting settings
             daspect([1 1 1]); axis tight; axis off;
-            am_dft.draw_bz_boundary(fbz,'tetra');
-
             campos([10.7135,23.0003,9.4299]); 
             camlight('right','infinite');
             camproj('perspective');
@@ -5585,7 +5612,7 @@ classdef am_dft
         
         % [F,L,P] = get_structure_factor(uc,bz,hv,N)
         % [F,L,P] = get_structure_factor(uc,k,hv,N)
-        function [F,L,P] = get_structure_factor(uc,bz,hv,N)
+        function [F,L,P]   = get_structure_factor(uc,bz,hv,N)
             
             import am_lib.* am_dft.*
             
