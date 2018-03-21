@@ -1,0 +1,48 @@
+162d161
+<     REAL(q), ALLOCATABLE:: JDOS(:,:,:)
+194d192
+<     ALLOCATE(JDOS(NEDOS,3,3))
+264c262
+<       INFO%LOVERL, CDIJ, CQIJ, LMDIM, SYMM, EPS_IMAG, EPS_REAL, JDOS, COND_ENERGY, WPLASMON, WPLASMON2,  CON, DELTAE, &
+---
+>       INFO%LOVERL, CDIJ, CQIJ, LMDIM, SYMM, EPS_IMAG, EPS_REAL, COND_ENERGY, WPLASMON, WPLASMON2,  CON, DELTAE, &
+309,317d306
+< 1101 FORMAT(/ &
+<      &        '  frequency dependent      JDOS (MATRIX ELEMENT = 1)' &
+<      &       ,' (independent particle, no local field effects)',/&
+<      &        '     E(ev)  ', &
+<      &        4X,'X', 9X,'Y', 9X,'Z', 8X,'XY', 8X,'YZ', 8X,'ZX'/ &
+<      &        '  ----------------------------------------------------', &
+<      &        '----------------------------------'/ &
+<      &        (7F12.6))
+< 
+351,353d339
+<        WRITE(IO%IU6,1101) (DELTAE*(I-1),JDOS(I,1,1),JDOS(I,2,2),JDOS(I,3,3), &
+<                                     JDOS(I,1,2),JDOS(I,2,3),JDOS(I,3,1), &
+<                                     I=1,NEDOS,ISTEP)
+525c511
+<       LOVERL, CDIJ, CQIJ, LMDIM, SYMM, EPS_IMAG, EPS_REAL, JDOS, COND_ENERGY, WPLASMON, WPLASMON2, CON,  & 
+---
+>       LOVERL, CDIJ, CQIJ, LMDIM, SYMM, EPS_IMAG, EPS_REAL, COND_ENERGY, WPLASMON, WPLASMON2, CON,  & 
+582d567
+<     REAL(q)  :: JDOS(:,:,:)
+586d570
+<     GDEFS, allocatable :: CHAM_FOR_JDOS(:,:,:,:,:)
+680,682d663
+<     ALLOCATE(CHAM_FOR_JDOS, MOLD=CHAM)
+<     CHAM_FOR_JDOS = 1.0_q
+< 
+691,695d671
+<           CALL EPSILON_IMAG( WDES, W0, CHAM_FOR_JDOS(:,:,:,:,IDIR), CHAM_FOR_JDOS(:,:,:,:,JDIR), & 
+<           ENERGY_DER(:,:,:,IDIR), ENERGY_DER(:,:,:,JDIR), EFERMI, &
+<           NEDOS, JDOS(:,IDIR,JDIR), DELTAE, KPOINTS%ISMEAR, KPOINTS%SIGMA, & 
+<           LATT_CUR%OMEGA, WPLASMON(IDIR, JDIR), CON(IDIR, JDIR), RTIME)
+< 
+699,701d674
+< 
+<           CALL EPSILON_IMAG_TET( WDES, W0, CHAM_FOR_JDOS(:,:,:,:,IDIR), CHAM_FOR_JDOS(:,:,:,:,JDIR), EMAX, &
+<           NEDOS, JDOS(:,IDIR,JDIR), DELTAE, LATT_CUR%OMEGA, IO, INFO, KPOINTS)
+716d688
+<        CALLMPI( M_sum_d(WDES%COMM_KINTER, JDOS    , SIZE(JDOS)))
+732d703
+<        IF (SYMM%ISYM>0) CALL TSYM(JDOS(I,:,:),ISYMOP,NROTK,LATT_CUR%A)

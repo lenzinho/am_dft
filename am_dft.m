@@ -3997,7 +3997,7 @@ classdef am_dft
                 % prepare occw for pdos
                 occw = permute(occw,[3,1,2]);
                 % compute dos
-                dos.E = Ep; dos.D = am_dft.get_pdos_tet(Ep,E,ibz.tet,ibz.tetw,ibz.tetv,occw,'mex');
+                dos.E = Ep(:).'; dos.D = am_dft.get_pdos_tet(Ep,E,ibz.tet,ibz.tetw,ibz.tetv,occw,'mex');
             elseif contains(flag,'jdos')
                 % checked against vasp. confirmed.
                 % only consider transitions from the valence band (E<0) to the conduction band (E>0)
@@ -4013,9 +4013,9 @@ classdef am_dft
                 ex_ = (Ec>0) & (Ev>0); E(ex_) = 1E8;
                 E = reshape(E,dft.nbands^2,dft.nks); E = sort(E);
                 % compute jdos
-                dos.E = Ep; dos.D = am_dft.get_dos_tet(Ep,E,ibz.tet,ibz.tetw,ibz.tetv,'mex');
+                dos.E = Ep(:).'; dos.D = am_dft.get_dos_tet(Ep,E,ibz.tet,ibz.tetw,ibz.tetv,'mex');
             elseif contains(flag,'dos')
-                dos.E = Ep; dos.D = am_dft.get_dos_tet(Ep,dft.E,ibz.tet,ibz.tetw,ibz.tetv,'mex');
+                dos.E = Ep(:).'; dos.D = am_dft.get_dos_tet(Ep,dft.E,ibz.tet,ibz.tetw,ibz.tetv,'mex');
             end
         end
         
