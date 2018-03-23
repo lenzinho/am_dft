@@ -549,6 +549,65 @@ classdef am_dft
             
         end
 
+        function [Pcv2]  = load_optical_matrix_elements()
+            % ! write to matrix elements to file
+            % open(unit=123456, file="OPTICALMATRIX",action='WRITE')
+            % WRITE(123456,*) WDES%NB_TOT ! , 'NBANDS'
+            % WRITE(123456,*) NBANDS_CDER ! , 'NBANDS_CDER'
+            % WRITE(123456,*) WDES%NKPTS  ! , 'NKS'
+            % WRITE(123456,*) WDES%ISPIN  ! , 'NSPINS'
+            % ! WRITE(123456,*) 'ABS(CDER_BETWEEN_STATES( NBANDS, NBANDS_CDER, NKS, ISPIN, DIR))'
+            % WRITE(123456,*) ABS(CDER_BETWEEN_STATES) ! CDER_BETWEEN_STATES(WDES%NB_TOT, NBANDS_CDER, WDES%NKPTS, WDES%ISPIN, 3)
+            % ! WRITE(123456,*) 'ENERGY_DER( NBANDS, NBANDS_CDER, NKS, ISPIN, DIR )'
+            % WRITE(123456,*) ENERGY_DER               ! ENERGY_DER(WDES%NB_TOT, WDES%NKPTS, WDES%ISPIN, 3)
+            % close(unit=123456)
+            % load file
+            [str,~] = am_lib.load_file_('OPTICALMATRIX');
+            % bands
+            nbands = str2double(str{1});
+            nbands_cder = str2double(str{2});
+            nks    = str2double(str{3});
+            nspins = str2double(str{4});
+            % parse the data
+            m = prod([nbands,nbands_cder,nks,nspins,3]);
+            n = prod([nbands,nks,nspins,3]);
+            T = sscanf(strjoin({str{5:end}},' '),'%f');
+            if (m+n)~=size(T,1); error('something is wrong; either not all numbers were written or extra numbers were written that were not supposed to be'); end
+            % save absolute value of optical matrix elements
+            Pcv2 = reshape( T(1:m), [nbands,nbands_cder,nks,nspins,3] );
+            % E    = reshape(T((m+1):end),[nbands,nks,nspins,3]);
+        end
+        
+        function matrix_elements = load_wavder()
+            % terrible.. most likely this will not work in every case
+            % use hex fiend to look at the binary file. compared the garbage to the file i wrote explicitly.
+            fname = 'WAVEDER';
+
+            %       IF (IU0>=0) THEN
+            %          OPEN(UNIT=IU,FILE=DIR_APP(1:DIR_LEN)//'WAVEDER', &
+            %               FORM='UNFORMATTED',STATUS='UNKNOWN')
+            %          
+            %          WRITE(IU) WDES%NB_TOT, NBANDS_CDER, WDES%NKPTS, WDES%ISPIN
+            %          WRITE(IU) NODES_IN_DIELECTRIC_FUNCTION
+            %          WRITE(IU) WPLASMON
+            %          WRITE(IU) CDER_BETWEEN_STATES
+            %          CLOSE(IU)
+            %       ENDIF
+
+            fid=fopen(fname, 'rb'); % Open the file.
+            fread(fid, 1, 'int32'); % record headers
+            nbands = fread(fid, 1, 'int32');
+            nbands_cder = fread(fid, 1, 'int32');
+            nks = fread(fid, 1, 'int32');
+            nspins = fread(fid, 1, 'int32');
+            nnodes = fread(fid, 1, 'int32');
+            fread(fid, 25, 'int32'); % garbage
+            matrix_elements = fread(fid, prod([2,nbands,nbands_cder,nks,nspins,3]), 'single');
+            matrix_elements = reshape(matrix_elements,[2,nbands,nbands_cder,nks,nspins,3]);
+            matrix_elements = matrix_elements(1,:,:,:,:,:)+1i*matrix_elements(1,:,:,:,:,:);
+            fclose(fid);
+        end
+        
         
         % for automating vasp simulations
 
@@ -3938,10 +3997,11 @@ classdef am_dft
             
         end
         
-        function [nesting]    = get_nesting(fbz,ibz,degauss,Ep,flag)
+        function [nesting]    = get_nesting(fbz,ibz,dft,degauss,Ep,flag)
             % get nesting function on ibz at probing energies Ep using smearing degauss
             % degauss, degauss = 0.04 61x61x61 kpoint mesh
-
+            % note that these probing energies are not JDOS energies! They are simply EF energies!
+            
             import am_lib.* am_dft.*
 
             % number of probing energies
@@ -3951,7 +4011,7 @@ classdef am_dft
             qqq = get_qqq(fbz,ibz);
 
             % copy irreducible energies onto fbz mesh
-            E = ibz2fbz(fbz,ibz,ibz.E);
+            E = ibz2fbz(fbz,ibz,dft.E);
 
             % compute spectral function A on the full mesh
             dE = (reshape(E,[1,size(E)]) - Ep(:))/degauss;
@@ -3978,6 +4038,73 @@ classdef am_dft
                         .* access_(A(j,:,:,:),qqq(3,:,m))   , [], @sum  )./prod(ibz.n);
             end
         end
+        
+        function [nesting]    = get_nesting_jdos(fbz,ibz,dft,degauss,Ep,flag)
+            % get jdos nesting function on ibz at probing energies Ep (This Ep is the one that conserved energy!)
+            % degauss, degauss = 0.04 61x61x61 kpoint mesh
+            %
+            
+            import am_lib.* am_dft.*
+            
+            if nargin>5; flag=[]; error('only gaussian is implemented'); end
+            
+            % number of probing energies
+            nEps = numel(Ep);
+
+            % get momentum conserving q-point triplets
+            % q1 + q2 = q3 (absorption)  q1 = q2 + q3 (emission)      : m = 1
+            % q  + k  = k' (e scatters)  q  = k  + k' (e+h recombine) : m = 2
+            qqq = am_dft.get_qqq(fbz,ibz);
+
+            % copy irreducible energies onto fbz mesh
+            E = reshape(am_dft.ibz2fbz(fbz,ibz,dft.E),[dft.nbands,fbz.n]);
+
+            % LOL! I am trying to integrate over a ((40x40),((15x15x11)x(15x15x11))) matrix! lol... that's 9E9 numbers... LOL!!!
+            % How to approach this? Loop over pairs of bands which has fewer elements than pairs of wavevectors
+            % Also, some pairs of bands can be quickly ignored 
+            nesting = zeros(nEps,ibz.nks); access_ = @(x,i) reshape(x(i),[],1); m = 2; nEps = numel(Ep); t=0; flatten_ = @(x) x(:);
+            % estimate time
+            for c = 1:dft.nbands
+            for v = 1:dft.nbands
+                if max(E(c,:))<0 && max(E(v,:))<0; continue; end
+                if min(E(c,:))>0 && min(E(v,:))>0; continue; end
+                if min(E(v,:))>max(E(c,:)); continue; end
+                t=t+1;
+            end
+            end
+            h = waitbar(0,'Integrating...'); tot=t; t=0;
+            for c = 1:dft.nbands
+            for v = 1:dft.nbands
+                % skip if both Ec and Ev are in the valence band
+                if max(E(c,:))<0 && max(E(v,:))<0; continue; end
+                % skip if both Ec and Ev are in the conduction band
+                if min(E(c,:))>0 && min(E(v,:))>0; continue; end
+                % skip if Ev is strictly above Ec
+                if min(E(v,:))>max(E(c,:)); continue; end
+                % timer
+                t=t+1; waitbar(t./tot,h,'Integrating...'); 
+                % if some Ec and some Ev are conduction/valence bands, consider the situation
+                Ec = access_(E(c,:,:,:),qqq(2,:,m));
+                Ev = access_(E(v,:,:,:),qqq(3,:,m));
+                % keep only points where Ec and Ev are not together (conduction vs valence)
+                ex_ = xor(Ec<0, Ev<0); ex_(ex_) = Ec(ex_)>Ev(ex_);
+                % evaluate nesting
+                % loop over energies so that accumarray can be applied
+                for n = 1:nEps
+                    nesting(n,:) = nesting(n,:) + ...
+                        accumarray( fbz.f2i( qqq(1,ex_,m)).' , ...
+                                am_lib.gauss_((  (Ec(ex_)-Ev(ex_)).'-Ep(n)   )./degauss)./degauss , [] , @sum ).';
+                end
+                % another approach (didn't work out too well. i don't know what is wrong... )
+            %     nesting = nesting + ...
+            %         accumarray( flatten_( repmat(fbz.f2i(qqq(1,ex_,m)), nEps, 1 )) , ...
+            %                 flatten_(am_lib.gauss_((  (Ec(ex_)-Ev(ex_)).'-Ep(:) )./degauss)./degauss) , [] , @sum ).';
+            end
+            end
+            close(h);
+            nesting = nesting./prod(fbz.n);
+            
+        end
 
         function [dos]        = get_dos(dft,ibz,Ep,flag)
             if nargin<4; flag = 'dos'; end
@@ -3986,9 +4113,7 @@ classdef am_dft
                 % and divided by 1/E.^2
                 kT = 0.025852; % 300K
                 % E(valence,conduction,kpoints) 
-                Ev = permute(dft.E,[1,3,2]);
-                Ec = permute(dft.E,[3,1,2]);
-                E = Ec - Ev;
+                Ev = permute(dft.E,[1,3,2]); Ec = permute(dft.E,[3,1,2]); E = Ec - Ev;
                 % get occupational weights 
                 occw = am_lib.fermi_dirac_(Ec./kT) .* ( 1 - am_lib.fermi_dirac_(Ev./kT)); 
                 E = reshape(E,dft.nbands^2,dft.nks); occw = reshape(occw,dft.nbands^2,dft.nks); 
@@ -4001,9 +4126,7 @@ classdef am_dft
             elseif contains(flag,'jdos')
                 % checked against vasp. confirmed.
                 % only consider transitions from the valence band (E<0) to the conduction band (E>0)
-                Ev = permute(dft.E,[1,3,2]);
-                Ec = permute(dft.E,[3,1,2]);
-                E = Ec - Ev;
+                Ev = permute(dft.E,[1,3,2]); Ec = permute(dft.E,[3,1,2]); E = Ec - Ev;
                 % E(valence,conduction,kpoints) 
                 % make all valence    - valence    states E => 1E8 (something large enough to take it out of range)
                 % make all conduction - conduction states E => 1E8 (something large enough to take it out of range)
@@ -4035,18 +4158,14 @@ classdef am_dft
                 % and divided by 1/E.^2
                 kT = 0.025852; % 300K
                 % E(valence,conduction,kpoints) 
-                Ev = permute(dft.E,[1,3,2]);
-                Ec = permute(dft.E,[3,1,2]);
-                E = Ec - Ev;
+                Ev = permute(dft.E,[1,3,2]); Ec = permute(dft.E,[3,1,2]); E = Ec - Ev;
                 % get occupational weights 
                 occw = am_lib.fermi_dirac_(Ec./kT) .* ( 1 - am_lib.fermi_dirac_(Ev./kT)); 
                 E = reshape(E,dft.nbands^2,dft.nks); occw = reshape(occw,dft.nbands^2,dft.nks);
             elseif contains(flag,'jdos')
                 % checked against vasp. confirmed.
                 % only consider transitions from the valence band (E<0) to the conduction band (E>0)
-                Ev = permute(dft.E,[1,3,2]);
-                Ec = permute(dft.E,[3,1,2]);
-                E = Ec - Ev;
+                Ev = permute(dft.E,[1,3,2]); Ec = permute(dft.E,[3,1,2]); E = Ec - Ev;
                 % E(valence,conduction,kpoints) 
                 % make all valence    - valence    states E => 1E8 (something large enough to take it out of range)
                 % make all conduction - conduction states E => 1E8 (something large enough to take it out of range)
@@ -4189,6 +4308,23 @@ classdef am_dft
             % plot results
             plot_interpolated(fbz,bzp, ibz2fbz(fbz,ibz,get_nesting(fbz,ibz,degauss,Ep)) , varargin{:})
         end
+        
+        function [Aibz] = plot_nesting_jdos(fbz,ibz,bzp,dft,degauss,Ep)
+            
+            Aibz = am_dft.get_nesting_jdos(fbz,ibz,dft,degauss,Ep);
+            Afbz = am_dft.ibz2fbz(fbz,ibz,Aibz);
+            Abzp = am_lib.fftinterp_(Afbz,bzp.k,fbz.n);
+            
+            subplot(3,1,1:2);
+            [EE,XX]=ndgrid(Ep,bzp.x);
+            % ex_ = ones(size(Abzp)); ex_(Abzp<0.01) = 0;
+            % surf(XX,EE*scale_energies_,(abs(Abzp)./Ep.^2).^(0.1).*ex_,'edgecolor','none'); view([0 0 1]); axis tight;
+            surf(XX,EE,abs(Abzp),'edgecolor','none'); view([0 0 1]); axis tight;
+
+            axs_ = @(h,qt,ql) set(h,'Box','on','XTick',qt,'Xticklabel',ql);
+            axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [eV]'); xlabel('Wavevector k');
+
+        end
 
         function plot_bz(fbz)
 
@@ -4272,23 +4408,34 @@ classdef am_dft
             hold off; daspect([1 1 1]); box on;
         end
 
-        function plot_fermi_surface(ibz,fbz,dft,Ef,flag)
+        function h = plot_fermi_surface(ibz,fbz,dft,Ef,flag,C)
             if nargin < 5; flag=''; end
+            if nargin < 6; C=[]; end % C is the colorcode
+            
+            % % color based on curvature? (each band is a scalar field: hessian is diagonal)
+            % r = ndgrid(1:fbz.n(1),1:fbz.n(2),1:fbz.n(3)); r = permute(r,[4,1,2,3]);
+            % for i = 1:dft.nbands; C(i,:,:,:) = ifftn( fftn(E(i,:,:,:)).*(1i*r).^2 ); end; C = abs(real(C));
             
             if contains(flag,'jdos')
-                E = reshape(permute(dft.E,[1,3,2])-permute(dft.E,[3,1,2]),dft.nbands^2,dft.nks); E = sort(E);
+                % checked against vasp. confirmed.
+                % only consider transitions from the valence band (E<0) to the conduction band (E>0)
+                Ev = permute(dft.E,[1,3,2]); Ec = permute(dft.E,[3,1,2]); E = Ec - Ev;
+                % E(valence,conduction,kpoints) 
+                % make all valence    - valence    states E => 1E8 (something large enough to take it out of range)
+                % make all conduction - conduction states E => 1E8 (something large enough to take it out of range)
+                % proper way would be to compute fermi functions and use that as the projection weight
+                % but just doing it quick and dirty here (equivalent to assuming kt -> 0, fermi fucntion -> step function)
+                ex_ = (Ec<0) & (Ev<0); E(ex_) = 1E8;
+                ex_ = (Ec>0) & (Ev>0); E(ex_) = 1E8;
+                E = reshape(E,dft.nbands^2,dft.nks); E = sort(E);
                 E = reshape( am_dft.ibz2fbz(fbz,ibz,E) ,[dft.nbands.^2,fbz.n]); 
             else % just regular dos
                 E = reshape( am_dft.ibz2fbz(fbz,ibz,dft.E) ,[dft.nbands,fbz.n]); 
             end
 
-            % % color based on curvature? (each band is a scalar field: hessian is diagonal)
-            % r = ndgrid(1:fbz.n(1),1:fbz.n(2),1:fbz.n(3)); r = permute(r,[4,1,2,3]);
-            % for i = 1:dft.nbands; C(i,:,:,:) = ifftn( fftn(E(i,:,:,:)).*(1i*r).^2 ); end; C = abs(real(C));
-            C = [];
-            
-            %                                                                                  [4,4,1]  2
-            am_lib.plot_isosurface_(reshape(fbz.recbas*fbz.k,[3,fbz.n]), fbz.recbas, E, Ef, C, [4,4,1], 3, 'cubic,center');
+
+            % plot                                                                                 [4,4,1]  2
+            h = am_lib.plot_isosurface_(reshape(fbz.recbas*fbz.k,[3,fbz.n]), fbz.recbas, E, Ef, C, [1,1,1], 3, 'cubic,center');
             % plot bz boundary
             if contains(flag,'tetra'); am_dft.draw_bz_boundary(fbz,'tetra'); end
             % set lighting settings
