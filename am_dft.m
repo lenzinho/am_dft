@@ -2,10 +2,11 @@ classdef am_dft
     
     properties (Constant)
         tiny      = 1E-4; % precision of atomic coordinates
-        eps       = 1E-8; % numerical precision
-        units_eV  = 0.06465555; % sqrt( [eV/Ang^2] * [1/amu] ) --> 0.06465555 [eV]
-        units_THz = 98.22906;   % sqrt( [eV/Ang^2] * [1/amu] ) --> 98.22906 [THz=1/ps]
-        units_GHz = 98229.06;   % sqrt( [eV/Ang^2] * [1/amu] ) --> 98229.06 [GHz=1/fs]
+        eps       = 1E-8; % numerical precisions
+        units_meV = 6.465555; % sqrt( [eV/Ang^2] * [1/amu] ) --> 6.465555 [meV]
+        units_eV  = 0.006465; % sqrt( [eV/Ang^2] * [1/amu] ) --> 0.006465 [eV]
+        units_THz = 9.822906; % sqrt( [eV/Ang^2] * [1/amu] ) --> 9.822906 [THz=1/ps]
+        units_GHz = 9822.906; % sqrt( [eV/Ang^2] * [1/amu] ) --> 9822.906 [GHz=1/fs]
         
         amu2gram  = 1/6.02214E23;
         ev2nm     = 1239.842;
@@ -14,7 +15,7 @@ classdef am_dft
         potdir    = '/Users/lenzinho/Linux/vasp.5.4/potcars/PBE.54/';
         cifdir    = '/Users/lenzinho/Developments/_materials/cif/';
     end
-
+    
     % materials database
     
     methods (Static)
@@ -73,6 +74,388 @@ classdef am_dft
 
     methods (Static)
         
+        function demo_setup_calculations
+            clear;clc;
+            %% --------------------------------------------------------------------------------------------------
+            %                          XPS Core Level Calculations
+            %  --------------------------------------------------------------------------------------------------
+            %% relax structures
+            odir=pwd;
+            dlist = {'Sn','SnO','SnO2'}; nds=numel(dlist);
+            for i = 1:nds
+                wdir=[odir,'/01_rlx/',dlist{i}];cd(wdir);
+                    pc = am_dft.load_cell('poscar','POSCAR');
+                    incar = am_dft.generate_incar('relax',{'algo','Normal'});
+                    am_dft.write_incar(incar);
+                    am_dft.write_poscar(pc,'POSCAR')
+                    am_dft.write_kpoints(pc,[],5)
+                    am_dft.write_potcar(pc);
+                cd(odir);
+            end
+            %% XPS (Z+1 CORE LEVEL CALCULATION)
+            odir=pwd;
+            dlist = {'Sn','SnO','SnO2'}; nds=numel(dlist);
+            for i = 1:nds
+                wdir=[odir,'/01_rlx/',dlist{i}];cd(wdir);
+                    pc = am_dft.load_cell('poscar','POSCAR');
+                    % z+1
+                    for j = 1:numel(pc.symb); if strcmp(pc.symb{j},'Sn'); pc.symb{j}='Sb'; end; end
+                wdir=[odir,'/03_z+1/',dlist{i}];mkdir(wdir);cd(wdir);
+                    incar = am_dft.generate_incar('scf',{'algo','Normal','ismear','-5'});
+                    am_dft.write_incar(incar);
+                    am_dft.write_poscar(pc,'POSCAR');
+                    am_dft.write_kpoints(pc,[],5);
+                    am_dft.write_potcar(pc);
+                cd(odir);
+            end
+            %% --------------------------------------------------------------------------------------------------
+            %                          What causes the dynamic instability in VN?
+            %  --------------------------------------------------------------------------------------------------
+            %% create pseudocubic supercell
+            pc = am_dft.load_cell('poscar','POSCAR.pc');
+            sc = am_dft.get_supercell(pc,'fcc');
+            am_dft.write_poscar(sc,'POSCAR')
+            %% relax pseudocubic structure
+            pc = am_dft.load_cell('poscar','POSCAR');
+            odir=pwd;wdir='0_rlx';mkdir(wdir);cd(wdir);
+                incar = am_dft.generate_incar('relax',{'algo','Normal'});
+                am_dft.write_incar(incar);
+                am_dft.write_poscar(pc,'POSCAR')
+                am_dft.write_kpoints(pc,[],5)
+                am_dft.write_potcar(pc);
+                am_dft.write_qsub('trio','snic2018-3-121',2,16,'','amei2@illinois.edu')
+            cd(odir);
+            %% scf 
+            % pc = am_dft.load_cell('poscar','POSCAR');
+            % odir=pwd;wdir='1_scf';mkdir(wdir);cd(wdir);
+            %     incar = am_dft.generate_incar('scf',{'nbands','40','algo','Normal'}); % MBJ is not self-consistent should not be included here.
+            %     am_dft.write_incar(incar);
+            %     am_dft.write_poscar(pc,'POSCAR')
+            %     am_dft.write_kpoints([15 15 11]);
+            %     am_dft.write_potcar(pc);
+            % cd(odir);
+            % scf analysis
+            odir=pwd;wdir='1_scf';cd(wdir); scale_energies_ = 3.5/3;
+                % load all the data
+                Ef         = am_dft.get_vasp('outcar:fermi');
+                [uc,pc,ic] = am_dft.load_cell('poscar','POSCAR');
+                [fbz,ibz]  = am_dft.get_zones(pc,[15 15 11]);
+                doscar     = am_dft.load_doscar(Ef);
+                dft        = am_dft.load_procar(Ef);
+                ibzkt      = am_dft.load_ibzkpt(uc);
+                % check that kpoints match (energies from DFT can be mapped on to the internally generated ibz points and tetrahedra)
+                if sum(abs(ibz.k-ibzkt.k))>1E-8
+                    error('mismatch between ibz and ibzkpt from vasp'); 
+                end
+                % try compling mex for faster DOS
+                am_dft.compile_mex()
+                % intialize figure
+                set(gca,'color','w');
+                am_lib.set_plot_defaults_();
+                % 1) plot DOS
+                subplot(2,2,1);
+                dos = am_dft.get_dos(dft,ibz,doscar.E);
+                plot(scale_energies_*dos.E,dos.D,'-',doscar.E,doscar.D/2,'--'); % factor of 2 for spins
+                xlim([-6 6]); xlabel('E [eV]'); ylabel('g(E) [states/spin-eV]');
+                % 2) compute optical joint density of states factoring in only transitions from the conduction to valence band
+                subplot(2,2,2);
+                jdos = am_dft.get_dos(dft,ibz,linspace(0.7,5.8,400),'jdos');
+                plot(scale_energies_*jdos.E,jdos.D,'-');
+                xlim([0.7 5.7]); xlabel('hv [eV]'); ylabel('jDOS(hv)');
+                % 3) plot fermi surface (of conduction and valence band)
+                subplot(2,2,3);
+                am_dft.plot_fermi_surface(ibz,fbz,dft,[-0.3,0.3],'fermi,tetra');
+                % 4) plot nesting-JDOS along high-symmetry directions
+                degauss=0.1; Ep = linspace(0,6,300).';
+                Aibz = plot_nesting_jdos(fbz,ibz,bzp,dft,degauss,Ep);
+            cd(odir)
+            %% evk
+            % odir=pwd;wdir='2_evk'; copyfile('1_scf',wdir);cd(wdir);
+            %     pc = am_dft.load_cell('poscar','POSCAR');
+            %     incar = am_dft.generate_incar('evk',{'nbands','40','algo','Normal'});
+            %     am_dft.write_incar(incar);
+            %     am_dft.write_poscar(pc,'POSCAR')
+            %     bzp = am_dft.get_bz_path(pc,50,'tetra');
+            %     am_dft.write_kpoints(bzp);
+            %     am_dft.write_potcar(pc);
+            % cd(odir);
+            % evk analysis
+
+            odir=pwd;wdir='2_evk';cd(wdir);
+                Ef = 6.9686; % from SCF
+                [~,pc] = am_dft.load_cell('poscar','POSCAR');
+                bzp= am_dft.get_bz_path(pc,50,'tetra');
+                dft= am_dft.load_procar(Ef);
+                % first save the image
+                subplot(3,1,1:2);
+                % % render the image
+                % am_dft.plot_dispersion_projected(dft,bzp,pc,'orbital/atom'); ylim([-6 6]); pbaspect([2,1,1]);
+                % set(gca,'XTick',[]); xlabel([]); set(gca,'YTick',[]); ylabel([]); delete(findall(gcf,'Type','line')); set(gca,'linewidth',0.1);
+                % % render the image
+                subplot(3,1,1:2); set(gcf,'Renderer','painters');
+                am_dft.plot_dispersion_projected(dft,bzp,pc,'none'); ylim([-6 6]); pbaspect([2,1,1]); 
+                delete(findall(gcf,'Type','surface')); colorbar('off');
+
+                % then do this to save frame:
+                % delete(findall(gcf,'Type','surface')); colorbar('off');
+            cd(odir);
+            %% opt
+            % odir=pwd;wdir='3_opt'; copyfile('1_scf',wdir);cd(wdir);
+            %     pc = am_dft.load_cell('poscar','POSCAR');
+            %     incar = am_dft.generate_incar('opt',{'nbands','40','algo','Normal','ismear','-5'});
+            %     am_dft.write_incar(incar);
+            %     am_dft.write_poscar(pc,'POSCAR')
+            %     am_dft.write_kpoints([15 15 11]);
+            %     am_dft.write_potcar(pc);
+            % cd(odir);
+            % opt analysis
+            am_lib.set_plot_defaults_(); scale_energies_ = 3.5/3;
+            odir=pwd;wdir='3_opt';cd(wdir);
+                [~,pc] = am_dft.load_cell('poscar','POSCAR');
+                Ef  = am_dft.get_vasp('outcar:fermi');
+                dft = am_dft.load_procar(Ef);
+                [fbz,ibz] = am_dft.get_zones(pc,[15 15 11]);
+                % plot e1 + i1 * e2
+                set(gca,'color','w');
+                ri = {'real','imag'};
+                for i = 1:2
+                    x = am_dft.get_vasp(['outcar:',ri{i},'_df']);
+                    E = x(:,1); exx = x(:,2); exz = x(:,4);
+                    subplot(2,2,i); 
+                    plot(scale_energies_*E,exx,scale_energies_*E,exz); 
+                    xlabel('hv [eV]'); ylabel(ri{i}); 
+                    xlim([0.7 5.3]); ylim([-3 17]);
+                    xticks([1:1:6]); yticks([-10:5:30]);
+                    set(gca,'XMinorTick','on','YMinorTick','on')
+                    legend({'exy','ez'});
+                end
+                % plot jdos ontop of imaginary DF
+                subplot(2,2,2); 
+                degauss=0.2; ex_ = x(:,1) > 0.7 & x(:,1) < 5.3; 
+                jdos = am_dft.get_dos_quick(dft,ibz,E(ex_),degauss,'jdos,gauss');
+                e2 = x(ex_,2); Fcv = e2.*jdos.E./jdos.D; Pcv = Fcv.*jdos.E; 
+                % calculate mean
+                std(Pcv(jdos.E>2))./mean(Pcv(jdos.E>2))
+                hold on; plot(jdos.E,jdos.D./jdos.E.^2*100,'--'); hold off;
+                legend({'exy','ez','JDOS/(hv)^2'});
+                % plot experimental results (REAL)
+                xyz = {'xy','z'};
+                subplot(2,2,1);
+                for i = 1:2
+                    d=importdata(['hybrid_model/sno_',xyz{i},'.txt']);
+                    E = d.data(:,1); n = d.data(:,2) + 1i*d.data(:,3);
+                    hold on; h=plot(E,real(n.^2),'--'); hold off;
+                end
+                legend({'exy','ez','exy (exp)','ez (exp)'});
+                % plot experimental results (IMAG)
+                xyz = {'xy','z'};
+                subplot(2,2,2);
+                for i = 1:2
+                    d=importdata(['hybrid_model/sno_',xyz{i},'.txt']);
+                    E = d.data(:,1); n = d.data(:,2) + 1i*d.data(:,3);
+                    hold on; h=plot(E,imag(n.^2),'--'); hold off;
+                end
+                legend({'exy','ez','JDOS','exy (exp)','ez (exp)'});
+                % calculate phonon-momentum nesting function
+
+                % plot region giving rise to the peak at 3.6 eV (color-coded based on optical matrix element)
+                subplot(2,2,4);
+                % load ibz optical matrix elements
+                P  = am_dft.load_optical_matrix_elements();
+                % average over 1,2,3
+                P = sum(P(:,:,:,1,:),5)/3; 
+                % map onto fbz
+                P = reshape( P , [dft.nbands.^2,ibz.nks]);
+                P = am_dft.ibz2fbz(fbz,ibz,P);
+                P = reshape(P, [dft.nbands.^2,fbz.n]);
+                % plot 
+                am_dft.plot_fermi_surface(ibz,fbz,dft,3.6/scale_energies_,'jdos,tetra',P);
+                am_lib.colormap('magma');
+                % 
+            cd(odir)
+            %% eps
+            odir=pwd;wdir='4_eps';copyfile('1_scf',wdir);cd(wdir);
+                pc = am_dft.load_cell('poscar','POSCAR');
+                incar = am_dft.generate_incar('eps',{'nbands','40','algo','Normal','ismear','-5'});
+                am_dft.write_incar(incar);
+                am_dft.write_poscar(pc,'POSCAR')
+                am_dft.write_kpoints([15 15 11]);
+                am_dft.write_potcar(pc);
+            cd(odir);
+            %% fermi surface (~1.5x higher density sampling, NSCF)
+            % odir=pwd;wdir='6_fermi'; copyfile('1_scf',wdir); cd(wdir);
+            %     pc = am_dft.load_cell('poscar','POSCAR');
+            %     incar = am_dft.generate_incar('evk',{'nbands','40','algo','Normal','ismear','-5'});
+            %     am_dft.write_incar(incar);
+            %     am_dft.write_poscar(pc,'POSCAR')
+            %     am_dft.write_kpoints([21,21,15]);
+            %     am_dft.write_potcar(pc);
+            % cd(odir);
+            % fermi analysis
+            odir=pwd;wdir='6_fermi';cd(wdir);
+                % load all the data
+                Ef         = am_dft.get_vasp('outcar:fermi');
+                [uc,pc,ic] = am_dft.load_cell('poscar','POSCAR');
+                [fbz,ibz]  = am_dft.get_zones(pc,[21,21,15]);
+                dft        = am_dft.load_procar(Ef);
+            %     ibzkt      = am_dft.load_ibzkpt(uc);
+            %     % check that kpoints match (energies from DFT can be mapped on to the internally generated ibz points and tetrahedra)
+            %     if sum(abs(ibz.k-ibzkt.k))>1E-8
+            %         error('mismatch between ibz and ibzkpt from vasp'); 
+            %     end
+                am_dft.plot_fermi_surface(ibz,fbz,dft,[-0.3,0.3],'fermi,tetra')
+                clist = am_lib.colormap_('spectral');
+                colormap(clist([1,3,4],:).^(1.2));
+                % plot dos
+                scale_energies_ = 3.5/3;
+                doscar     = am_dft.load_doscar(Ef);
+
+
+
+            %% AIMD
+            odir=pwd;wdir='7_aimd';cd(wdir);
+                pc = am_dft.load_cell('poscar','POSCAR.seed');
+                sc = am_dft.get_supercell(pc,eye(3)*2);
+                incar = am_dft.generate_incar('aimd',{'nbands','320','algo','Normal'}); % nbands = 40*(sc.natoms/pc.natoms);
+                am_dft.write_incar(incar);
+                am_dft.write_poscar(sc,'POSCAR')
+                am_dft.write_kpoints(1);
+                am_dft.write_potcar(sc);
+                am_dft.write_qsub('trio','snic2018-3-121',2,16,'','amei2@illinois.edu')
+            cd(odir);
+            opt analysis
+
+
+
+
+
+
+
+
+
+
+
+
+            %%
+            % %% --------------------------------------------------------------------------------------------------
+            % %                                        New PP for Oxygen: (O_GW_new)
+            % %  * turns out it is not that great. Reverting back to O_s_GW.
+            % %  --------------------------------------------------------------------------------------------------
+            % %% relax structure
+            % pc = am_dft.load_cell('poscar','POSCAR');
+            % wdir='0_rlx_pp';mkdir(wdir);cd(wdir);
+            %     incar = am_dft.generate_incar('relax',{'nbands','40','algo','Normal'});
+            %     am_dft.write_incar(incar);
+            %     am_dft.write_poscar(pc,'POSCAR')
+            %     am_dft.write_kpoints([15 15 11]);
+            %     am_dft.write_potcar(pc);
+            % cd(odir);
+            % %% scf 
+            % pc = am_dft.load_cell('poscar','POSCAR');
+            % wdir='1_scf_pp';mkdir(wdir);cd(wdir);
+            %     % MBJ is not self-consistent should not be included here.
+            %     % also using tetrahedron integration (ismear=-5) for accurate Ef
+            %     incar = am_dft.generate_incar('scf',{'nbands','40','algo','Normal','ismear','-5'});
+            %     am_dft.write_incar(incar);
+            %     am_dft.write_poscar(pc,'POSCAR')
+            %     am_dft.write_kpoints([15 15 11]);
+            %     am_dft.write_potcar(pc);
+            % cd(odir);
+            % %% evk (MBJ)
+            % wdir='2_evk_mbj_pp'; copyfile('1_scf_pp',wdir);cd(wdir);
+            %     pc = am_dft.load_cell('poscar','POSCAR');
+            %     incar = am_dft.generate_incar('evk',{'nbands','40','algo','Normal','metagga','mbj'});
+            %     am_dft.write_incar(incar);
+            %     am_dft.write_poscar(pc,'POSCAR')
+            %     bzp = am_dft.get_bz_path(pc,50,'tetra');
+            %     am_dft.write_kpoints(bzp);
+            %     am_dft.write_potcar(pc);
+            % cd(odir);
+            % %% evk (MBJ) analysis
+            % wdir='2_evk_mbj_pp';cd(wdir);
+            %     pc = am_dft.load_cell('poscar','POSCAR');
+            %     bzp= am_dft.get_bz_path(pc,50,'tetra');
+            %     Ef = am_dft.get_vasp('outcar:fermi');
+            %     dft= am_dft.load_procar(Ef);
+            %     am_dft.plot_dispersion_orbital_character(dft,bzp);
+            %     ylim([-10 10]);
+            % cd(odir); 
+        end
+        
+        function demo_frozen_phonon_based_on_ibrion_eight()
+            clear;clc;odir=pwd;
+            
+            % select a mode, maximum displacement, number of displacements
+            modelist = [1:100]; dmax = 0.01; ndisps = 15; flag = 'A';
+
+            % load phonon eigenvectors and unit cell
+            bdir='/Users/lenzinho/Linux/calc.vasp/SnO/paper/14_frozen/DFPT';cd(bdir);
+                [~,pc] = am_dft.load_cell('poscar','POSCAR');
+                incar  = am_dft.load_incar('INCAR');
+                d      = am_dft.get_vasp('outcar:phonon_eigendisplacements'); % obtained with iwrite = 3
+                % V      = am_dft.get_vasp('outcar:phonon_eigenvectors');
+                % d      = V./sqrt(pc.mass(pc.species));
+                hw     = am_dft.get_vasp('outcar:phonon_energies');
+            cd(odir);
+
+            % check modelist
+            modelist = modelist(modelist<=size(d,3));
+            % get scale factors setting maximum displacement
+            scale_ = @(d,imode) max(am_lib.normc_(d(:,:,imode)));
+            % create directories
+            wdir_ = @(imode,idisp) sprintf('./%.3i/%.3i',imode,idisp);
+            % setup or analysis?
+            switch flag
+                case {'S','setup'}
+                    % modify incar
+                    incar.ibrion = '-1'; incar.npar  =  ''; 
+                    incar.kpar   = '8';  incar.ncore = '8';
+                    % set the maximum displacement to between [-0.01,0.01]; % [nm]
+                    alpha = linspace(-dmax,dmax,ndisps).'/scale_(d,imode);
+                    % loop
+                    for i = 1:numel(modelist); imode = modelist(i);
+                    for idisp = 1:numel(alpha)
+                        wdir=wdir_(imode,idisp); mkdir(wdir); cd(wdir);
+                            % write files
+                            % POSCAR
+                                sc = pc; sc.tau = sc.tau + sc.bas\(alpha(idisp)*d(:,:,imode));
+                                am_dft.write_poscar(sc,'POSCAR')
+                            % INCAR
+                                am_dft.write_incar(incar);
+                            % KPOINTS, POTCAR
+                            for f = {'KPOINTS','POTCAR'}
+                                copyfile([bdir,'/',f{:}],f{:});
+                            end
+                        cd(odir);
+                    end
+                    end
+                case {'A','analysis'}
+                    figure(1);clc;clf;set(gcf,'color','w');hold on;
+                    for i = 1:numel(modelist); imode = modelist(i);
+                        % grep oszicar for final energy
+                        E = NaN(ndisps,1);
+                        for idisp = 1:ndisps
+                            wdir=wdir_(imode,idisp); if exist(wdir,'dir')~=7; continue; end; cd(wdir);
+                                E(idisp) = am_dft.get_vasp('oszicar:toten');
+                            cd(odir);
+                        end
+                        % set the maximum displacement to between [-0.01,0.01]; % [nm]
+                        alpha = linspace(-dmax,dmax,ndisps).'./scale_(d,imode);
+                        % plot and fit results
+                        if sum(~isnan(E))>2
+                            scale = max(am_lib.normc_(d(:,:,imode))); ex_ = ~isnan(E);
+                            % U [eV] = 1/2 * u^2 [nm/sqrt(amu)] * amu;
+                            plot(alpha(ex_),E(ex_),'o-');
+                            ft_ = fit(alpha(ex_),E(ex_),'poly2');
+                            plot(alpha,E,'o-',alpha,feval(ft_,alpha),'--');
+
+                            phonon_energy = sqrt( 2 * ft_.p1 * am_dft.units_meV * 2*pi );
+                            [ phonon_energy, hw(imode), phonon_energy./hw(imode) ]
+                        end
+                    end
+            end
+        end
+        
         function [uc,pc,md,bvk,pp,bvt,pt] = get_phonons(opts)
             %
             % clear; clc;
@@ -106,7 +489,8 @@ classdef am_dft
                 % get both pairs and triplets?
                 if or(opts.cutoff3==0,isempty(opts.cutoff3))
                     % get pair shells
-                    [bvk,pp] = get_bvk(pc,uc,md,opts.cutoff2);
+                    [bvk] = get_model('bvk', pc, opts.cutoff2, uc, md);
+%                     [bvk,pp] = get_bvk(pc,uc,md,opts.cutoff2);
                     % get triplet shells
                     bvt = []; pt = [];
                 else
@@ -214,6 +598,40 @@ classdef am_dft
             end
 
             
+        end
+        
+        function demo_plot_charge()
+            % fposcar = 'PARCHG.0028.ALLK';
+            % fposcar = 'PARCHG.0028.0001';
+            fposcar = 'PARCHG';
+            % fposcar='CHG';
+            [uc] = am_dft.load_poscar(fposcar);
+
+
+            % generate coordinates [cart]
+            mp_ = @(x) [0:(x-1)]./x; [r{1:3}] = ndgrid(mp_(uc.n(1)),mp_(uc.n(2)),mp_(uc.n(3)));
+            r = reshape(uc.bas*reshape(permute(cat(4,r{:}),[4,1,2,3]),3,prod(uc.n)),[3,uc.n]);
+
+            % set isolevels
+            fwd_ = @(x) log(x); rev_ = @(x) exp(x);
+            v = rev_(linspace(fwd_(min(uc.chg(:))),fwd_(max(uc.chg(:))),50));
+
+            % plot isolevels
+            figure(1); clf; set(gcf,'color','w'); sq_ = @(x) reshape(x,uc.n);
+            nvs = numel(v); clist=am_lib.colormap_('virdis',nvs);
+            for i = 1:nvs
+                h=patch(isosurface(sq_(r(1,:)),sq_(r(2,:)),sq_(r(3,:)),uc.chg,v(i)));
+                h.FaceColor=clist(i,:); h.FaceAlpha=0.2; h.EdgeColor='none';
+            end
+            box on; axis tight; daspect([1 1 1]);
+            %
+            %%
+            figure(1); clf; set(gcf,'color','w'); sq_ = @(x) reshape(x,uc.n);
+            hold on;
+                h=slice(permute(sq_(r(1,:)),[2,1,3]),permute(sq_(r(2,:)),[2,1,3]),sq_(r(3,:)),log(uc.chg),uc.bas(1,1)/2,uc.bas(2,2)/2,uc.bas(3,3)/2); 
+                for i = 1:numel(h); h(i).EdgeColor='none'; h(i).FaceColor='interp'; end
+            hold off;
+
         end
         
         function demp_tb()
@@ -481,14 +899,18 @@ classdef am_dft
                     case 'base'
                         % lepsilon
                         opts_ = { ...
-                        'istart'   , '' , 'icharg' , '' , ... % restarting
+                        'ncore'    , '' , 'kpar'   , '' , 'npar'   , '' , ... % parallelization
+                        'istart'   , '' , 'icharg' , '' , 'nwrite' , '' , ... % restarting
                         'ispin'    , '' , 'gga'    , '' , 'ivdw'   , '' , ... % exchange correlations stuff
-                        'encut'    , '' , 'prec'   , '' , 'algo'   , '' , 'ialgo'  , '' , 'amix'   , '' , 'ediff'    , '' , 'nelmdl' , '' , ...  % precision/convergence stuff
+                        'encut'    , '' , 'prec'   , '' , 'algo'   , '' , 'ialgo'  , '' , 'amix'   , '' , ...
+                        'ediff'    , '' , 'nelmdl' , '' , ...  % precision/convergence stuff
                         'nbands'   , '' , 'ismear' , '' , 'sigma'  , '' , 'lorbit' , '' , ...
-                        'ldau'     , '' ,'ldautype', '' , 'ldaul' , '' , 'ldauu'   , '' , 'ldauj'     , '' , 'ldauprint' , '' , 'lmaxmix'   , '' , ... ... % DFT+U stuff
-                        'ibrion'   , '' , 'isif'   , '' , 'ediffg', '' , 'potim'   , '' , 'tebeg'     , '' , 'nblock'    , '' , 'nsw'     , '' , 'smass'  , '' , 'addgrid' , '' , ... % aimd stuff
+                        'ldau'     , '' ,'ldautype', '' , 'ldaul'  , '' , 'ldauu'  , '' , 'ldauj'  , '' , ...
+                        'ldauprint', '' ,'lmaxmix' , '' , ... % DFT+U stuff
+                        'ibrion'   , '' , 'isif'   , '' , 'ediffg' , '' , 'potim'  , '' , 'tebeg'  , '' , ...
+                        'nblock'   , '' , 'nsw'    , '' , 'smass'  , '' , 'addgrid', '' , ... % aimd stuff
                         'ncore'    , '' , 'npar'   , '' , 'nsim'   , '' , ... % cluster stuff 
-                        'lreal'    , '' , 'lwave'     , '' , 'lcharg'  , '' , 'lvtot'  , '' ... % save stuff
+                        'lreal'    , '' , 'lwave'  , '' , 'lcharg' , '' , 'lvtot'  , '' ... % save stuff
                         };
                         incar = generate_incar('',opts_);
                     case 'defaults'
@@ -514,29 +936,47 @@ classdef am_dft
                         incar = generate_incar('defaults',opts_);
                     case 'scf'
                         opts_ = { ...
-                            'ibrion' , '-1'       , 'nsw'    , '0'       , 'lorbit' , '11'      , 'nedos' ,  '10001' ...
+                            'ibrion' , '-1'       , 'nwrite' , '3'       ,  'ismear' , '-5', ...
+                            'nsw'    , '0'        , 'lorbit' , '11'      , 'nedos'  ,  '10001' ...
                             'addgrid', '.FALSE.'  , ... % takes too long with addgrid
                             'lwave'  , '.TRUE.'   , 'lcharg' , '.TRUE.'  , 'lvtot'  , '.TRUE.'  , ...
                             };
                         incar = generate_incar('defaults',opts_);
                     case {'nscf','evk'}
-                        opts_ = { ...
-                            'icharg' , '11'       ,  ...
-                            'lwave'  , '.FALSE.'  , 'lcharg' , '.FALSE.' , 'lvtot'  , '.FALSE.'  , ...
-                            };
+                        opts_ = {'icharg','11','nwrite','3','lwave','.FALSE.','lcharg','.FALSE.','lvtot','.FALSE.'};
                         incar = generate_incar('scf',opts_);
-                    case 'eps'
-                        opts_ = {'lepsilon', '.TRUE.'};
-                        incar = generate_incar('nscf',opts_);
                     case 'opt'
-                        opts_ = {'loptics','.TRUE.','nedos','9999'};
+                        opts_ = {'loptics','.TRUE.','nedos','10001'}; 
                         incar = generate_incar('nscf',opts_);
-                    case 'aimd'
+                    case 'eps' % density functional perturbation theory (requires the calculation to be self-consistent)
+                        % nsw = 1 is required otherwise ibrion = 8 option is not accepted.
+                        % icharg = 2 is required for ibrion = 8 other nonorthogonality error.
+                        opts_ = {'icharg','2','ibrion','8','nsw','1','lepsilon','.TRUE.','isym','0','#ncore','8'}; 
+                        incar = generate_incar('nscf',opts_);
+                    case 'elastic' % finite difference calculation of phonons at gamma and elastic constants;  (requires the calculation to be self-consistent)
+                        % nsw = 1 is required otherwise ibrion = 6 option is not accepted.
+                        % icharg = 2 is required for ibrion = 8 other nonorthogonality error.
+                        % isym = 0 makes the calculation much faster because it allows ncore to be set (despite needing to consider more degrees of freedom)
+                        opts_ = {'icharg','2','ibrion','6','nsw','1','isif','3','potim','0.01','isym','0','#ncore','8'}; 
+                        incar = generate_incar('nscf',opts_);
+                    case 'aimd' 
                         % similar to rlx but with ibrion=0, a lower energy convergence, no convergence on ionic motion, nose thermostat, and more steps 
-                        opts_ = {...
-                            'ibrion' , '0' , 'ediff','1e-6', 'ediffg', '', 'smass', '0', 'nsw', '1000', ...
-                            };
+                        opts_ = {'ibrion','0','ediff','1e-6','ediffg','','smass','0','nsw', '1000','tebeg','300',};
                         incar = generate_incar('rlx',opts_);
+                    case 'icore1'
+                        opts_ = {'icorelevel','1'};
+                        incar = generate_incar('scf',opts_);
+                    case 'icore2' % this option is material specific!
+                        opts_ ={'icorelevel','2', ...
+                                'clnt' , '1' , ... % species which is excited
+                                'cln'  , '3' , ... % main quantum number of excited core electron 
+                                'cll'  , '2' , ... % l quantum number of excited core electron
+                                'clz'  , '1'       % (0.5) slaters transition state , (1.0) whole electron excited 
+                        };
+                        incar = generate_incar('scf',opts_);
+                    case {'lobster'}
+                        opts_ = {'isym','0'}; % lobster requires all kpoints without symmeterization
+                        incar = generate_incar('scf',opts_);
                 end
             end
             
@@ -655,13 +1095,13 @@ classdef am_dft
             if nargin<2;potdir=am_dft.potdir; end
             % database
             potcar_database = {...
-                '  ' ,'  ' ,'Li_sv' ,'Be_sv' ,'  ' ,'  ' ,'N_s_GW' ,'O_s_GW' , ... %  h     he    li    be    b     c     n     o
-                '  ' ,'  ' ,'Na_pv' ,'Mg_pv' ,'Al_GW' ,'Si' ,'  ' ,'  ' , ... %  f     ne    na    mg    al    si    p     s
+                '  ' ,'  ' ,'Li_sv_GW' ,'Be_sv_GW' ,'  ' ,'  ' ,'N_s_GW' ,'O_s_GW' , ... %  h     he    li    be    b     c     n     o
+                '  ' ,'  ' ,'Na_sv_GW' ,'Mg_sv_GW' ,'Al_sv_GW' ,'Si_sv_GW' ,'  ' ,'  ' , ... %  f     ne    na    mg    al    si    p     s
                 '  ' ,'  ' ,'K_sv' ,'Ca_sv' ,'Sc_sv_GW' ,'Ti_pv' ,'V_sv_GW' ,'  ' , ... %  cl    ar    k     ca    sc    ti    v     cr
                 'Mn_GW' ,'Fe_GW' ,'  ' ,'Ni_sv_GW' ,'  ' ,'  ' ,'Ga_sv_GW' ,'  ' , ... %  mn    fe    co    ni    cu    zn    ga    ge
                 '  ' ,'  ' ,'  ' ,'  ' ,'Rb_sv' ,'Sr_sv' ,'Y_sv' ,'  ' , ... %  as    se    br    kr    rb    sr    y     zr
                 '  ' ,'  ' ,'  ' ,'  ' ,'Rh_GW' ,'  ' ,'  ' ,'  ' , ... %  nb    mo    tc    ru    rh    pd    ag    cd
-                'In_sv_GW' ,'Sn_sv_GW' ,'  ' ,'  ' ,'  ' ,'  ' ,'Cs_sv' ,'Ba_sv' , ... %  in    sn    sb    te    i     xe    cs    ba
+                'In_sv_GW' ,'Sn_sv_GW' ,'Sb_sv_GW' ,'Te_sv_GW' ,'  ' ,'  ' ,'Cs_sv_GW' ,'Ba_sv_GW' , ... %  in    sn    sb    te    i     xe    cs    ba
                 'La_GW' ,'Ce_3' ,'Pr_3' ,'Nd_3' ,'Pm_3' ,'Sm_3' ,'Eu_3' ,'Gd_3' , ... %  la    ce    pr    nd    pm    sm    eu    gd
                 'Tb_3' ,'Dy_3' ,'Ho_3' ,'Er_3' ,'Tm_3' ,'Yb_3' ,'Lu' ,'  ' , ... %  tb    dy    ho    er    tm    yb    lu    hf
                 '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  ta    w     re    os    ir    pt    au    hg
@@ -698,18 +1138,24 @@ classdef am_dft
 
             function c = get_comments_(token)
                 switch token
+                % parallelization
+                case {'ncore','#ncore'}; c='orbital parallelization SQRT( number of cores )';
+                case 'npar';   		c='band parallelization';
+                case 'kpar';        c='kpoint parallelization';
+                case 'nsim';   		c='number of bands simultaneously optimized by RMMS-DIIS algorithm';
                 % starting
                 case 'istart'; 		c='(0) new  (1) cont (2) samecut';
                 case 'icharg'; 		c='(1) file (2) atom (3) const <scf | nscf> (11)-chgcar';
+                case 'nwrite';  	c='(2) default (3) verbose (4) debugging';
                 % electronic
-                case 'gga';    		c='exchannge correlation function';
+                case 'gga';    		c='(AM05) exchannge correlation function; not usable with ivdw';
+                case 'ivdw';   		c='(0) no vdW correction (2) Tkatchenko-Scheffler; not usable with density functional perturbation theory';
                 case 'nelmdl'; 		c='non-selfconsistent iterations: (<0) only once, (>0) at every ionic step';
-                case 'outcar:ispin';  		c='(1) non-spin-polarized (2) spin-polarized';
+                case 'ispin';  		c='(1) non-spin-polarized (2) spin-polarized';
                 case 'prec';   		c='Accurate, Normal';
-                case 'ivdw';   		c='vdW';
                 case 'algo';   		c='(VeryFast) RMM-DIIS (Fast) Davidson/RMM-DIIS (Normal) Davidson';
                 case 'ialgo';  		c='(38) Davidson (48) RMM-DIIS algorithm';
-                case 'outcar:nbands'; 		c='number of bands';
+                case 'nbands'; 		c='number of bands';
                 case 'encut';  		c='cutoff';
                 case 'ismear'; 		c='(0) gauss (1) mp (-5) tetrah';
                 case 'sigma';  		c='maximize with entropy below 0.1 meV / atom';
@@ -726,16 +1172,23 @@ classdef am_dft
                 % ionic
                 case 'ediffg';      c='(<0) relaxation will stop if all forces are less than |EDIFFG| (>0) relaxation stops if energy change is less than EDIFFG';
                 case 'tebeg';  		c='temperature of the MD';
-                case 'ibrion'; 		c='(-1) no update (0) MD (1) RMM-DIIS quasi-Newton (2) conjugate-gradient';
+                case 'ibrion'; 		c='(-1) no update (0) MD (1) RMM-DIIS quasi-Newton (2) conjugate-gradient (6) finite difference (9) pertubation theory';
                 case 'potim';  		c='Timestep in femtoseconds';
                 case 'isif';   		c='Relax (2) ions (3) ions,volume,shape (4) ions,shape';
                 case 'nblock'; 		c='write after every iteration';
                 case 'nsw';    		c='number of ionic steps';
                 case 'smass';  		c='(-3) NVE (=>0) Nose thermostat';
-                % parallelization
-                case 'ncore';  		c='approx SQRT( number of cores)';
-                case 'npar';   		c='Parallelization';
-                case 'nsim';   		c='Number of bands which are optimized by RMMS-DIIS algorithm simultaneously';
+                case 'addgrid';     c='(.TRUE.) adds support grid for augmentation charges reducing noise on force (cannot be used with ivdw)';
+                % icore
+                case 'icorelevel';  c='(1) initial state approximation, (2) electron is removed from the core and placed into the valence' ;
+                case 'clnt';        c='(icorelevel=2): species which is excited';
+                case 'cln';         c='(icorelevel=2): main quantum number of excited core electron';
+                case 'cll';         c='(icorelevel=2): l quantum number of excited core electron';
+                case 'clz';         c='(icorelevel=2): (0.5) slaters transition state , (1.0) whole electron excited';
+                % charge
+                case 'lpard';       c='(.TRUE.) calcualte charge densities';
+                case 'iband';       c='indices of bands to use in charge density calculation';
+                % case 'iband';       c='indices of bands to use in charge density calculation';
                 % oribtal info
                 case 'lorbit'; 		c='(11) lm-proj DOS and PROCAR (0) DOS';
                 % projection scheme
@@ -749,38 +1202,40 @@ classdef am_dft
             end
         end
 
-        function           write_kpoints(bz,fkpoints)
-            if nargin < 2; fkpoints='KPOINTS'; end
+        function           write_kpoints(bz,fkpoints,kdensity)
+            if nargin < 2 || isempty(fkpoints); fkpoints='KPOINTS'; end
             if     isnumeric(bz)
-                if     isscalar(bz)
+                % check format
+                if ~isvector(bz); error('Invalid bz shape.'); end
+                % [nx,ny,nz] kpoint point density along each direction
+                fid = fopen(fkpoints,'w');
+                    fprintf(fid,'%s \n','KPOINTS');
+                    fprintf(fid,'%s \n','0');
+                    if all(bz==1); fprintf(fid,'%s \n','Gamma');
+                    else;          fprintf(fid,'%s \n','Monkhorst-Pack'); end
+                    fprintf(fid,' %i %i %i \n',ceil(bz));
+                    fprintf(fid,' %i %i %i \n',[0 0 0]);
+               fclose(fid);
+            elseif isstring(bz)
+                switch bz
+                    case {'gamma','Gamma'}; am_dft.write_kpoints([1 1 1],fkpoints);
+                    otherwise; error('Invalid bz flag.');
+                end
+            elseif isstruct(bz)
+                if    isfield(bz,'natoms') % check if unit cell
                     % % still need to implement k-point density
                     % % calculates mesh for as isometric as possible k-point sampling
                     % % for VN: 10 = [ 5, 5, 5]; 20 = [ 9, 9, 9]; 30 = [13,13,13]; 40 = [17,17,17];
-                    % kpt_ = @(bas,s) ceil(normc_(inv(bas).')*s); n = kpt_(pc.bas,40);
-                    % write_kpoints(n,fkpoints);
-                elseif isvector(bz)
-                    % [nx,ny,nz] kpoint point density along each direction
-                    fid = fopen(fkpoints,'w');
-                        fprintf(fid,'%s \n','KPOINTS');
-                        fprintf(fid,'%s \n','0');
-                        if all(bz==1)
-                            fprintf(fid,'%s \n','Gamma');
-                        else
-                            fprintf(fid,'%s \n','Monkhorst-Pack');
-                        end
-                        fprintf(fid,' %i %i %i \n',ceil(bz));
-                        fprintf(fid,' %i %i %i \n',[0 0 0]);
-                   fclose(fid);
-                else
-                    error('Invalid bz shape.');
-                end
-            elseif isstruct(bz)
-                if isfield(bz,'w')
-                    weights = bz.w;
-                else
-                    weights = zeros(1,bz.nks); weights(:) = 1;
-                end
-                % explicit kpoints based
+                    % ceil to nearest odd integer
+                    kpt_ = @(bas,s) 2*ceil(am_lib.normc_(inv(bas).')*s/2)+1; n = kpt_(bz.bas,kdensity);
+                    am_dft.write_kpoints(n,fkpoints);
+                elseif isfield(bz,'nks') % check if brillouin zone
+                    if isfield(bz,'w')
+                        weights = bz.w;
+                    else
+                        weights = zeros(1,bz.nks); weights(:) = 1;
+                    end
+                    % explicit kpoints based
                     fid = fopen(fkpoints,'w');
                         fprintf(fid,'%s\n','KPOINTS');
                         fprintf(fid,'%i\n',bz.nks);
@@ -789,6 +1244,9 @@ classdef am_dft
                             fprintf(fid,' %20.18f %20.18f %20.18f    %i\n',bz.k(:,i),weights(i));
                         end
                    fclose(fid);
+                else
+                    error('Invalid structure.');
+                end
             end
         end
 
@@ -811,7 +1269,7 @@ classdef am_dft
                         fprintf(fid,'module load openmpi/1.4-gcc\n');
                         fprintf(fid,'module load intel/11.1\n');
                         fprintf(fid,'cd \\${PBS_O_WORKDIR}\n');
-                        fprintf(fid,'mpiexec /home/amei2/vasp.5.3.3 > output\n');
+                        fprintf(fid,'mpiexec /home/amei2/vasp.5.3.3 | tee OUTPUT \n');
                     case 'trio'
                         if isempty(account); error('Account is required for running on triolith'); end
                         fprintf(fid,'#!/bin/bash \n');
@@ -822,8 +1280,15 @@ classdef am_dft
                         fprintf(fid,'#SBATCH -A %s \n',account);
                         fprintf(fid,'#SBATCH --mail-user=%s \n',email);
                         fprintf(fid,'module load vasp/5.4.4-18Apr17 \n');
-                        fprintf(fid,'mpprun vasp_std > output \n');
-                        fprintf(fid,'#mpprun vasp-gamma > output \n');                        
+                        fprintf(fid,'module load python/2.7.12 \n');
+                        fprintf(fid,'\n');
+                        fprintf(fid,'# vasp_raman.py variables \n');
+                        fprintf(fid,'export VASP_RAMAN_RUN=''mpprun vasp_std | tee OUTPUT'' \n');
+                        fprintf(fid,'export VASP_RAMAN_PARAMS=''01_12_2_0.01'' \n');
+                        fprintf(fid,'\n');
+                        fprintf(fid,'#python ../_scripts/vasp_raman.py | tee RAMAN \n');
+                        fprintf(fid,'mpprun vasp_std | tee OUTPUT \n');
+                        fprintf(fid,'#mpprun vasp-gamma | tee OUTPUT \n');
                 end
             fclose(fid);
         end
@@ -853,11 +1318,15 @@ classdef am_dft
                     [~,x] = system('awk ''/POTIM/ { print $3 }'' INCAR');  x = sscanf(x,'%f');
                 case 'incar:nedos'
                     [~,x] = system('awk ''/nedos/ { print $3 }'' INCAR');  x = sscanf(x,'%f');
-                
+                    
+                % OSZICAR
+                case 'oszicar:toten'
+                    [~,x] = system('tail -n 1 OSZICAR | sed ''s/=/ = /g'' | awk ''{print $7}''');  x = sscanf(x,'%f');
+                    
                 % OUTCAR
             	case 'outcar:site_occupancy' % for DFT+U
                     [~,m] = system('awk ''/onsite density matrix/'' OUTCAR'); m = numel(strfind(m,'matrix'));
-                    [~,x] = system('awk ''/ o = /{ print $3 }'' OUTCAR');     x = sscanf(x,'%f'); x = reshape(x,[],m);
+                    [~,x] = system('awk ''/ o = /{ print $3 }'' OUTCAR'); x = sscanf(x,'%f'); x = reshape(x,[],m);
                 case 'outcar:toten'
                     [~,x] = system('awk ''/TOTEN/ { print $5 }'' OUTCAR');  x = sscanf(x,'%f');
                 case 'outcar:entropy'
@@ -884,6 +1353,19 @@ classdef am_dft
                     [~,x] = system('awk ''/Iteration/'' OUTCAR'); x = numel(strfind(x,'Iteration'));
                 case 'outcar:magnetization'
                     [~,x] = system('awk ''/magnetization/'' OUTCAR | awk ''/electron/ { print $6 }'''); x = sscanf(x,'%f');
+                case 'outcar:phonon_energies' % obtained when ibrion=8 is specified
+                    natoms = get_vasp('vasprun:natoms');
+                    [~,x] = system(sprintf('grep 2PiTHz OUTCAR | head -n %i | sed ''s/=/ = /g'' | awk ''{print $10}'' ',3*natoms)); x = sscanf(x,'%f');
+                case 'outcar:phonon_eigenvectors' % obtained with ibrion=8
+                    natoms = get_vasp('vasprun:natoms');
+                    [~,x] = system(sprintf('grep -A %i ''2PiTHz'' OUTCAR | grep -v X | grep -v 2PiTHz | awk ''{print $4 " " $5 " " $6}''',natoms+1)); 
+                    x = sscanf(x,'%f'); x = x(1:(3*natoms).^2); x = reshape(x,3,natoms,3*natoms); % these ARE NOT divided by sqrt(m).
+                case 'outcar:phonon_eigendisplacements' % obtained with ibrion=8 and iwrite = 3
+                    natoms = get_vasp('vasprun:natoms');
+                    [~,x] = system(sprintf('grep -A 100000 ''Eigenvectors after division by SQRT(mass)'' OUTCAR | grep -A %i ''2PiTHz'' | grep -v X | grep -v 2PiTHz | awk ''{print $4 " " $5 " " $6}''',natoms+1)); 
+                    x = sscanf(x,'%f'); x = x(1:(3*natoms).^2); x = reshape(x,3,natoms,3*natoms); % these ARE divided by sqrt(m).
+                case 'outcar:elastic' % obtained with ibrion=6 and iwrite = 3, the factor of 10 converts from kbar to GPa
+                    [~,x] = system('grep -A 8 "TOTAL ELASTIC" OUTCAR | tail -n 6 | awk ''{print $2 " " $3 " " $4 " " $5 " " $6 " " $7}'' '); x = reshape(sscanf(x,'%f'),6,6).'/10;
                 case 'outcar:total_charge' % obtained when iorbit=11 is specified
                     % x( natoms , {s,p,d,f} )
                     natoms = get_vasp('vasprun:natoms');
@@ -1007,8 +1489,10 @@ classdef am_dft
                     [~,x] = system('grep ''e_fr_energy'' vasprun.xml | sed ''s/\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*/ 1e8 /g'' | awk ''{print $3}'''); x = sscanf(x,'%f');
                 case 'vasprun:natoms'
                     [~,x] = system('grep ''<atoms>'' vasprun.xml | awk ''{print $2}'''); x = sscanf(x,'%f');
-                    
+                otherwise 
+                    error('grep command not found');
             end
+            if isempty(x); x = NaN; end
         end
             
         function           vasp_fix_input(flags)
@@ -2337,16 +2821,15 @@ classdef am_dft
         end
 
         function ps_name_long = get_long_ps_name(R)
-            import am_dft.* am_lib.*
             nsyms=size(R,3); 
-            ps_id=identify_point_symmetries(R);
-            ps_name=decode_ps(ps_id);
-            ps_axis=round_(R_axis_(R));
+            ps_id=am_dft.identify_point_symmetries(R);
+            ps_name=am_dft.decode_ps(ps_id);
+            ps_axis=am_lib.rnd_(am_lib.R_axis_(R));
             syms x y z
             for i = 1:nsyms
                 ps_name_long{i} = sprintf('%s',strtrim(ps_name{i}));
                 if abs(ps_id(i))~=1 && abs(ps_id(i))~=6
-                    ax = ps_axis(:,i).'; if sum(lt_(ax,0))>sum(gt_(ax,0)); ax=-ax; end
+                    ax = ps_axis(:,i).'; if sum(am_lib.lt_(ax,0))>sum(am_lib.gt_(ax,0)); ax=-ax; end
                     ax_name = sprintf('%s',ax*[x;y;z]); ax_name=strrep(ax_name,' ',''); ax_name=strrep(ax_name,'+',''); 
                     ps_name_long{i} = sprintf('%s(%s)',ps_name_long{i}, ax_name );
                 end
@@ -2791,7 +3274,7 @@ classdef am_dft
             abc=bas2abc(bas); c=abc(3); a=abc(1);
             abc(4:6) = acosd((2*c^2-3*a^2)/(2*c^2+6*a^2));
             abc(1:3) = sqrt(c^2+3*a^2)/3;
-            bas = abc2bas(abc);
+            % bas = abc2bas(abc);
             
             a=abc(6);
             bas=abc(1)*[...
@@ -2972,6 +3455,47 @@ classdef am_dft
         
 
         % unit cells
+        
+        function [uc]         = load_poscar(fposcar,flag) % can also be used to load the charge density 
+            if nargin < 2; flag=''; end
+            fid=fopen(fposcar,'r'); if fid==-1; error('Unable to open %s',fposcar); end
+                header=fgetl(fid); uc.units='frac';% read header (often times contains atomic symbols)
+                latpar=sscanf(fgetl(fid),'%f');    % read lattice parameter
+                a1=sscanf(fgetl(fid),'%f %f %f');  % first basis vector
+                a2=sscanf(fgetl(fid),'%f %f %f');  % second basis vector
+                a3=sscanf(fgetl(fid),'%f %f %f');  % third basis vector
+                uc.bas=latpar*[a1,a2,a3];          % construct the basis (column vectors)
+                buffer=fgetl(fid);                 % check vasp format
+                if ~isempty(sscanf(buffer,'%f'))
+                    % vasp 4 format (symbols are missing, jumps straight to species)
+                    uc.symb=regexp(header, '([^ \s][^\s]*)', 'match');
+                    uc.nspecies=sscanf(buffer,repmat('%f' ,1,length(uc.symb)))';
+                else
+                    % vasp 5 format (symbols are present)
+                    uc.symb=regexp(buffer, '([^ \s][^\s]*)', 'match');
+                    uc.nspecies=sscanf(fgetl(fid),repmat('%f' ,1,length(uc.symb)))';
+                end
+                for i=1:length(uc.nspecies); uc.mass(i)=am_dft.get_atomic_mass(am_dft.get_atomic_number(uc.symb{i})); end
+                uc.natoms=sum(uc.nspecies);
+                coordtype=lower(strtrim(fgetl(fid)));
+                l=0;
+                for i=1:length(uc.nspecies)
+                    for j=1:uc.nspecies(i); l=l+1;
+                        uc.tau(:,l)=sscanf(fgetl(fid),'%f %f %f');
+                        uc.species(l)=i;
+                    end
+                end
+                if ~strcmp(coordtype(1),'d'); uc.tau=uc.bas\uc.tau*latpar; end
+                % load charge density
+                if contains(flag,'charge')
+                    fgetl(fid);
+                    n = sscanf(fgetl(fid),'%i');
+                    t = textscan(fid,'%f');
+                    uc.n   = n(:).';
+                    uc.chg = reshape(t{:},uc.n);
+                end
+            fclose(fid);
+        end
 
         function [uc,pc,ic,cc]= load_cell(flag, arg, tol)
             % [uc,pc,ic,cc]   = load_cell(fposcar)
@@ -3215,38 +3739,6 @@ classdef am_dft
                    am_lib.any_(~am_lib.eq_(am_lib.sortc_(uc_gen.tau),am_lib.sortc_(uc.tau)))
                     str = 'Mismatch';
                 end
-            end
-            
-            function [uc]    = load_poscar(fposcar)
-                fid=fopen(fposcar,'r'); if fid==-1; error('Unable to open %s',fposcar); end
-                    header=fgetl(fid); uc.units='frac';% read header (often times contains atomic symbols)
-                    latpar=sscanf(fgetl(fid),'%f');    % read lattice parameter
-                    a1=sscanf(fgetl(fid),'%f %f %f');  % first basis vector
-                    a2=sscanf(fgetl(fid),'%f %f %f');  % second basis vector
-                    a3=sscanf(fgetl(fid),'%f %f %f');  % third basis vector
-                    uc.bas=latpar*[a1,a2,a3];          % construct the basis (column vectors)
-                    buffer=fgetl(fid);                 % check vasp format
-                    if ~isempty(sscanf(buffer,'%f'))
-                        % vasp 4 format (symbols are missing, jumps straight to species)
-                        uc.symb=regexp(header, '([^ \s][^\s]*)', 'match');
-                        uc.nspecies=sscanf(buffer,repmat('%f' ,1,length(uc.symb)))';
-                    else
-                        % vasp 5 format (symbols are present)
-                        uc.symb=regexp(buffer, '([^ \s][^\s]*)', 'match');
-                        uc.nspecies=sscanf(fgetl(fid),repmat('%f' ,1,length(uc.symb)))';
-                    end
-                    for i=1:length(uc.nspecies); uc.mass(i)=am_dft.get_atomic_mass(am_dft.get_atomic_number(uc.symb{i})); end
-                    uc.natoms=sum(uc.nspecies);
-                    coordtype=lower(strtrim(fgetl(fid)));
-                    l=0;
-                    for i=1:length(uc.nspecies)
-                        for j=1:uc.nspecies(i); l=l+1;
-                            uc.tau(:,l)=sscanf(fgetl(fid),'%f %f %f');
-                            uc.species(l)=i;
-                        end
-                    end
-                    if ~strcmp(coordtype(1),'d'); uc.tau=uc.bas\uc.tau*latpar; end
-                fclose(fid);
             end
 
         end
@@ -7167,7 +7659,75 @@ classdef am_dft
         end
 
     end
+    
+    % elastic constants
+    
+    
+    methods (Static)
+        function [C] = cij(C,flag)
+            % [c11,c12,c44]
+            switch flag
+                case 'cubic'
+                    [c11,c12,c44]=deal(C(1),C(2),C(3));
+                    C = [c11 c12 c12 0.0 0.0 0.0; ...
+                         c12 c11 c12 0.0 0.0 0.0; ...
+                         c12 c12 c11 0.0 0.0 0.0; ...
+                         0.0 0.0 0.0 c44 0.0 0.0; ...
+                         0.0 0.0 0.0 0.0 c44 0.0; ...
+                         0.0 0.0 0.0 0.0 0.0 c44 ];
+                case ''
+                otherwise; error('unknown symmetry type');     
+            end
+        end
 
+        function[CC]=cij2cijkl(C)
+            CC=zeros(3,3,3,3);
+            CC(1,1,1,1)=C(1,1);CC(2,2,2,2)=C(2,2);CC(3,3,3,3)=C(3,3);CC(2,3,2,3)=C(4,4);CC(3,2,3,2)=CC(2,3,2,3);CC(2,3,3,2)=CC(2,3,2,3);
+            CC(3,2,2,3)=CC(2,3,2,3);CC(1,3,1,3)=C(5,5);CC(3,1,1,3)=CC(1,3,1,3);CC(1,3,3,1)=CC(1,3,1,3);CC(3,1,3,1)=CC(1,3,1,3);
+            CC(1,1,2,2)=C(1,2);CC(2,2,1,1)=CC(1,1,2,2);CC(1,1,3,3)=C(1,3);CC(3,3,1,1)=CC(1,1,3,3);CC(1,1,2,3)=C(1,4);CC(1,1,3,2)=CC(1,1,2,3);
+            CC(2,3,1,1)=CC(1,1,2,3);CC(3,2,1,1)=CC(1,1,2,3);CC(1,1,1,3)=C(1,5);CC(1,1,3,1)=CC(1,1,1,3);CC(1,3,1,1)=CC(1,1,1,3);CC(3,1,1,1)=CC(1,1,1,3);
+            CC(1,1,1,2)=C(1,6);CC(1,1,2,1)=CC(1,1,1,2);CC(1,2,1,1)=CC(1,1,1,2);CC(2,1,1,1)=CC(1,1,1,2);CC(2,2,3,3)=C(2,3);CC(3,3,2,2)=CC(2,2,3,3);
+            CC(2,2,2,3)=C(2,4);CC(2,2,3,2)=CC(2,2,2,3);CC(2,3,2,2)=CC(2,2,2,3);CC(3,2,2,2)=CC(2,2,2,3);CC(2,2,1,3)=C(2,5);CC(2,2,3,1)=CC(2,2,1,3);
+            CC(1,3,2,2)=CC(2,2,1,3);CC(3,1,2,2)=CC(2,2,1,3);CC(2,2,1,2)=C(2,6);CC(2,2,2,1)=CC(2,2,1,2);CC(1,2,2,2)=CC(2,2,1,2);CC(2,1,2,2)=CC(2,2,1,2);
+            CC(3,3,2,3)=C(3,4);CC(3,3,3,2)=CC(3,3,2,3);CC(2,3,3,3)=CC(3,3,2,3);CC(3,2,3,3)=CC(3,3,2,3);CC(3,3,1,3)=C(3,5);CC(3,3,3,1)=CC(3,3,1,3);
+            CC(1,3,3,3)=CC(3,3,1,3);CC(3,1,3,3)=CC(3,3,1,3);CC(3,3,1,2)=C(3,6);CC(3,3,2,1)=CC(3,3,1,2);CC(1,2,3,3)=CC(3,3,1,2);CC(2,1,3,3)=CC(3,3,1,2);
+            CC(2,3,1,3)=C(4,5);CC(3,2,1,3)=CC(2,3,1,3);CC(1,3,3,2)=CC(2,3,1,3);CC(1,3,2,3)=CC(2,3,1,3);CC(2,3,3,1)=CC(2,3,1,3);CC(3,2,3,1)=CC(2,3,1,3);
+            CC(3,1,2,3)=CC(2,3,1,3);CC(3,1,3,2)=CC(2,3,1,3);CC(2,3,1,2)=C(4,6);CC(3,2,1,2)=CC(2,3,1,2);CC(1,2,2,3)=CC(2,3,1,2);CC(1,2,3,2)=CC(2,3,1,2);
+            CC(2,3,2,1)=CC(2,3,1,2);CC(3,2,2,1)=CC(2,3,1,2);CC(2,1,2,3)=CC(2,3,1,2);CC(2,1,3,2)=CC(2,3,1,2);CC(1,3,1,2)=C(5,6);CC(3,1,1,2)=CC(1,3,1,2);
+            CC(1,2,1,3)=CC(1,3,1,2);CC(1,2,3,1)=CC(1,3,1,2);CC(1,3,2,1)=CC(1,3,1,2);CC(3,1,2,1)=CC(1,3,1,2);CC(2,1,1,3)=CC(1,3,1,2);
+            CC(2,1,3,1)=CC(1,3,1,2);CC(1,2,1,2)=C(6,6);CC(2,1,1,2)=CC(1,2,1,2);CC(1,2,2,1)=CC(1,2,1,2);CC(2,1,2,1)=CC(1,2,1,2);
+        end
+
+        function [C] = cijkl2cij(CC)
+            C = zeros(6,6);
+            for im=1:3;for jm=1:3;for km=1:3;for lm=1:3
+                if ( CC(im,jm,km,lm) ~= 0.0) 
+                    [iv,jv]=ijkl2ij_local(im,jm,km,lm) ;
+                    C(iv,jv) = CC(im,jm,km,lm);
+                end
+            end; end; end; end
+            function [iv,jv] = ijkl2ij_local(ii,jj,kk,ll)   
+                if (ii==1 && jj==1) iv=1; end
+                if (ii==1 && jj==2) iv=6; end
+                if (ii==1 && jj==3) iv=5; end
+                if (ii==2 && jj==1) iv=6; end
+                if (ii==2 && jj==2) iv=2; end
+                if (ii==2 && jj==3) iv=4; end
+                if (ii==3 && jj==1) iv=5; end
+                if (ii==3 && jj==2) iv=4; end
+                if (ii==3 && jj==3) iv=3; end
+                if (kk==1 && ll==1) jv=1; end
+                if (kk==1 && ll==2) jv=6; end
+                if (kk==1 && ll==3) jv=5; end
+                if (kk==2 && ll==1) jv=6; end
+                if (kk==2 && ll==2) jv=2; end
+                if (kk==2 && ll==3) jv=4; end
+                if (kk==3 && ll==1) jv=5; end
+                if (kk==3 && ll==2) jv=4; end
+                if (kk==3 && ll==3) jv=3; end
+            end
+        end 
+    end
 
     % atomic information
 
@@ -8015,222 +8575,586 @@ classdef am_dft
 
             % scripts functions
             fname='outcar2fp.sh'; fid=fopen([fname],'w'); fprintf(fid,'%s',verbatim_()); fclose(fid); fprintf(' ... %s (succeeded)\n',fname);
-            %{
-            #!/bin/bash
-            # Parse outcar to extract forces and displacements at each timestep.
-            # Antonio Mei Nov/2014
-            # Antonio Mei Jan/2017
-            usage_ () {
-                echo "Creates infile.force_position based on supplied outcar files."
-                echo ""
-                echo "Usage: $0 [-h] [-t] [-f] -o <outcar_list> -n <natoms> [-c <compress_name>]"
-                echo ""
-                echo "Example: $0 -f -t -o \"\$(find . -name "OUTCAR*" | grep 4.00-300)\" -n 250"
-                echo ""
-                echo "-h : prints this message"
-                echo "-n : [REQUIRED] number of atoms in the simulation cell"
-                echo "-o : [REQUIRED] list of outcar files to parse"
-                echo "-t : trims the last md run (useful for removing runs which have not completed)"
-                echo "-f : overwrites existing infile.force_position"
-                echo "-c : compresses infile.force_position to a tar.gz file"
-                echo ""
-                echo "infile.force_position file contents:"
-                echo "   x position   y position   z position     x force      y force      z force"
-                exit 1
-            }
+%{
+#!/bin/bash
+# Parse outcar to extract forces and displacements at each timestep.
+# Antonio Mei Nov/2014
+# Antonio Mei Jan/2017
+usage_ () {
+echo "Creates infile.force_position based on supplied outcar files."
+echo ""
+echo "Usage: $0 [-h] [-t] [-f] -o <outcar_list> -n <natoms> [-c <compress_name>]"
+echo ""
+echo "Example: $0 -f -t -o \"\$(find . -name "OUTCAR*" | grep 4.00-300)\" -n 250"
+echo ""
+echo "-h : prints this message"
+echo "-n : [REQUIRED] number of atoms in the simulation cell"
+echo "-o : [REQUIRED] list of outcar files to parse"
+echo "-t : trims the last md run (useful for removing runs which have not completed)"
+echo "-f : overwrites existing infile.force_position"
+echo "-c : compresses infile.force_position to a tar.gz file"
+echo ""
+echo "infile.force_position file contents:"
+echo "   x position   y position   z position     x force      y force      z force"
+exit 1
+}
 
-            main_ () {
-                # trim the last md run which may not have completed
-                trim_ () { tac $1 | awk '!found && /POSITION/{found=1;next}1' | tac ; }
-                # get position and forces
-                get_  () { cat $2 | grep -h -A $(($1+1)) POSITION  ; }
-                # cut header lines
-                cut_  () { cat $1 | sed '/^--$/d' | sed '/--/d' | sed '/POSITION/d' ; }
-                # compress produced infile.force_position
-                compress_ () { tar -zcvf infile.force_position.tar.gz infile.force_position ; }
-                #
-                if ${ISFORCE}; then
-                    if [ -f "./infile.force_position" ]; then
-                        rm ./infile.force_position
-                        printf " ... ./infile.force_position overwritten\n"
-                    fi
-                fi
-                #
-                if ${ISTRIM}; then
-                    printf " ... trim:\n"
-                    for F in "${FLIST}"; do
-                        printf " ...     %-100s\n" "${F}"
-                        trim_ ${F} | get_ ${NATOMS} | cut_ >> infile.force_position
-                    done
-                else
-                    printf " ... batch parsing without trim\n"
-                    get_ ${NATOMS} "${FLIST}" | cut_ >> infile.force_position
-                fi
-                #
-                printf " ... infile.force_position created\n"
-                #
-                if ${ISCOMPRESS}; then
-                    printf " ... infile.force_position.tar.gz compressed\n"
-                    compress_
-                fi
-            }
+main_ () {
+# trim the last md run which may not have completed
+trim_ () { tac $1 | awk '!found && /POSITION/{found=1;next}1' | tac ; }
+# get position and forces
+get_  () { cat $2 | grep -h -A $(($1+1)) POSITION  ; }
+# cut header lines
+cut_  () { cat $1 | sed '/^--$/d' | sed '/--/d' | sed '/POSITION/d' ; }
+# compress produced infile.force_position
+compress_ () { tar -zcvf infile.force_position.tar.gz infile.force_position ; }
+#
+if ${ISFORCE}; then
+    if [ -f "./infile.force_position" ]; then
+        rm ./infile.force_position
+        printf " ... ./infile.force_position overwritten\n"
+    fi
+fi
+#
+if ${ISTRIM}; then
+    printf " ... trim:\n"
+    for F in "${FLIST}"; do
+        printf " ...     %-100s\n" "${F}"
+        trim_ ${F} | get_ ${NATOMS} | cut_ >> infile.force_position
+    done
+else
+    printf " ... batch parsing without trim\n"
+    get_ ${NATOMS} "${FLIST}" | cut_ >> infile.force_position
+fi
+#
+printf " ... infile.force_position created\n"
+#
+if ${ISCOMPRESS}; then
+    printf " ... infile.force_position.tar.gz compressed\n"
+    compress_
+fi
+}
 
-            ISCOMPRESS=false; ISTRIM=false; ISFORCE=false;
-            if (($# == 0)); then usage_; exit 1; fi
-            while getopts "n:o:htfc" o; do
-                case "${o}" in
-                    o)  FLIST=${OPTARG} ;;
-                    n)  NATOMS=${OPTARG} ;;
-                    c)  ISCOMPRESS=true ;;
-                    t)  ISTRIM=true ;;
-                    f)  ISFORCE=true ;;
-                    h)  usage_; exit 0 ;;
-                    *)  usage_; exit 1 ;;
-                esac
-            done
-            main_
-            %}
+ISCOMPRESS=false; ISTRIM=false; ISFORCE=false;
+if (($# == 0)); then usage_; exit 1; fi
+while getopts "n:o:htfc" o; do
+case "${o}" in
+    o)  FLIST=${OPTARG} ;;
+    n)  NATOMS=${OPTARG} ;;
+    c)  ISCOMPRESS=true ;;
+    t)  ISTRIM=true ;;
+    f)  ISFORCE=true ;;
+    h)  usage_; exit 0 ;;
+    *)  usage_; exit 1 ;;
+esac
+done
+main_
+%}
 
             fname='outcar2en.sh'; fid=fopen([fname],'w'); fprintf(fid,'%s',verbatim_()); fclose(fid); fprintf(' ... %s (succeeded)\n',fname);
-            %{
-            #!/bin/bash
-            # Preprocess outcar to remove the last run, which may not have finished
-            # Antonio Mei Nov/2014
-            # Antonio Mei Jan/2017
-            usage_ () {
-                echo "Creates infile.electron_energies based on supplied outcar files."
-                echo ""
-                echo "Usage: $0 [-h] [-t] [-f] -o <outcar_list> -n <nbands> [-c <compress_name>]"
-                echo ""
-                echo "Example: $0 -f -t -o \"\$(find . -name "OUTCAR*" | grep 4.00-300)\" -n 751"
-                echo ""
-                echo "-h : prints this message"
-                echo "-n : [REQUIRED] number of bands"
-                echo "-o : [REQUIRED] list of outcar files to parse"
-                echo "-t : trims the last md run (useful for removing runs which have not completed)"
-                echo "-f : overwrites existing infile.electron_energies"
-                echo "-c : compresses infile.electron_energies to a tar.gz file"
-                echo ""
-                echo "infile.electron_energies file contents:"
-                echo "   n index    En energy    fn occupation"
-                exit 1
-            }
-            main_ () {
-                # trim the last md run which may not have completed
-                trim_ () { tac $1 | awk '!found && /POSITION/{found=1;next}1' | tac ; }
-                # get energies
-                get_  () { cat $2 | grep -h -A ${1} occupation  ; }
-                # cut header lines
-                cut_  () { cat $1 | sed '/^--$/d' | sed '/--/d' | sed '/occupation/d' ; }
-                # compress produced infile.electron_energies
-                compress_ () { tar -zcvf infile.electron_energies.tar.gz infile.electron_energies ; }
-                #
-                if ${ISFORCE}; then
-                    if [ -f "./infile.electron_energies" ]; then
-                        rm ./infile.electron_energies
-                        printf " ... ./infile.electron_energies overwritten\n"
-                    fi
-                fi
-                #
-                if ${ISTRIM}; then
-                    printf " ... trim:\n"
-                    for F in "${FLIST}"; do
-                        printf " ...     %-100s\n" "${F}"
-                        trim_ ${F} | get_ ${NBANDS} | cut_ >> infile.electron_energies
-                    done
-                else
-                    printf " ... batch parsing without trim\n"
-                    get_ ${NBANDS} "${FLIST}" | cut_ >> infile.electron_energies
-                fi
-                #
-                awk '{ print $2 }' infile.electron_energies > infile.electron_energies.tmp && mv infile.electron_energies.tmp infile.electron_energies
-                #
-                printf " ... infile.electron_energies created\n"
-                #
-                if ${ISCOMPRESS}; then
-                    printf " ... infile.electron_energies.tar.gz compressed\n"
-                    compress_
-                fi
-            }
-            ISCOMPRESS=false; ISTRIM=false; ISFORCE=false;
-            if (($# == 0)); then usage_; exit 1; fi
-            while getopts "n:o:htfc" o; do
-                case "${o}" in
-                    o)  FLIST=${OPTARG} ;;
-                    n)  NBANDS=${OPTARG} ;;
-                    c)  ISCOMPRESS=true ;;
-                    t)  ISTRIM=true ;;
-                    f)  ISFORCE=true ;;
-                    h)  usage_; exit 0 ;;
-                    *)  usage_; exit 1 ;;
-                esac
-            done
-            main_
-            %}
+%{
+#!/bin/bash
+# Preprocess outcar to remove the last run, which may not have finished
+# Antonio Mei Nov/2014
+# Antonio Mei Jan/2017
+usage_ () {
+    echo "Creates infile.electron_energies based on supplied outcar files."
+    echo ""
+    echo "Usage: $0 [-h] [-t] [-f] -o <outcar_list> -n <nbands> [-c <compress_name>]"
+    echo ""
+    echo "Example: $0 -f -t -o \"\$(find . -name "OUTCAR*" | grep 4.00-300)\" -n 751"
+    echo ""
+    echo "-h : prints this message"
+    echo "-n : [REQUIRED] number of bands"
+    echo "-o : [REQUIRED] list of outcar files to parse"
+    echo "-t : trims the last md run (useful for removing runs which have not completed)"
+    echo "-f : overwrites existing infile.electron_energies"
+    echo "-c : compresses infile.electron_energies to a tar.gz file"
+    echo ""
+    echo "infile.electron_energies file contents:"
+    echo "   n index    En energy    fn occupation"
+    exit 1
+}
+main_ () {
+    # trim the last md run which may not have completed
+    trim_ () { tac $1 | awk '!found && /POSITION/{found=1;next}1' | tac ; }
+    # get energies
+    get_  () { cat $2 | grep -h -A ${1} occupation  ; }
+    # cut header lines
+    cut_  () { cat $1 | sed '/^--$/d' | sed '/--/d' | sed '/occupation/d' ; }
+    # compress produced infile.electron_energies
+    compress_ () { tar -zcvf infile.electron_energies.tar.gz infile.electron_energies ; }
+    #
+    if ${ISFORCE}; then
+        if [ -f "./infile.electron_energies" ]; then
+            rm ./infile.electron_energies
+            printf " ... ./infile.electron_energies overwritten\n"
+        fi
+    fi
+    #
+    if ${ISTRIM}; then
+        printf " ... trim:\n"
+        for F in "${FLIST}"; do
+            printf " ...     %-100s\n" "${F}"
+            trim_ ${F} | get_ ${NBANDS} | cut_ >> infile.electron_energies
+        done
+    else
+        printf " ... batch parsing without trim\n"
+        get_ ${NBANDS} "${FLIST}" | cut_ >> infile.electron_energies
+    fi
+    #
+    awk '{ print $2 }' infile.electron_energies > infile.electron_energies.tmp && mv infile.electron_energies.tmp infile.electron_energies
+    #
+    printf " ... infile.electron_energies created\n"
+    #
+    if ${ISCOMPRESS}; then
+        printf " ... infile.electron_energies.tar.gz compressed\n"
+        compress_
+    fi
+}
+ISCOMPRESS=false; ISTRIM=false; ISFORCE=false;
+if (($# == 0)); then usage_; exit 1; fi
+while getopts "n:o:htfc" o; do
+    case "${o}" in
+        o)  FLIST=${OPTARG} ;;
+        n)  NBANDS=${OPTARG} ;;
+        c)  ISCOMPRESS=true ;;
+        t)  ISTRIM=true ;;
+        f)  ISFORCE=true ;;
+        h)  usage_; exit 0 ;;
+        *)  usage_; exit 1 ;;
+    esac
+done
+main_
+%}
 
             fname='queue_vasp.sh'; fid=fopen([fname],'w'); fprintf(fid,'%s',verbatim_()); fclose(fid); fprintf(' ... %s (succeeded)\n',fname);
-            %{
-            #!/bin/bash
-            # Antonio Mei Sep/2017
-            usage_ () {
-                echo "Queues unfinished calculations based on folders containing INCAR,POSCAR,KPOINTS,POTCAR,QSUB."
-                echo ""
-                echo "Usage: $0 [-h] [-l] [-v] [-n] [-t:target]" 
-                echo ""
-                echo ""
-                echo "-h : prints this message"
-                echo "-l : runs on local computer without queuing"
-                echo "-t : target file to match"
-                echo "-v : shows directories with an incomplete OUTCAR"
-                echo "-n : (dry run) prints directors which would get queued"
-                echo ""
-                exit 1
-            }
+%{
+#!/bin/bash
+# Antonio Mei Sep/2017
+usage_ () {
+    echo "Queues unfinished calculations based on folders containing INCAR,POSCAR,KPOINTS,POTCAR,QSUB."
+    echo ""
+    echo "Usage: $0 [-h] [-l] [-v] [-n] [-t:target]" 
+    echo ""
+    echo ""
+    echo "-h : prints this message"
+    echo "-l : runs on local computer without queuing"
+    echo "-t : target file to match"
+    echo "-v : shows directories with an incomplete OUTCAR"
+    echo "-n : (dry run) prints directors which would get queued"
+    echo ""
+    exit 1
+}
 
-            main_ () {
-                odir=$PWD
-                dlist=$(find . -name ${TARGET} -exec sh -c '(cd `dirname {}` && pwd  )' ';' )
-                for d in ${dlist}; do
-                cd ${d}
-                 if ! grep -sq "Total CPU time" OUTCAR; then
-                  if [[ -e INCAR   ]]; then
-                   if [[ -e POSCAR  ]]; then
-                    if [[ -e KPOINTS ]]; then
-                     if [[ -e POTCAR  ]]; then
-                      echo $PWD
-                      if ! ${ISDRY}; then
-                          if hash qsub   2>/dev/null; then qsub   QSUB; fi
-                          if hash sbatch 2>/dev/null; then sbatch QSUB; fi
-                          if local; then vasp; fi
-                      fi
-                     fi
-                    fi
-                   fi
-                  fi
-                 fi
-                cd ${odir}
-                done
-            }
+main_ () {
+    odir=$PWD
+    dlist=$(find . -name ${TARGET} -exec sh -c '(cd `dirname {}` && pwd  )' ';' )
+    for d in ${dlist}; do
+    cd ${d}
+     if ! grep -sq "Total CPU time" OUTCAR; then
+      if [[ -e INCAR   ]]; then
+       if [[ -e POSCAR  ]]; then
+        if [[ -e KPOINTS ]]; then
+         if [[ -e POTCAR  ]]; then
+          echo $PWD
+          if ! ${ISDRY}; then
+              if hash qsub   2>/dev/null; then qsub   QSUB; fi
+              if hash sbatch 2>/dev/null; then sbatch QSUB; fi
+              if local; then vasp; fi
+          fi
+         fi
+        fi
+       fi
+      fi
+     fi
+    cd ${odir}
+    done
+}
 
-            show_ () {
-                grep -LR "Voluntary" --include="OUTCAR" . 
-            }
+show_ () {
+    grep -LR "Voluntary" --include="OUTCAR" . 
+}
 
-            ISDRY=false; ISLOCAL=false; TARGET='QSUB'
-            if (($# == 0)); then usage_; exit 1; fi
-            while getopts "nlvht:" o; do
-                case "${o}" in
-                t)  TARGET=${OPTARG} ;;
-                    n)  ISDRY=true ;;
-                    l)  ISLOCAL=true ;;
-                    v)  show_; exit 0 ;;
-                    h)  usage_; exit 0 ;;
-                    *)  usage_; exit 1 ;;
-                esac
-            done
-            main_
-            %}
+ISDRY=false; ISLOCAL=false; TARGET='QSUB'
+if (($# == 0)); then usage_; exit 1; fi
+while getopts "nlvht:" o; do
+    case "${o}" in
+    t)  TARGET=${OPTARG} ;;
+        n)  ISDRY=true ;;
+        l)  ISLOCAL=true ;;
+        v)  show_; exit 0 ;;
+        h)  usage_; exit 0 ;;
+        *)  usage_; exit 1 ;;
+    esac
+done
+main_
+%}
+          
+        fname='vasp_raman.py'; fid=fopen([fname],'w'); fprintf(fid,'%s',verbatim_()); fclose(fid); fprintf(' ... %s (succeeded)\n',fname);
+%{
+#!/usr/bin/env python
+#
+# vasp_raman.py v. 0.6.0
+#
+# Raman off-resonant activity calculator
+# using VASP as a back-end.
+#
+# Contributors: Alexandr Fonari (Georgia Tech)
+# Shannon Stauffer (UT Austin)
+#
+# URL: http://raman-sc.github.io
+#
+# MIT license, 2013 - 2016
+#
 
+
+import re
+import sys
+
+
+def MAT_m_VEC(m, v):
+p = [ 0.0 for i in range(len(v)) ]
+for i in range(len(m)):
+    assert len(v) == len(m[i]), 'Length of the matrix row is not equal to the length of the vector'
+    p[i] = sum( [ m[i][j]*v[j] for j in range(len(v)) ] )
+return p
+
+
+def T(m):
+p = [[ m[i][j] for i in range(len( m[j] )) ] for j in range(len( m )) ]
+return p
+
+
+def parse_poscar(poscar_fh):
+# modified subroutine from phonopy 1.8.3 (New BSD license)
+#
+poscar_fh.seek(0) # just in case
+lines = poscar_fh.readlines()
+#
+scale = float(lines[1])
+if scale < 0.0:
+    print "[parse_poscar]: ERROR negative scale not implemented."
+    sys.exit(1)
+#
+b = []
+for i in range(2, 5):
+    b.append([float(x)*scale for x in lines[i].split()[:3]])
+#
+vol = b[0][0]*b[1][1]*b[2][2] + b[1][0]*b[2][1]*b[0][2] + b[2][0]*b[0][1]*b[1][2] - \
+      b[0][2]*b[1][1]*b[2][0] - b[2][1]*b[1][2]*b[0][0] - b[2][2]*b[0][1]*b[1][0]
+#
+try:
+    num_atoms = [int(x) for x in lines[5].split()]
+    line_at = 6
+except ValueError:
+    symbols = [x for x in lines[5].split()]
+    num_atoms = [int(x) for x in lines[6].split()]
+    line_at = 7
+nat = sum(num_atoms)
+#
+if lines[line_at][0].lower() == 's':
+    line_at += 1
+#
+if (lines[line_at][0].lower() == 'c' or lines[line_at][0].lower() == 'k'):
+    is_scaled = False
+else:
+    is_scaled = True
+#
+line_at += 1
+#
+positions = []
+for i in range(line_at, line_at + nat):
+    pos = [float(x) for x in lines[i].split()[:3]]
+    #
+    if is_scaled:
+        pos = MAT_m_VEC(T(b), pos)
+    #
+    positions.append(pos)
+#
+poscar_header = ''.join(lines[1:line_at-1]) # will add title and 'Cartesian' later
+return nat, vol, b, positions, poscar_header
+
+
+def parse_env_params(params):
+tmp = params.strip().split('_')
+if len(tmp) != 4:
+    print "[parse_env_params]: ERROR there should be exactly four parameters"
+    sys.exit(1)
+#
+[first, last, nderiv, step_size] = [int(tmp[0]), int(tmp[1]), int(tmp[2]), float(tmp[3])]
+#
+return first, last, nderiv, step_size
+
+
+#### subs for the output from VTST tools
+def parse_freqdat(freqdat_fh, nat):
+freqdat_fh.seek(0) # just in case
+#
+eigvals = [ 0.0 for i in range(nat*3) ]
+#
+for i in range(nat*3): # all frequencies should be supplied, regardless of requested to calculate
+    tmp = freqdat_fh.readline().split()
+    eigvals[i] = float(tmp[0])
+#
+return eigvals
+#
+def parse_modesdat(modesdat_fh, nat):
+from math import sqrt
+modesdat_fh.seek(0) # just in case
+#
+eigvecs = [ 0.0 for i in range(nat*3) ]
+norms =   [ 0.0 for i in range(nat*3) ]
+#
+for i in range(nat*3): # all frequencies should be supplied, regardless of requested to calculate
+    eigvec = []
+    for j in range(nat):
+        tmp = modesdat_fh.readline().split()
+        eigvec.append([ float(tmp[x]) for x in range(3) ])
+    #
+    modesdat_fh.readline().split() # empty line
+    eigvecs[i] = eigvec
+    norms[i] = sqrt( sum( [abs(x)**2 for sublist in eigvec for x in sublist] ) )
+#
+return eigvecs, norms
+#### end subs for VTST
+#
+def get_modes_from_OUTCAR(outcar_fh, nat):
+from math import sqrt
+eigvals = [ 0.0 for i in range(nat*3) ]
+eigvecs = [ 0.0 for i in range(nat*3) ]
+norms   = [ 0.0 for i in range(nat*3) ]
+#
+outcar_fh.seek(0) # just in case
+while True:
+    line = outcar_fh.readline()
+    if not line:
+        break
+    #
+    if "Eigenvectors after division by SQRT(mass)" in line:
+        outcar_fh.readline() # empty line
+        outcar_fh.readline() # Eigenvectors and eigenvalues of the dynamical matrix
+        outcar_fh.readline() # ----------------------------------------------------
+        outcar_fh.readline() # empty line
+        #
+        for i in range(nat*3): # all frequencies should be supplied, regardless of those requested to calculate
+            outcar_fh.readline() # empty line
+            p = re.search(r'^\s*(\d+).+?([\.\d]+) cm-1', outcar_fh.readline())
+            eigvals[i] = float(p.group(2))
+            #
+            outcar_fh.readline() # X         Y         Z           dx          dy          dz
+            eigvec = []
+            #
+            for j in range(nat):
+                tmp = outcar_fh.readline().split()
+                #
+                eigvec.append([ float(tmp[x]) for x in range(3,6) ])
+                #
+            eigvecs[i] = eigvec
+            norms[i] = sqrt( sum( [abs(x)**2 for sublist in eigvec for x in sublist] ) )
+        #
+        return eigvals, eigvecs, norms
+    #
+print "[get_modes_from_OUTCAR]: ERROR Couldn't find 'Eigenvectors after division by SQRT(mass)' in OUTCAR. Use 'NWRITE=3' in INCAR. Exiting..."
+sys.exit(1)
+#
+def get_epsilon_from_OUTCAR(outcar_fh):
+epsilon = []
+#
+outcar_fh.seek(0) # just in case
+while True:
+    line = outcar_fh.readline()
+    if not line:
+        break
+    #
+    if "HEAD OF MICROSCOPIC STATIC DIELECTRIC TENSOR (INDEPENDENT PARTICLE, excluding Hartree and local field effects)" in line:
+        outcar_fh.readline()
+        epsilon.append([float(x) for x in outcar_fh.readline().split()])
+        epsilon.append([float(x) for x in outcar_fh.readline().split()])
+        epsilon.append([float(x) for x in outcar_fh.readline().split()])
+        return epsilon
+#
+raise RuntimeError("[get_epsilon_from_OUTCAR]: ERROR Couldn't find dielectric tensor in OUTCAR")
+return 1
+#
+if __name__ == '__main__':
+from math import pi
+from shutil import move
+import os
+import datetime
+import time
+#import argparse
+import optparse
+#
+print ""
+print "    Raman off-resonant activity calculator,"
+print "    using VASP as a back-end."
+print ""
+print "    Contributors: Alexandr Fonari  (Georgia Tech)"
+print "                  Shannon Stauffer (UT Austin)"
+print "    MIT License, 2013"
+print "    URL: http://raman-sc.github.io"
+print "    Started at: "+datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+print ""
+#
+description  = "Before run, set environment variables:\n"
+description += "    VASP_RAMAN_RUN='mpirun vasp'\n"
+description += "    VASP_RAMAN_PARAMS='[first-mode]_[last-mode]_[nderiv]_[step-size]'\n\n"
+description += "bash one-liner is:\n"
+description += "VASP_RAMAN_RUN='mpirun vasp' VASP_RAMAN_PARAMS='1_2_2_0.01' python vasp_raman.py"
+#
+parser = optparse.OptionParser(description=description)
+parser.add_option('-g', '--gen', help='Generate POSCAR only', action='store_true')
+parser.add_option('-u', '--use_poscar', help='Use provided POSCAR in the folder, USE WITH CAUTION!!', action='store_true')
+(options, args) = parser.parse_args()
+#args = vars(parser.parse_args())
+args = vars(options)
+#
+VASP_RAMAN_RUN = os.environ.get('VASP_RAMAN_RUN')
+if VASP_RAMAN_RUN == None:
+    print "[__main__]: ERROR Set environment variable 'VASP_RAMAN_RUN'"
+    print ""
+    parser.print_help()
+    sys.exit(1)
+print "[__main__]: VASP_RAMAN_RUN='"+VASP_RAMAN_RUN+"'"
+#
+VASP_RAMAN_PARAMS = os.environ.get('VASP_RAMAN_PARAMS')
+if VASP_RAMAN_PARAMS == None:
+    print "[__main__]: ERROR Set environment variable 'VASP_RAMAN_PARAMS'"
+    print ""
+    parser.print_help()
+    sys.exit(1)
+print "[__main__]: VASP_RAMAN_PARAMS='"+VASP_RAMAN_PARAMS+"'"
+#
+first, last, nderiv, step_size = parse_env_params(VASP_RAMAN_PARAMS)
+assert first >= 1,    '[__main__]: First mode should be equal or larger than 1'
+assert last >= first, '[__main__]: Last mode should be equal or larger than first mode'
+if args['gen']: assert last == first, "[__main__]: '-gen' mode -> only generation for the one mode makes sense"
+assert nderiv == 2,   '[__main__]: At this time, nderiv = 2 is the only supported'
+disps = [-1, 1]      # hardcoded for
+coeffs = [-0.5, 0.5] # three point stencil (nderiv=2)
+#
+try:
+    poscar_fh = open('POSCAR.phon', 'r')
+except IOError:
+    print "[__main__]: ERROR Couldn't open input file POSCAR.phon, exiting...\n"
+    sys.exit(1)
+#
+# nat, vol, b, poscar_header = parse_poscar_header(poscar_fh)
+nat, vol, b, pos, poscar_header = parse_poscar(poscar_fh)
+print pos
+#print poscar_header
+#sys.exit(0)
+#
+# either use modes from vtst tools or VASP
+if os.path.isfile('freq.dat') and os.path.isfile('modes_sqrt_amu.dat'):
+    try:
+        freqdat_fh = open('freq.dat', 'r')
+    except IOError:
+        print "[__main__]: ERROR Couldn't open freq.dat, exiting...\n"
+        sys.exit(1)
+    #
+    eigvals = parse_freqdat(freqdat_fh, nat)
+    freqdat_fh.close()
+    #
+    try: 
+        modes_fh = open('modes_sqrt_amu.dat' , 'r')
+    except IOError:
+        print "[__main__]: ERROR Couldn't open modes_sqrt_amu.dat, exiting...\n"
+        sys.exit(1)
+    #
+    eigvecs, norms = parse_modesdat(modes_fh, nat)
+    modes_fh.close()
+#
+elif os.path.isfile('OUTCAR.phon'):
+    try:
+        outcar_fh = open('OUTCAR.phon', 'r')
+    except IOError:
+        print "[__main__]: ERROR Couldn't open OUTCAR.phon, exiting...\n"
+        sys.exit(1)
+    #
+    eigvals, eigvecs, norms = get_modes_from_OUTCAR(outcar_fh, nat)
+    outcar_fh.close()
+#
+else:
+    print "[__main__]: Neither OUTCAR.phon nor freq.dat/modes_sqrt_amu.dat were found, nothing to do, exiting..."
+    sys.exit(1)
+#
+output_fh = open('vasp_raman.dat', 'w')
+output_fh.write("# mode    freq(cm-1)    alpha    beta2    activity\n")
+for i in range(first-1, last):
+    eigval = eigvals[i]
+    eigvec = eigvecs[i]
+    norm = norms[i]
+    #
+    print ""
+    print "[__main__]: Mode #%i: frequency %10.7f cm-1; norm: %10.7f" % ( i+1, eigval, norm )
+    #
+    ra = [[0.0 for x in range(3)] for y in range(3)]
+    for j in range(len(disps)):
+        disp_filename = 'OUTCAR.%04d.%+d.out' % (i+1, disps[j])
+        #
+        try:
+            outcar_fh = open(disp_filename, 'r')
+            print "[__main__]: File "+disp_filename+" exists, parsing..."
+        except IOError:
+            if args['use_poscar'] != True:
+                print "[__main__]: File "+disp_filename+" not found, preparing displaced POSCAR"
+                poscar_fh = open('POSCAR', 'w')
+                poscar_fh.write("%s %4.1e \n" % (disp_filename, step_size))
+                poscar_fh.write(poscar_header)
+                poscar_fh.write("Cartesian\n")
+                #
+                for k in range(nat):
+                    pos_disp = [ pos[k][l] + eigvec[k][l]*step_size*disps[j]/norm for l in range(3)]
+                    poscar_fh.write( '%15.10f %15.10f %15.10f\n' % (pos_disp[0], pos_disp[1], pos_disp[2]) )
+                    #print '%10.6f %10.6f %10.6f %10.6f %10.6f %10.6f' % (pos[k][0], pos[k][1], pos[k][2], dis[k][0], dis[k][1], dis[k][2])
+                poscar_fh.close()
+            else:
+                print "[__main__]: Using provided POSCAR"
+            #
+            if args['gen']: # only generate POSCARs
+                poscar_fn = 'POSCAR.%+d.out' % disps[j]
+                move('POSCAR', poscar_fn)
+                print "[__main__]: '-gen' mode -> "+poscar_fn+" with displaced atoms have been generated"
+                #
+                if j+1 == len(disps): # last iteration for the current displacements list
+                    print "[__main__]: '-gen' mode -> POSCAR files with displaced atoms have been generated, exiting now"
+                    sys.exit(0)
+            else: # run VASP here
+                print "[__main__]: Running VASP..."
+                os.system(VASP_RAMAN_RUN)
+                try:
+                    move('OUTCAR', disp_filename)
+                except IOError:
+                    print "[__main__]: ERROR Couldn't find OUTCAR file, exiting..."
+                    sys.exit(1)
+                #
+                outcar_fh = open(disp_filename, 'r')
+        #
+        try:
+            eps = get_epsilon_from_OUTCAR(outcar_fh)
+            outcar_fh.close()
+        except Exception, err:
+            print err
+            print "[__main__]: Moving "+disp_filename+" back to 'OUTCAR' and exiting..."
+            move(disp_filename, 'OUTCAR')
+            sys.exit(1)
+        #
+        for m in range(3):
+            for n in range(3):
+                ra[m][n]   += eps[m][n] * coeffs[j]/step_size * norm * vol/(4.0*pi)
+        #units: A^2/amu^1/2 =         dimless   * 1/A         * 1/amu^1/2  * A^3
+    #
+    alpha = (ra[0][0] + ra[1][1] + ra[2][2])/3.0
+    beta2 = ( (ra[0][0] - ra[1][1])**2 + (ra[0][0] - ra[2][2])**2 + (ra[1][1] - ra[2][2])**2 + 6.0 * (ra[0][1]**2 + ra[0][2]**2 + ra[1][2]**2) )/2.0
+    print ""
+    print "! %4i  freq: %10.5f  alpha: %10.7f  beta2: %10.7f  activity: %10.7f " % (i+1, eigval, alpha, beta2, 45.0*alpha**2 + 7.0*beta2)
+    output_fh.write("%03i  %10.5f  %10.7f  %10.7f  %10.7f\n" % (i+1, eigval, alpha, beta2, 45.0*alpha**2 + 7.0*beta2))
+    output_fh.flush()
+#
+output_fh.close()
+%}
 
         end
 
@@ -10006,7 +10930,6 @@ subroutine mexFunction(nlhs, plhs, nrhs, prhs)
     call mxCopyReal8ToPtr(D,mxGetPr(plhs(1)),mxGetM(prhs(5))*mxGetM(prhs(1))*mxGetN(prhs(1)))
 end subroutine mexFunction
 %}
-
 
             % compile everything
 
