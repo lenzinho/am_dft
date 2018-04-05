@@ -16,20 +16,30 @@ classdef am_atom
 
     methods (Static)
         
-        function a = define(symb,occ)
+        function atom = define(symb,occ)
+            % atom = define(symb,occ)
             % list of symbol and occupations
-            if nargin == 1; occ = 1; end
+            nsymbs=1; 
+            if iscell(symb); nsymbs = numel(symb);end
+            if nargin == 1; occ = ones(1,nsymbs); end
+            if nsymbs>1
+                for i = 1:nsymbs
+                    atom(i) = am_atom.define(symb{i},occ(i));
+                end
+                return;
+            end
+            % define average
             avg_ = @(x) sum(x.*occ)./sum(occ);
             
-            a           = am_atom; 
-            a.symb      = symb; 
-            a.Z         = am_atom.get_atomic_number(symb);
-            a.config    = am_atom.get_atomic_configuration(a.Z); 
-            a.occ       = occ; 
-            a.mass      = avg_(am_atom.get_atomic_mass(a.symb));
-            a.r_ionic   = avg_(am_atom.get_ionic_radius(a.Z));
-            a.r_atomic  = avg_(am_atom.get_atomic_radius(a.Z));
-            a.r_crystal = avg_(am_atom.get_crystal_radius(a.Z)); 
+            atom           = am_atom; 
+            atom.symb      = symb; 
+            atom.Z         = am_atom.get_atomic_number(symb);
+            atom.config    = am_atom.get_atomic_configuration(atom.Z); 
+            atom.occ       = occ; 
+            atom.mass      = avg_(am_atom.get_atomic_mass(atom.symb));
+            atom.r_ionic   = avg_(am_atom.get_ionic_radius(atom.Z));
+            atom.r_atomic  = avg_(am_atom.get_atomic_radius(atom.Z));
+            atom.r_crystal = avg_(am_atom.get_crystal_radius(atom.Z)); 
         end
         
     end

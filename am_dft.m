@@ -1745,6 +1745,7 @@ classdef am_dft
 %
 %         end
 
+
         function taup         = apply_symmetry(S,tau)
             %
             % tau(1:3,:) = atomic coordinates
@@ -1778,91 +1779,6 @@ classdef am_dft
                     taup(:,Q{2}(:,iq),:,iq) = taup(:,:,:,iq); 
                 end
             end
-        end
-
-        function [T,H,S,R,W]  = get_symmetries(pc, tol)
-            % [T,H,S,R,W] = get_symmetries(pc, tol=am_dft.tiny)
-            % T = all possible translations which restore the crystal to iteself
-            % H = holohogries (all possible rotations which restore the bravais lattice onto iteself)
-            % S = space group symmetries
-            % R = point group symmetries
-
-            import am_lib.* am_dft.*
-
-            % set default numerical tolerance
-            if nargin < 2; tol = am_lib.tiny; end
-
-            % define function to check first two dimensions
-            check_ = @(A) all(all(abs(A)<tol,1),2);
-
-            % define function to sort atoms and species into a unique order (reference)
-            X_ = @(tau,species) sortc_([mod_(tau);species]); X = X_(pc.tau(:,:,1),pc.species);
-
-            % get all vectors connecting atom N to all other atoms
-            % maybe expanding over supercells isn't necessary?
-            % sc = pc;
-            sc = get_supercell(pc,[2,2,2]);
-                N = 1; V =    mod_( sc.tau(:,sc.species==sc.species(N))-sc.tau(:,N) + 1/2, tol) - 1/2; 
-                N = 1; V = [V,mod_( sc.tau(:,sc.species==sc.species(N))+sc.tau(:,N) + 1/2, tol) - 1/2]; 
-                nVs=size(V,2);
-            V = V*2;
-            
-            % find out which subset of vectors V preserve periodic boundary conditions
-            ex_=false(1,nVs); 
-            for j = 1:nVs; ex_(j) = check_( X_(pc.tau(1:3,:,1)-V(:,j),pc.species)-X ); end
-            T=[V(:,ex_),eye(3)]; T=T(:,rankc_(normc_(T)));
-            
-            % condense and get unique 
-                % maybe this isn't necessary?
-                T = am_lib.mod_(T); T = am_lib.uniquec_(T); T = wdv_(T); T = [T,eye(3)];
-
-            if nargout == 1; return; end
-
-                % get arithmetic holodries (symmetries for which R'*g*R = g; g = bas'*bas)
-                N=9; Q=[-1:1]; nQs=numel(Q);[Y{N:-1:1}]=ndgrid(1:nQs); L=reshape(Q(reshape(cat(N+1,Y{:}),[],N)).',3,3,[]);
-                get_holodries_frac_ = @(M) L(:,:,check_(matmul_(matmul_(permute(L,[2,1,3]),M.'*M),L)-M.'*M));
-                H = get_holodries_frac_(pc.bas); nHs = size(H,3);
-                id = member_(flatten_(eye(3)),reshape(H,3^2,[])); H(:,:,[1,id])=H(:,:,[id,1]);
-
-            if nargout == 2; return; end
-
-                % get seitz operators which leave the atomic basis invariant
-                S = zeros(4,4,nHs*nVs); S(4,4,:)=1; nSs=0;
-                for i = 1:nHs; for j = 1:nVs
-                    if check_( X_(H(:,:,i)*pc.tau+V(:,j),pc.species) - X ); nSs=nSs+1; S(1:3,1:4,nSs)=[ H(:,:,i), V(:,j) ]; end
-                end; end; S = S(:,:,1:nSs);
-
-                % condense and get unique 
-                    % maybe this isn't necessary?
-                    S(1:3,4,:) = am_lib.mod_(S(1:3,4,:));
-                    S = reshape(am_lib.uniquec_(reshape(S,16,[])),4,4,[]); nSs = size(S,3);
-
-                % set well defined values
-                S=am_lib.wdv_(S);
-                 
-                % set identity first
-                id = member_(flatten_(eye(4)),reshape(S,4^2,[])); S(:,:,[1,id])=S(:,:,[id,1]);
-
-            if nargout == 3; return; end
-
-                % get point symmetries
-                R  = reshape(uniquec_( reshape(S(1:3,1:3,:),[9,nSs]) ),3,3,[]);
-
-                % set identity first
-                id = member_(flatten_(eye(3)),reshape(R,3^2,[])); R(:,:,[1,id])=R(:,:,[id,1]);
-            
-            if nargout == 4; return; end
-            
-                % get double group
-                j=1/2; W = get_wigner(j,R,'spherical'); 
-
-                % Add plus and minus in accordance with 
-                % V. Heine, Group Theory in Quantum Mechanics (Elsevier, 2014), p 62, eq 8.24.
-                W = cat(3,W,-W); 
-
-                % remove numerical noise
-                W = wdv_(W);
-
         end
 
         function [MT,E,I]     = get_multiplication_table(S,tol)
@@ -7024,59 +6940,7 @@ classdef am_dft
             xc = xc_(ic,tau,x2i);
         end
 
-        function [uc,u2p,p2u] = get_supercell(pc, B)
-            % [uc,u2p,p2u] = get_supercell(pc, B)
-            % Example: to make a cell pc have the same shape as a reference cell ref, do this:
-            % [~,ref] = load_cells('185_P63cm.poscar');
-            % [~,pc]  = load_cells('194_P63mmc.poscar');
-            % pc.bas = rotzd_(-30)*pc.bas; T = round(pc.bas\ref.bas);
-            % sc = get_supercell(pc,T);
-            %
-            import am_lib.* am_dft.*
-            
-            % simple lattice transformations
-            if ischar(B)
-               switch B
-                   case 'bcc'; B = (ones(3)-eye(3))/2;
-                   case 'fcc'; B = ones(3)-2*eye(3);
-                   otherwise; error('Invalid lattice transformation.');
-               end
-            end
-            
-            % check if only diagonal entries are supplied
-            if numel(B) == 3; B = diag(B); end
-            
-            % check size
-            if size(B,1) ~= 3 || size(B,2) ~= 3; error('B must be a 3x3 matrix.'); end
 
-            % check that B has integers
-            if abs(mod_(det(B)))>am_lib.eps; error('determinant of B must be an integer'); end
-
-            % generate primitive lattice vectors
-            n=ceil(normc_(B.')); [Y{1:3}]=ndgrid(0:n(1),0:n(2),0:n(3)); nLs=prod(n+1); L=reshape(cat(3+1,Y{:})-1,[],3).';
-
-            % expand atoms, coordinates supercell fractional, and reduce to primitive supercell
-            % Here, uniquec_ should not use 'stable', since atoms in the primitive cell should go first
-            % uniquec_ without stable has an inherent sort; alternatively, use uniquec_ (with 
-            % 'stable' built-in and then sort after); this is important later when getting pairs and triplets
-            X = uniquec_( [reshape(repmat([1:pc.natoms],nLs,1),1,[]); mod_(inv(B)*osum_(L,pc.tau,2))] );
-            X = X(:,rankc_(X));
-
-            % create mapping
-            u2p = X(1,:); [~,p2u]=unique(u2p); p2u=p2u(:).';
-
-            % define irreducible cell creation function and make structure
-            uc_ = @(uc,tau,B,s2u) struct('units','frac','bas',uc.bas*B,'bas2pc',inv(B),'tau2pc',B,...
-                'symb',{{uc.symb{unique(uc.species(s2u))}}},'mass',uc.mass,'nspecies',sum(unique(uc.species(s2u)).'==uc.species(s2u),2).', ...
-                'natoms',numel(s2u),'tau',tau,'species',uc.species(s2u));
-            uc = uc_(pc,X(2:4,:),B,u2p);
-
-            % % add maps
-            % uc.u2p = u2p;
-            % uc.p2u = p2u;
-            % uc.u2i = pc.p2i(uc.u2p);
-            % uc.i2u = uc.p2u(pc.i2p);
-        end
         
         function [cc,c2p,p2c] = get_conventional_cell(pc, tol, algo)
             % [vc,v2p,p2v] = get_conventional_cell(pc,tol)
