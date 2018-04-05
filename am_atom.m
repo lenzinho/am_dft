@@ -25,7 +25,7 @@ classdef am_atom
             a.symb      = symb; 
             a.Z         = am_atom.get_atomic_number(symb);
             a.config    = am_atom.get_atomic_configuration(a.Z); 
-            a.occ       = occ;
+            a.occ       = occ; 
             a.mass      = avg_(am_atom.get_atomic_mass(a.symb));
             a.r_ionic   = avg_(am_atom.get_ionic_radius(a.Z));
             a.r_atomic  = avg_(am_atom.get_atomic_radius(a.Z));
