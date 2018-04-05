@@ -74,6 +74,76 @@ classdef am_dft
 
     methods (Static)
         
+        function demo_plot_christoffel_sound_velocities
+            
+            % function to plot elastic surface
+            clear;clc;
+
+            ipolar = 1;
+            density = 6.13; % [g/cm3]
+            syms c11 c12 c44
+            % C = cij([c11,c12,c44],'cubic'); % [GPa]
+            % C = cij([585,178,126],'cubic'); % [GPa]
+
+            C=am_dft.get_vasp('outcar:elastic'); % [GPa]
+
+
+            n = 100;
+
+            % generate sphere
+            switch 'A'
+                case {'M','manually'}
+                    [phi,chi] = ndgrid(2*pi*[0:2*n]/(2*n), pi*[0:n]/n); [x,y,z]=sph2cart(chi,phi,1);
+                case {'A','auto'}
+                    [x,y,z]=sphere(n); [chi,phi,~] = cart2sph(x,y,z); 
+                otherwise; error('unknown ssphere generation method');
+            end
+
+            % flatten and get sizes
+            [n,m] = size(phi); R = [x(:),y(:),z(:)].';
+
+            % convert to the full tensor
+            C = cij2cijkl(C);
+
+            % loop over Rs
+            nRs = size(R,2); v=zeros(3,nRs); 
+            for iR = 1:nRs
+                % build Christoffel's matrix
+                G = zeros(3,3);
+                for i = 1:3;for j = 1:3; for k = 1:3; for l = 1:3
+                    G(i,k) = G(i,k) + C(i,j,k,l).*R(j,iR).*R(l,iR);
+                end; end; end; end
+                % solve Christoffel's equation
+                v(:,iR) = sort(sqrt(eig(G)/density)); % [km/s]
+                % find longitudinal and transverse values
+                    % [V,E]=eig(G,'vector');
+                    % iL = abs(abs(R(:,iR).'*V)-1)<am_lib.tiny; iT1=false(1,3); iT1(find(~iL,1))=true;
+                    % if cross(R(:,iR),V(:,iT1)).'*V(:,iL)<0; iT1=~(iT1|iL); end; iT2=~(iT1|iL);
+                    % inds = [1:3]; iL=inds(iL); iT1=inds(iT1); iT2=inds(iT2);
+            end
+
+            % plot the data
+            figure(1); clf; set(gcf,'color','w'); vspan = am_lib.minmax_(v(:));
+            for ipol = 1:3
+                % select velocity
+                w = reshape(v(ipol,:),[n,m]);
+                % convert velocity to radis
+                [x,y,z]=sph2cart(chi,phi,w);
+                % plot
+                h(ipol) = subplot(1,3,ipol);surf(x,y,z,w,'edgecolor','none');
+                daspect([1 1 1]); axis tight; axis off; axis([-1 1 -1 1 -1 1]*vspan(2)); caxis(vspan);    
+                % draw axes
+                line([0,-3*vspan(2)], [0,0], [0,0], 'LineWidth', 3, 'Color', 'k');
+                line([0,0], [0,-3*vspan(2)], [0,0], 'LineWidth', 3, 'Color', 'k');
+                line([0,0], [0,0],  [0,3*vspan(2)], 'LineWidth', 3, 'Color', 'k');
+                grid on;
+            end
+            hl = linkprop(h,{'CameraUpVector', 'CameraPosition', 'CameraTarget', 'XLim', 'YLim', 'ZLim'});
+            setappdata(gcf, 'StoreTheLink', hl);
+
+            am_lib.colormap_('virdis',100); 
+        end
+        
         function demo_setup_calculations
             clear;clc;
             %% --------------------------------------------------------------------------------------------------
