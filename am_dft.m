@@ -74,75 +74,6 @@ classdef am_dft
 
     methods (Static)
         
-        function demo_plot_christoffel_sound_velocities
-            
-            % function to plot elastic surface
-            clear;clc;
-
-            ipolar = 1;
-            density = 6.13; % [g/cm3]
-            syms c11 c12 c44
-            % C = cij([c11,c12,c44],'cubic'); % [GPa]
-            % C = cij([585,178,126],'cubic'); % [GPa]
-
-            C=am_dft.get_vasp('outcar:elastic'); % [GPa]
-
-
-            n = 100;
-
-            % generate sphere
-            switch 'A'
-                case {'M','manually'}
-                    [phi,chi] = ndgrid(2*pi*[0:2*n]/(2*n), pi*[0:n]/n); [x,y,z]=sph2cart(chi,phi,1);
-                case {'A','auto'}
-                    [x,y,z]=sphere(n); [chi,phi,~] = cart2sph(x,y,z); 
-                otherwise; error('unknown ssphere generation method');
-            end
-
-            % flatten and get sizes
-            [n,m] = size(phi); R = [x(:),y(:),z(:)].';
-
-            % convert to the full tensor
-            C = cij2cijkl(C);
-
-            % loop over Rs
-            nRs = size(R,2); v=zeros(3,nRs); 
-            for iR = 1:nRs
-                % build Christoffel's matrix
-                G = zeros(3,3);
-                for i = 1:3;for j = 1:3; for k = 1:3; for l = 1:3
-                    G(i,k) = G(i,k) + C(i,j,k,l).*R(j,iR).*R(l,iR);
-                end; end; end; end
-                % solve Christoffel's equation
-                v(:,iR) = sort(sqrt(eig(G)/density)); % [km/s]
-                % find longitudinal and transverse values
-                    % [V,E]=eig(G,'vector');
-                    % iL = abs(abs(R(:,iR).'*V)-1)<am_lib.tiny; iT1=false(1,3); iT1(find(~iL,1))=true;
-                    % if cross(R(:,iR),V(:,iT1)).'*V(:,iL)<0; iT1=~(iT1|iL); end; iT2=~(iT1|iL);
-                    % inds = [1:3]; iL=inds(iL); iT1=inds(iT1); iT2=inds(iT2);
-            end
-
-            % plot the data
-            figure(1); clf; set(gcf,'color','w'); vspan = am_lib.minmax_(v(:));
-            for ipol = 1:3
-                % select velocity
-                w = reshape(v(ipol,:),[n,m]);
-                % convert velocity to radis
-                [x,y,z]=sph2cart(chi,phi,w);
-                % plot
-                h(ipol) = subplot(1,3,ipol);surf(x,y,z,w,'edgecolor','none');
-                daspect([1 1 1]); axis tight; axis off; axis([-1 1 -1 1 -1 1]*vspan(2)); caxis(vspan);    
-                % draw axes
-                line([0,-3*vspan(2)], [0,0], [0,0], 'LineWidth', 3, 'Color', 'k');
-                line([0,0], [0,-3*vspan(2)], [0,0], 'LineWidth', 3, 'Color', 'k');
-                line([0,0], [0,0],  [0,3*vspan(2)], 'LineWidth', 3, 'Color', 'k');
-                grid on;
-            end
-            hl = linkprop(h,{'CameraUpVector', 'CameraPosition', 'CameraTarget', 'XLim', 'YLim', 'ZLim'});
-            setappdata(gcf, 'StoreTheLink', hl);
-
-            am_lib.colormap_('virdis',100); 
-        end
         
         function demo_setup_calculations
             clear;clc;
@@ -670,40 +601,6 @@ classdef am_dft
             
         end
         
-        function demo_plot_charge()
-            % fposcar = 'PARCHG.0028.ALLK';
-            % fposcar = 'PARCHG.0028.0001';
-            fposcar = 'PARCHG';
-            % fposcar='CHG';
-            [uc] = am_dft.load_poscar(fposcar);
-
-
-            % generate coordinates [cart]
-            mp_ = @(x) [0:(x-1)]./x; [r{1:3}] = ndgrid(mp_(uc.n(1)),mp_(uc.n(2)),mp_(uc.n(3)));
-            r = reshape(uc.bas*reshape(permute(cat(4,r{:}),[4,1,2,3]),3,prod(uc.n)),[3,uc.n]);
-
-            % set isolevels
-            fwd_ = @(x) log(x); rev_ = @(x) exp(x);
-            v = rev_(linspace(fwd_(min(uc.chg(:))),fwd_(max(uc.chg(:))),50));
-
-            % plot isolevels
-            figure(1); clf; set(gcf,'color','w'); sq_ = @(x) reshape(x,uc.n);
-            nvs = numel(v); clist=am_lib.colormap_('virdis',nvs);
-            for i = 1:nvs
-                h=patch(isosurface(sq_(r(1,:)),sq_(r(2,:)),sq_(r(3,:)),uc.chg,v(i)));
-                h.FaceColor=clist(i,:); h.FaceAlpha=0.2; h.EdgeColor='none';
-            end
-            box on; axis tight; daspect([1 1 1]);
-            %
-            %%
-            figure(1); clf; set(gcf,'color','w'); sq_ = @(x) reshape(x,uc.n);
-            hold on;
-                h=slice(permute(sq_(r(1,:)),[2,1,3]),permute(sq_(r(2,:)),[2,1,3]),sq_(r(3,:)),log(uc.chg),uc.bas(1,1)/2,uc.bas(2,2)/2,uc.bas(3,3)/2); 
-                for i = 1:numel(h); h(i).EdgeColor='none'; h(i).FaceColor='interp'; end
-            hold off;
-
-        end
-        
         function demp_tb()
             switch 'VN'
             case 'VN'
@@ -969,7 +866,7 @@ classdef am_dft
                     case 'base'
                         % lepsilon
                         opts_ = { ...
-                        'ncore'    , '' , 'kpar'   , '' , 'npar'   , '' , ... % parallelization
+                        'ncore'    , '' , 'kpar'   , '' , 'npar'   , '' , 'nsim'   , '' , ... % parallelization
                         'istart'   , '' , 'icharg' , '' , 'nwrite' , '' , ... % restarting
                         'ispin'    , '' , 'gga'    , '' , 'ivdw'   , '' , ... % exchange correlations stuff
                         'encut'    , '' , 'prec'   , '' , 'algo'   , '' , 'ialgo'  , '' , 'amix'   , '' , ...
@@ -979,8 +876,8 @@ classdef am_dft
                         'ldauprint', '' ,'lmaxmix' , '' , ... % DFT+U stuff
                         'ibrion'   , '' , 'isif'   , '' , 'ediffg' , '' , 'potim'  , '' , 'tebeg'  , '' , ...
                         'nblock'   , '' , 'nsw'    , '' , 'smass'  , '' , 'addgrid', '' , ... % aimd stuff
-                        'ncore'    , '' , 'npar'   , '' , 'nsim'   , '' , ... % cluster stuff 
                         'lreal'    , '' , 'lwave'  , '' , 'lcharg' , '' , 'lvtot'  , '' ... % save stuff
+                        'lpard'    , '' , 'nbmod'  , '' , 'lsepb'  , '' , 'lsepk'  , '' , 'iband', '' , 'kpuse', '' , 'eint', '' ,  ... % charge
                         };
                         incar = generate_incar('',opts_);
                     case 'defaults'
@@ -1028,6 +925,9 @@ classdef am_dft
                         % icharg = 2 is required for ibrion = 8 other nonorthogonality error.
                         % isym = 0 makes the calculation much faster because it allows ncore to be set (despite needing to consider more degrees of freedom)
                         opts_ = {'icharg','2','ibrion','6','nsw','1','isif','3','potim','0.01','isym','0','#ncore','8'}; 
+                        incar = generate_incar('nscf',opts_);
+                    case 'charge'
+                        opts_ = {'lpard','.TRUE.','nbmod','-3','lsepb','.TRUE.','lsepk','.TRUE.','iband','28','kpuse','1','eint','-10'};
                         incar = generate_incar('nscf',opts_);
                     case 'aimd' 
                         % similar to rlx but with ibrion=0, a lower energy convergence, no convergence on ionic motion, nose thermostat, and more steps 
@@ -1256,9 +1156,13 @@ classdef am_dft
                 case 'cll';         c='(icorelevel=2): l quantum number of excited core electron';
                 case 'clz';         c='(icorelevel=2): (0.5) slaters transition state , (1.0) whole electron excited';
                 % charge
-                case 'lpard';       c='(.TRUE.) calcualte charge densities';
-                case 'iband';       c='indices of bands to use in charge density calculation';
-                % case 'iband';       c='indices of bands to use in charge density calculation';
+                case {'lpard','#lpard'}; c='(.TRUE.) calculate charge densities';
+                case {'lsepb','#lsepb'}; c='(.TRUE.) seperate charge by bands';
+                case {'lsepk','#lsepk'}; c='(.TRUE.) seperate charge by kpoints';
+                case {'iband','#iband'}; c='indices of bands to use in charge density calculation';
+                case {'kpuse','#kpuse'}; c='indices of kpoints to use in charge density calculation';
+                case 'nbmod';            c='(-1) default (-3) relative to fermi energy';
+                case {'eint','#eint'};   c='energy range for charge density calculation';
                 % oribtal info
                 case 'lorbit'; 		c='(11) lm-proj DOS and PROCAR (0) DOS';
                 % projection scheme
@@ -1434,8 +1338,8 @@ classdef am_dft
                     natoms = get_vasp('vasprun:natoms');
                     [~,x] = system(sprintf('grep -A 100000 ''Eigenvectors after division by SQRT(mass)'' OUTCAR | grep -A %i ''2PiTHz'' | grep -v X | grep -v 2PiTHz | awk ''{print $4 " " $5 " " $6}''',natoms+1)); 
                     x = sscanf(x,'%f'); x = x(1:(3*natoms).^2); x = reshape(x,3,natoms,3*natoms); % these ARE divided by sqrt(m).
-                case 'outcar:elastic' % obtained with ibrion=6 and iwrite = 3, the factor of 10 converts from kbar to GPa
-                    [~,x] = system('grep -A 8 "TOTAL ELASTIC" OUTCAR | tail -n 6 | awk ''{print $2 " " $3 " " $4 " " $5 " " $6 " " $7}'' '); x = reshape(sscanf(x,'%f'),6,6).'/10;
+                case 'outcar:elastic' % obtained with ibrion=6 and iwrite = 3, the factor of 10 converts from kbar to GPa, the full tensor is given (not in voigt notation!)
+                    [~,x] = system('grep -A 8 "TOTAL ELASTIC" OUTCAR | tail -n 6 | awk ''{print $2 " " $3 " " $4 " " $5 " " $6 " " $7}'' '); x = reshape(sscanf(x,'%f'),6,6).'/10; x = cij2cijkl(x);
                 case 'outcar:total_charge' % obtained when iorbit=11 is specified
                     % x( natoms , {s,p,d,f} )
                     natoms = get_vasp('vasprun:natoms');
@@ -1563,6 +1467,26 @@ classdef am_dft
                     error('grep command not found');
             end
             if isempty(x); x = NaN; end
+            
+
+            % convert voigt elastic constants to full tensor
+            function[CC] = cij2cijkl(C)
+                CC=zeros(3,3,3,3);
+                CC(1,1,1,1)=C(1,1);CC(2,2,2,2)=C(2,2);CC(3,3,3,3)=C(3,3);CC(2,3,2,3)=C(4,4);CC(3,2,3,2)=CC(2,3,2,3);CC(2,3,3,2)=CC(2,3,2,3);
+                CC(3,2,2,3)=CC(2,3,2,3);CC(1,3,1,3)=C(5,5);CC(3,1,1,3)=CC(1,3,1,3);CC(1,3,3,1)=CC(1,3,1,3);CC(3,1,3,1)=CC(1,3,1,3);
+                CC(1,1,2,2)=C(1,2);CC(2,2,1,1)=CC(1,1,2,2);CC(1,1,3,3)=C(1,3);CC(3,3,1,1)=CC(1,1,3,3);CC(1,1,2,3)=C(1,4);CC(1,1,3,2)=CC(1,1,2,3);
+                CC(2,3,1,1)=CC(1,1,2,3);CC(3,2,1,1)=CC(1,1,2,3);CC(1,1,1,3)=C(1,5);CC(1,1,3,1)=CC(1,1,1,3);CC(1,3,1,1)=CC(1,1,1,3);CC(3,1,1,1)=CC(1,1,1,3);
+                CC(1,1,1,2)=C(1,6);CC(1,1,2,1)=CC(1,1,1,2);CC(1,2,1,1)=CC(1,1,1,2);CC(2,1,1,1)=CC(1,1,1,2);CC(2,2,3,3)=C(2,3);CC(3,3,2,2)=CC(2,2,3,3);
+                CC(2,2,2,3)=C(2,4);CC(2,2,3,2)=CC(2,2,2,3);CC(2,3,2,2)=CC(2,2,2,3);CC(3,2,2,2)=CC(2,2,2,3);CC(2,2,1,3)=C(2,5);CC(2,2,3,1)=CC(2,2,1,3);
+                CC(1,3,2,2)=CC(2,2,1,3);CC(3,1,2,2)=CC(2,2,1,3);CC(2,2,1,2)=C(2,6);CC(2,2,2,1)=CC(2,2,1,2);CC(1,2,2,2)=CC(2,2,1,2);CC(2,1,2,2)=CC(2,2,1,2);
+                CC(3,3,2,3)=C(3,4);CC(3,3,3,2)=CC(3,3,2,3);CC(2,3,3,3)=CC(3,3,2,3);CC(3,2,3,3)=CC(3,3,2,3);CC(3,3,1,3)=C(3,5);CC(3,3,3,1)=CC(3,3,1,3);
+                CC(1,3,3,3)=CC(3,3,1,3);CC(3,1,3,3)=CC(3,3,1,3);CC(3,3,1,2)=C(3,6);CC(3,3,2,1)=CC(3,3,1,2);CC(1,2,3,3)=CC(3,3,1,2);CC(2,1,3,3)=CC(3,3,1,2);
+                CC(2,3,1,3)=C(4,5);CC(3,2,1,3)=CC(2,3,1,3);CC(1,3,3,2)=CC(2,3,1,3);CC(1,3,2,3)=CC(2,3,1,3);CC(2,3,3,1)=CC(2,3,1,3);CC(3,2,3,1)=CC(2,3,1,3);
+                CC(3,1,2,3)=CC(2,3,1,3);CC(3,1,3,2)=CC(2,3,1,3);CC(2,3,1,2)=C(4,6);CC(3,2,1,2)=CC(2,3,1,2);CC(1,2,2,3)=CC(2,3,1,2);CC(1,2,3,2)=CC(2,3,1,2);
+                CC(2,3,2,1)=CC(2,3,1,2);CC(3,2,2,1)=CC(2,3,1,2);CC(2,1,2,3)=CC(2,3,1,2);CC(2,1,3,2)=CC(2,3,1,2);CC(1,3,1,2)=C(5,6);CC(3,1,1,2)=CC(1,3,1,2);
+                CC(1,2,1,3)=CC(1,3,1,2);CC(1,2,3,1)=CC(1,3,1,2);CC(1,3,2,1)=CC(1,3,1,2);CC(3,1,2,1)=CC(1,3,1,2);CC(2,1,1,3)=CC(1,3,1,2);
+                CC(2,1,3,1)=CC(1,3,1,2);CC(1,2,1,2)=C(6,6);CC(2,1,1,2)=CC(1,2,1,2);CC(1,2,2,1)=CC(1,2,1,2);CC(2,1,2,1)=CC(1,2,1,2);
+            end
         end
             
         function           vasp_fix_input(flags)
@@ -1645,6 +1569,83 @@ classdef am_dft
             end
         end
 
+        % vasp automation
+        
+        function           dfpt2frozen(pc,incar,d,hw,modelist,dmax,ndisps,flag)
+            % clear;clc;odir=pwd;
+            % % select a mode, maximum displacement, number of displacements
+            % modelist = [1,2,4,10,16,22]; dmax = 0.01; ndisps = 15; flag = 'A';
+            % % load phonon eigenvectors and unit cell
+            % bdir='./DFPT';cd(bdir);
+            %     [~,pc] = am_cell.load_cell('poscar','POSCAR');
+            %     incar  = am_dft.load_incar('INCAR');
+            %     d      = am_dft.get_vasp('outcar:phonon_eigendisplacements'); % obtained with iwrite = 3
+            %     % V      = am_dft.get_vasp('outcar:phonon_eigenvectors');
+            %     % d      = V./sqrt(pc.mass(pc.species));
+            %     hw     = am_dft.get_vasp('outcar:phonon_energies');
+            % cd(odir);
+            % dfpt2frozen(pc,incar,d,hw,modelist,dmax,ndisps,flag);
+
+            % set origin directory
+            odir=pwd;
+            % check modelist
+            modelist = modelist(modelist<=size(d,3));
+            % get scale factors setting maximum displacement
+            scale_ = @(d,imode) max(am_lib.normc_(d(:,:,imode)));
+            % create directories
+            wdir_ = @(imode,idisp) sprintf('./%.3i/%.3i',imode,idisp);
+            % setup or analysis?
+            switch flag
+                case {'S','setup'}
+                    % modify incar
+                    incar.ibrion = '-1'; incar.npar  =  ''; 
+                    incar.kpar   = '8';  incar.ncore = '8';
+                    % set the maximum displacement to between [-0.01,0.01]; % [nm]
+                    alpha = linspace(-dmax,dmax,ndisps).'/scale_(d,imode);
+                    % loop
+                    for i = 1:numel(modelist); imode = modelist(i);
+                    for idisp = 1:numel(alpha)
+                        wdir=wdir_(imode,idisp); mkdir(wdir); cd(wdir);
+                            % write files
+                            % POSCAR
+                                sc = pc; sc.tau = sc.tau + sc.bas\(alpha(idisp)*d(:,:,imode));
+                                am_dft.write_poscar(sc,'POSCAR')
+                            % INCAR
+                                am_dft.write_incar(incar);
+                            % KPOINTS, POTCAR
+                            for f = {'KPOINTS','POTCAR'}
+                                copyfile([bdir,'/',f{:}],f{:});
+                            end
+                        cd(odir);
+                    end
+                    end
+                case {'A','analysis'}
+                    figure(1);clc;clf;set(gcf,'color','w');hold on;
+                    for i = 1:numel(modelist); imode = modelist(i);
+                        % grep oszicar for final energy
+                        E = NaN(ndisps,1);
+                        for idisp = 1:ndisps
+                            wdir=wdir_(imode,idisp); if exist(wdir,'dir')~=7; continue; end; cd(wdir);
+                                E(idisp) = am_dft.get_vasp('oszicar:toten');
+                            cd(odir);
+                        end
+                        % set the maximum displacement to between [-0.01,0.01]; % [nm]
+                        alpha = linspace(-dmax,dmax,ndisps).'./scale_(d,imode);
+                        % plot and fit results
+                        if sum(~isnan(E))>2
+                            scale = max(am_lib.normc_(d(:,:,imode))); ex_ = ~isnan(E);
+                            % U [eV] = 1/2 * u^2 [nm/sqrt(amu)] * amu;
+                            plot(alpha(ex_),E(ex_),'o-');
+                            ft_ = fit(alpha(ex_),E(ex_),'poly2');
+                            plot(alpha,E,'o-',alpha,feval(ft_,alpha),'--');
+
+                            phonon_energy = sqrt( 2 * ft_.p1 * am_dft.units_meV * 2*pi );
+                            [ phonon_energy, hw(imode), phonon_energy./hw(imode) ]
+                        end
+                    end
+            end
+        end
+        
     end
     
     
@@ -2220,11 +2221,9 @@ classdef am_dft
         end
 
         function [bas]        = bas_hex2rhomb(bas)
-            import am_dft.abc2bas am_dft.bas2abc
-            abc=bas2abc(bas); c=abc(3); a=abc(1);
+            abc=am_cell.bas2abc(bas); c=abc(3); a=abc(1);
             abc(4:6) = acosd((2*c^2-3*a^2)/(2*c^2+6*a^2));
             abc(1:3) = sqrt(c^2+3*a^2)/3;
-            % bas = abc2bas(abc);
             
             a=abc(6);
             bas=abc(1)*[...
@@ -4832,24 +4831,6 @@ classdef am_dft
                 case ''
                 otherwise; error('unknown symmetry type');     
             end
-        end
-
-        function[CC]=cij2cijkl(C)
-            CC=zeros(3,3,3,3);
-            CC(1,1,1,1)=C(1,1);CC(2,2,2,2)=C(2,2);CC(3,3,3,3)=C(3,3);CC(2,3,2,3)=C(4,4);CC(3,2,3,2)=CC(2,3,2,3);CC(2,3,3,2)=CC(2,3,2,3);
-            CC(3,2,2,3)=CC(2,3,2,3);CC(1,3,1,3)=C(5,5);CC(3,1,1,3)=CC(1,3,1,3);CC(1,3,3,1)=CC(1,3,1,3);CC(3,1,3,1)=CC(1,3,1,3);
-            CC(1,1,2,2)=C(1,2);CC(2,2,1,1)=CC(1,1,2,2);CC(1,1,3,3)=C(1,3);CC(3,3,1,1)=CC(1,1,3,3);CC(1,1,2,3)=C(1,4);CC(1,1,3,2)=CC(1,1,2,3);
-            CC(2,3,1,1)=CC(1,1,2,3);CC(3,2,1,1)=CC(1,1,2,3);CC(1,1,1,3)=C(1,5);CC(1,1,3,1)=CC(1,1,1,3);CC(1,3,1,1)=CC(1,1,1,3);CC(3,1,1,1)=CC(1,1,1,3);
-            CC(1,1,1,2)=C(1,6);CC(1,1,2,1)=CC(1,1,1,2);CC(1,2,1,1)=CC(1,1,1,2);CC(2,1,1,1)=CC(1,1,1,2);CC(2,2,3,3)=C(2,3);CC(3,3,2,2)=CC(2,2,3,3);
-            CC(2,2,2,3)=C(2,4);CC(2,2,3,2)=CC(2,2,2,3);CC(2,3,2,2)=CC(2,2,2,3);CC(3,2,2,2)=CC(2,2,2,3);CC(2,2,1,3)=C(2,5);CC(2,2,3,1)=CC(2,2,1,3);
-            CC(1,3,2,2)=CC(2,2,1,3);CC(3,1,2,2)=CC(2,2,1,3);CC(2,2,1,2)=C(2,6);CC(2,2,2,1)=CC(2,2,1,2);CC(1,2,2,2)=CC(2,2,1,2);CC(2,1,2,2)=CC(2,2,1,2);
-            CC(3,3,2,3)=C(3,4);CC(3,3,3,2)=CC(3,3,2,3);CC(2,3,3,3)=CC(3,3,2,3);CC(3,2,3,3)=CC(3,3,2,3);CC(3,3,1,3)=C(3,5);CC(3,3,3,1)=CC(3,3,1,3);
-            CC(1,3,3,3)=CC(3,3,1,3);CC(3,1,3,3)=CC(3,3,1,3);CC(3,3,1,2)=C(3,6);CC(3,3,2,1)=CC(3,3,1,2);CC(1,2,3,3)=CC(3,3,1,2);CC(2,1,3,3)=CC(3,3,1,2);
-            CC(2,3,1,3)=C(4,5);CC(3,2,1,3)=CC(2,3,1,3);CC(1,3,3,2)=CC(2,3,1,3);CC(1,3,2,3)=CC(2,3,1,3);CC(2,3,3,1)=CC(2,3,1,3);CC(3,2,3,1)=CC(2,3,1,3);
-            CC(3,1,2,3)=CC(2,3,1,3);CC(3,1,3,2)=CC(2,3,1,3);CC(2,3,1,2)=C(4,6);CC(3,2,1,2)=CC(2,3,1,2);CC(1,2,2,3)=CC(2,3,1,2);CC(1,2,3,2)=CC(2,3,1,2);
-            CC(2,3,2,1)=CC(2,3,1,2);CC(3,2,2,1)=CC(2,3,1,2);CC(2,1,2,3)=CC(2,3,1,2);CC(2,1,3,2)=CC(2,3,1,2);CC(1,3,1,2)=C(5,6);CC(3,1,1,2)=CC(1,3,1,2);
-            CC(1,2,1,3)=CC(1,3,1,2);CC(1,2,3,1)=CC(1,3,1,2);CC(1,3,2,1)=CC(1,3,1,2);CC(3,1,2,1)=CC(1,3,1,2);CC(2,1,1,3)=CC(1,3,1,2);
-            CC(2,1,3,1)=CC(1,3,1,2);CC(1,2,1,2)=C(6,6);CC(2,1,1,2)=CC(1,2,1,2);CC(1,2,2,1)=CC(1,2,1,2);CC(2,1,2,1)=CC(1,2,1,2);
         end
 
         function [C] = cijkl2cij(CC)

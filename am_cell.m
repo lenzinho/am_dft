@@ -23,7 +23,10 @@ classdef am_cell < dynamicprops % required for xrr simulation
         point_group      = []; % point group
         space_group      = []; % space group  
         % properties
-        chg              = am_field; % charge density
+        nchg             = []; % [n1,n2,n3]
+        chg              = []; % charge density
+        % elastic constants
+        cijkl            = []; % elastic constants
         % xrr simulation
         % [dynamic] thickness 
         % [dynamic] filling
@@ -711,6 +714,89 @@ classdef am_cell < dynamicprops % required for xrr simulation
             end
         end
 
+        function [h]             = plot_charge(uc,v)
+
+            % set isolevels
+            if nargin<2
+                % fwd_ = @(x) log(x); rev_ = @(x) exp(x);
+                fwd_ = @(x) x; rev_ = @(x) x;
+                v = rev_(linspace(fwd_(min(uc.chg(:))),fwd_(max(uc.chg(:))),20));
+            end
+
+            % generate coordinates [cart]
+            mp_ = @(x) [0:(x-1)]./x; [r{1:3}] = ndgrid(mp_(uc.nchg(1)),mp_(uc.nchg(2)),mp_(uc.nchg(3)));
+            r = reshape(uc.bas*reshape(permute(cat(4,r{:}),[4,1,2,3]),3,prod(uc.nchg)),[3,uc.nchg]);
+
+            % plot isolevels
+            figure(1); clf; set(gcf,'color','w'); hold on;
+            sq_ = @(x) reshape(x,uc.nchg); nvs = numel(v); clist=am_lib.colormap_('virdis',nvs);
+            for i = 1:nvs
+                h=patch(isosurface(sq_(r(1,:)),sq_(r(2,:)),sq_(r(3,:)),uc.chg,v(i)));
+                h.FaceColor=clist(i,:); h.FaceAlpha=0.2; h.EdgeColor='none';
+            end
+            box on; axis tight; daspect([1 1 1]);
+            
+            % sq_ = @(x) reshape(x,uc.nchg);
+            % hold on;
+            %     h=slice(permute(sq_(r(1,:)),[2,1,3]),permute(sq_(r(2,:)),[2,1,3]),sq_(r(3,:)),uc.chg,uc.bas(1,1)/2,uc.bas(2,2)/2,uc.bas(3,3)/2); 
+            %     for i = 1:numel(h); h(i).EdgeColor='none'; h(i).FaceColor='interp'; end
+            % hold off;
+        end
+        
+        function [h]             = plot_sound(uc) % plots sound velocities
+            % [pc]=am_cell.load_poscar('poscar');
+            % pc.cijkl=am_dft.get_vasp('outcar:elastic');
+            % pc.plot_sound();
+
+            density = uc.mass_density; % [g/cm3]
+            C = uc.cijkl; % [GPa]
+            
+            % generate sphere
+            n = 100;
+            switch 'A'
+                case {'M','manually'}
+                    [phi,chi] = ndgrid(2*pi*[0:2*n]/(2*n), pi*[0:n]/n); [x,y,z]=sph2cart(chi,phi,1);
+                case {'A','auto'}
+                    [x,y,z]=sphere(n); [chi,phi,~] = cart2sph(x,y,z); 
+                otherwise; error('unknown ssphere generation method');
+            end
+
+            % flatten and get sizes
+            [n,m] = size(phi); R = [x(:),y(:),z(:)].';
+
+            % loop over Rs
+            nRs = size(R,2); v=zeros(3,nRs); 
+            for iR = 1:nRs
+                % build Christoffel's matrix
+                G = zeros(3,3);
+                for i = 1:3;for j = 1:3; for k = 1:3; for l = 1:3
+                    G(i,k) = G(i,k) + C(i,j,k,l).*R(j,iR).*R(l,iR);
+                end; end; end; end
+                % solve Christoffel's equation
+                v(:,iR) = sort(sqrt(eig(G)/density)); % [km/s]
+            end
+
+            % plot the data
+            figure(1); clf; set(gcf,'color','w'); vspan = am_lib.minmax_(v(:));
+            for ipol = 1:3
+                % select velocity
+                w = reshape(v(ipol,:),[n,m]);
+                % convert velocity to radis
+                [x,y,z]=sph2cart(chi,phi,w);
+                % plot
+                h(ipol) = subplot(1,3,ipol);surf(x,y,z,w,'edgecolor','none');
+                daspect([1 1 1]); axis tight; axis off; axis([-1 1 -1 1 -1 1]*vspan(2)); caxis(vspan);    
+                % draw axes
+                line([0,-3*vspan(2)], [0,0], [0,0], 'LineWidth', 3, 'Color', 'k');
+                line([0,0], [0,-3*vspan(2)], [0,0], 'LineWidth', 3, 'Color', 'k');
+                line([0,0], [0,0],  [0,3*vspan(2)], 'LineWidth', 3, 'Color', 'k');
+                grid on;
+            end
+            hl = linkprop(h,{'CameraUpVector', 'CameraPosition', 'CameraTarget', 'XLim', 'YLim', 'ZLim'});
+            setappdata(gcf, 'StoreTheLink', hl);
+
+            am_lib.colormap_('virdis',100);  
+        end
     end
     
     methods (Static) % [make this access protected] % structure-related symmetries
@@ -750,7 +836,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
             end
         end
 
-        function [ps_id,t,d,o]= identify_point_symmetries(R)
+        function [ps_id,t,d,o]= identify_point_symmetries(R,tol)
             import am_lib.* am_dft.*
             
             % number of symmetries
@@ -791,13 +877,9 @@ classdef am_cell < dynamicprops % required for xrr simulation
             ps_id = ps_id .* dg;
                 
             % finally, get the order
-            o = get_order(R);
+            o = get_order(R,tol);
             
             function order = get_order(S, tol)
-
-                import am_lib.* am_dft.*
-
-                if nargin<2; tol = am_dft.tiny; end
 
                 % define comparison function
                 check_ = @(x) any(~am_lib.eq_(x(:),0,tol));
@@ -901,7 +983,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
             end
         end
 
-        function pg_code      = identify_pointgroup(R)
+        function pg_code      = identify_pointgroup(R,tol)
             % pg_code = identify_pointgroup(R)
             %
             % Point symmetries in fractional coordinates so that they are nice integers
@@ -936,11 +1018,11 @@ classdef am_cell < dynamicprops % required for xrr simulation
             %     7 --> c_2v     15 --> s_4      23 --> c_6h     31 --> t_d
             %     8 --> d_2h     16 --> c_4h     24 --> d_6      32 --> o_h
             %
-            import am_lib.* am_dft.*
+            import am_lib.*
             %
             nsyms = size(R,3);
             % identify point symmetries
-            ps_id = identify_point_symmetries(R);
+            ps_id = am_cell.identify_point_symmetries(R,tol);
             % count each type of symmetry
             nc2 = sum(ps_id==2);  % 'c_2'
             nc3 = sum(ps_id==3);  % 'c_3'
@@ -1071,7 +1153,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
             end
         end
         
-        function sg_code      = identify_spacegroup(pg_code)
+        function sg_code      = identify_spacegroup(pg_code,tol)
             % NOTE: THIS CODE IS INCOMPLETE. the idea was to narrow down
             % the possible space groups by requiring that 1) the point
             % groups match, 2) the number of symmetries match, and 3) the
@@ -1938,12 +2020,12 @@ classdef am_cell < dynamicprops % required for xrr simulation
 
             % print basic symmetry info
             [~,H,~,R] = get_symmetries(pc);
-            bv_code = am_cell.identify_bravais(pc.bas, tol);
+            bv_code = am_cell.identify_bravais(pc.bas, pc.tol);
 
             % holohodry should give same info as bravais lattice
-            hg_code = am_cell.identify_pointgroup(H); 
-            pg_code = am_cell.identify_pointgroup(R); 
-            sg_code = am_cell.identify_spacegroup(pg_code); % BETA
+            hg_code = am_cell.identify_pointgroup(H,pc.tol); 
+            pg_code = am_cell.identify_pointgroup(R,pc.tol); 
+            sg_code = am_cell.identify_spacegroup(pg_code,pc.tol); % BETA
 
             % print relevant information
             verbose = true;
@@ -1953,8 +2035,8 @@ classdef am_cell < dynamicprops % required for xrr simulation
                 fprintf('     %-16s = %s\n','primitive',am_cell.decode_bravais(bv_code));
                 fprintf('     %-16s = %s\n','holohodry',am_cell.decode_holohodry(hg_code));
                 fprintf('     %-16s = %s\n','point group',am_cell.decode_pg(pg_code));
-                fprintf('     %-16s = %s\n','laue group',am_cell.decode_laue(identify_laue(pg_code)));
-                fprintf('     %-16s = %s\n','space group',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
+                fprintf('     %-16s = %s\n','laue group',am_cell.decode_laue(am_cell.identify_laue(pg_code)));
+                fprintf('     %-16s = %s\n','space group',strrep(cell2mat(join(am_cell.decode_sg(sg_code),',')),' ',''));
                 fprintf('     %-16s = %-8.3f [g/cm3] \n','mass density',uc.mass_density);
                 fprintf('     %-16s = %-8.3f [atoms/nm3]\n','number density',uc.numb_density);
                 fprintf('     %-16s = %-8.3f [f.u./nm3]\n','formula density',uc.form_density);
@@ -2113,7 +2195,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
 
         end
         
-        function [uc]         = load_poscar(fposcar,flag) % can also be used to load the charge density 
+        function [uc]         = load_poscar(fposcar) % can also be used to load the charge density 
             if nargin < 2; flag=''; end
             fid=fopen(fposcar,'r'); if fid==-1; error('Unable to open %s',fposcar); end
                 header=fgetl(fid);                 % read header (often times contains atomic symbols)
@@ -2151,12 +2233,12 @@ classdef am_cell < dynamicprops % required for xrr simulation
                 % make cell structure
                 uc = am_cell.define(bas,type,species,tau);
                 % load charge density
-                if contains(flag,'charge')
+                if contains(fposcar,'CHGCAR') || contains(fposcar,'CHG')
                     fgetl(fid);
                     n = sscanf(fgetl(fid),'%i');
                     t = textscan(fid,'%f');
                     uc.nchg = n(:).';
-                    uc.chg  = reshape(t{:},uc.n);
+                    uc.chg  = reshape(t{:},uc.nchg);
                 end
             fclose(fid);
         end
