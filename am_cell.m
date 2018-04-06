@@ -1,4 +1,4 @@
-classdef am_cell
+classdef am_cell < dynamicprops % required for xrr simulation
     
     properties
         % basic properties
@@ -29,6 +29,10 @@ classdef am_cell
         R                = []; % point
         % properties
         chg              = am_field; % charge density
+        % xrr simulation
+        % [dynamic] thickness 
+        % [dynamic] filling
+        % [dynamic] roughness
     end
     
     methods (Static)
@@ -77,7 +81,7 @@ classdef am_cell
             uc.numb_density = uc.get_atomic_density();
             uc.form_density = uc.get_formula_density();
         end
-       
+        
     end
     
     methods  % convert between cells
@@ -624,6 +628,33 @@ classdef am_cell
 
         end
         
+        function [eta]           = get_xray_refractive_index(uc,hv,k)
+            %
+            % n = get_xray_refractive_index(uc,hv,k)
+            % 
+            % n              [unitless]     n = 1 + delta + i beta
+            % hv             [eV]           photon energy
+            % k              [1/Ang]        wavevector
+            %
+            % Eq. 3 in B. L. Henke, E. M. Gullikson, and J. C. Davis,
+            % Atomic Data and Nuclear Data Tables 54, 181 (1993). 
+            %
+
+            import am_lib.*
+            
+            % atomic number density per species [atoms/nm^3/species]
+            atomic_density_per_species = uc.numb_density .* (uc.nspecies ./ uc.natoms );
+            
+            % get the effective form factor averaged over species [nhvs,nks]
+            nhvs = numel(hv); nks = numel(k); f = zeros(nhvs,nks);
+            for i = 1:numel(uc.type)
+                f = f + uc.type(i).get_xray_form_factor(hv, k) .* atomic_density_per_species(i);
+            end
+            
+            % refractive index Wormington eq 4.1
+            eta = 1 - am_lib.r_0 ./ (2*pi) .* get_photon_wavelength(hv).^2 .* f;
+        end
+        
     end
     
     methods % plotting
@@ -693,7 +724,7 @@ classdef am_cell
     methods (Static)
 
         % aux unit cells
-        
+
         function uc           = load_material(material)
             switch material
             % toys (NOTE: CONTINUOUS SYMETRIES ARE NOT CHECKED FOR.)
@@ -1034,7 +1065,7 @@ classdef am_cell
             fclose(fid);
         end
 
-        function [cc,c2p,p2c] = get_conventional_cell(pc, tol, algo)
+        function [cc,c2p,p2c] = get_conventional_cell(pc, tol, algo) 
             % [vc,v2p,p2v] = get_conventional_cell(pc,tol)
             
             import am_dft.* am_lib.*
@@ -1113,7 +1144,7 @@ classdef am_cell
             [cc,c2p,p2c] = get_supercell(pc,C);
         end
 
-        function [uc]         = create_cell(bas,tau,symb,sg_code)
+        function [uc]         = create_cell(bas,tau,symb,sg_code) 
             % create_cell(bas,tau,symb,sg_code) creates cell based on wyckoff positions and standard crystallographic setting
             %
             % Example input for BiFeO3 P63cm (hypothetical polymorph):
@@ -1159,7 +1190,7 @@ classdef am_cell
                 'natoms',size(tau,2),'tau',tau,'species',species);
             uc = uc_(bas,tau,symb,species);
         end
-        
+
         function [uc]         = stack_cell(uc)
             % put one cell on top of the other along the z direction
             if numel(uc)==1; return; end

@@ -5481,35 +5481,6 @@ classdef am_dft
             I = sum(abs(X).^2,3);
         end
 
-        function [n]       = get_xray_refractive_index(uc,hv,k)
-            %
-            % n = get_xray_refractive_index(uc,hv,k)
-            % 
-            % n              [unitless]     n = 1 + delta + i beta
-            % hv             [eV]           photon energy
-            % k              [1/Ang]        wavevector
-            %
-            % Eq. 3 in B. L. Henke, E. M. Gullikson, and J. C. Davis,
-            % Atomic Data and Nuclear Data Tables 54, 181 (1993). 
-            %
-
-            import am_lib.* am_dft.*
-            
-            % atomic number density per species [atoms/nm^3/species]
-            atomic_density_per_species = get_cell_atomic_density(uc) .* (uc.nspecies ./ uc.natoms );
-            
-            % atomic form factors [nZs,nhvs,nks]
-            [f0,f1,f2] = get_atomic_xray_form_factor(get_atomic_number(uc.symb), hv, k); 
-            
-            % get the effective form factor averaged over species
-            f = sum( ( f0 + f1 + f2 * 1i ) .* atomic_density_per_species(:) , 1 );
-            
-            % refractive index Wormington eq 4.1
-            n = 1 - am_lib.r_0 ./ (2*pi) .* get_photon_wavelength(hv).^2 .* f;
-            
-            n = permute(n,[3,2,1]); % [nhvs,nks]
-        end
-
     end
 
     % aux library
