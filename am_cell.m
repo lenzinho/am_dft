@@ -22,11 +22,6 @@ classdef am_cell < dynamicprops % required for xrr simulation
         holohodry        = []; % holohodry
         point_group      = []; % point group
         space_group      = []; % space group  
-        % symmetry operators
-        T                = []; % translations
-        H                = []; % lattice holodries
-        S                = []; % space
-        R                = []; % point
         % properties
         chg              = am_field; % charge density
         % xrr simulation
@@ -133,7 +128,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
                     M=T_cart(:,ijk(:,i));M=M.'*M.*[1 2 2; 2 1 2; 2 2 1]; n(1,i) = numel(uniquetol(M(:), uc.tol));
                     % for metric tensors with equal symmetries, get the one which has the
                     % most number of angles at 30,60,90,120 deg.
-                    n(2,i) = numel(uniquetol([30,60,90,120,bas2abc(T_cart(:,ijk(:,i)))], uc.tol));
+                    n(2,i) = numel(uniquetol([30,60,90,120,am_cell.bas2abc(T_cart(:,ijk(:,i)))], uc.tol));
                 end
                 inds_=rankc_(n); B = T(:,ijk(:,inds_(1)));
             end
@@ -716,7 +711,1103 @@ classdef am_cell < dynamicprops % required for xrr simulation
             end
         end
 
+    end
+    
+    methods (Static) % [make this access protected] % structure-related symmetries
         
+        function taup         = apply_symmetry(S,tau)
+            %
+            % tau(1:3,:) = atomic coordinates
+            % tau(4:end) [optional] = anything associated with tau that you want to transfer 
+            
+            import am_lib.*
+
+            % get symmetry type from shape
+            [s(1),s(2),s(3)] = size(S);
+            if     s(1)==3 && s(2)==3 % point symmetry
+                apply_ = @(R,tau) cat(1, ...
+                    reshape(matmul_(R(1:3,1:3,:),tau),3,[],size(R,3))                  , repmat(tau(4:end,:),1,1,size(S,3)) );
+            elseif s(1)==4 && s(2)==4 && all_(eq_(S(4,1:4,:), [0,0,0,1])) % seitz symmetry
+                apply_ = @(S,tau) cat(1, ...
+                    reshape(matmul_(S(1:3,1:3,:),tau(1:3,:)),3,[],size(S,3))+S(1:3,4,:), repmat(tau(4:end,:),1,1,size(S,3)) );
+            elseif s(1)==1 && s(2)==2 && iscell(S) % composit symmetry Q
+                apply_ = @(Q,tau) apply_composite_symmetry_(Q,tau);
+                [s(1),s(2),s(3)] = size(S{1});
+            end
+                
+            taup = apply_(S,tau);
+            taup = reshape(taup,[size(tau),s(3)]);
+
+            function taup = apply_composite_symmetry_(Q,tau)
+                % apply symmetry
+                for i = 1:size(tau,2)
+                    taup(:,i,:,:) = am_dft.apply_symmetry(Q{1},tau(:,i,:,:)); 
+                end
+                % apply permutation
+                for iq = 1:size(Q{1},3)
+                    taup(:,Q{2}(:,iq),:,iq) = taup(:,:,:,iq); 
+                end
+            end
+        end
+
+        function [ps_id,t,d,o]= identify_point_symmetries(R)
+            import am_lib.* am_dft.*
+            
+            % number of symmetries
+            nsyms=size(R,3); 
+            
+            % check if double group is input and convert it to SO(3)
+            if size(R,1) == 2
+                Rp   = SU2_to_SO3(R); Rp = wdv_(Rp); 
+                D    = get_wigner(1/2,Rp,'spherical');
+                dg_p = ~permute(all(all(eq_(R,+D),1),2),[1,3,2]);
+                dg_m = ~permute(all(all(eq_(R,-D),1),2),[1,3,2]);
+                dg   = dg_m - dg_p;
+                R    = Rp;
+            else
+                dg = ones(1,nsyms);
+            end
+            
+            % classify
+            ps_id = zeros(1,nsyms); t = zeros(1,nsyms); d = zeros(1,nsyms);
+            for i = 1:nsyms
+                % get trace and determinant (fractional)
+                t(i) = trace(R(1:3,1:3,i)); d(i) = det(R(1:3,1:3,i));
+                if     (eq_(t(i),+3) && eq_(d(i),+1)); ps_id(i) = 1;  % 'e'
+                elseif (eq_(t(i),-1) && eq_(d(i),+1)); ps_id(i) = 2;  % 'c_2'
+                elseif (eq_(t(i),+0) && eq_(d(i),+1)); ps_id(i) = 3;  % 'c_3'
+                elseif (eq_(t(i),+1) && eq_(d(i),+1)); ps_id(i) = 4;  % 'c_4'
+                elseif (eq_(t(i),+2) && eq_(d(i),+1)); ps_id(i) = 5;  % 'c_6'
+                elseif (eq_(t(i),-3) && eq_(d(i),-1)); ps_id(i) = 6;  % 'i'
+                elseif (eq_(t(i),+1) && eq_(d(i),-1)); ps_id(i) = 7;  % 's_2'
+                elseif (eq_(t(i),+0) && eq_(d(i),-1)); ps_id(i) = 8;  % 's_6'
+                elseif (eq_(t(i),-1) && eq_(d(i),-1)); ps_id(i) = 9;  % 's_4'
+                elseif (eq_(t(i),-2) && eq_(d(i),-1)); ps_id(i) = 10; % 's_3'
+                else;                                  ps_id(i) = 0;  % unknown
+                end
+            end
+            
+            % make double group values negative
+            ps_id = ps_id .* dg;
+                
+            % finally, get the order
+            o = get_order(R);
+            
+            function order = get_order(S, tol)
+
+                import am_lib.* am_dft.*
+
+                if nargin<2; tol = am_dft.tiny; end
+
+                % define comparison function
+                check_ = @(x) any(~am_lib.eq_(x(:),0,tol));
+
+                % get sizes
+                s = size(S); if numel(s)<3; s(3) = 1; end; nSs = s(3);
+
+                if s(1) == 4 && s(2) == 4       % space symmetry
+                    order = ones(1,nSs); 
+                    for j = 1:nSs
+                        X=S(1:4,1:4,j);
+                        while check_(X - eye(4))
+                            order(j) = order(j) + 1;
+                            X = X*S(:,:,j); X(1:3,4)=mod_(X(1:3,4));
+                        end
+                    end
+                else                            % point symmetry 
+                    order = ones(1,nSs); n = size(S,1);
+                    for j = 1:nSs
+                        X=S(:,:,j);
+                        while check_(X - eye(n))
+                            order(j) = order(j) + 1;
+                            X = X*S(:,:,j);
+                        end
+                    end
+                end
+            end
+        end
+
+        function bv_code      = identify_bravais(bas, tol, algo)
+            % bv_code = identify_bravais_lattice(bas, tol, algo)
+            %
+            % Identifies the type of crystal system given a basis. 
+            %
+            % bas     : unit cell column basis vectors 
+            % tol     : numerical tolerence
+            % algo (1): de Graef p 86
+            %      (2): Tinkham  p 61
+            % 
+            % Antonio Mei Sep 20 2017
+            
+            import am_lib.*
+            
+            % set default numerical tolerance
+            if nargin < 2; tol = am_dft.tiny; end
+            if nargin < 3; algo = 2; end
+            
+            bv_code = 0; 
+            % select the algorithm
+            switch algo
+                case 1
+                    % de Graef p 86
+                    M  = bas.'*bas;
+                    ii = [M(1,1),M(2,2),M(3,3)];
+                    ij = [M(1,2),M(1,3),M(2,3)];
+                    t  = numel(uniquetol_(ii, tol));
+                    o  = numel(uniquetol_(ij, tol));
+                    z  = sum(abs(ij)<am_dft.tiny);
+
+                    if     all([t == 3, o == 3, z == 0]); bv_code = 1; % triclinic
+                    elseif all([t == 2, o == 2, z == 2]); bv_code = 2; % hexagonal
+                    elseif all([t == 3, o == 2, z == 2]); bv_code = 3; % monoclinic
+                    elseif all([t == 2, o == 1, z == 3]); bv_code = 4; % tetragonal
+                    elseif all([t == 3, o == 1, z == 3]); bv_code = 5; % orthorhombic
+                    elseif all([t == 1, o == 1, z == 3]); bv_code = 6; % cubic
+                    elseif all([t == 1, o == 1, z == 0]); bv_code = 7; % rhombahedral
+                    else;                                 bv_code = 0; % unknown
+                    end
+                case 2
+                    % Tinkham p 61
+                    abc = am_cell.bas2abc(bas);
+                    if      eq_(abc(1),abc(2), tol) &&  eq_(abc(1),abc(3), tol) &&  eq_(abc(2),abc(3), tol)
+                        if  eq_(abc(4),abc(5), tol) &&  eq_(abc(5),abc(6), tol) &&  eq_(abc(6),abc(4), tol) &&  eq_(abc(4),90, tol)
+                            bv_code = 6; % cubic        (a=b=c, alpha=beta=gamma=90)
+                        else
+                            bv_code = 7; % rhombohedral (a=b=c, alpha=beta=gamma!=90)
+                        end
+                    elseif ~eq_(abc(1),abc(2), tol) && ~eq_(abc(1),abc(3), tol) && ~eq_(abc(2),abc(3), tol)
+                        if ~eq_(abc(4),abc(5), tol) && ~eq_(abc(4),abc(6), tol) && ~eq_(abc(5),abc(6), tol)
+                            bv_code = 1; % triclinic    (a!=b!=c, alpha!=beta!=gamma!=90)
+                        else
+                            if  eq_(abc(4),abc(5), tol) &&  eq_(abc(4),abc(6), tol) &&  eq_(abc(5),abc(6), tol)
+                            bv_code = 5; % orthorhombic (a!=b!=c, alpha=beta=gamma=90)
+                            else
+                            bv_code = 3; % monoclinic   (a!=b!=c, gamma!=(alpha=beta=90))
+                            end
+                        end
+                    elseif  eq_(abc(1),abc(2), tol) && ~eq_(abc(1),abc(3), tol) && ~eq_(abc(2),abc(3), tol) && ...
+                            eq_(abc(4),abc(5), tol) &&  eq_(abc(4),abc(6), tol) &&  eq_(abc(4),    90, tol)
+                            bv_code = 4; % tetragonal   (a=b!=c, alpha=beta=gamma=90)
+                    else
+                            bv_code = 2; % hexagonal    (a=b!=c, alpha=beta=90,gamma=120)
+                    end
+                case 3
+                    % run both algorithms and check for match
+                    bv_code(1) = am_cell.identify_bravais(bas, tol, 1);
+                    bv_code(2) = am_cell.identify_bravais(bas, tol, 2);
+                    if bv_code(1) ~= bv_code(2)
+                        warning('Algorithm mismatch. \n')
+                    end
+            end
+        end
+
+        function pg_code      = identify_pointgroup(R)
+            % pg_code = identify_pointgroup(R)
+            %
+            % Point symmetries in fractional coordinates so that they are nice integers
+            % which can be easily classified.
+            %
+            %    element:         e    i  c_2  c_3  c_4  c_6  s_2  s_6  s_4  s_3
+            %    trace:          +3   -3   -1    0   +1   +2   +1    0   -1   -2
+            %    determinant:    +1   -1   +1   +1   +1   +1   -1   -1   -1   -1
+            %
+            %  The Mathematical Theory of Symmetry in Solids:  Representation Theory for
+            %  Point Groups and Space Groups. 1 edition. Oxford?: New York: Oxford University
+            %  Press, 2010. page 138, chartab 3.8.
+            %
+            %  Applied Group Theory: For Physicists and Chemists. Reissue edition.
+            %  Mineola, New York: Dover Publications, 2015. page 20.
+            %
+            %  Casas, Ignasi, and Juan J. Perez. Modification to Flow Chart to
+            %  Determine Point Groups. Journal of Chemical Education 69, no. 1
+            %  (January 1, 1992): 83. doi:10.1021/ed069p83.2.
+            %
+            %  Breneman, G. L. ?Crystallographic Symmetry Point Group Notation
+            %  Flow Chart.? Journal of Chemical Education 64, no. 3 (March 1, 1987):
+            %  216. doi:10.1021/ed064p216.
+            %
+            %   pg_code --> point_group_name
+            %     1 --> c_1       9 --> c_3      17 --> d_4      25 --> c_6v
+            %     2 --> s_2      10 --> s_6      18 --> c_4v     26 --> d_3h
+            %     3 --> c_2      11 --> d_3      19 --> d_2d     27 --> d_6h
+            %     4 --> c_1h     12 --> c_3v     20 --> d_4h     28 --> t
+            %     5 --> c_2h     13 --> d_3d     21 --> c_6      29 --> t_h
+            %     6 --> d_2      14 --> c_4      22 --> c_3h     30 --> o
+            %     7 --> c_2v     15 --> s_4      23 --> c_6h     31 --> t_d
+            %     8 --> d_2h     16 --> c_4h     24 --> d_6      32 --> o_h
+            %
+            import am_lib.* am_dft.*
+            %
+            nsyms = size(R,3);
+            % identify point symmetries
+            ps_id = identify_point_symmetries(R);
+            % count each type of symmetry
+            nc2 = sum(ps_id==2);  % 'c_2'
+            nc3 = sum(ps_id==3);  % 'c_3'
+            nc4 = sum(ps_id==4);  % 'c_4'
+            nc6 = sum(ps_id==5);  % 'c_6'
+            ni  = sum(ps_id==6);  % 'i'
+            ns2 = sum(ps_id==7);  % 's_2'
+            ns4 = sum(ps_id==9);  % 's_4'
+            % identify point group by comparing number and types of symmetries
+            if         nsyms==1         ; pg_code=1 ; % c_1  
+            elseif     nsyms==48        ; pg_code=32; % s_2  
+            elseif     nsyms==16        ; pg_code=20; % c_2  
+            elseif     nsyms==3         ; pg_code=9 ; % c_1h  
+            elseif and(nsyms==2 , ni==1); pg_code=2 ; % c_2h  
+            elseif and(nsyms==2 ,nc2==1); pg_code=3 ; % d_2  
+            elseif and(nsyms==2 ,ns2==1); pg_code=4 ; % c_2v  
+            elseif and(nsyms==4 , ni==1); pg_code=5 ; % d_2h  
+            elseif and(nsyms==4 ,nc2==3); pg_code=6 ; % c_3  
+            elseif and(nsyms==4 ,ns2==2); pg_code=7 ; % s_6  
+            elseif and(nsyms==4 ,nc4==2); pg_code=14; % d_3    nc4 == 2 is correct, rather than nc4 == 1.
+            elseif and(nsyms==4 ,ns4==2); pg_code=15; % c_3v  
+            elseif and(nsyms==6 , ni==1); pg_code=10; % d_3d  
+            elseif and(nsyms==6 ,nc2==3); pg_code=11; % c_4  
+            elseif and(nsyms==6 ,ns2==3); pg_code=12; % s_4  
+            elseif and(nsyms==6 ,nc2==1); pg_code=21; % c_4h  
+            elseif and(nsyms==6 ,ns2==1); pg_code=22; % d_4  
+            elseif and(nsyms==8 ,ns2==3); pg_code=8 ; % c_4v  
+            elseif and(nsyms==8 ,ns2==1); pg_code=16; % d_2d  
+            elseif and(nsyms==8 ,ns2==0); pg_code=17; % d_4h  
+            elseif and(nsyms==8 ,ns2==4); pg_code=18; % c_6  
+            elseif and(nsyms==8 ,ns2==2); pg_code=19; % c_3h  
+            elseif and(nsyms==12,ns2==3); pg_code=13; % c_6h  
+            elseif and(nsyms==12,ns2==1); pg_code=23; % d_6  
+            elseif and(nsyms==12,nc2==7); pg_code=24; % c_6v  
+            elseif and(nsyms==12,ns2==6); pg_code=25; % d_3h  
+            elseif and(nsyms==12,ns2==4); pg_code=26; % d_6h  
+            elseif and(nsyms==12,nc3==8); pg_code=28; % t  
+            elseif and(nsyms==24,nc6==2); pg_code=27; % t_h  
+            elseif and(nsyms==24, ni==1); pg_code=29; % o  
+            elseif and(nsyms==24,nc4==6); pg_code=30; % t_d  
+            elseif and(nsyms==24,ns4==6); pg_code=31; % o_h  
+            else;                         pg_code=0 ; 
+            end
+        end
+
+        function [c_code,C]   = identify_centering(pc)
+            
+            % this checks the lattice for primitive cell vectors which are expected for different centerings. If the cell is of a wierd shape or a supercell, this function will not work.
+            
+            import am_lib.* am_dft.*
+            
+            % symmetries
+            [~,~,~,R] = get_symmetries(pc); tol=am_dft.tiny;
+            
+            % get number of point symmetries
+            nRs = size(R,3);
+
+            % % basic centring vectors
+            T = [  0,1/2,1/2, 1/2, 2/3, 1/3, 2/3, 1/3, 1/3, 2/3;
+                 1/2,  0,1/2, 1/2, 1/3, 2/3, 1/3, 2/3, 1/3, 2/3;
+                 1/2,1/2,  0, 1/2, 1/3, 2/3,   0,   0, 1/3, 2/3;
+                   1   2,  3,   4,   5,   5,   6,   7,   8,   9];
+
+            % substrate centering vecotrs
+            X = [ 0, 0,-1,-1,-1, 0,-1, 0;
+                  0,-1, 0,-1, 0,-1,-1, 0;
+                 -1, 0, 0, 0,-1,-1,-1, 0;
+                  0, 0, 0, 0, 0, 0, 0, 0];
+
+            % subtract 1 from nonzero values and append identity
+            C = osum_(T,X,2); C = [C(:,~any(eq_(C,-1),1)),[eye(3);0,0,0]]; nCs = size(C,2);
+
+            % eliminate vectors that are collinear
+            ex_ = false(nCs,nCs); is_collinear_ = @(X,Y) all(eq_(cross(X(1:3),Y(1:3)),0)); 
+            for i = 1:nCs; for j = i:nCs; if i ~= j
+                ex_(i,j) = is_collinear_(C(:,i),C(:,j));
+            end; end; end
+            C = C(:,~any(ex_,1)); nCs = size(C,2);
+            
+            % find out which subset of vectors V preserve periodic boundary conditions
+            check_ = @(A) all(all(abs(A)<tol,1),2); ex_=false(1,nCs); 
+            X_ = @(tau,species) sortc_([mod_(tau);species]); X = X_(pc.tau(:,:,1),pc.species);
+            for j = 1:nCs; ex_(j) = check_( X_(pc.tau(1:3,:,1)-C(1:3,j),pc.species)-X ); end
+            C=C(:,ex_); nCs = size(C,2);
+
+            % rank vectors in increasing length
+            C = C(:,rankc_(normc_(C(1:3,:))));
+
+            % get all combinations of vectors
+            ijk = am_lib.permn_(1:nCs,3).'; 
+            ex_ = ~any([ijk(1,:)==ijk(2,:); 
+                        ijk(2,:)==ijk(3,:); 
+                        ijk(3,:)==ijk(1,:)],1);
+            ijk = ijk(:,ex_); nijks = sum(ex_); 
+
+            % check which combination of three vectors produces symmetries which have only integer components
+            for i = 1:nijks         
+                Z = C(1:3,ijk(1:3,i)); d = det(Z);
+                % check collinearity
+                if eq_(d,0); continue; end
+                % flip to get right-handed if necessary
+                if d<0; Z = fliplr(Z); d = -d; ijk(1:3,i) = flipud(ijk(1:3,i)); end
+                % check multiplicity (number of nodes per unit cell)
+                if ~any(eq_(1/d,[1,2,3,4])); continue; end 
+                % check that symmetries contain only integers
+                go = true; iZ=inv(Z);
+                for j = 1:nRs
+                    Rp = Z*R(:,:,j)*iZ;
+                    if any_( ~any(eq_(abs(Rp(:)),[0,1]),2) )
+                        go = false; break; 
+                    end
+                end
+                if ~go; continue; end
+                % transformation found: separate vector code and centering matrix
+                v_code = C(4,ijk(:,i)); C = C(1:3,ijk(:,i)); break;
+            end
+
+            % centering matrix
+            if     all(any(v_code==[ 1; 2; 3],1)); c_code = 1; % face-centered
+            elseif all(any(v_code==[ 1; 0; 0],1)); c_code = 2; % A-centered 
+            elseif all(any(v_code==[ 2; 0; 0],1)); c_code = 3; % B-centered 
+            elseif all(any(v_code==[ 3; 0; 0],1)); c_code = 4; % C-centered 
+            elseif all(v_code==4);                 c_code = 5; % body-centered 
+            elseif all(any(v_code==[ 5; 6; 0],1)); c_code = 6; % rhombohedral (hexagonal)
+            elseif all(any(v_code==[ 7; 8; 0],1)); c_code = 7; % hexagonal
+            elseif all(any(v_code==[ 9;10; 0],1)); c_code = 8; % rhombohedral
+            else; c_code = 0; % unknown
+            end
+        end
+        
+        function sg_code      = identify_spacegroup(pg_code)
+            % NOTE: THIS CODE IS INCOMPLETE. the idea was to narrow down
+            % the possible space groups by requiring that 1) the point
+            % groups match, 2) the number of symmetries match, and 3) the
+            % number of classes match. While matching point groups is good
+            % aving classes and symmmetries match do not seem to be that
+            % great of criteria...
+            %
+            % generate databases using:
+            % import am_lib.*
+            import am_dft.*
+            % for i = 1:237
+            %     % generate space symmetries and multiplication table
+            %     S{i} = generate_sg(i);
+            %     % determine pg corresponding to each sgi %4i , ...\n',cell2mat(pg))
+            %     pg{i} = identify_pointgroup( reshape(uniquec_( reshape(S{i}(1:3,1:3,:),9,[]) ),3,3,[]) );
+            %     % count number of symmetries
+            %     nsyms{i} = size(S{i},3);
+            %     % indentify number of classes
+            %     nclasses{i} = numel(unique(identify_classes(MT{i})));
+            % end
+            % fprintf('pg_database = [ ... \n'); fprintf('%4i %4i %4i %4i %4i %4i %4i %4i %4i %4i %4i %4i , ...\n',cell2mat(pg)); fprintf(']; \n');
+            % fprintf('nsyms_database = [ ... \n');fprintf('%4i %4i %4i %4i %4i %4i %4i %4i %4i %4i %4i %4i , ...\n',cell2mat(nsyms)); fprintf(']; \n');
+            % fprintf('nclasses_database = [ ... \n');fprintf('%4i %4i %4i %4i %4i %4i %4i %4i %4i %4i %4i %4i , ...\n',cell2mat(nclasses)); fprintf(']; \n');
+            %
+
+            pg_database = [ ...
+               1    2    3    3    3    4    4    4    4    5    5    5 , ...
+               5    5    5    6    6    6    6    6    6    6    6    6 , ...
+               7    7    7    7    7    7    7    7    7    7    7    7 , ...
+               7    7    7    7    7    7    7    7    7    7    8    8 , ...
+               8    8    8    8    8    8    8    8    8    8    8    8 , ...
+               8    8    8    8    8    8    8    8    8    8    8    8 , ...
+               8    8   14   14   14   14   14   14   15   15   16   16 , ...
+              16   16   16   16   17   17   17   17   17   17   17   17 , ...
+              17   17   18   18   18   18   18   18   18   18   18   18 , ...
+              18   18   19   19   19   19   19   19   19   19   19   19 , ...
+              19   19   20   20   20   20   20   20   20   20   20   20 , ...
+              20   20   20   20   20   20   20   20   20   20    9    9 , ...
+               9    9   10   10   11   11   11   11   11   11   11   12 , ...
+              12   12   12   12   12   13   13   13   13   13   13   21 , ...
+              21   21   21   21   21   22   23   23   24   24   24   24 , ...
+              24   24   25   25   25   25   26   26   26   26   27   27 , ...
+              27   27   28   28   28   28   28   29   29   29   29   29 , ...
+              29   29   30   30   30   30   30   30   30   30   31   31 , ...
+              31   31   31   31   32   32   32   32   32   32   32   32 , ...
+              32   32    9   10   11   12   12   13   13 ];
+            nsyms_database = [ ...
+               1    2    2    2    4    2    2    4    4    4    4    8 , ...
+               4    4    8    4    4    4    4    8    8   16    8    8 , ...
+               4    4    4    4    4    4    4    4    4    4    8    8 , ...
+               8    8    8    8    8   16   16    8    8    8    8    8 , ...
+               8    8    8    8    8    8    8    8    8    8    8    8 , ...
+               8    8   16   16   16   16   16   16   32   32   16   16 , ...
+              16   16    4    4    4    4    8    8    4    8    8    8 , ...
+               8    8   16   16    8    8    8    8    8    8    8    8 , ...
+              16   16    8    8    8    8    8    8    8    8   16   16 , ...
+              16   16    8    8    8    8    8    8    8    8   16   16 , ...
+              16   16   16   16   16   16   16   16   16   16   16   16 , ...
+              16   16   16   16   16   16   32   32   32   32    3    3 , ...
+               3    9    6   18    6    6    6    6    6    6   18    6 , ...
+               6    6    6   18   18   12   12   12   12   36   36    6 , ...
+               6    6    6    6    6    6   12   12   12   12   12   12 , ...
+              12   12   12   12   12   12   12   12   12   12   24   24 , ...
+              24   24   12   48   24   12   24   24   24   96   96   48 , ...
+              24   48   24   24   96   96   48   24   24   48   24   96 , ...
+              48   24   96   48   48   48   48   48  192  192  192  192 , ...
+              96   96    3    6    6    6    6   12   12 ]; %#ok<NASGU>
+            nclasses_database = [ ...
+               1    2    2    2    4    2    2    4    4    4    4    8 , ...
+               4    4    8    4    4    4    4    8    8   16    8    8 , ...
+               4    4    4    4    4    4    4    4    4    4    8    8 , ...
+               8    8    8    8    8   16   10    8    8    8    8    8 , ...
+               8    8    8    8    8    8    8    8    8    8    8    8 , ...
+               8    8   16   16   16   16   16   16   32   14   16   16 , ...
+              16   16    4    4    4    4    8    8    4    8    8    8 , ...
+               8    8   16   10    5    5    5    5    5    5    5    5 , ...
+              10   10    5    5    5    5    5    5    5    5   10   10 , ...
+              10   10    5    5    5    5    5    5    5    5   10   10 , ...
+              10   10   10   10   10   10   10   10   10   10   10   10 , ...
+              10   10   10   10   10   10   20   20   14   14    3    3 , ...
+               3    9    6    9    3    3    3    3    3    3    6    3 , ...
+               3    3    3    9    9    6    6    6    6    9    9    6 , ...
+               6    6    6    6    6    6   12   12    6    6    6    6 , ...
+               6    6    6    6    6    6    6    6    6    6   12   12 , ...
+              12   12    4    8    8    4    8    8    8   16   10   16 , ...
+               8   16    5    5   10   10   10    5    5   10    5   10 , ...
+              10    5   10   10   10   10   10   10   20   20   14   14 , ...
+              20   14    3    6    3    3    3    6    6 ]; %#ok<NASGU>
+            sg_code = find( (pg_database==pg_code) ); 
+        end
+
+        function lg_code      = identify_laue(pg_code)
+            % pg={'c_1' ,'s_2' ,'c_2' ,'c_1h','c_2h','d_2' ,'c_2v','d_2h', ...
+            %     'c_3' ,'s_6' ,'d_3' ,'c_3v','d_3d','c_4' ,'s_4' ,'c_4h', ...
+            %     'd_4' ,'c_4v','d_2d','d_4h','c_6' ,'c_3h','c_6h','d_6' , ...
+            %     'c_6v','d_3h','d_6h','t'   ,'t_h' ,'o'   ,'t_d' ,'o_h'};
+            
+            % laue group dataset
+            lg=[1,1,2,2,2,3,3,3, ...
+                4,4,5,5,5,6,6,6, ...
+                7,7,7,7,8,8,8,9, ...
+                9,9,9,10,10,11,11,11];
+            % print point group name
+            lg_code = lg(pg_code);
+        end
+        
+        function c_name       = decode_centering(c_code)
+            % F face-centered
+            % A-centered 
+            % B-centered 
+            % C-centered 
+            % I body-centered 
+            % R rhombohedral (hexagonal)
+            % H hexagonal
+            % D rhombohedral	
+            c_database={'F','A','B','C','I','R','H','D'}; 
+            c_name = c_database{c_code};
+        end
+        
+        function bv_name      = decode_bravais(bv_code)
+            % bravais lattices dataset
+            bv={'triclinic','hexagonal','monoclinic','tetragonal',...
+                'orthorhombic','cubic','rhombahedral'};
+            % print bravais lattice type
+            bv_name = bv{bv_code};
+        end
+
+        function brv_name     = decode_holohodry(pg_code)
+            % point group dataset
+            brav={'triclinic','','','','monoclinic','','','orthorhombic', ...
+                  '','','','','trigonal','','','','','','','tetragonal',...
+                  '','','','','','','hexagonal','','','','','cubic'};
+            % print point group name
+            brv_name = brav{pg_code};
+        end
+        
+        function lg_name      = decode_laue(lg_code)
+            import am_dft.*
+            % laue group dataset
+            lg = {'-1' ,'2/m' ,'mmm' ,'-3','-3m','4/m' ,'4/mmm','6/m', '6/mmm' ,'m-3' , 'm-3m'};
+            % print point group name
+            lg_name = lg{lg_code};
+        end
+
+        function pg_name      = decode_pg(pg_code)
+            % point group dataset
+            pg={'c_1' ,'s_2' ,'c_2' ,'c_1h','c_2h','d_2' ,'c_2v','d_2h', ...
+                'c_3' ,'s_6' ,'d_3' ,'c_3v','d_3d','c_4' ,'s_4' ,'c_4h', ...
+                'd_4' ,'c_4v','d_2d','d_4h','c_6' ,'c_3h','c_6h','d_6' , ...
+                'c_6v','d_3h','d_6h','t'   ,'t_h' ,'o'   ,'t_d' ,'o_h'};
+            % print point group name
+            pg_name = pg{pg_code};
+        end
+
+        function sg_name      = decode_sg(sg_code)
+            sg_name_database = { ...
+                ' P  1      ' ,' P -1      ', ... % monoclinic space groups
+                ' P 2       ' ,' P 21      ' ,' C 2       ' ,' P m       ', ...
+                ' P c       ' ,' C m       ' ,' C c       ' ,' P 2/m     ', ...
+                ' P 21/m    ' ,' C 2/m     ' ,' P 2/c     ' ,' P 21/c    ', ...
+                ' C 2/c     ', ...                                              % orthorhombic space groups
+                ' P 2 2 2   ' ,' P 2 2 21  ' ,' P 21 21 2 ' ,' P 21 21 21', ...
+                ' C 2 2 21  ' ,' C 2 2 2   ' ,' F 2 2 2   ' ,' I 2 2 2   ', ...
+                ' I 21 21 21' ,' P m m 2   ' ,' P m c 21  ' ,' P c c 2   ', ...
+                ' P m a 2   ' ,' P c a 21  ' ,' P n c 2   ' ,' P m n 21  ', ...
+                ' P b a 2   ' ,' P n a 21  ' ,' P n n 2   ' ,' C m m 2   ', ...
+                ' C m c 21  ' ,' C c c 2   ' ,' A m m 2   ' ,' A b m 2   ', ...
+                ' A m a 2   ' ,' A b a 2   ' ,' F m m 2   ' ,' F d d 2   ', ...
+                ' I m m 2   ' ,' I b a 2   ' ,' I m a 2   ' ,' P m m m   ', ...
+                ' P n n n   ' ,' P c c m   ' ,' P b a n   ' ,' P m m a   ', ...
+                ' P n n a   ' ,' P m n a   ' ,' P c c a   ' ,' P b a m   ', ...
+                ' P c c n   ' ,' P b c m   ' ,' P n n m   ' ,' P m m n   ', ...
+                ' P b c n   ' ,' P b c a   ' ,' P n m a   ' ,' C m c m   ', ...
+                ' C m c a   ' ,' C m m m   ' ,' C c c m   ' ,' C m m a   ', ...
+                ' C c c a   ' ,' F m m m   ' ,' F d d d   ' ,' I m m m   ', ...
+                ' I b a m   ' ,' I b c a   ' ,' I m m a   ', ...                % tetragonal space groups
+                ' P 4       ' ,' P 41      ' ,' P 42      ' ,' P 43      ', ...
+                ' I 4       ' ,' I 41      ' ,' P -4      ' ,' I -4      ', ...
+                ' P 4/m     ' ,' P 42/m    ' ,' P 4/n     ' ,' P 42/n    ', ...
+                ' I 4/m     ' ,' I 41/a    ' ,' P 4 2 2   ' ,' P 4 21 2  ', ...
+                ' P 41 2 2  ' ,' P 41 21 2 ' ,' P 42 2 2  ' ,' P 42 21 2 ', ...
+                ' P 43 2 2  ' ,' P 43 21 2 ' ,' I 4 2 2   ' ,' I 41 2 2  ', ...
+                ' P 4 m m   ' ,' P 4 b m   ' ,' P 42 c m  ' ,' P 42 n m  ', ...
+                ' P 4 c c   ' ,' P 4 n c   ' ,' P 42 m c  ' ,' P 42 b c  ', ...
+                ' I 4 m m   ' ,' I 4 c m   ' ,' I 41 m d  ' ,' I 41 c d  ', ...
+                ' P -4 2 m  ' ,' P -4 2 c  ' ,' P -4 21 m ' ,' P -4 21 c ', ...
+                ' P -4 m 2  ' ,' P -4 c 2  ' ,' P -4 b 2  ' ,' P -4 n 2  ', ...
+                ' I -4 m 2  ' ,' I -4 c 2  ' ,' I -4 2 m  ' ,' I -4 2 d  ', ...
+                ' P 4/m m m ' ,' P 4/m c c ' ,' P 4/n b m ' ,' P 4/n n c ', ...
+                ' P 4/m b m ' ,' P 4/m n c ' ,' P 4/n m m ' ,' P 4/n c c ', ...
+                ' P 42/m m c' ,' P 42/m c m' ,' P 42/n b c' ,' P 42/n n m', ...
+                ' P 42/m b c' ,' P 42/m n m' ,' P 42/n m c' ,' P 42/n c m', ...
+                ' I 4/m m m ' ,' I 4/m c m ' ,' I 41/a m d' ,' I 41/a c d', ... % rhombohedral space groups
+                ' P 3       ' ,' P 31      ' ,' P 32      ' ,' R 3       ', ...
+                ' P -3      ' ,' R -3      ' ,' P 3 1 2   ' ,' P 3 2 1   ', ...
+                ' P 31 1 2  ' ,' P 31 2 1  ' ,' P 32 1 2  ' ,' P 32 2 1  ', ...
+                ' R 3 2     ' ,' P 3 m 1   ' ,' P 3 1 m   ' ,' P 3 c 1   ', ...
+                ' P 3 1 c   ' ,' R 3 m     ' ,' R 3 c     ' ,' P -3 1 m  ', ...
+                ' P -3 1 c  ' ,' P -3 m 1  ' ,' P -3 c 1  ' ,' R -3 m    ', ...
+                ' R -3 c    ', ...                                              % hexagonal space groups
+                ' P 6       ' ,' P 61      ' ,' P 65      ' ,' P 62      ', ...
+                ' P 64      ' ,' P 63      ' ,' P -6      ' ,' P 6/m     ', ...
+                ' P 63/m    ' ,' P 6 2 2   ' ,' P 61 2 2  ' ,' P 65 2 2  ', ...
+                ' P 62 2 2  ' ,' P 64 2 2  ' ,' P 63 2 2  ' ,' P 6 m m   ', ...
+                ' P 6 c c   ' ,' P 63 c m  ' ,' P 63 m c  ' ,' P -6 m 2  ', ...
+                ' P -6 c 2  ' ,' P -6 2 m  ' ,' P -6 2 c  ' ,' P 6/m m m ', ...
+                ' P 6/m c c ' ,' P 63/m c m' ,' P 63/m m c', ...                % cubic space groups
+                ' P 2 3     ' ,' F 2 3     ' ,' I 2 3     ' ,' P 21 3    ', ...
+                ' I 21 3    ' ,' P m 3     ' ,' P n 3     ' ,' F m 3     ', ...
+                ' F d 3     ' ,' I m 3     ' ,' P a 3     ' ,' I a 3     ', ...
+                ' P 4 3 2   ' ,' P 42 3 2  ' ,' F 4 3 2   ' ,' F 41 3 2  ', ...
+                ' I 4 3 2   ' ,' P 43 3 2  ' ,' P 41 3 2  ' ,' I 41 3 2  ', ...
+                ' P -4 3 m  ' ,' F -4 3 m  ' ,' I -4 3 m  ' ,' P -4 3 n  ', ...
+                ' F -4 3 c  ' ,' I -4 3 d  ' ,' P m 3 m   ' ,' P n 3 n   ', ...
+                ' P m 3 n   ' ,' P n 3 m   ' ,' F m 3 m   ' ,' F m 3 c   ', ...
+                ' F d 3 m   ' ,' F d 3 c   ' ,' I m 3 m   ' ,' I a 3 d   ', ... % trigonal groups rhombohedral setting
+                ' R 3   |146' ,' R -3  |148' ,' R 3 2 |155' ,' R 3 m |160', ...
+                ' R 3 c |161' ,' R -3 m|166' ,' R -3 c|167'};
+            for i = 1:numel(sg_code)
+                sg_name{i} = sprintf('%s (%i)', strtrim(sg_name_database{sg_code(i)}), sg_code(i)); 
+            end
+        end
+
+        function ps_name      = decode_ps(ps_code)
+            nsyms = numel(ps_code);ps_name=cell(1,nsyms);
+            for i = 1:nsyms
+                switch abs(ps_code(i))
+                    case 1;   ps_name{i}='e';
+                    case 2;   ps_name{i}='c_2';
+                    case 3;   ps_name{i}='c_3';
+                    case 4;   ps_name{i}='c_4';
+                    case 5;   ps_name{i}='c_6';
+                    case 6;   ps_name{i}='i';
+                    case 7;   ps_name{i}='s_2';
+                    case 8;   ps_name{i}='s_6';
+                    case 9;   ps_name{i}='s_4';
+                    case 10;  ps_name{i}='s_3';
+                    otherwise;ps_name{i}='';
+                end
+                % append double group
+                if ps_code(i)<0
+                    ps_name{i} = ['R',ps_name{i}];
+                end
+            end
+        end
+
+        function ps_name_long = get_long_ps_name(R)
+            nsyms=size(R,3); 
+            ps_id=am_dft.identify_point_symmetries(R);
+            ps_name=am_dft.decode_ps(ps_id);
+            ps_axis=am_lib.rnd_(am_lib.R_axis_(R));
+            syms x y z
+            for i = 1:nsyms
+                ps_name_long{i} = sprintf('%s',strtrim(ps_name{i}));
+                if abs(ps_id(i))~=1 && abs(ps_id(i))~=6
+                    ax = ps_axis(:,i).'; if sum(am_lib.lt_(ax,0))>sum(am_lib.gt_(ax,0)); ax=-ax; end
+                    ax_name = sprintf('%s',ax*[x;y;z]); ax_name=strrep(ax_name,' ',''); ax_name=strrep(ax_name,'+',''); 
+                    ps_name_long{i} = sprintf('%s(%s)',ps_name_long{i}, ax_name );
+                end
+            end
+        end
+
+        function ss_name_long = get_long_ss_name(S)
+            
+            import am_dft.* am_lib.*
+            
+            if isempty(S); ss_name_long=[]; return; end
+            
+            if iscell(S)
+                ss_name_long = get_long_ss_name(S{1});
+                for i = 1:size(S{1},3)
+                    pp_name = [sprintf('%i',S{2}(1,i)), sprintf(',%i',S{2}(2:end,i))];
+                    ss_name_long{i} = sprintf('%s (%s)', ss_name_long{i}, pp_name);
+                end
+            else
+                ss_name_long = get_long_ps_name(S(1:3,1:3,:));
+                nsyms=size(S,3); E = find(all(all(eq_(S,eye(4)),1),2));
+                for i = 1:nsyms
+                    if i==E; continue; end
+                    t = S(1:3,4,i);
+                    t_name = sprintf('[%3.2f %3.2f %3.2f]',t);
+                    ss_name_long{i} = sprintf('%10s %s',ss_name_long{i}, t_name );
+                end
+            end
+        end
+
+        function S            = generate_sg(sg_code,from_memory)
+
+            import am_lib.* am_dft.*
+
+            if nargin<2; from_memory=false; end
+
+            if from_memory
+                % ~ 500x faster for large space groups
+                S = load_sg_symmetries(sg_code);
+                S = reshape(S,4,4,[]);
+            else
+                
+                % load recipe
+                recipe = get_recipe(sg_code);
+                
+                % allocate space
+                S = zeros(4,4,sscanf(recipe(2),'%i')+double(recipe(1)=='1'));
+
+                % mix ingredients
+                nsyms = 0; k = 0;
+                nsyms = nsyms+1; S(1:4,1:4,nsyms) = eye(4);
+                %
+                k = k+1;
+                if recipe(1) == '1'
+                    nsyms = nsyms+1; S(1:3,1:3,nsyms) = -eye(3); S(4,4,nsyms)=1;
+                end
+                k = k+1; ngens = sscanf(recipe(2),'%i');
+                for i = 1:ngens
+                    nsyms = nsyms+1;
+                for j = 1:4
+                    k=k+1;
+                    switch j
+                        case 1
+                            S(1:3,1:3,nsyms) = decode_R(recipe(k)); S(4,4,nsyms)=1;
+                        otherwise
+                            S(j-1,4,nsyms) = mod(decode_T(recipe(k)),1);
+                    end
+                end
+                end
+
+                S = complete_group(S);
+            end
+
+            function recipe  = get_recipe(sg_id)
+                sg_recipe_database = {...
+                    '000                                     ','100                                     ','01cOOO0                                 ', ...
+                    '01cODO0                                 ','02aDDOcOOO0                             ','01jOOO0                                 ', ...
+                    '01jOOD0                                 ','02aDDOjOOO0                             ','02aDDOjOOD0                             ', ...
+                    '11cOOO0                                 ','11cODO0                                 ','12aDDOcOOO0                             ', ...
+                    '11cOOD0                                 ','11cODD0                                 ','12aDDOcOOD0                             ', ...
+                    '02bOOOcOOO0                             ','02bOODcOOD0                             ','02bOOOcDDO0                             ', ...
+                    '02bDODcODD0                             ','03aDDObOODcOOD0                         ','03aDDObOOOcOOO0                         ', ...
+                    '04aODDaDODbOOOcOOO0                     ','03aDDDbOOOcOOO0                         ','03aDDDbDODcODD0                         ', ...
+                    '02bOOOjOOO0                             ','02bOODjOOD0                             ','02bOOOjOOD0                             ', ...
+                    '02bOOOjDOO0                             ','02bOODjDOO0                             ','02bOOOjODD0                             ', ...
+                    '02bDODjDOD0                             ','02bOOOjDDO0                             ','02bOODjDDO0                             ', ...
+                    '02bOOOjDDD0                             ','03aDDObOOOjOOO0                         ','03aDDObOODjOOD0                         ', ...
+                    '03aDDObOOOjOOD0                         ','03aODDbOOOjOOO0                         ','03aODDbOOOjODO0                         ', ...
+                    '03aODDbOOOjDOO0                         ','03aODDbOOOjDDO0                         ','04aODDaDODbOOOjOOO0                     ', ...
+                    '04aODDaDODbOOOjBBB0                     ','03aDDDbOOOjOOO0                         ','03aDDDbOOOjDDO0                         ', ...
+                    '03aDDDbOOOjDOO0                         ','12bOOOcOOO0                             ','03bOOOcOOOhDDD1BBB                      ', ...
+                    '12bOOOcOOD0                             ','03bOOOcOOOhDDO1BBO                      ','12bDOOcOOO0                             ', ...
+                    '12bDOOcDDD0                             ','12bDODcDOD0                             ','12bDOOcOOD0                             ', ...
+                    '12bOOOcDDO0                             ','12bDDOcODD0                             ','12bOODcODD0                             ', ...
+                    '12bOOOcDDD0                             ','03bOOOcDDOhDDO1BBO                      ','12bDDDcOOD0                             ', ...
+                    '12bDODcODD0                             ','12bDODcODO0                             ','13aDDObOODcOOD0                         ', ...
+                    '13aDDObODDcODD0                         ','13aDDObOOOcOOO0                         ','13aDDObOOOcOOD0                         ', ...
+                    '13aDDObODOcODO0                         ','04aDDObDDOcOOOhODD1OBB                  ','14aODDaDODbOOOcOOO0                     ', ...
+                    '05aODDaDODbOOOcOOOhBBB1ZZZ              ','13aDDDbOOOcOOO0                         ','13aDDDbOOOcDDO0                         ', ...
+                    '13aDDDbDODcODD0                         ','13aDDDbODOcODO0                         ','02bOOOgOOO0                             ', ...
+                    '02bOODgOOB0                             ','02bOOOgOOD0                             ','02bOODgOOF0                             ', ...
+                    '03aDDDbOOOgOOO0                         ','03aDDDbDDDgODB0                         ','02bOOOmOOO0                             ', ...
+                    '03aDDDbOOOmOOO0                         ','12bOOOgOOO0                             ','12bOOOgOOD0                             ', ...
+                    '03bOOOgDDOhDDO1YBO                      ','03bOOOgDDDhDDD1YYY                      ','13aDDDbOOOgOOO0                         ', ...
+                    '04aDDDbDDDgODBhODB1OYZ                  ','03bOOOgOOOcOOO0                         ','03bOOOgDDOcDDO0                         ', ...
+                    '03bOODgOOBcOOO0                         ','03bOODgDDBcDDB0                         ','03bOOOgOODcOOO0                         ', ...
+                    '03bOOOgDDDcDDD0                         ','03bOODgOOFcOOO0                         ','03bOODgDDFcDDF0                         ', ...
+                    '04aDDDbOOOgOOOcOOO0                     ','04aDDDbDDDgODBcDOF0                     ','03bOOOgOOOjOOO0                         ', ...
+                    '03bOOOgOOOjDDO0                         ','03bOOOgOODjOOD0                         ','03bOOOgDDDjDDD0                         ', ...
+                    '03bOOOgOOOjOOD0                         ','03bOOOgOOOjDDD0                         ','03bOOOgOODjOOO0                         ', ...
+                    '03bOOOgOODjDDO0                         ','04aDDDbOOOgOOOjOOO0                     ','04aDDDbOOOgOOOjOOD0                     ', ...
+                    '04aDDDbDDDgODBjOOO0                     ','04aDDDbDDDgODBjOOD0                     ','03bOOOmOOOcOOO0                         ', ...
+                    '03bOOOmOOOcOOD0                         ','03bOOOmOOOcDDO0                         ','03bOOOmOOOcDDD0                         ', ...
+                    '03bOOOmOOOjOOO0                         ','03bOOOmOOOjOOD0                         ','03bOOOmOOOjDDO0                         ', ...
+                    '03bOOOmOOOjDDD0                         ','04aDDDbOOOmOOOjOOO0                     ','04aDDDbOOOmOOOjOOD0                     ', ...
+                    '04aDDDbOOOmOOOcOOO0                     ','04aDDDbOOOmOOOcDOF0                     ','13bOOOgOOOcOOO0                         ', ...
+                    '13bOOOgOOOcOOD0                         ','04bOOOgOOOcOOOhDDO1YYO                  ','04bOOOgOOOcOOOhDDD1YYY                  ', ...
+                    '13bOOOgOOOcDDO0                         ','13bOOOgOOOcDDD0                         ','04bOOOgDDOcDDOhDDO1YBO                  ', ...
+                    '04bOOOgDDOcDDDhDDO1YBO                  ','13bOOOgOODcOOO0                         ','13bOOOgOODcOOD0                         ', ...
+                    '04bOOOgDDDcOODhDDD1YBY                  ','04bOOOgDDDcOOOhDDD1YBY                  ','13bOOOgOODcDDO0                         ', ...
+                    '13bOOOgDDDcDDD0                         ','04bOOOgDDDcDDDhDDD1YBY                  ','04bOOOgDDDcDDOhDDD1YBY                  ', ...
+                    '14aDDDbOOOgOOOcOOO0                     ','14aDDDbOOOgOOOcOOD0                     ','05aDDDbDDDgODBcDOFhODB1OBZ              ', ...
+                    '05aDDDbDDDgODBcDOBhODB1OBZ              ','01nOOO0                                 ','01nOOC0                                 ', ...
+                    '01nOOE0                                 ','02aECCnOOO0                             ','11nOOO0                                 ', ...
+                    '12aECCnOOO0                             ','02nOOOfOOO0                             ','02nOOOeOOO0                             ', ...
+                    '02nOOCfOOE0                             ','02nOOCeOOO0                             ','02nOOEfOOC0                             ', ...
+                    '02nOOEeOOO0                             ','03aECCnOOOeOOO0                         ','02nOOOkOOO0                             ', ...
+                    '02nOOOlOOO0                             ','02nOOOkOOD0                             ','02nOOOlOOD0                             ', ...
+                    '03aECCnOOOkOOO0                         ','03aECCnOOOkOOD0                         ','12nOOOfOOO0                             ', ...
+                    '12nOOOfOOD0                             ','12nOOOeOOO0                             ','12nOOOeOOD0                             ', ...
+                    '13aECCnOOOeOOO0                         ','13aECCnOOOeOOD0                         ','02nOOObOOO0                             ', ...
+                    '02nOOCbOOD0                             ','02nOOEbOOD0                             ','02nOOEbOOO0                             ', ...
+                    '02nOOCbOOO0                             ','02nOOObOOD0                             ','02nOOOiOOO0                             ', ...
+                    '12nOOObOOO0                             ','12nOOObOOD0                             ','03nOOObOOOeOOO0                         ', ...
+                    '03nOOCbOODeOOC0                         ','03nOOEbOODeOOE0                         ','03nOOEbOOOeOOE0                         ', ...
+                    '03nOOCbOOOeOOC0                         ','03nOOObOODeOOO0                         ','03nOOObOOOkOOO0                         ', ...
+                    '03nOOObOOOkOOD0                         ','03nOOObOODkOOD0                         ','03nOOObOODkOOO0                         ', ...
+                    '03nOOOiOOOkOOO0                         ','03nOOOiOODkOOD0                         ','03nOOOiOOOeOOO0                         ', ...
+                    '03nOOOiOODeOOO0                         ','13nOOObOOOeOOO0                         ','13nOOObOOOeOOD0                         ', ...
+                    '13nOOObOODeOOD0                         ','13nOOObOODeOOO0                         ','03bOOOcOOOdOOO0                         ', ...
+                    '05aODDaDODbOOOcOOOdOOO0                 ','04aDDDbOOOcOOOdOOO0                     ','03bDODcODDdOOO0                         ', ...
+                    '04aDDDbDODcODDdOOO0                     ','13bOOOcOOOdOOO0                         ','04bOOOcOOOdOOOhDDD1YYY                  ', ...
+                    '15aODDaDODbOOOcOOOdOOO0                 ','06aODDaDODbOOOcOOOdOOOhBBB1ZZZ          ','14aDDDbOOOcOOOdOOO0                     ', ...
+                    '13bDODcODDdOOO0                         ','14aDDDbDODcODDdOOO0                     ','04bOOOcOOOdOOOeOOO0                     ', ...
+                    '04bOOOcOOOdOOOeDDD0                     ','06aODDaDODbOOOcOOOdOOOeOOO0             ','06aODDaDODbODDcDDOdOOOeFBF0             ', ...
+                    '05aDDDbOOOcOOOdOOOeOOO0                 ','04bDODcODDdOOOeBFF0                     ','04bDODcODDdOOOeFBB0                     ', ...
+                    '05aDDDbDODcODDdOOOeFBB0                 ','04bOOOcOOOdOOOlOOO0                     ','06aODDaDODbOOOcOOOdOOOlOOO0             ', ...
+                    '05aDDDbOOOcOOOdOOOlOOO0                 ','04bOOOcOOOdOOOlDDD0                     ','06aODDaDODbOOOcOOOdOOOlDDD0             ', ...
+                    '05aDDDbDODcODDdOOOlBBB0                 ','14bOOOcOOOdOOOeOOO0                     ','05bOOOcOOOdOOOeOOOhDDD1YYY              ', ...
+                    '14bOOOcOOOdOOOeDDD0                     ','05bOOOcOOOdOOOeDDDhDDD1YYY              ','16aODDaDODbOOOcOOOdOOOeOOO0             ', ...
+                    '16aODDaDODbOOOcOOOdOOOeDDD0             ','07aODDaDODbODDcDDOdOOOeFBFhBBB1ZZZ      ','07aODDaDODbODDcDDOdOOOeFBFhFFF1XXX      ', ...
+                    '15aDDDbOOOcOOOdOOOeOOO0                 ','15aDDDbDODcODDdOOOeFBB0                 ','01dOOO0                                 ', ...
+                    '11dOOO0                                 ','02dOOOfOOO0                             ','02dOOOlOOO0                             ', ...
+                    '02dOOOlDDD0                             ','12dOOOfOOO0                             ','12dOOOfDDD0                             '};
+                recipe = sg_recipe_database{sg_id};
+            end
+            function R       = decode_R(str_r)
+                switch str_r
+                case 'a'; R = [  1  0  0;  0  1  0;  0  0  1]; % a
+                case 'b'; R = [ -1  0  0;  0 -1  0;  0  0  1]; % b
+                case 'c'; R = [ -1  0  0;  0  1  0;  0  0 -1]; % c
+                case 'd'; R = [  0  0  1;  1  0  0;  0  1  0]; % d
+                case 'e'; R = [  0  1  0;  1  0  0;  0  0 -1]; % e
+                case 'f'; R = [  0 -1  0; -1  0  0;  0  0 -1]; % f
+                case 'g'; R = [  0 -1  0;  1  0  0;  0  0  1]; % g
+                case 'h'; R = [ -1  0  0;  0 -1  0;  0  0 -1]; % h
+                case 'i'; R = [  1  0  0;  0  1  0;  0  0 -1]; % i
+                case 'j'; R = [  1  0  0;  0 -1  0;  0  0  1]; % j
+                case 'k'; R = [  0 -1  0; -1  0  0;  0  0  1]; % k
+                case 'l'; R = [  0  1  0;  1  0  0;  0  0  1]; % l
+                case 'm'; R = [  0  1  0; -1  0  0;  0  0 -1]; % m
+                case 'n'; R = [  0 -1  0;  1 -1  0;  0  0  1]; % n
+                end
+            end
+            function T       = decode_T(str_t)
+                switch str_t
+                    case 'A'; T = 1/6; % A
+                    case 'B'; T = 1/4; % B
+                    case 'C'; T = 1/3; % C
+                    case 'D'; T = 1/2; % D
+                    case 'E'; T = 2/3; % E
+                    case 'F'; T = 3/4; % F
+                    case 'G'; T = 5/6; % G
+                    case 'O'; T =   0; % O
+                    case 'X'; T =-3/8; % X
+                    case 'Y'; T =-1/4; % Y
+                    case 'Z'; T =-1/8; % Z
+                end
+            end
+        end
+
+        function [R,W]        = generate_pg(pg_code,from_memory)
+            %     1.   c_1        9.   c_3        17. d_4       25. c_6v
+            %     2.   s_2        10.  s_6        18. c_4v      26. d_3h
+            %     3.   c_2        11.  d_3        19. d_2d      27. d_6h
+            %     4.   c_1h       12.  c_3v       20. d_4h      28. t
+            %     5.   c_2h       13.  d_3d       21. c_6       29. t_h
+            %     6.   d_2        14.  c_4        22. c_3h      30. o
+            %     7.   c_2v       15.  s_4        23. c_6h      31. t_d
+            %     8.   d_2h       16.  c_4h       24. d_6       32. o_h
+            
+            import am_lib.* am_dft.*
+            
+            if nargin<2; from_memory=true; end
+            
+            if ischar(pg_code)
+                pg={'c_1' ,'s_2' ,'c_2' ,'c_1h','c_2h','d_2' ,'c_2v','d_2h', ...
+                    'c_3' ,'s_6' ,'d_3' ,'c_3v','d_3d','c_4' ,'s_4' ,'c_4h', ...
+                    'd_4' ,'c_4v','d_2d','d_4h','c_6' ,'c_3h','c_6h','d_6' , ...
+                    'c_6v','d_3h','d_6h','t'   ,'t_h' ,'o'   ,'t_d' ,'o_h'};
+                pg_code = find(string(pg)==pg_code); %#ok<STRCLQT>
+            end
+
+            if from_memory
+                % generated with this code:
+                %
+                % clear;clc;import am_dft.*
+                % for i = 1:32
+                %     R{i} = generate_pg(i,false);
+                %     x(i) = identify_pointgroup(R{i});
+                %     d{i} = decode_pg(x(i));
+                %     fprintf('case %i; R = [',i); fprintf('%s',sym(R{i}(1))); fprintf(',%s',sym(R{i}(2:end))); fprintf(']; %% %s\n',d{i});
+                % end
+                % for i = 1:32
+                %     [~,W{i}] = generate_pg(i,false);
+                %     fprintf('case %i; W = [',i); fprintf('%s',sym(W{i}(1))); fprintf(',%s',sym(W{i}(2:end))); fprintf('];\n');
+                % end
+                %
+                
+                % single-valued representation
+                switch pg_code
+                case 1;  R = [1,0,0,0,1,0,0,0,1]; % c_1
+                case 2;  R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,-1]; % s_2
+                case 3;  R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,1,0,0,0,-1]; % c_2
+                case 4;  R = [1,0,0,0,1,0,0,0,1,1,0,0,0,-1,0,0,0,1]; % c_1h
+                case 5;  R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,-1,0,0,0,-1,0,0,0,-1,1,0,0,0,-1,0,0,0,1]; % c_2h
+                case 6;  R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,1,0,0,0,-1,0,0,0,-1]; % d_2
+                case 7;  R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,1,1,0,0,0,-1,0,0,0,1,-1,0,0,0,1,0,0,0,1]; % c_2v
+                case 8;  R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,-1,0,0,0,-1,0,0,0,-1,1,0,0,0,-1,0,0,0,-1,1,0,0,0,1,0,0,0,-1,1,0,0,0,-1,0,0,0,1,-1,0,0,0,1,0,0,0,1]; % d_2h
+                case 9;  R = [1,0,0,0,1,0,0,0,1,0,0,1,1,0,0,0,1,0,0,1,0,0,0,1,1,0,0]; % c_3
+                case 10; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,-1,0,0,1,1,0,0,0,1,0,0,0,-1,-1,0,0,0,-1,0,0,1,0,0,0,1,1,0,0,0,-1,0,0,0,-1,-1,0,0]; % s_6
+                case 11; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,0,-1,0,-1,0,0,0,1,1,0,0,0,1,0,0,-1,0,-1,0,0,0,0,-1,0,0,-1,0,-1,0,-1,0,0,0,1,0,0,0,1,1,0,0]; % d_3
+                case 12; R = [1,0,0,0,1,0,0,0,1,1,0,0,0,0,1,0,1,0,0,0,1,1,0,0,0,1,0,0,1,0,1,0,0,0,0,1,0,0,1,0,1,0,1,0,0,0,1,0,0,0,1,1,0,0]; % c_3v
+                case 13; R = [1,0,0,0,1,0,0,0,1,1/3,-2/3,-2/3,-2/3,-2/3,1/3,-2/3,1/3,-2/3,-1,0,0,0,-1,0,0,0,-1,0,0,1,1,0,0,0,1,0,-1/3,2/3,2/3,2/3,2/3,-1/3,2/3,-1/3,2/3,-2/3,1/3,-2/3,1/3,-2/3,-2/3,-2/3,-2/3,1/3,0,0,-1,-1,0,0,0,-1,0,-2/3,-2/3,1/3,-2/3,1/3,-2/3,1/3,-2/3,-2/3,0,1,0,0,0,1,1,0,0,2/3,-1/3,2/3,-1/3,2/3,2/3,2/3,2/3,-1/3,2/3,2/3,-1/3,2/3,-1/3,2/3,-1/3,2/3,2/3,0,-1,0,0,0,-1,-1,0,0]; % d_3d
+                case 14; R = [1,0,0,0,1,0,0,0,1,0,1,0,-1,0,0,0,0,1,-1,0,0,0,-1,0,0,0,1,0,-1,0,1,0,0,0,0,1]; % c_4
+                case 15; R = [1,0,0,0,1,0,0,0,1,0,-1,0,1,0,0,0,0,-1,-1,0,0,0,-1,0,0,0,1,0,1,0,-1,0,0,0,0,-1]; % s_4
+                case 16; R = [1,0,0,0,1,0,0,0,1,0,1,0,-1,0,0,0,0,1,-1,0,0,0,-1,0,0,0,-1,-1,0,0,0,-1,0,0,0,1,0,-1,0,1,0,0,0,0,-1,0,-1,0,1,0,0,0,0,1,1,0,0,0,1,0,0,0,-1,0,1,0,-1,0,0,0,0,-1]; % c_4h
+                case 17; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,0,1,0,-1,0,0,0,0,1,0,1,0,1,0,0,0,0,-1,0,-1,0,-1,0,0,0,0,-1,-1,0,0,0,-1,0,0,0,1,0,-1,0,1,0,0,0,0,1,1,0,0,0,-1,0,0,0,-1]; % d_4
+                case 18; R = [1,0,0,0,1,0,0,0,1,0,1,0,-1,0,0,0,0,1,1,0,0,0,-1,0,0,0,1,-1,0,0,0,-1,0,0,0,1,0,1,0,1,0,0,0,0,1,0,-1,0,-1,0,0,0,0,1,0,-1,0,1,0,0,0,0,1,-1,0,0,0,1,0,0,0,1]; % c_4v
+                case 19; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,0,-1,0,1,0,0,0,0,-1,0,-1,0,-1,0,0,0,0,1,0,1,0,1,0,0,0,0,1,-1,0,0,0,-1,0,0,0,1,0,1,0,-1,0,0,0,0,-1,1,0,0,0,-1,0,0,0,-1]; % d_2d
+                case 20; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,0,1,0,-1,0,0,0,0,1,-1,0,0,0,-1,0,0,0,-1,0,1,0,1,0,0,0,0,-1,1,0,0,0,-1,0,0,0,1,0,-1,0,-1,0,0,0,0,-1,-1,0,0,0,-1,0,0,0,1,0,-1,0,1,0,0,0,0,-1,0,-1,0,1,0,0,0,0,1,1,0,0,0,-1,0,0,0,-1,0,-1,0,-1,0,0,0,0,1,0,1,0,1,0,0,0,0,1,1,0,0,0,1,0,0,0,-1,0,1,0,-1,0,0,0,0,-1,-1,0,0,0,1,0,0,0,1]; % d_4h
+                case 21; R = [1,0,0,0,1,0,0,0,1,-1/3,2/3,2/3,2/3,-1/3,2/3,2/3,2/3,-1/3,0,0,1,1,0,0,0,1,0,2/3,2/3,-1/3,-1/3,2/3,2/3,2/3,-1/3,2/3,0,1,0,0,0,1,1,0,0,2/3,-1/3,2/3,2/3,2/3,-1/3,-1/3,2/3,2/3]; % c_6
+                case 22; R = [1,0,0,0,1,0,0,0,1,1/3,-2/3,-2/3,-2/3,1/3,-2/3,-2/3,-2/3,1/3,0,0,1,1,0,0,0,1,0,-2/3,-2/3,1/3,1/3,-2/3,-2/3,-2/3,1/3,-2/3,0,1,0,0,0,1,1,0,0,-2/3,1/3,-2/3,-2/3,-2/3,1/3,1/3,-2/3,-2/3]; % c_3h
+                case 23; R = [1,0,0,0,1,0,0,0,1,-1/3,2/3,2/3,2/3,-1/3,2/3,2/3,2/3,-1/3,-1,0,0,0,-1,0,0,0,-1,0,0,1,1,0,0,0,1,0,1/3,-2/3,-2/3,-2/3,1/3,-2/3,-2/3,-2/3,1/3,2/3,2/3,-1/3,-1/3,2/3,2/3,2/3,-1/3,2/3,0,0,-1,-1,0,0,0,-1,0,0,1,0,0,0,1,1,0,0,-2/3,-2/3,1/3,1/3,-2/3,-2/3,-2/3,1/3,-2/3,2/3,-1/3,2/3,2/3,2/3,-1/3,-1/3,2/3,2/3,0,-1,0,0,0,-1,-1,0,0,-2/3,1/3,-2/3,-2/3,-2/3,1/3,1/3,-2/3,-2/3]; % c_6h
+                case 24; R = [1,0,0,0,1,0,0,0,1,-1/3,2/3,2/3,2/3,-1/3,2/3,2/3,2/3,-1/3,-1,0,0,0,0,-1,0,-1,0,0,0,1,1,0,0,0,1,0,1/3,-2/3,-2/3,-2/3,-2/3,1/3,-2/3,1/3,-2/3,2/3,2/3,-1/3,-1/3,2/3,2/3,2/3,-1/3,2/3,0,-1,0,-1,0,0,0,0,-1,0,0,-1,0,-1,0,-1,0,0,0,1,0,0,0,1,1,0,0,-2/3,1/3,-2/3,1/3,-2/3,-2/3,-2/3,-2/3,1/3,-2/3,-2/3,1/3,-2/3,1/3,-2/3,1/3,-2/3,-2/3,2/3,-1/3,2/3,2/3,2/3,-1/3,-1/3,2/3,2/3]; % d_6
+                case 25; R = [1,0,0,0,1,0,0,0,1,-1/3,2/3,2/3,2/3,-1/3,2/3,2/3,2/3,-1/3,1,0,0,0,0,1,0,1,0,0,0,1,1,0,0,0,1,0,-1/3,2/3,2/3,2/3,2/3,-1/3,2/3,-1/3,2/3,2/3,2/3,-1/3,-1/3,2/3,2/3,2/3,-1/3,2/3,0,1,0,1,0,0,0,0,1,0,0,1,0,1,0,1,0,0,0,1,0,0,0,1,1,0,0,2/3,-1/3,2/3,-1/3,2/3,2/3,2/3,2/3,-1/3,2/3,2/3,-1/3,2/3,-1/3,2/3,-1/3,2/3,2/3,2/3,-1/3,2/3,2/3,2/3,-1/3,-1/3,2/3,2/3]; % c_6v
+                case 26; R = [1,0,0,0,1,0,0,0,1,1/3,-2/3,-2/3,-2/3,1/3,-2/3,-2/3,-2/3,1/3,1,0,0,0,0,1,0,1,0,0,0,1,1,0,0,0,1,0,1/3,-2/3,-2/3,-2/3,-2/3,1/3,-2/3,1/3,-2/3,-2/3,-2/3,1/3,1/3,-2/3,-2/3,-2/3,1/3,-2/3,0,1,0,1,0,0,0,0,1,0,0,1,0,1,0,1,0,0,0,1,0,0,0,1,1,0,0,-2/3,1/3,-2/3,1/3,-2/3,-2/3,-2/3,-2/3,1/3,-2/3,-2/3,1/3,-2/3,1/3,-2/3,1/3,-2/3,-2/3,-2/3,1/3,-2/3,-2/3,-2/3,1/3,1/3,-2/3,-2/3]; % d_3h
+                case 27; R = [1,0,0,0,1,0,0,0,1,-1/3,2/3,2/3,2/3,-1/3,2/3,2/3,2/3,-1/3,-1,0,0,0,0,-1,0,-1,0,0,0,1,1,0,0,0,1,0,-1,0,0,0,-1,0,0,0,-1,1/3,-2/3,-2/3,-2/3,-2/3,1/3,-2/3,1/3,-2/3,2/3,2/3,-1/3,-1/3,2/3,2/3,2/3,-1/3,2/3,1/3,-2/3,-2/3,-2/3,1/3,-2/3,-2/3,-2/3,1/3,0,-1,0,-1,0,0,0,0,-1,1,0,0,0,0,1,0,1,0,0,0,-1,0,-1,0,-1,0,0,0,1,0,0,0,1,1,0,0,0,0,-1,-1,0,0,0,-1,0,-2/3,1/3,-2/3,1/3,-2/3,-2/3,-2/3,-2/3,1/3,-1/3,2/3,2/3,2/3,2/3,-1/3,2/3,-1/3,2/3,-2/3,-2/3,1/3,-2/3,1/3,-2/3,1/3,-2/3,-2/3,2/3,-1/3,2/3,2/3,2/3,-1/3,-1/3,2/3,2/3,-2/3,-2/3,1/3,1/3,-2/3,-2/3,-2/3,1/3,-2/3,0,1,0,1,0,0,0,0,1,0,0,1,0,1,0,1,0,0,0,-1,0,0,0,-1,-1,0,0,2/3,-1/3,2/3,-1/3,2/3,2/3,2/3,2/3,-1/3,2/3,2/3,-1/3,2/3,-1/3,2/3,-1/3,2/3,2/3,-2/3,1/3,-2/3,-2/3,-2/3,1/3,1/3,-2/3,-2/3]; % d_6h
+                case 28; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,0,1,0,0,0,1,1,0,0,0,1,0,0,0,-1,-1,0,0,0,-1,0,0,0,1,-1,0,0,0,0,1,1,0,0,0,1,0,0,-1,0,0,0,-1,1,0,0,0,0,-1,-1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,-1,1,0,0,0,-1,0,-1,0,0,0,-1,0,0,0,1,1,0,0,0,-1,0,0,0,-1]; % t
+                case 29; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,0,1,0,0,0,1,1,0,0,-1,0,0,0,-1,0,0,0,-1,0,1,0,0,0,-1,-1,0,0,1,0,0,0,-1,0,0,0,1,0,-1,0,0,0,1,-1,0,0,0,0,1,1,0,0,0,1,0,0,-1,0,0,0,-1,-1,0,0,0,-1,0,0,0,-1,1,0,0,0,0,-1,-1,0,0,0,1,0,0,-1,0,0,0,1,1,0,0,0,0,1,-1,0,0,0,-1,0,0,1,0,0,0,-1,1,0,0,0,0,-1,1,0,0,0,-1,0,0,0,-1,-1,0,0,0,-1,0,0,1,0,0,0,1,-1,0,0,0,0,1,1,0,0,0,-1,0,-1,0,0,0,-1,0,0,0,1,0,0,-1,1,0,0,0,1,0,1,0,0,0,-1,0,0,0,-1,0,0,1,-1,0,0,0,1,0,1,0,0,0,1,0,0,0,-1,-1,0,0,0,1,0,0,0,1]; % t_h
+                case 30; R = [1,0,0,0,1,0,0,0,1,0,1,0,0,0,1,1,0,0,0,1,0,-1,0,0,0,0,1,0,0,1,1,0,0,0,1,0,0,0,1,0,-1,0,1,0,0,-1,0,0,0,0,1,0,1,0,-1,0,0,0,-1,0,0,0,1,1,0,0,0,0,-1,0,1,0,0,-1,0,1,0,0,0,0,1,0,-1,0,0,0,-1,1,0,0,0,0,1,0,1,0,-1,0,0,0,-1,0,0,0,1,-1,0,0,0,0,-1,0,1,0,1,0,0,0,0,-1,-1,0,0,0,1,0,1,0,0,0,0,1,0,-1,0,0,0,-1,1,0,0,0,-1,0,0,1,0,0,0,-1,-1,0,0,0,0,1,-1,0,0,0,-1,0,0,1,0,1,0,0,0,0,-1,-1,0,0,0,1,0,0,0,-1,1,0,0,0,-1,0,0,0,-1,0,0,-1,0,-1,0,-1,0,0,-1,0,0,0,0,-1,0,-1,0,0,-1,0,-1,0,0,0,0,-1]; % o
+                case 31; R = [1,0,0,0,1,0,0,0,1,-1,0,0,0,-1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,0,1,0,1,0,0,0,0,1,0,1,0,0,0,1,1,0,0,1,0,0,0,-1,0,0,0,-1,0,-1,0,-1,0,0,0,0,1,0,-1,0,0,0,1,-1,0,0,0,1,0,-1,0,0,0,0,-1,0,1,0,0,0,-1,-1,0,0,0,-1,0,1,0,0,0,0,-1,1,0,0,0,0,1,0,1,0,0,-1,0,0,0,-1,1,0,0,0,0,1,0,1,0,1,0,0,0,0,1,1,0,0,0,1,0,-1,0,0,0,0,1,0,-1,0,0,0,1,0,-1,0,-1,0,0,0,0,1,-1,0,0,0,-1,0,-1,0,0,0,0,-1,0,1,0,0,0,-1,0,1,0,-1,0,0,0,0,-1,-1,0,0,0,1,0,1,0,0,0,0,-1,0,-1,0,0,0,-1,0,-1,0,1,0,0,0,0,-1,1,0,0,0,-1,0]; % t_d
+                case 32; R = [1,0,0,0,1,0,0,0,1,0,1,0,0,0,1,1,0,0,0,1,0,-1,0,0,0,0,1,-1,0,0,0,-1,0,0,0,-1,0,0,1,1,0,0,0,1,0,0,0,1,0,-1,0,1,0,0,0,-1,0,0,0,-1,-1,0,0,-1,0,0,0,0,1,0,1,0,-1,0,0,0,-1,0,0,0,1,0,-1,0,1,0,0,0,0,-1,1,0,0,0,0,-1,0,1,0,0,0,-1,-1,0,0,0,-1,0,0,-1,0,1,0,0,0,0,1,0,-1,0,0,0,-1,1,0,0,0,0,-1,0,1,0,-1,0,0,0,0,1,0,1,0,-1,0,0,1,0,0,0,0,-1,0,-1,0,0,-1,0,0,0,1,-1,0,0,1,0,0,0,1,0,0,0,-1,0,0,-1,0,1,0,1,0,0,0,0,-1,-1,0,0,0,1,0,-1,0,0,0,0,1,0,-1,0,1,0,0,0,0,1,0,-1,0,0,1,0,-1,0,0,0,0,-1,0,0,-1,1,0,0,0,-1,0,0,1,0,0,0,1,-1,0,0,0,1,0,0,0,-1,-1,0,0,0,0,-1,0,-1,0,1,0,0,0,0,1,-1,0,0,0,-1,0,0,1,0,0,0,-1,1,0,0,0,1,0,1,0,0,0,0,-1,0,0,1,0,-1,0,-1,0,0,-1,0,0,0,1,0,0,0,-1,0,0,1,1,0,0,0,-1,0,-1,0,0,0,0,-1,0,1,0,1,0,0,0,-1,0,0,0,-1,0,0,1,-1,0,0,0,1,0,0,0,-1,0,-1,0,-1,0,0,0,-1,0,0,0,1,1,0,0,-1,0,0,0,0,-1,0,-1,0,0,0,-1,1,0,0,0,1,0,0,-1,0,-1,0,0,0,0,1,1,0,0,0,-1,0,0,0,1,0,-1,0,-1,0,0,0,0,-1,-1,0,0,0,1,0,0,0,1,0,0,1,0,1,0,1,0,0,1,0,0,0,0,1,0,1,0,0,1,0,1,0,0,0,0,1]; % o_h
+                end
+                R = reshape(R,3,3,[]);
+                
+                % double-valued representation
+                switch pg_code
+                case 1; W = [1,0,0,1,-1,0,0,-1];
+                case 2; W = [1,0,0,1,1i,0,0,1i,-1,0,0,-1,-1i,0,0,-1i];
+                case 3; W = [1,0,0,1,0,-1,1,0,-1,0,0,-1,0,1,-1,0];
+                case 4; W = [1,0,0,1,0,-1i,1i,0,-1,0,0,-1,0,1i,-1i,0];
+                case 5; W = [1,0,0,1,0,-1,1,0,1i,0,0,1i,0,-1i,1i,0,-1,0,0,-1,0,1,-1,0,-1i,0,0,-1i,0,1i,-1i,0];
+                case 6; W = [1,0,0,1,1i,0,0,-1i,0,-1,1,0,0,1i,1i,0,-1,0,0,-1,-1i,0,0,1i,0,1,-1,0,0,-1i,-1i,0];
+                case 7; W = [1,0,0,1,1i,0,0,-1i,0,-1i,1i,0,0,-1,-1,0,-1,0,0,-1,-1i,0,0,1i,0,1i,-1i,0,0,1,1,0];
+                case 8; W = [1,0,0,1,1i,0,0,-1i,0,-1,1,0,1i,0,0,1i,0,1i,1i,0,-1,0,0,1,0,-1i,1i,0,0,-1,-1,0,-1,0,0,-1,-1i,0,0,1i,0,1,-1,0,-1i,0,0,-1i,0,-1i,-1i,0,1,0,0,-1,0,1i,-1i,0,0,1,1,0];
+                case 9; W = [1,0,0,1,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,-1,0,0,-1,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2];
+                case 10; W = [1,0,0,1,1i,0,0,1i,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,-1,0,0,-1,-1i,0,0,-1i,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 - 1i/2];
+                case 11; W = [1,0,0,1,(2^(1/2)*1i)/2,2^(1/2)/2,-2^(1/2)/2,-(2^(1/2)*1i)/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,0,2^(1/2)*(- 1/2 - 1i/2),2^(1/2)*(1/2 - 1i/2),0,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,-1,0,0,-1,-(2^(1/2)*1i)/2,-2^(1/2)/2,2^(1/2)/2,(2^(1/2)*1i)/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,0,2^(1/2)*(1/2 + 1i/2),2^(1/2)*(- 1/2 + 1i/2),0,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2];
+                case 12; W = [1,0,0,1,-2^(1/2)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,2^(1/2)/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,0,2^(1/2)*(1/2 - 1i/2),2^(1/2)*(1/2 + 1i/2),0,-2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,-1,0,0,-1,2^(1/2)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-2^(1/2)/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,0,2^(1/2)*(- 1/2 + 1i/2),2^(1/2)*(- 1/2 - 1i/2),0,2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2];
+                case 13; W = [1,0,0,1,(6^(1/2)*1i)/6,- (2^(1/2)*3^(1/2)*1i)/3 - 6^(1/2)/6,6^(1/2)/6 - (2^(1/2)*3^(1/2)*1i)/3,-(6^(1/2)*1i)/6,1i,0,0,1i,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,-6^(1/2)/6,(2^(1/2)*3^(1/2))/3 - (6^(1/2)*1i)/6,(2^(1/2)*3^(1/2))/3 + (6^(1/2)*1i)/6,6^(1/2)/6,-(2^(1/2)*3^(1/2)*1i)/3,6^(1/2)*(- 1/6 + 1i/6),6^(1/2)*(1/6 + 1i/6),(2^(1/2)*3^(1/2)*1i)/3,- 1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,-(6^(1/2)*1i)/6,- (2^(1/2)*3^(1/2))/3 - (6^(1/2)*1i)/6,(2^(1/2)*3^(1/2))/3 - (6^(1/2)*1i)/6,(6^(1/2)*1i)/6,1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,(2^(1/2)*3^(1/2))/3,6^(1/2)*(- 1/6 - 1i/6),6^(1/2)*(- 1/6 + 1i/6),-(2^(1/2)*3^(1/2))/3,6^(1/2)/6,6^(1/2)/6 - (2^(1/2)*3^(1/2)*1i)/3,(2^(1/2)*3^(1/2)*1i)/3 + 6^(1/2)/6,-6^(1/2)/6,1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,-1,0,0,-1,-(6^(1/2)*1i)/6,(2^(1/2)*3^(1/2)*1i)/3 + 6^(1/2)/6,(2^(1/2)*3^(1/2)*1i)/3 - 6^(1/2)/6,(6^(1/2)*1i)/6,-1i,0,0,-1i,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,6^(1/2)/6,(6^(1/2)*1i)/6 - (2^(1/2)*3^(1/2))/3,- (2^(1/2)*3^(1/2))/3 - (6^(1/2)*1i)/6,-6^(1/2)/6,(2^(1/2)*3^(1/2)*1i)/3,6^(1/2)*(1/6 - 1i/6),6^(1/2)*(- 1/6 - 1i/6),-(2^(1/2)*3^(1/2)*1i)/3,1/2 - 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,(6^(1/2)*1i)/6,(2^(1/2)*3^(1/2))/3 + (6^(1/2)*1i)/6,(6^(1/2)*1i)/6 - (2^(1/2)*3^(1/2))/3,-(6^(1/2)*1i)/6,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,-(2^(1/2)*3^(1/2))/3,6^(1/2)*(1/6 + 1i/6),6^(1/2)*(1/6 - 1i/6),(2^(1/2)*3^(1/2))/3,-6^(1/2)/6,(2^(1/2)*3^(1/2)*1i)/3 - 6^(1/2)/6,- (2^(1/2)*3^(1/2)*1i)/3 - 6^(1/2)/6,6^(1/2)/6,- 1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 - 1i/2];
+                case 14; W = [1,0,0,1,2^(1/2)*(1/2 - 1i/2),0,0,2^(1/2)*(1/2 + 1i/2),1i,0,0,-1i,2^(1/2)*(1/2 + 1i/2),0,0,2^(1/2)*(1/2 - 1i/2),-1,0,0,-1,2^(1/2)*(- 1/2 + 1i/2),0,0,2^(1/2)*(- 1/2 - 1i/2),-1i,0,0,1i,2^(1/2)*(- 1/2 - 1i/2),0,0,2^(1/2)*(- 1/2 + 1i/2)];
+                case 15; W = [1,0,0,1,2^(1/2)*(1/2 + 1i/2),0,0,2^(1/2)*(- 1/2 + 1i/2),1i,0,0,-1i,2^(1/2)*(- 1/2 + 1i/2),0,0,2^(1/2)*(1/2 + 1i/2),-1,0,0,-1,2^(1/2)*(- 1/2 - 1i/2),0,0,2^(1/2)*(1/2 - 1i/2),-1i,0,0,1i,2^(1/2)*(1/2 - 1i/2),0,0,2^(1/2)*(- 1/2 - 1i/2)];
+                case 16; W = [1,0,0,1,2^(1/2)*(1/2 - 1i/2),0,0,2^(1/2)*(1/2 + 1i/2),1i,0,0,1i,1i,0,0,-1i,2^(1/2)*(1/2 + 1i/2),0,0,2^(1/2)*(- 1/2 + 1i/2),2^(1/2)*(1/2 + 1i/2),0,0,2^(1/2)*(1/2 - 1i/2),-1,0,0,1,2^(1/2)*(- 1/2 + 1i/2),0,0,2^(1/2)*(1/2 + 1i/2),-1,0,0,-1,2^(1/2)*(- 1/2 + 1i/2),0,0,2^(1/2)*(- 1/2 - 1i/2),-1i,0,0,-1i,-1i,0,0,1i,2^(1/2)*(- 1/2 - 1i/2),0,0,2^(1/2)*(1/2 - 1i/2),2^(1/2)*(- 1/2 - 1i/2),0,0,2^(1/2)*(- 1/2 + 1i/2),1,0,0,-1,2^(1/2)*(1/2 - 1i/2),0,0,2^(1/2)*(- 1/2 - 1i/2)];
+                case 17; W = [1,0,0,1,0,-1,1,0,2^(1/2)*(1/2 - 1i/2),0,0,2^(1/2)*(1/2 + 1i/2),0,2^(1/2)*(- 1/2 + 1i/2),2^(1/2)*(1/2 + 1i/2),0,0,2^(1/2)*(- 1/2 - 1i/2),2^(1/2)*(1/2 - 1i/2),0,1i,0,0,-1i,2^(1/2)*(1/2 + 1i/2),0,0,2^(1/2)*(1/2 - 1i/2),0,1i,1i,0,-1,0,0,-1,0,1,-1,0,2^(1/2)*(- 1/2 + 1i/2),0,0,2^(1/2)*(- 1/2 - 1i/2),0,2^(1/2)*(1/2 - 1i/2),2^(1/2)*(- 1/2 - 1i/2),0,0,2^(1/2)*(1/2 + 1i/2),2^(1/2)*(- 1/2 + 1i/2),0,-1i,0,0,1i,2^(1/2)*(- 1/2 - 1i/2),0,0,2^(1/2)*(- 1/2 + 1i/2),0,-1i,-1i,0];
+                case 18; W = [1,0,0,1,2^(1/2)*(1/2 - 1i/2),0,0,2^(1/2)*(1/2 + 1i/2),0,-1i,1i,0,1i,0,0,-1i,0,2^(1/2)*(1/2 - 1i/2),2^(1/2)*(1/2 + 1i/2),0,0,2^(1/2)*(- 1/2 - 1i/2),2^(1/2)*(- 1/2 + 1i/2),0,2^(1/2)*(1/2 + 1i/2),0,0,2^(1/2)*(1/2 - 1i/2),0,-1,-1,0,-1,0,0,-1,2^(1/2)*(- 1/2 + 1i/2),0,0,2^(1/2)*(- 1/2 - 1i/2),0,1i,-1i,0,-1i,0,0,1i,0,2^(1/2)*(- 1/2 + 1i/2),2^(1/2)*(- 1/2 - 1i/2),0,0,2^(1/2)*(1/2 + 1i/2),2^(1/2)*(1/2 - 1i/2),0,2^(1/2)*(- 1/2 - 1i/2),0,0,2^(1/2)*(- 1/2 + 1i/2),0,1,1,0];
+                case 19; W = [1,0,0,1,0,-1,1,0,2^(1/2)*(1/2 + 1i/2),0,0,2^(1/2)*(- 1/2 + 1i/2),0,2^(1/2)*(- 1/2 - 1i/2),2^(1/2)*(- 1/2 + 1i/2),0,0,2^(1/2)*(1/2 - 1i/2),2^(1/2)*(1/2 + 1i/2),0,1i,0,0,-1i,2^(1/2)*(- 1/2 + 1i/2),0,0,2^(1/2)*(1/2 + 1i/2),0,1i,1i,0,-1,0,0,-1,0,1,-1,0,2^(1/2)*(- 1/2 - 1i/2),0,0,2^(1/2)*(1/2 - 1i/2),0,2^(1/2)*(1/2 + 1i/2),2^(1/2)*(1/2 - 1i/2),0,0,2^(1/2)*(- 1/2 + 1i/2),2^(1/2)*(- 1/2 - 1i/2),0,-1i,0,0,1i,2^(1/2)*(1/2 - 1i/2),0,0,2^(1/2)*(- 1/2 - 1i/2),0,-1i,-1i,0];
+                case 20; W = [1,0,0,1,0,-1,1,0,2^(1/2)*(1/2 - 1i/2),0,0,2^(1/2)*(1/2 + 1i/2),1i,0,0,1i,0,2^(1/2)*(- 1/2 + 1i/2),2^(1/2)*(1/2 + 1i/2),0,0,-1i,1i,0,0,2^(1/2)*(- 1/2 - 1i/2),2^(1/2)*(1/2 - 1i/2),0,1i,0,0,-1i,2^(1/2)*(1/2 + 1i/2),0,0,2^(1/2)*(- 1/2 + 1i/2),2^(1/2)*(1/2 + 1i/2),0,0,2^(1/2)*(1/2 - 1i/2),0,1i,1i,0,0,2^(1/2)*(- 1/2 - 1i/2),2^(1/2)*(- 1/2 + 1i/2),0,0,2^(1/2)*(1/2 - 1i/2),2^(1/2)*(1/2 + 1i/2),0,-1,0,0,1,2^(1/2)*(- 1/2 + 1i/2),0,0,2^(1/2)*(1/2 + 1i/2),0,-1,-1,0,-1,0,0,-1,0,1,-1,0,2^(1/2)*(- 1/2 + 1i/2),0,0,2^(1/2)*(- 1/2 - 1i/2),-1i,0,0,-1i,0,2^(1/2)*(1/2 - 1i/2),2^(1/2)*(- 1/2 - 1i/2),0,0,1i,-1i,0,0,2^(1/2)*(1/2 + 1i/2),2^(1/2)*(- 1/2 + 1i/2),0,-1i,0,0,1i,2^(1/2)*(- 1/2 - 1i/2),0,0,2^(1/2)*(1/2 - 1i/2),2^(1/2)*(- 1/2 - 1i/2),0,0,2^(1/2)*(- 1/2 + 1i/2),0,-1i,-1i,0,0,2^(1/2)*(1/2 + 1i/2),2^(1/2)*(1/2 - 1i/2),0,0,2^(1/2)*(- 1/2 + 1i/2),2^(1/2)*(- 1/2 - 1i/2),0,1,0,0,-1,2^(1/2)*(1/2 - 1i/2),0,0,2^(1/2)*(- 1/2 - 1i/2),0,1,1,0];
+                case 21; W = [1,0,0,1,-(3^(1/2)*1i)/3,3^(1/2)*(1/3 - 1i/3),3^(1/2)*(- 1/3 - 1i/3),(3^(1/2)*1i)/3,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,3^(1/2)*(1/2 - 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(1/2 + 1i/6),1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,3^(1/2)*(1/2 + 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(1/2 - 1i/6),-1,0,0,-1,(3^(1/2)*1i)/3,3^(1/2)*(- 1/3 + 1i/3),3^(1/2)*(1/3 + 1i/3),-(3^(1/2)*1i)/3,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,3^(1/2)*(- 1/2 + 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(- 1/2 - 1i/6),- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,3^(1/2)*(- 1/2 - 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(- 1/2 + 1i/6)];
+                case 22; W = [1,0,0,1,3^(1/2)/3,3^(1/2)*(1/3 + 1i/3),3^(1/2)*(1/3 - 1i/3),-3^(1/2)/3,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,3^(1/2)*(1/6 + 1i/2),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 + 1i/2),1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,3^(1/2)*(- 1/6 + 1i/2),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 + 1i/2),-1,0,0,-1,-3^(1/2)/3,3^(1/2)*(- 1/3 - 1i/3),3^(1/2)*(- 1/3 + 1i/3),3^(1/2)/3,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,3^(1/2)*(- 1/6 - 1i/2),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 - 1i/2),- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,3^(1/2)*(1/6 - 1i/2),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 - 1i/2)];
+                case 23; W = [1,0,0,1,-(3^(1/2)*1i)/3,3^(1/2)*(1/3 - 1i/3),3^(1/2)*(- 1/3 - 1i/3),(3^(1/2)*1i)/3,1i,0,0,1i,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,3^(1/2)/3,3^(1/2)*(1/3 + 1i/3),3^(1/2)*(1/3 - 1i/3),-3^(1/2)/3,3^(1/2)*(1/2 - 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(1/2 + 1i/6),- 1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,3^(1/2)*(1/6 + 1i/2),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 + 1i/2),3^(1/2)*(1/2 + 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(1/2 - 1i/6),1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,3^(1/2)*(- 1/6 + 1i/2),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 + 1i/2),-1,0,0,-1,(3^(1/2)*1i)/3,3^(1/2)*(- 1/3 + 1i/3),3^(1/2)*(1/3 + 1i/3),-(3^(1/2)*1i)/3,-1i,0,0,-1i,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,-3^(1/2)/3,3^(1/2)*(- 1/3 - 1i/3),3^(1/2)*(- 1/3 + 1i/3),3^(1/2)/3,3^(1/2)*(- 1/2 + 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(- 1/2 - 1i/6),1/2 - 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,3^(1/2)*(- 1/6 - 1i/2),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 - 1i/2),3^(1/2)*(- 1/2 - 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(- 1/2 + 1i/6),- 1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,3^(1/2)*(1/6 - 1i/2),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 - 1i/2)];
+                case 24; W = [1,0,0,1,-(3^(1/2)*1i)/3,3^(1/2)*(1/3 - 1i/3),3^(1/2)*(- 1/3 - 1i/3),(3^(1/2)*1i)/3,(2^(1/2)*1i)/2,2^(1/2)/2,-2^(1/2)/2,-(2^(1/2)*1i)/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,(6^(1/2)*1i)/6,- (2^(1/2)*3^(1/2)*1i)/3 - 6^(1/2)/6,6^(1/2)/6 - (2^(1/2)*3^(1/2)*1i)/3,-(6^(1/2)*1i)/6,3^(1/2)*(1/2 - 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(1/2 + 1i/6),0,2^(1/2)*(- 1/2 - 1i/2),2^(1/2)*(1/2 - 1i/2),0,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,-(2^(1/2)*3^(1/2)*1i)/3,6^(1/2)*(- 1/6 + 1i/6),6^(1/2)*(1/6 + 1i/6),(2^(1/2)*3^(1/2)*1i)/3,-(6^(1/2)*1i)/6,- (2^(1/2)*3^(1/2))/3 - (6^(1/2)*1i)/6,(2^(1/2)*3^(1/2))/3 - (6^(1/2)*1i)/6,(6^(1/2)*1i)/6,3^(1/2)*(1/2 + 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(1/2 - 1i/6),-1,0,0,-1,(3^(1/2)*1i)/3,3^(1/2)*(- 1/3 + 1i/3),3^(1/2)*(1/3 + 1i/3),-(3^(1/2)*1i)/3,-(2^(1/2)*1i)/2,-2^(1/2)/2,2^(1/2)/2,(2^(1/2)*1i)/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,-(6^(1/2)*1i)/6,(2^(1/2)*3^(1/2)*1i)/3 + 6^(1/2)/6,(2^(1/2)*3^(1/2)*1i)/3 - 6^(1/2)/6,(6^(1/2)*1i)/6,3^(1/2)*(- 1/2 + 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(- 1/2 - 1i/6),0,2^(1/2)*(1/2 + 1i/2),2^(1/2)*(- 1/2 + 1i/2),0,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,(2^(1/2)*3^(1/2)*1i)/3,6^(1/2)*(1/6 - 1i/6),6^(1/2)*(- 1/6 - 1i/6),-(2^(1/2)*3^(1/2)*1i)/3,(6^(1/2)*1i)/6,(2^(1/2)*3^(1/2))/3 + (6^(1/2)*1i)/6,(6^(1/2)*1i)/6 - (2^(1/2)*3^(1/2))/3,-(6^(1/2)*1i)/6,3^(1/2)*(- 1/2 - 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(- 1/2 + 1i/6)];
+                case 25; W = [1,0,0,1,-(3^(1/2)*1i)/3,3^(1/2)*(1/3 - 1i/3),3^(1/2)*(- 1/3 - 1i/3),(3^(1/2)*1i)/3,-2^(1/2)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,2^(1/2)/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,-6^(1/2)/6,(2^(1/2)*3^(1/2))/3 - (6^(1/2)*1i)/6,(2^(1/2)*3^(1/2))/3 + (6^(1/2)*1i)/6,6^(1/2)/6,3^(1/2)*(1/2 - 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(1/2 + 1i/6),0,2^(1/2)*(1/2 - 1i/2),2^(1/2)*(1/2 + 1i/2),0,-2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,(2^(1/2)*3^(1/2))/3,6^(1/2)*(- 1/6 - 1i/6),6^(1/2)*(- 1/6 + 1i/6),-(2^(1/2)*3^(1/2))/3,6^(1/2)/6,6^(1/2)/6 - (2^(1/2)*3^(1/2)*1i)/3,(2^(1/2)*3^(1/2)*1i)/3 + 6^(1/2)/6,-6^(1/2)/6,3^(1/2)*(1/2 + 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(1/2 - 1i/6),-1,0,0,-1,(3^(1/2)*1i)/3,3^(1/2)*(- 1/3 + 1i/3),3^(1/2)*(1/3 + 1i/3),-(3^(1/2)*1i)/3,2^(1/2)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-2^(1/2)/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,6^(1/2)/6,(6^(1/2)*1i)/6 - (2^(1/2)*3^(1/2))/3,- (2^(1/2)*3^(1/2))/3 - (6^(1/2)*1i)/6,-6^(1/2)/6,3^(1/2)*(- 1/2 + 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(- 1/2 - 1i/6),0,2^(1/2)*(- 1/2 + 1i/2),2^(1/2)*(- 1/2 - 1i/2),0,2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,-(2^(1/2)*3^(1/2))/3,6^(1/2)*(1/6 + 1i/6),6^(1/2)*(1/6 - 1i/6),(2^(1/2)*3^(1/2))/3,-6^(1/2)/6,(2^(1/2)*3^(1/2)*1i)/3 - 6^(1/2)/6,- (2^(1/2)*3^(1/2)*1i)/3 - 6^(1/2)/6,6^(1/2)/6,3^(1/2)*(- 1/2 - 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(- 1/2 + 1i/6)];
+                case 26; W = [1,0,0,1,3^(1/2)/3,3^(1/2)*(1/3 + 1i/3),3^(1/2)*(1/3 - 1i/3),-3^(1/2)/3,-2^(1/2)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,2^(1/2)/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,(6^(1/2)*1i)/6,- (2^(1/2)*3^(1/2)*1i)/3 - 6^(1/2)/6,6^(1/2)/6 - (2^(1/2)*3^(1/2)*1i)/3,-(6^(1/2)*1i)/6,3^(1/2)*(1/6 + 1i/2),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 + 1i/2),0,2^(1/2)*(1/2 - 1i/2),2^(1/2)*(1/2 + 1i/2),0,-2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,-(2^(1/2)*3^(1/2)*1i)/3,6^(1/2)*(- 1/6 + 1i/6),6^(1/2)*(1/6 + 1i/6),(2^(1/2)*3^(1/2)*1i)/3,-(6^(1/2)*1i)/6,- (2^(1/2)*3^(1/2))/3 - (6^(1/2)*1i)/6,(2^(1/2)*3^(1/2))/3 - (6^(1/2)*1i)/6,(6^(1/2)*1i)/6,3^(1/2)*(- 1/6 + 1i/2),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 + 1i/2),-1,0,0,-1,-3^(1/2)/3,3^(1/2)*(- 1/3 - 1i/3),3^(1/2)*(- 1/3 + 1i/3),3^(1/2)/3,2^(1/2)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-2^(1/2)/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,-(6^(1/2)*1i)/6,(2^(1/2)*3^(1/2)*1i)/3 + 6^(1/2)/6,(2^(1/2)*3^(1/2)*1i)/3 - 6^(1/2)/6,(6^(1/2)*1i)/6,3^(1/2)*(- 1/6 - 1i/2),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 - 1i/2),0,2^(1/2)*(- 1/2 + 1i/2),2^(1/2)*(- 1/2 - 1i/2),0,2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,(2^(1/2)*3^(1/2)*1i)/3,6^(1/2)*(1/6 - 1i/6),6^(1/2)*(- 1/6 - 1i/6),-(2^(1/2)*3^(1/2)*1i)/3,(6^(1/2)*1i)/6,(2^(1/2)*3^(1/2))/3 + (6^(1/2)*1i)/6,(6^(1/2)*1i)/6 - (2^(1/2)*3^(1/2))/3,-(6^(1/2)*1i)/6,3^(1/2)*(1/6 - 1i/2),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 - 1i/2)];
+                case 27; W = [1,0,0,1,-(3^(1/2)*1i)/3,3^(1/2)*(1/3 - 1i/3),3^(1/2)*(- 1/3 - 1i/3),(3^(1/2)*1i)/3,(2^(1/2)*1i)/2,2^(1/2)/2,-2^(1/2)/2,-(2^(1/2)*1i)/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,1i,0,0,1i,(6^(1/2)*1i)/6,- (2^(1/2)*3^(1/2)*1i)/3 - 6^(1/2)/6,6^(1/2)/6 - (2^(1/2)*3^(1/2)*1i)/3,-(6^(1/2)*1i)/6,3^(1/2)*(1/2 - 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(1/2 + 1i/6),3^(1/2)/3,3^(1/2)*(1/3 + 1i/3),3^(1/2)*(1/3 - 1i/3),-3^(1/2)/3,0,2^(1/2)*(- 1/2 - 1i/2),2^(1/2)*(1/2 - 1i/2),0,-2^(1/2)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,2^(1/2)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,-(2^(1/2)*3^(1/2)*1i)/3,6^(1/2)*(- 1/6 + 1i/6),6^(1/2)*(1/6 + 1i/6),(2^(1/2)*3^(1/2)*1i)/3,-6^(1/2)/6,(2^(1/2)*3^(1/2))/3 - (6^(1/2)*1i)/6,(2^(1/2)*3^(1/2))/3 + (6^(1/2)*1i)/6,6^(1/2)/6,-(6^(1/2)*1i)/6,- (2^(1/2)*3^(1/2))/3 - (6^(1/2)*1i)/6,(2^(1/2)*3^(1/2))/3 - (6^(1/2)*1i)/6,(6^(1/2)*1i)/6,3^(1/2)*(1/2 + 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(1/2 - 1i/6),3^(1/2)*(1/6 + 1i/2),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 + 1i/2),0,2^(1/2)*(1/2 - 1i/2),2^(1/2)*(1/2 + 1i/2),0,-2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,(2^(1/2)*3^(1/2))/3,6^(1/2)*(- 1/6 - 1i/6),6^(1/2)*(- 1/6 + 1i/6),-(2^(1/2)*3^(1/2))/3,6^(1/2)/6,6^(1/2)/6 - (2^(1/2)*3^(1/2)*1i)/3,(2^(1/2)*3^(1/2)*1i)/3 + 6^(1/2)/6,-6^(1/2)/6,3^(1/2)*(- 1/6 + 1i/2),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 + 1i/2),-1,0,0,-1,(3^(1/2)*1i)/3,3^(1/2)*(- 1/3 + 1i/3),3^(1/2)*(1/3 + 1i/3),-(3^(1/2)*1i)/3,-(2^(1/2)*1i)/2,-2^(1/2)/2,2^(1/2)/2,(2^(1/2)*1i)/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,-1i,0,0,-1i,-(6^(1/2)*1i)/6,(2^(1/2)*3^(1/2)*1i)/3 + 6^(1/2)/6,(2^(1/2)*3^(1/2)*1i)/3 - 6^(1/2)/6,(6^(1/2)*1i)/6,3^(1/2)*(- 1/2 + 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(- 1/2 - 1i/6),-3^(1/2)/3,3^(1/2)*(- 1/3 - 1i/3),3^(1/2)*(- 1/3 + 1i/3),3^(1/2)/3,0,2^(1/2)*(1/2 + 1i/2),2^(1/2)*(- 1/2 + 1i/2),0,2^(1/2)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-2^(1/2)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,(2^(1/2)*3^(1/2)*1i)/3,6^(1/2)*(1/6 - 1i/6),6^(1/2)*(- 1/6 - 1i/6),-(2^(1/2)*3^(1/2)*1i)/3,6^(1/2)/6,(6^(1/2)*1i)/6 - (2^(1/2)*3^(1/2))/3,- (2^(1/2)*3^(1/2))/3 - (6^(1/2)*1i)/6,-6^(1/2)/6,(6^(1/2)*1i)/6,(2^(1/2)*3^(1/2))/3 + (6^(1/2)*1i)/6,(6^(1/2)*1i)/6 - (2^(1/2)*3^(1/2))/3,-(6^(1/2)*1i)/6,3^(1/2)*(- 1/2 - 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(- 1/2 + 1i/6),3^(1/2)*(- 1/6 - 1i/2),3^(1/2)*(- 1/6 - 1i/6),3^(1/2)*(- 1/6 + 1i/6),3^(1/2)*(1/6 - 1i/2),0,2^(1/2)*(- 1/2 + 1i/2),2^(1/2)*(- 1/2 - 1i/2),0,2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,- 1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,-(2^(1/2)*3^(1/2))/3,6^(1/2)*(1/6 + 1i/6),6^(1/2)*(1/6 - 1i/6),(2^(1/2)*3^(1/2))/3,-6^(1/2)/6,(2^(1/2)*3^(1/2)*1i)/3 - 6^(1/2)/6,- (2^(1/2)*3^(1/2)*1i)/3 - 6^(1/2)/6,6^(1/2)/6,3^(1/2)*(1/6 - 1i/2),3^(1/2)*(1/6 + 1i/6),3^(1/2)*(1/6 - 1i/6),3^(1/2)*(- 1/6 - 1i/2)];
+                case 28; W = [1,0,0,1,0,-1,1,0,1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,1i,0,0,-1i,0,1i,1i,0,-1,0,0,-1,0,1,-1,0,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,-1i,0,0,1i,0,-1i,-1i,0];
+                case 29; W = [1,0,0,1,0,-1,1,0,1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,1i,0,0,1i,1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 + 1i/2,0,-1i,1i,0,1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,1/2 + 1i/2,1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1i,0,0,-1i,1/2 + 1i/2,1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,0,1i,1i,0,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,1/2 + 1i/2,-1,0,0,1,0,-1,-1,0,-1,0,0,-1,0,1,-1,0,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,-1i,0,0,-1i,- 1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,0,1i,-1i,0,- 1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,1/2 - 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,1/2 - 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,1/2 + 1i/2,1/2 - 1i/2,-1i,0,0,1i,- 1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,0,-1i,-1i,0,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,1,0,0,-1,0,1,1,0];
+                case 30; W = [1,0,0,1,1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,2^(1/2)*(1/2 - 1i/2),0,0,2^(1/2)*(1/2 + 1i/2),1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-2^(1/2)/2,2^(1/2)/2,-(2^(1/2)*1i)/2,1i,0,0,-1i,2^(1/2)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,2^(1/2)/2,2^(1/2)*(1/2 + 1i/2),0,0,2^(1/2)*(1/2 - 1i/2),1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,2^(1/2)/2,-2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,1/2 - 1i/2,2^(1/2)/2,2^(1/2)/2,-2^(1/2)/2,2^(1/2)/2,1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,2^(1/2)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,2^(1/2)/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,1/2 + 1i/2,0,2^(1/2)*(- 1/2 + 1i/2),2^(1/2)*(1/2 + 1i/2),0,0,-1,1,0,0,1i,1i,0,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,2^(1/2)/2,-2^(1/2)/2,-(2^(1/2)*1i)/2,0,2^(1/2)*(- 1/2 - 1i/2),2^(1/2)*(1/2 - 1i/2),0,-1,0,0,-1,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,2^(1/2)*(- 1/2 + 1i/2),0,0,2^(1/2)*(- 1/2 - 1i/2),- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,2^(1/2)/2,-2^(1/2)/2,(2^(1/2)*1i)/2,-1i,0,0,1i,-2^(1/2)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-2^(1/2)/2,2^(1/2)*(- 1/2 - 1i/2),0,0,2^(1/2)*(- 1/2 + 1i/2),- 1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,-2^(1/2)/2,2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,- 1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 + 1i/2,-2^(1/2)/2,-2^(1/2)/2,2^(1/2)/2,-2^(1/2)/2,- 1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,-2^(1/2)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-2^(1/2)/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,0,2^(1/2)*(1/2 - 1i/2),2^(1/2)*(- 1/2 - 1i/2),0,0,1,-1,0,0,-1i,-1i,0,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-2^(1/2)/2,2^(1/2)/2,(2^(1/2)*1i)/2,0,2^(1/2)*(1/2 + 1i/2),2^(1/2)*(- 1/2 + 1i/2),0];
+                case 31; W = [1,0,0,1,1i,0,0,-1i,0,-1,1,0,0,2^(1/2)*(1/2 - 1i/2),2^(1/2)*(1/2 + 1i/2),0,1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,0,1i,1i,0,0,2^(1/2)*(- 1/2 - 1i/2),2^(1/2)*(- 1/2 + 1i/2),0,1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,1/2 - 1i/2,2^(1/2)*(- 1/2 + 1i/2),0,0,2^(1/2)*(1/2 + 1i/2),1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 + 1i/2,2^(1/2)*(1/2 + 1i/2),0,0,2^(1/2)*(- 1/2 + 1i/2),-2^(1/2)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,2^(1/2)/2,1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,-2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,(2^(1/2)*1i)/2,-2^(1/2)/2,-2^(1/2)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,1/2 + 1i/2,(2^(1/2)*1i)/2,2^(1/2)/2,2^(1/2)/2,(2^(1/2)*1i)/2,-2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,2^(1/2)/2,1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,-2^(1/2)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,2^(1/2)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,-1,0,0,-1,-1i,0,0,1i,0,1,-1,0,0,2^(1/2)*(- 1/2 + 1i/2),2^(1/2)*(- 1/2 - 1i/2),0,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,0,-1i,-1i,0,0,2^(1/2)*(1/2 + 1i/2),2^(1/2)*(1/2 - 1i/2),0,- 1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 + 1i/2,2^(1/2)*(1/2 - 1i/2),0,0,2^(1/2)*(- 1/2 - 1i/2),- 1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,2^(1/2)*(- 1/2 - 1i/2),0,0,2^(1/2)*(1/2 - 1i/2),2^(1/2)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-2^(1/2)/2,- 1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,-(2^(1/2)*1i)/2,2^(1/2)/2,2^(1/2)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,-(2^(1/2)*1i)/2,-2^(1/2)/2,-2^(1/2)/2,-(2^(1/2)*1i)/2,2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,-2^(1/2)/2,- 1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,2^(1/2)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-2^(1/2)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2];
+                case 32; W = [1,0,0,1,1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,2^(1/2)*(1/2 - 1i/2),0,0,2^(1/2)*(1/2 + 1i/2),1i,0,0,1i,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,(2^(1/2)*1i)/2,-2^(1/2)/2,2^(1/2)/2,-(2^(1/2)*1i)/2,1i,0,0,-1i,2^(1/2)*(1/2 + 1i/2),0,0,2^(1/2)*(- 1/2 + 1i/2),2^(1/2)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,2^(1/2)/2,- 1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,2^(1/2)*(1/2 + 1i/2),0,0,2^(1/2)*(1/2 - 1i/2),1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,-2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,-2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,-2^(1/2)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,2^(1/2)/2,1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,1/2 - 1i/2,-1,0,0,1,2^(1/2)/2,2^(1/2)/2,-2^(1/2)/2,2^(1/2)/2,1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,(2^(1/2)*1i)/2,-2^(1/2)/2,-2^(1/2)/2,(2^(1/2)*1i)/2,2^(1/2)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,2^(1/2)/2,2^(1/2)*(- 1/2 + 1i/2),0,0,2^(1/2)*(1/2 + 1i/2),1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,1/2 + 1i/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,1/2 + 1i/2,1/2 + 1i/2,0,2^(1/2)*(- 1/2 + 1i/2),2^(1/2)*(1/2 + 1i/2),0,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,0,-1,1,0,1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,(2^(1/2)*1i)/2,2^(1/2)/2,2^(1/2)/2,(2^(1/2)*1i)/2,0,1i,1i,0,- 1/2 + 1i/2,1/2 + 1i/2,1/2 - 1i/2,1/2 + 1i/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 + 1i/2,(2^(1/2)*1i)/2,2^(1/2)/2,-2^(1/2)/2,-(2^(1/2)*1i)/2,1/2 + 1i/2,1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,0,2^(1/2)*(- 1/2 - 1i/2),2^(1/2)*(- 1/2 + 1i/2),0,0,-1i,1i,0,0,2^(1/2)*(- 1/2 - 1i/2),2^(1/2)*(1/2 - 1i/2),0,0,-1,-1,0,-2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,-2^(1/2)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,2^(1/2)/2,0,2^(1/2)*(1/2 - 1i/2),2^(1/2)*(1/2 + 1i/2),0,-1,0,0,-1,- 1/2 + 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,2^(1/2)*(- 1/2 + 1i/2),0,0,2^(1/2)*(- 1/2 - 1i/2),-1i,0,0,-1i,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,- 1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,-(2^(1/2)*1i)/2,2^(1/2)/2,-2^(1/2)/2,(2^(1/2)*1i)/2,-1i,0,0,1i,2^(1/2)*(- 1/2 - 1i/2),0,0,2^(1/2)*(1/2 - 1i/2),-2^(1/2)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-2^(1/2)/2,1/2 - 1i/2,1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,2^(1/2)*(- 1/2 - 1i/2),0,0,2^(1/2)*(- 1/2 + 1i/2),- 1/2 - 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,2^(1/2)/2,2^(1/2)/2,2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,2^(1/2)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-2^(1/2)/2,- 1/2 - 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 + 1i/2,1,0,0,-1,-2^(1/2)/2,-2^(1/2)/2,2^(1/2)/2,-2^(1/2)/2,- 1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,-(2^(1/2)*1i)/2,2^(1/2)/2,2^(1/2)/2,-(2^(1/2)*1i)/2,-2^(1/2)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-2^(1/2)/2,2^(1/2)*(1/2 - 1i/2),0,0,2^(1/2)*(- 1/2 - 1i/2),- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,1/2 - 1i/2,1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,- 1/2 + 1i/2,1/2 + 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,- 1/2 - 1i/2,0,2^(1/2)*(1/2 - 1i/2),2^(1/2)*(- 1/2 - 1i/2),0,-(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-(2^(1/2)*1i)/2,0,1,-1,0,- 1/2 - 1i/2,1/2 - 1i/2,1/2 + 1i/2,1/2 - 1i/2,-(2^(1/2)*1i)/2,-2^(1/2)/2,-2^(1/2)/2,-(2^(1/2)*1i)/2,0,-1i,-1i,0,1/2 - 1i/2,- 1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,- 1/2 - 1i/2,1/2 + 1i/2,1/2 - 1i/2,1/2 - 1i/2,-(2^(1/2)*1i)/2,-2^(1/2)/2,2^(1/2)/2,(2^(1/2)*1i)/2,- 1/2 - 1i/2,- 1/2 + 1i/2,- 1/2 - 1i/2,1/2 - 1i/2,0,2^(1/2)*(1/2 + 1i/2),2^(1/2)*(1/2 - 1i/2),0,0,1i,-1i,0,0,2^(1/2)*(1/2 + 1i/2),2^(1/2)*(- 1/2 + 1i/2),0,0,1,1,0,2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,-2^(1/2)/2,2^(1/2)/2,-(2^(1/2)*1i)/2,(2^(1/2)*1i)/2,-2^(1/2)/2,0,2^(1/2)*(- 1/2 + 1i/2),2^(1/2)*(- 1/2 - 1i/2),0];
+                end
+                W = reshape(W,2,2,[]);
+                
+            else
+                % load recipe
+                recipe = get_recipe(pg_code);
+                % initialize
+                R = zeros(3,3,numel(recipe)+1);
+                % make generators
+                nsyms = 0;
+                nsyms = nsyms+1; R(:,:,nsyms) = eye(3);
+                for k = 1:numel(recipe)
+                    nsyms=nsyms+1; R(:,:,nsyms) = decode_R(recipe(k)); 
+                end
+                
+                % add elements until no new elements are generated
+                R = complete_group(R);
+                
+                % [IMPORTANT] use rhombohedral rather than hexagonal setting for hexagonal point groups
+                if any(pg_code==[9:13,21:27])
+                    T = [-1 1 1; 2 1 1; -1 -2 1].'/3;
+                    R = matmul_(matmul_(inv(T),R),(T));
+                end
+                
+                % generate double group
+                if nargout > 1
+                    % get double group
+                    j=1/2; [W] = get_wigner(j,R,'spherical');                     
+                    % Add plus and minus in accordance with 
+                    % V. Heine, Group Theory in Quantum Mechanics (Elsevier, 2014), p 62, eq 8.24.
+                    W = cat(3,W,-W); % W = complete_group(reshape(uniquec_(reshape(wdv_(W),4,[])),2,2,[]));
+                    % remove numerical noise
+                    W = wdv_(W);
+                end
+            end
+
+            function recipe  = get_recipe(sg_id)
+                pg_recipe_database = {...
+                     '','h','c','j','ch','bc','bj','bch','n','hn','en','kn','fhn','g','m','gh','cg',...
+                    'gj','cm','cgh','bn','in','bhn','ben','bkn','ikn','benh','cd','cdh','dg','bcld','dgh'};
+                recipe = pg_recipe_database{sg_id};
+            end
+            function R       = decode_R(str_r)
+                switch str_r
+                case 'a'; R = [  1  0  0;  0  1  0;  0  0  1]; % a
+                case 'b'; R = [ -1  0  0;  0 -1  0;  0  0  1]; % b
+                case 'c'; R = [ -1  0  0;  0  1  0;  0  0 -1]; % c
+                case 'd'; R = [  0  0  1;  1  0  0;  0  1  0]; % d
+                case 'e'; R = [  0  1  0;  1  0  0;  0  0 -1]; % e
+                case 'f'; R = [  0 -1  0; -1  0  0;  0  0 -1]; % f
+                case 'g'; R = [  0 -1  0;  1  0  0;  0  0  1]; % g
+                case 'h'; R = [ -1  0  0;  0 -1  0;  0  0 -1]; % h
+                case 'i'; R = [  1  0  0;  0  1  0;  0  0 -1]; % i
+                case 'j'; R = [  1  0  0;  0 -1  0;  0  0  1]; % j
+                case 'k'; R = [  0 -1  0; -1  0  0;  0  0  1]; % k
+                case 'l'; R = [  0  1  0;  1  0  0;  0  0  1]; % l
+                case 'm'; R = [  0  1  0; -1  0  0;  0  0 -1]; % m
+                case 'n'; R = [  0 -1  0;  1 -1  0;  0  0  1]; % n
+                end
+            end 
+        end
+
+        function [S,MT]       = complete_group(S,tol)
+
+            import am_lib.*
+            
+            % set tolernece
+            if nargin<2; tol=am_dft.tiny; end
+
+            % get size
+            s=size(S); d=s(1)*s(2);
+            
+            % switch
+            if s(1)==4 && s(2)==4 && all_(eq_(S(4,1:4,:), [0,0,0,1], tol))
+                algo = 2; % seitz symmetry
+            else
+                algo = 1; % point symmetry
+            end
+
+            % exclude empty symmetries
+            S = S(:,:,any(reshape(S,d,[])~=0,1)); 
+            
+            % add identity if not present 
+            E = eye(s(1),s(2)); if ~any(all(all(S==E))); S = cat(3,E,S); end
+            
+            % get number of symmetries at this point
+            nsyms=size(S,3);
+
+            % allocate space
+            S=cat(3,S,zeros(size(S,1),size(S,1),2*192-nsyms));
+
+            % add symmetry until no new symmetry is generated
+            nsyms_last=0; MT = zeros(2*192,2*192); 
+            while nsyms ~= nsyms_last
+                nsyms_last=nsyms;
+                for i = 1:nsyms_last
+                for j = 1:nsyms_last
+                    if MT(i,j)==0
+                        A = symmul_(S(:,:,i),S(:,:,j),algo,tol);
+                        A_id = member_(A(:),reshape(S(:,:,1:nsyms),d,[]),tol);
+                        if A_id == 0
+                            nsyms = nsyms+1; S(:,:,nsyms) = A; MT(i,j) = nsyms;
+                        else
+                            MT(i,j) = A_id;
+                        end
+                    end
+                end
+                end
+            end
+            
+            % trim output
+            S  = S(:,:,1:nsyms);
+            MT = MT(1:nsyms,1:nsyms);
+            
+            function C = symmul_(A,B,algo,tol)
+                switch algo
+                    case 1
+                        % point symmetry
+                        C = A*B;
+                    case 2
+                        % seitz symmetry
+                        C = A*B; C(1:3,4)=mod(C(1:3,4)+tol,1)-tol;
+                end
+            end
+        end
+ 
+        function abc          = bas2abc(bas) % convert from column basis vectors to [a,b,c,alpha,beta,gamma] 
+            % [a,b,c,alpha,beta,gamma] = bas2abc(bas)
+            M = bas.' * bas;
+            % de Graef p 86
+            a = sqrt(M(1,1));
+            b = sqrt(M(2,2));
+            c = sqrt(M(3,3));
+            alpha= acosd(M(2,3)/(b*c));
+            beta = acosd(M(1,3)/(a*c));
+            gamma= acosd(M(1,2)/(a*b));
+            abc = [a,b,c,alpha,beta,gamma];
+        end
+
+        function bas          = abc2bas(abc,brav) % convert from [a,b,c,alpha,beta,gamma] to column basis vectors 
+            import am_cell.abc2bas
+            switch nargin
+                case 1
+                    % bas = abc2bas([a,b,c,alpha,beta,gamma])
+                    a=abc(1); alpha=abc(4);
+                    b=abc(2); beta =abc(5);
+                    c=abc(3); gamma=abc(6);
+                    % correct rounding errors
+                    abs_cap = @(x) max(min(x,180), -180);
+                    val = abs_cap( (cosd(alpha)*cosd(beta)-cosd(gamma))/(sind(alpha)*sind(beta)) ); gamma_star = acosd(val);
+                    % generate basis (column vectors)
+                    bas(:,1) = [ a * sind(beta)                    ,                                0.0, a * cosd(beta) ];
+                    bas(:,2) = [-b * sind(alpha) * cosd(gamma_star), b * sind(alpha) * sind(gamma_star), b * cosd(alpha)];
+                    bas(:,3) = [                                0.0,                                0.0, c              ];
+
+                case 2
+                    if      contains(brav,'cubic')
+                        % [a, a, a, 90, 90, 90]
+                        bas = abc2bas([abc(1),abc(1),abc(1),90,90,90]);
+                    elseif  contains(brav,'tetra')
+                        % [a, a, c, 90, 90, 90]
+                        bas = abc2bas([abc(1),abc(1),abc(2),90,90,90]);
+                    elseif  contains(brav,'orth')
+                        % [a, b, c, 90, 90, 90]
+                        bas = abc2bas([abc(1),abc(2),abc(3),90,90,90]);
+                    elseif  contains(brav,'mon')
+                        % [a, b, c, 90, beta, 90]
+                        bas = abc2bas([abc(1),abc(2),abc(3),90,abc(4),90]);
+                    elseif  contains(brav,'hex')
+                        % [a, a, c, 90, 90, 120]
+                        bas = abc2bas([abc(1),abc(1),abc(2),90,90,120]);
+                    elseif  contains(brav,'rhomb')
+                        % [a, a, a, alpha, alpha, alpha]
+                        bas = abc2bas([abc(1),abc(1),abc(1),abc(2),abc(2),abc(2)]);
+                    else
+                        error('abc2bas: unknown bravis lattice');
+                    end
+            end
+        end 
+
     end
     
     % aux library
@@ -775,16 +1866,13 @@ classdef am_cell < dynamicprops % required for xrr simulation
             % [uc,pc,ic,cc]   = load_cell(fposcar)
             % fposcar can be a poscar or cif file
 
-            import am_lib.* am_dft.*
+            import am_lib.*
             
             % stupid matlab requires these symbolic variables to be initialized
             x=[];y=[];z=[]; %#ok<NASGU>
             
             % do not get conventional cell. it is full if bugs
             do_cc = false; cc=[];
-            
-            % set default numerical tolerance
-            if nargin < 3; tol = am_dft.tiny; end
             
             % time
             fprintf(' ... getting cell'); tic
@@ -797,21 +1885,24 @@ classdef am_cell < dynamicprops % required for xrr simulation
             
             % convert bas from [Ang] to [nm] when loading from cif/poscar
             switch flag
-                case 'poscar';   [uc]     = load_poscar(arg);   uc.bas = uc.bas*0.1;
+                case 'poscar';   [uc]     = am_cell.load_poscar(arg); 
                 case 'cif';      [uc,str] = load_cif(arg);      uc.bas = uc.bas*0.1;
                 case 'material'; [uc]     = load_material(arg);
                 case 'create';   [uc]     = am_dft.create_cell(arg{:});
             end
+            
+            % set tolerance
+            if nargin>2; uc.tol = tol; end
 
             % get primitive cell
-            [pc,p2u,u2p] = get_primitive(uc, tol);
+            [pc,p2u,u2p] = get_primitive(uc);
 
             % get irreducible cell
-            [ic,i2p,p2i] = get_irreducible(pc, tol);
+            [ic,i2p,p2i] = get_irreducible(pc);
 
             % get conventional cell
             if do_cc
-            [cc,c2p,p2c] = get_conventional_cell(pc,tol); 
+            [cc,c2p,p2c] = get_conventional_cell(pc); 
             end
 
             % complete mapping
@@ -820,6 +1911,11 @@ classdef am_cell < dynamicprops % required for xrr simulation
             u2c = p2c(u2p); c2u = p2u(c2p);
             c2i = p2i(c2p); i2c = p2c(i2p); 
             end
+            
+            % augment properties
+            for plist = {'u2p','p2u','u2i','i2u','bas2pc','tau2pc'}; addprop(uc,plist{:}); end
+            for plist = {'p2u','u2p','p2i','i2p'}; addprop(pc,plist{:}); end
+            for plist = {'i2p','p2i','i2u','u2i'}; addprop(ic,plist{:}); end
 
             % sace mapping to cells
             pc.p2i = p2i; pc.p2u = p2u; if do_cc; pc.p2c = p2c; end
@@ -831,38 +1927,38 @@ classdef am_cell < dynamicprops % required for xrr simulation
             uc.u2p = u2p; uc.u2i = u2i; if do_cc; uc.u2c = u2c; end
             uc.p2u = p2u; uc.i2u = i2u; if do_cc; uc.c2u = c2u; end
            
-            if do_cc; cc.c2i = c2i; cc.c2u = c2u; cc.c2p = c2p; end
-            if do_cc; cc.i2c = i2c; cc.u2c = u2c; cc.p2c = p2c; end
-            
-            % save bas2pc and tau2pc to convert [uc/cc-frac] to [pc-frac]
-            uc.bas2pc = pc.bas/uc.bas; uc.tau2pc = pc.bas\uc.bas;
-            if do_cc
-            cc.bas2pc = pc.bas/cc.bas; cc.tau2pc = pc.bas\cc.bas;
-            end
+%             if do_cc; cc.c2i = c2i; cc.c2u = c2u; cc.c2p = c2p; end
+%             if do_cc; cc.i2c = i2c; cc.u2c = u2c; cc.p2c = p2c; end
+%             
+%             % save bas2pc and tau2pc to convert [uc/cc-frac] to [pc-frac]
+%             uc.bas2pc = pc.bas/uc.bas; uc.tau2pc = pc.bas\uc.bas;
+%             if do_cc
+%             cc.bas2pc = pc.bas/cc.bas; cc.tau2pc = pc.bas\cc.bas;
+%             end
 
             % print basic symmetry info
-            [~,H,~,R] = get_symmetries(pc, tol);
-            bv_code = identify_bravais_lattice(pc.bas, tol);
+            [~,H,~,R] = get_symmetries(pc);
+            bv_code = am_cell.identify_bravais(pc.bas, tol);
 
             % holohodry should give same info as bravais lattice
-            hg_code = identify_pointgroup(H); 
-            pg_code = identify_pointgroup(R); 
-            sg_code = identify_spacegroup(pg_code); % BETA
+            hg_code = am_cell.identify_pointgroup(H); 
+            pg_code = am_cell.identify_pointgroup(R); 
+            sg_code = am_cell.identify_spacegroup(pg_code); % BETA
 
             % print relevant information
             verbose = true;
             if verbose
                 fprintf(' (%.3f s) \n',toc);
-                fprintf('     %-16s = %s\n','formula',get_cell_formula(uc));
-                fprintf('     %-16s = %s\n','primitive',decode_bravais(bv_code));
-                fprintf('     %-16s = %s\n','holohodry',decode_holohodry(hg_code));
-                fprintf('     %-16s = %s\n','point group',decode_pg(pg_code));
-                fprintf('     %-16s = %s\n','laue group',decode_laue(identify_laue(pg_code)));
+                fprintf('     %-16s = %s\n','formula',uc.formula);
+                fprintf('     %-16s = %s\n','primitive',am_cell.decode_bravais(bv_code));
+                fprintf('     %-16s = %s\n','holohodry',am_cell.decode_holohodry(hg_code));
+                fprintf('     %-16s = %s\n','point group',am_cell.decode_pg(pg_code));
+                fprintf('     %-16s = %s\n','laue group',am_cell.decode_laue(identify_laue(pg_code)));
                 fprintf('     %-16s = %s\n','space group',strrep(cell2mat(join(decode_sg(sg_code),',')),' ',''));
-                fprintf('     %-16s = %-8.3f [g/cm3] \n','mass density',get_cell_mass_density(uc));
-                fprintf('     %-16s = %-8.3f [atoms/nm3]\n','number density',get_cell_atomic_density(uc));
-                fprintf('     %-16s = %-8.3f [f.u./nm3]\n','formula density',get_cell_formula_density(uc));
-                fprintf('     %-16s = %-8.3f [amu/f.u.]\n','molecular weight',get_cell_molecular_weight(uc));
+                fprintf('     %-16s = %-8.3f [g/cm3] \n','mass density',uc.mass_density);
+                fprintf('     %-16s = %-8.3f [atoms/nm3]\n','number density',uc.numb_density);
+                fprintf('     %-16s = %-8.3f [f.u./nm3]\n','formula density',uc.form_density);
+                fprintf('     %-16s = %-8.3f [amu/f.u.]\n','molecular weight',uc.mole_weight);
                 if contains(flag,'cif')
                 fprintf('     %-16s = %s\n','create command',str);
                 end
