@@ -1,9 +1,5 @@
 classdef am_cell
     
-    properties (Constant)
-        cifdir    = '/Users/lenzinho/Developments/_materials/cif/';
-    end
-    
     properties
         % basic properties
         formula  = []; % 
@@ -26,17 +22,18 @@ classdef am_cell
         holohodry        = []; % holohodry
         point_group      = []; % point group
         space_group      = []; % space group  
-        % charge density info
-        nchg = []; % [n1,n2,n3]
-        chg  = [];
-        % symmetry functions
+        % symmetry operators
+        T                = []; % translations
+        H                = []; % lattice holodries
+        S                = []; % space
+        R                = []; % point
+        % properties
+        chg              = am_field; % charge density
     end
     
     methods (Static)
 
-        function [uc] = define(varargin) % (bas,type,species,tau) or (type,nspecies,mass_density)
-            
-
+        function [uc]            = define(varargin) % (bas,type,species,tau) or (type,nspecies,mass_density)
             switch nargin
                 case {4}
                     % create dft cell
@@ -85,12 +82,8 @@ classdef am_cell
     
     methods  % convert between cells
 
-        function [pc,p2u,u2p]    = get_primitive_cell(uc)
-            % [pc,p2u,u2p] = get_primitive_cell(uc)
-            % NOTE: saves p2u entries which share a common closest
-            % primitive lattice vector, not just the first primitive atoms
-            % produced by the matrix A. When building shells, this property
-            % is exploited.
+        function [pc,p2u,u2p]    = get_primitive(uc)
+            % [pc,p2u,u2p] = get_primitive(uc)
 
             import am_lib.*
 
@@ -141,14 +134,14 @@ classdef am_cell
                 inds_=rankc_(n); B = T(:,ijk(:,inds_(1)));
             end
 
-            % set identifiers (see NOTE: cannot simply use p2u = findrow_(A)!)
+            % set identifiers (NOTE: cannot simply use p2u = findrow_(A)!)
             p2u = member_(mod_(B*mod_(B\uc.tau(:,findrow_(A),1))),mod_(uc.tau(:,:,1))).'; u2p = ([1:size(A,1)]*A);
 
             % create structure
-            pc = am_cell.define(uc.bas*B, uc.type, uc.species(p2u), mod_(B\uc.tau(:,p2u)) );
+            pc = am_cell.define(uc.bas*B, uc.type, uc.species(p2u), mod_(B\uc.tau(:,p2u)) );  pc.tol = uc.tol;
         end
 
-        function [ic,i2p,p2i]    = get_irreducible_cell(pc)
+        function [ic,i2p,p2i]    = get_irreducible(pc)
             % idenitifes irreducible atoms
 
             import am_lib.*
@@ -160,7 +153,7 @@ classdef am_cell
             % get permutation matrix and construct a sparse binary representation
             PM = member_(seitz_apply_(S,pc.tau),pc.tau, pc.tol*1.01); [~,i2p,p2i] = get_connectivity(PM);
             % create structure
-            ic = am_cell.define(pc.bas, pc.type, pc.species(i2p), pc.tau(1:3,i2p) );
+            ic = am_cell.define(pc.bas, pc.type, pc.species(i2p), pc.tau(1:3,i2p) ); ic.tol = pc.tol;
             % unassign these parameters which are meaningless
             ic.mass_density = [];
             ic.numb_density = [];
@@ -168,7 +161,7 @@ classdef am_cell
             ic.mole_weight  = [];
         end
 
-        function [xc,x2i,i2x]    = get_expanded_cell(ic, S)
+        function [xc,x2i,i2x]    = get_orbitcellcell(ic, S)
             
             import am_lib.*
             
@@ -189,7 +182,7 @@ classdef am_cell
             % get mapping 
             [~,i2x,~]=unique(x2i,'stable');
             % create structure
-            xc = am_cell.define(ic.bas, ic.type, ic.species(x2i), tau );
+            xc = am_cell.define(ic.bas, ic.type, ic.species(x2i), tau ); xc.tol = ic.tol;
         end
 
         function [uc,u2p,p2u]    = get_supercell(pc, B)
@@ -234,9 +227,178 @@ classdef am_cell
             u2p = X(1,:); [~,p2u]=unique(u2p); p2u=p2u(:).';
 
             % create structure
-            [uc] = am_cell.define(pc.bas*B, pc.type, pc.species(u2p), X(2:4,:));
+            uc = am_cell.define(pc.bas*B, pc.type, pc.species(u2p), X(2:4,:)); uc.tol = pc.tol;
         end
-        
+                
+        function [dc,idc]        = get_displaced(pc,bvk,n,kpt,amp,mode,nsteps)
+            % Note: can set mode=[] for interactive selection
+            % n=[4;4;4]; kpt=[0;0;1/4]; amp=10; mode=6; nsteps=51;
+            % [~,md] = get_displaced(pc,bvk,n,kpt,amp,mode,nsteps);
+            % clf; [F]=plot_md_cell(md,'view',[0;1;0]); movie(F,3); % write_poscar(md,'POSCAR_test')
+            %
+            % Q: What effect does the kpt have on vibrational wave?
+            % A: Gamma-center and zone boundary points are standing waves.
+            %    Positive and negative k-points correspond to waves
+            %    traveling in opposite directions.
+            %
+            % Q: Are the units for dt correct?
+            % A: Yes! Check with:
+            %
+            %       plot(flatten_(diff(u(:,:,:),1,3)./dt), ...
+            %               flatten_(v(:,:,2:end)+v(:,:,1:(end-1)))/2,'.');
+            %
+            % Q: How do traveling waves work?
+            % A: Check it out using the code below:
+            %
+            %         clc
+            %         N = 50;
+            %         x = [0:(N-1)]/(N-1);
+            %         t = [0:(N-1)]/(N-1);
+            %
+            %         f = 1;
+            %         k = 2;
+            %         E1 = exp(2i*pi*(+k*x.'+f*t));
+            %         E2 = exp(2i*pi*(-k*x.'+f*t));
+            %         for i = 1:N
+            %         plot(x,real(E1(:,i)),...
+            %              x,real(E2(:,i)),...
+            %              x,real(E1(:,i)+E2(:,i))/2);
+            %         ylim([-1 1]); line([0 1],[0 0]); drawnow;
+            %         end
+            %
+            % Q: What is the reason for producing two phonon excitations
+            %    when fourier transforming real displacements?
+            % A: Real part of the phonon corresponds to the displacement,
+            %    however for a phonon with wavevector k and -k, the real
+            %    parts are identical:
+            %
+            %     +k = [0;0;+1/2]     -k = [0;0;-1/2]
+            %    0.0000 + 0.0000i    0.0000 - 0.0000i
+            %    0.0000 + 0.0000i    0.0000 - 0.0000i
+            %    0.0000 + 0.0000i    0.0000 - 0.0000i
+            %   -0.5525 - 0.4015i   -0.5525 + 0.4015i
+            %   -0.1480 - 0.1076i   -0.1480 + 0.1076i
+            %   -0.0000 - 0.0000i   -0.0000 + 0.0000i
+            %    0.5525 + 0.4015i    0.5525 - 0.4015i
+            %    0.1480 + 0.1076i    0.1480 - 0.1076i
+            %   -0.0000 + 0.0000i   -0.0000 + 0.0000i
+            %
+
+            import am_lib.* am_dft.*
+
+            % get a supercell commensurate with the kpoint
+            uc = get_supercell(pc,diag(n)); [~,pp] = get_pairs(pc,uc,bvk.cutoff);
+
+            % get phonon energies and eigenvectors at k-point
+            bz = get_fbz(pc,[1,1,1]); bz.k = kpt; bz = get_bvk_dispersion(bvk,bz);
+
+            % select a mode
+            fprintf('Energies [meV]\n');fprintf('%5.2f \n',bz.hw*1E3);
+            if isempty(mode)
+                mode = input('Select mode: ');
+            else
+                fprintf('Mode selected: %i \n',mode);
+            end
+
+            % build force constant matrices
+            for m = 1:pp.pc_natoms
+                phi{m} = zeros(3,3*pp.npairs(m));
+            for j = 1:pp.npairs(m)
+                % get indicies and irrep force constants
+                i = pp.i{m}(j); iq = pp.iq{m}(j); iphi = reshape(bvk.W{i}*bvk.fc{i}(:),3,3);
+                % rotate force constants from irrep to orbit
+                phi{m}(1:3,[1:3]+3*(j-1)) = pp.Q{1}(1:3,1:3,iq) * permute(iphi,pp.Q{2}(:,iq)) * pp.Q{1}(1:3,1:3,iq).';
+            end
+            end
+
+            % initialize all arrays [cart]
+            u = single(zeros(3,uc.natoms,nsteps));
+            v = single(zeros(3,uc.natoms,nsteps));
+            f = single(zeros(3,uc.natoms,nsteps));
+
+            % convert phonon energies back to wierd units
+            hw = real(bz.hw)./am_lib.units_eV; hw(hw(:)<1E-8)=1E-8;
+
+            % get normal transformations from uc eigenvector
+            % (Wallace p 113 10.40, Wallace p 115 eq 10.48)
+            % I think there is something wrong with the way the normal mode
+            % is being generated. Two modes are getting excited at +/-
+            % about gamma. It seems like it's a standing wave rather than a
+            % propagating wave ...
+            U   = expand_bvk_eigenvectors(bvk,uc,bz);
+            q2u = U   ./ repelem(sqrt(uc.mass(uc.species)).',3,1);
+            u2q = U'  .* repelem(sqrt(uc.mass(uc.species)).',3,1).';
+            v2p = U.' .* repelem(sqrt(uc.mass(uc.species)).',3,1).';
+
+            % build q_sk wave vector
+            t = 2*pi*[0:(nsteps-1)]/(nsteps-1)/hw(mode);
+            q_sk(bvk.nbranches,nsteps) = 0;
+            q_sk(mode,:) = amp * exp(1i*t(:)*hw(mode));
+
+            % displace according to the phonon mode
+            shp_ = @(A) reshape(A,3,uc.natoms);
+            for i = 1:nsteps
+                % get displacement and velocities in [cart : Ang & Ang/fs]
+                % (Wallace p 113 10.40)
+                u(:,:,i) = real(shp_( q2u * ( q_sk(:,i)            ) ));
+                v(:,:,i) = real(shp_( q2u * ( q_sk(:,i).*hw(:).*1i ) ));
+
+                % evaluate forces F on each atom : fc [eV/Ang^2] * u [Ang]
+                for m = 1:pp.pc_natoms
+                    f(:,pp.c{m},i) = ...
+                            - phi{m}*reshape(u(:,pp.o{m},i),size(pp.o{m}).*[3,1]);
+                end
+            end
+
+            % get normal modes (Wallace p 115 eq 10.49)
+            q_sk = (u2q*reshape(u,[],nsteps));
+            p_sk = (v2p*reshape(v,[],nsteps));
+
+            % get energies (Wallace p 115 eq 10.53)
+            PE(:,1) = -dot(reshape(u,[],nsteps),reshape(f,[],nsteps),1)/2;
+            KE(:,1) = reshape(sum(uc.mass(uc.species).*dot(v,v,1),2),1,[])/2;
+            PE(:,2) = dot(abs(q_sk).*hw(:),abs(q_sk).*hw(:),1)/2;
+            KE(:,2) = dot(abs(p_sk)       ,abs(p_sk)       ,1)/2;
+
+            plot(1:nsteps,KE(:,1),'-',1:nsteps,PE(:,1),'-',1:nsteps,KE(:,1)+PE(:,1),'-',...
+                 1:nsteps,KE(:,2),'.',1:nsteps,PE(:,2),'.',1:nsteps,KE(:,2)+PE(:,2),'.');
+            legend('KE','PE','KE+PE','nKE','nPE','nKE+nPE'); axis tight;
+
+            % set time step in [fs]
+            dt = (t(2)-t(1));
+
+            % convert [cart] to [frac] and u to tau
+            tau = matmul_(inv(uc.bas),u)+uc.tau;
+            v   = matmul_(inv(uc.bas),v) / sqrt(103.6382);
+            f   = matmul_(inv(uc.bas),f);
+
+            % create displaced structure
+            dc_ = @(uc,f,tau,v,dt) struct('units','frac',...
+                'bas',uc.bas,'tau2pc',uc.tau2pc,'bas2pc',uc.bas2pc,...
+                'symb',{{uc.symb{:}}},'mass',uc.mass,'nspecies',uc.nspecies, ...
+                'natoms',uc.natoms,'force',f,'tau',tau,'vel',v,'species',uc.species, ...
+                'dt',dt,'nsteps',size(tau,3),'u2p',uc.u2p,'p2u',uc.p2u,'u2i',uc.u2i,'i2u',uc.i2u);
+            dc = dc_(uc,f,tau,v,dt);
+
+            % get "primitive" irreducible displaced cell
+            if nargout==2
+                % get primitive cell basis commensurate with the displacement
+                [cc,c2d,d2c] = get_primitive(dc); cc.bas = double(cc.bas);
+
+                % reduce dc size
+                idc_ = @(dc,cc,pc,c2d,d2c) struct('units',dc.units, ...
+                    'bas',cc.bas,'bas2pc',pc.bas/cc.bas,'tau2pc',pc.bas\cc.bas,...
+                    'symb',{{dc.symb{:}}},'mass',dc.mass, ...
+                    'nspecies',sum(dc.species(c2d).'==[1:max(dc.species(c2d))],1),'natoms',numel(c2d), ...
+                    'force',mod_(matmul_(cc.bas\dc.bas,dc.force(:,c2d,:))), ...
+                    'tau',  mod_(matmul_(cc.bas\dc.bas,dc.tau(:,c2d,:))),...
+                    'vel',       matmul_(cc.bas\dc.bas,dc.vel(:,c2d,:)), ...
+                    'species',dc.species(c2d),'dt',dc.dt,'nsteps',dc.nsteps, ...
+                    'u2p',dc.u2p(c2d),'p2u',d2c(dc.p2u),'u2i',dc.u2i(c2d),'i2u',d2c(dc.i2u));
+                idc = idc_(dc,cc,pc,c2d,d2c);
+            end
+        end
+
     end
     
     methods % cell properties
@@ -492,7 +654,7 @@ classdef am_cell
 
         function [F]             = plot_md(md, varargin)
             % n=[4;4;4]; kpt=[0;0;1/4]; amp=10; mode=6; nsteps=51;
-            % [~,md] = get_displaced_cell(pc,bvk,n,kpt,amp,mode,nsteps);
+            % [~,md] = get_displaced(pc,bvk,n,kpt,amp,mode,nsteps);
             % clf; [F]=plot_md_cell(md,'view',[0;1;0]); movie(F,3); % write_poscar(md,'POSCAR_test')
 
             import am_lib.*
@@ -531,7 +693,6 @@ classdef am_cell
     methods (Static)
 
         % aux unit cells
-        
         
         function uc           = load_material(material)
             switch material
@@ -579,7 +740,6 @@ classdef am_cell
             uc = am_dft.create_cell(bas,tau,symb,sg_code);
         end
         
-
         function [uc,pc,ic,cc]= load_cell(flag, arg, tol)
             % [uc,pc,ic,cc]   = load_cell(fposcar)
             % fposcar can be a poscar or cif file
@@ -588,6 +748,9 @@ classdef am_cell
             
             % stupid matlab requires these symbolic variables to be initialized
             x=[];y=[];z=[]; %#ok<NASGU>
+            
+            % do not get conventional cell. it is full if bugs
+            do_cc = false; cc=[];
             
             % set default numerical tolerance
             if nargin < 3; tol = am_dft.tiny; end
@@ -603,42 +766,48 @@ classdef am_cell
             
             % convert bas from [Ang] to [nm] when loading from cif/poscar
             switch flag
-                case 'poscar';   [uc]     = load_poscar(arg); % already converted within the function
+                case 'poscar';   [uc]     = load_poscar(arg);   uc.bas = uc.bas*0.1;
                 case 'cif';      [uc,str] = load_cif(arg);      uc.bas = uc.bas*0.1;
                 case 'material'; [uc]     = load_material(arg);
                 case 'create';   [uc]     = am_dft.create_cell(arg{:});
             end
 
             % get primitive cell
-            [pc,p2u,u2p] = get_primitive_cell(uc, tol);
+            [pc,p2u,u2p] = get_primitive(uc, tol);
 
             % get irreducible cell
-            [ic,i2p,p2i] = get_irreducible_cell(pc, tol);
+            [ic,i2p,p2i] = get_irreducible(pc, tol);
 
             % get conventional cell
-            [cc,c2p,p2c] = get_conventional_cell(pc,tol);
+            if do_cc
+            [cc,c2p,p2c] = get_conventional_cell(pc,tol); 
+            end
 
             % complete mapping
             u2i = p2i(u2p); i2u = p2u(i2p);
+            if do_cc
             u2c = p2c(u2p); c2u = p2u(c2p);
-            c2i = p2i(c2p); i2c = p2c(i2p);
+            c2i = p2i(c2p); i2c = p2c(i2p); 
+            end
 
             % sace mapping to cells
-            pc.p2i = p2i; pc.p2u = p2u; pc.p2c = p2c;
-            pc.i2p = i2p; pc.u2p = u2p; pc.c2p = c2p; 
+            pc.p2i = p2i; pc.p2u = p2u; if do_cc; pc.p2c = p2c; end
+            pc.i2p = i2p; pc.u2p = u2p; if do_cc; pc.c2p = c2p; end
 
-            ic.i2p = i2p; ic.i2u = i2u; ic.i2c = i2c;
-            ic.p2i = p2i; ic.u2i = u2i; ic.u2i = c2i;
+            ic.i2p = i2p; ic.i2u = i2u; if do_cc; ic.i2c = i2c; end
+            ic.p2i = p2i; ic.u2i = u2i; if do_cc; ic.u2i = c2i; end
 
-            uc.u2p = u2p; uc.u2i = u2i; uc.u2c = u2c;
-            uc.p2u = p2u; uc.i2u = i2u; uc.c2u = c2u;
-
-            cc.c2i = c2i; cc.c2u = c2u; cc.c2p = c2p;
-            cc.i2c = i2c; cc.u2c = u2c; cc.p2c = p2c;
-
+            uc.u2p = u2p; uc.u2i = u2i; if do_cc; uc.u2c = u2c; end
+            uc.p2u = p2u; uc.i2u = i2u; if do_cc; uc.c2u = c2u; end
+           
+            if do_cc; cc.c2i = c2i; cc.c2u = c2u; cc.c2p = c2p; end
+            if do_cc; cc.i2c = i2c; cc.u2c = u2c; cc.p2c = p2c; end
+            
             % save bas2pc and tau2pc to convert [uc/cc-frac] to [pc-frac]
             uc.bas2pc = pc.bas/uc.bas; uc.tau2pc = pc.bas\uc.bas;
+            if do_cc
             cc.bas2pc = pc.bas/cc.bas; cc.tau2pc = pc.bas\cc.bas;
+            end
 
             % print basic symmetry info
             [~,H,~,R] = get_symmetries(pc, tol);
@@ -800,9 +969,12 @@ classdef am_cell
 
                 % define primitive cell creation function and make structure
                 uc_ = @(bas,symb,species,tau) struct('units','frac','bas',bas, ...
-                    'symb',{symb},'mass',am_dft.get_atomic_mass(symb),'nspecies',sum(unique(species).'==species,2).', ...
+                    'symb',{symb},'mass',am_dft.get_atomic_mass(symb),'nspecies',sum(1:max(species(:))==species(:),1), ...
                     'natoms',numel(species),'tau',tau,'species',species);
                 uc = uc_(bas,symb,species,tau);
+                
+                if numel(uc.mass) ~= numel(uc.symb); error('mass and symb mismatch'); end 
+                if numel(uc.mass) ~= numel(uc.nspecies); error('mass and nspecies mismatch'); end 
                 
                 uc_gen = [];
                 eval(['uc_gen = am_dft.',str]);
@@ -811,7 +983,7 @@ classdef am_cell
                     str = 'Mismatch';
                 end
             end
-            
+
         end
         
         function [uc]         = load_poscar(fposcar,flag) % can also be used to load the charge density 
@@ -988,8 +1160,6 @@ classdef am_cell
             uc = uc_(bas,tau,symb,species);
         end
         
-
-        
         function [uc]         = stack_cell(uc)
             % put one cell on top of the other along the z direction
             if numel(uc)==1; return; end
@@ -1045,8 +1215,5 @@ classdef am_cell
         end
         
     end
-    
-    
-
     
 end
