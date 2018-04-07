@@ -3,87 +3,245 @@ classdef am_bz < dynamicprops
     properties
         % basic properties
         units    = []; % frac/cart
-        recbas   = []; % reciprocal basis
+        recbas   = []; % reciprocal basis 
         n        = []; % monkhorst-pack dimensions or zone path divisions
         nks      = []; % number of kpoints
-        k        = []; % kpoint coordinates
-        w        = []; % kpoint weights
-        x        = []; % linear coordinate for plotting path
+        k        = []; % kpoint coordinates [3,nks]
+        w        = []; % kpoint weights [1,nks]
+        x        = []; % linear coordinate for plotting path 
         xt       = []; % linear coordinate ticks
         xl       = []; % linear coordinate labels
         tol      = []; % numerical tolerance
         % dispersions
-        Ef       = []; % Fermi level
-        E        = []; % electron dispersion
-        hw       = []; % phonon dispersion
+        Ef       = []; % Fermi level 
+        E        = []; % electron dispersion [nbands,nks]
+        hw       = []; % phonon dispersion [nbands,nks]
         % projection information
         nbands   = []; % number of bands
         norbitals= []; % number of orbitals
         nions    = []; % number of orbitals
-        lmproj   = []; % electronic projections [nspins,norbitals,nions,nbands,nkpts]
-        eigenv   = []; % phonon eigenvectors :: need to change this to: [1,1,3,nions,nbranches,nkpts]
+        lmproj   = []; % electronic projections [nspins,norbitals,nions,nbands,nks]
+        eigenv   = []; % phonon eigenvectors :: need to change this to: [1,1,3,nions,nbranches,nks]
         % tetrahedron information
-        ntets    = []; % number of tetrahedra
-        tet      = []; % tetrahedra coordination
-        tetw     = []; % tetrahedra weight
-        tetv     = []; % tetrahedra volume
+        ntets    = []; % number of tetrahedra 
+        tet      = []; % tetrahedra coordination [4,ntets]
+        tetw     = []; % tetrahedra weight [1,ntets]
+        tetv     = []; % tetrahedron volume
         % x-ray information
-        F        = []; % structure factor
-        I        = []; % x-ray diffracted intensity (includes lorentz polarization and weights)
+        F        = []; % structure factor [1,nks]
+        I        = []; % x-ray diffracted intensity (includes lorentz polarization and weights) [1,nks]
     end
     
     methods (Static)
 
-        function [uc]             = define(bas,n,k,w) % define(pc,n,k,w)
-            % create brillouin zone
-            if nargin<4; w=ones(1,size(k,2)); end
+        function [bz]             = define(bas,k,varargin) % define(pc,n,k,w)
             % recbas   = []; % reciprocal basis
             % n        = []; % dimensions for monkhorst-pack mesh
             % k        = []; % kpoint coordinates
             % w        = []; % kpoint weights
-            uc          = am_bz;
-            uc.units    = 'frac-recp';
-            uc.recbas   = inv(bas).';
-            uc.n        = n;
-            uc.k        = k;
-            uc.w        = w;
+            bz          = am_bz;
+            bz.units    = 'frac-recp';
+            bz.recbas   = inv(bas).';
+            bz.k        = k;
+            bz.tol      = 1E-8;
+            % parse remaining input
+            bz = bz.set(varargin{:});
+            % populate
+            bz.nks = size(bz.k,2);
+            if isempty(bz.w); bz.w = ones(1,bz.nks); end
         end
-       
-    end
-    
-    methods  % convert between brillouin zones
 
-        function [fbz,ibz]        = get_zones(pc,n)
+        function [fbz,ibz]        = get_zone(pc,n)
 
             import am_lib.* am_dft.*
 
             % get full brillouin zone
-            [fbz] = get_fbz(pc,n);
+            [fbz] = am_bz.get_fbz(pc,n);
 
             % get irreducible zone
-            [ibz,i2f,f2i] = get_ibz(fbz,pc,'tetra');
+            [ibz,i2f,f2i] = fbz.get_ibz(pc,'tetra');
 
             % save mapping to zones
+            for plist = {'f2i','i2f'}; addprop(ibs,plist{:}); end
+            for plist = {'f2i','i2f'}; addprop(fbs,plist{:}); end
             fbz.f2i = f2i; fbz.i2f = i2f;
             ibz.i2f = i2f; ibz.f2i = f2i;
         end
         
-        function [fbz]            = get_fbz(pc,n) % n = either kpoint mesh [n1,n2,n3] or density [n]
-            switch numel(n)
-                case 1 % convert kpoint density to odd grid
-                    n_ = @(bas,s) 2*ceil(am_lib.normc_(inv(bas).')*s/2)+1; fbz = get_fbz(pc,n_(bz.bas,n));
-                case 3
-                    if any(mod(n,1)~=0); error('n must be integers'); end
-                    % generate primitive lattice vectors
-                    Q_ = @(i) [0:(n(i)-1)]./n(i); [Y{1:3}]=ndgrid(Q_(1),Q_(2),Q_(3)); k=reshape(cat(3+1,Y{:}),[],3).';
-                    % create structure
-                    fbz = define(pc.bas,n,k);
-                otherwise
-                    error('unknown n');
+        function [fbs,ibs]        = get_bragg(uc,k_max,hv,threshold)
+            % bragg brillouin zone
+            import am_lib.* am_dft.*
+
+            % k max is the largest wavevector magntiude considered
+            if nargin < 4 || isempty(threshold); threshold = am_lib.tiny; end
+            if nargin < 3 || isempty(hv); hv = get_atomic_emission_line_energy(get_atomic_number('Cu'),'kalpha1'); end
+            if nargin < 2 || isempty(k_max); th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
+            
+
+            fbs = get_fbs(uc,k_max);
+            
+            % get structure factors and scattering intensity
+                [fbs.F,L,P] = get_structure_factor(uc,fbs,hv);
+                fbs.I = abs(fbs.F).^2.*L.*P.*fbs.w; fbs.I = fbs.I ./ max(fbs.I(:))*100;
+                % exlcude stuff above threshold
+                ex_ = fbs.I > threshold;
+                [fbs.F,fbs.I,fbs.w,fbs.k,fbs.nks] = ...
+                    deal(fbs.F(ex_),fbs.I(ex_),fbs.w(ex_),fbs.k(:,ex_),sum(ex_));
+            
+            % get symmetrically equivalent bragg spots
+            % save "irreducible bragg spots" structure
+            [ibs,i2b,b2i] = get_ibz(fbs,uc,'nomod,addinv');
+            for plist = {'i2b','b2i'}; addprop(ibs,plist{:}); end
+            for plist = {'i2b','b2i'}; addprop(fbs,plist{:}); end
+            ibs.i2b = i2b; ibs.b2i = b2i;
+            fbs.i2b = i2b; fbs.b2i = b2i; 
+        end
+
+        function [bzp]            = get_path(pc,n,brav)
+
+            import am_lib.* am_dft.*
+
+            % define kpoint path
+            if     contains( lower(brav), 'fcc-short' )
+                G=[0;0;0];  X1=[0;1;1]/2; X2=[2;1;1]/2;
+                L=[1;1;1]/2; K=[6;3;3]/8;
+                xl={'G','X','K','G','L'};
+                ks=[G,X2,K,G];
+                ke=[X1,K,G,L];
+            elseif contains( lower(brav), 'fcc-long' )
+                G=[0;0;0];  X1=[0;1;1]/2; W=[1;3;2]/4;
+                U=[2;5;5]/8; L=[1;1;1]/2; K=[3;6;3]/8;
+                xl={'G','X','W','K','G','L','U','W','L','K'};
+                ks=[G,X1,W,K,G,L,U,W,L];
+                ke=[X1,W,K,G,L,U,W,L,K];
+            elseif contains( lower(brav), 'tetra' )
+                G=[0;0;0];   Z=[0;0;1]/2; A=[1;1;1]/2; 
+                M=[1;1;0]/2; X=[0;1;0]/2; R=[0;1;1]/2;
+                xl={'G','X','M','G','Z','R','A','Z'};
+                ks=[G,X,M,G,Z,R,A];
+                ke=[X,M,G,Z,R,A,Z];
+            elseif contains( lower(brav), 'sc' )
+                G=[0;0;0];   X=[0;1;0]/2;
+                M=[1;1;0]/2; R=[1;1;1]/2;
+                xl={'G','X','M','G','R','X'};
+                ks=[G,X,M,G,R];
+                ke=[X,M,G,R,X];
+            elseif contains( lower(brav), 'hex' )
+                % for a pc.bas ordered like so:
+                %     3.0531   -1.5266         0
+                %          0    2.6441         0
+                %          0         0    3.4526
+                G=[0;0;0];   K=[1/3;1/3;0];   M=[1/2;0;0];
+                A=[0;0;1/2]; H=[1/3;1/3;1/2]; L=[1/2;0;1/2];
+                xl={'G','K','M','G','A','H','L','A'};
+                ks=[G,K,M,G,A,H,L];
+                ke=[K,M,G,A,H,L,A];
+            else
+                error('invalid bravais lattice');
+            end
+
+            % get number of kpoints
+            nqs=size(ks,2); recbas = inv(pc.bas).';
+
+            % get path: convert to [cart-recp] to get x spacings right then convert back to [frac-recp]
+            [k,x,xt] = get_path(recbas*ks,recbas*ke,nqs,n); k=recbas\k;
+
+            % create path object
+            bzp_ = @(recbas,xl,xt,nks,x,k) struct('units','frac', ...
+                'recbas',recbas,'xl',{{xl{:}}},'xt',xt,'nks',nks,'x',x,'k',k);
+            bzp = bzp_(recbas,xl,xt,size(k,2),x,k);
+
+            function [k,x,xt] = get_path(qs,qe,nqs,N)
+              % define path (includes both boundaries)
+                path_ = @(k,q,N) cumsum([zeros(3,1),repmat((k-q)/(N-1),1,N-1)],2)+repmat(q,1,N);
+                x_    = @(k,q,N) [0, repmat(norm((k-q)/(N-1)),1,N-1) ];
+
+                % build path
+                nks = N*nqs; k = zeros(3,nks); x = zeros(1,nks);
+                for i = 1:nqs
+                    k(1:3,[1:N]+(i-1)*N) = path_(qe(:,i),qs(:,i),N);
+                    x(    [1:N]+(i-1)*N) =    x_(qe(:,i),qs(:,i),N);
+                end
+                x = cumsum(x);
+
+                % set labels coordinates
+                xt = x([1,N*[1:nqs]]);
             end
         end
 
-        function [ibz,i2f,f2i]    = get_ibz(fbz,pc,flag)
+        function [bzs]            = get_surf(pc,n,vy,vx)
+            % bzs=get_surf(pc,[101,101],[1;0;0],[0;1;0]);
+            % bzs=get_bvk_dispersion(bvk,bzs);
+            % plot_surf(bzs,1)
+
+            import am_lib.* am_dft.*
+
+            % get number of kpoints
+            nks=prod(n); recbas = inv(pc.bas).';
+
+            % get surface in [cart-recp] then convert back to [frac-recp]
+            Q_ = @(n) [0:(n-1)]./(n-1); [Y{1:2}]=meshgrid(Q_(n(2)),Q_(n(1)));
+            k = Y{1}(:).'.*vx + Y{2}(:).'.*vy; k = recbas\k;
+
+            % create path object
+            bzs_ = @(recbas,n,nks,k) struct('units','frac', ...
+                'recbas',recbas,'nks',nks,'n',n,'k',k);
+            bzs = bzs_(recbas,n,nks,k);
+        end
+
+        function [bzl]            = get_line(pc,n,vs,ve)
+            % surf: vs and ve are the start and end vectors in cart
+
+            import am_lib.* am_dft.*
+
+            % get number of kpoints
+            nks=n; recbas = inv(pc.bas).';
+
+            % define path (includes both boundaries)
+            path_ = @(k,q,N) cumsum([zeros(3,1),repmat((k-q)/(N-1),1,N-1)],2)+repmat(q,1,N);
+            x_    = @(k,q,N) [0, repmat(norm((k-q)/(N-1)),1,N-1) ];
+
+            % build path in recp.-frac
+            k(1:3,:) = path_(ve-vs,[0;0;0],n); k = recbas\k;
+            x(    :) =    x_(ve-vs,[0;0;0],n); x = cumsum(x);
+
+            % create path object
+            bzl_ = @(recbas,n,nks,x,k) struct('units','frac',...
+                'recbas',recbas,'nks',nks,'n',n,'x',x,'k',k);
+            bzl = bzl_(recbas,n,nks,x,k);
+        end
+
+        function [bza]            = get_angles(pc,hv,th2)
+
+            import am_lib.* am_dft.*
+
+            % get number of kpoints
+            nks=numel(th2); recbas = inv(pc.bas).';
+
+            % convert 2-theta into k points
+            [kx,kz]=angle2kxkz(th2/2,th2,hv); k = [kx(:).';zeros(1,nks);kz(:).']; 
+
+            % build path in recp.-frac
+            k = recbas\k;
+
+            % create path object
+            bza_ = @(recbas,nks,x,k) struct('units','frac',...
+                'recbas',recbas,'nks',nks,'n',[],'x',x,'k',k);
+            bza = bza_(recbas,nks,th2(:).',k);
+        end
+
+    end
+    
+    methods 
+        
+        function [bz]             = set(bz,varargin) % set bz properties 
+            % parse remaining input
+            nvs = numel(varargin);
+            if ~am_lib.iseven_(nvs); error('{key, value} inputs required'); end; i=1; 
+            while true; bz.(varargin{i}) = varargin{i+1}; i=i+2; if i>nvs; break; end; end
+        end
+        
+        function [ibz,i2f,f2i]    = get_ibz(fbz,pc,flag) % get irreducible zone 
 
             import am_lib.* 
 
@@ -113,14 +271,7 @@ classdef am_bz < dynamicprops
             if abs(sum(w)-fbz.nks)>am_lib.eps; error('mismatch: kpoint mesh and point group symmetry'); end
 
             % create structure
-            ibz = define(pc.bas,fbz.n,fbz.k(:,i2f),w);
-            
-            % pass along additional parameters if they exist
-            for f = {'n','F','F2'}
-                if isfield(fbz,f) && ~isempty(fbz.(f{:}))
-                    ibz.(f{:}) = fbz.(f{:}); 
-                end
-            end
+            ibz = am_bz.define(pc.bas,fbz.k(:,i2f),'n',fbz.n,'w',w);
             
             % if requested
             if contains(flag,'tetra')
@@ -131,10 +282,18 @@ classdef am_bz < dynamicprops
                 [tet,~,tet_f2i] = unique(sort(f2i(tet)).','rows'); 
                 tet=tet.'; tetw = hist(tet_f2i,[1:size(tet,2)].'-.5);
                 % augment structure with tetrahedron
-                ibz.ntets = size(tet,2);
-                ibz.tet   = tet; 
-                ibz.tetw  = tetw;
-                ibz.tetv  = vol;
+                ibz = ibz.set('ntets',size(tet,2),'tet',tet,'tetw',tetw,'tetv',vol);
+            end
+            
+            % finally, pass along additional parameters if they exist
+            for f = {'n','nbands','norbitals','nions'}
+                if isfield(fbz,f) && ~isempty(fbz.(f{:})); ibz.(f{:}) = fbz.(f{:}); end
+            end
+            for f = {'n','F','I','E','hw'}
+                if isfield(fbz,f) && ~isempty(fbz.(f{:})); ibz.(f{:}) = fbz.(f{:})(:,i2f); end
+            end
+            for f = {'lmproj','eigenv'}
+                if isfield(fbz,f) && ~isempty(fbz.(f{:})); ibz.(f{:}) = fbz.(f{:})(:,:,:,:,i2f); end
             end
 
             % subfunctions
@@ -219,189 +378,9 @@ classdef am_bz < dynamicprops
             end
         end
 
-        function [bzp]            = get_bz_path(pc,n,brav)
-
-            import am_lib.* am_dft.*
-
-            % define kpoint path
-            if     contains( lower(brav), 'fcc-short' )
-                G=[0;0;0];  X1=[0;1;1]/2; X2=[2;1;1]/2;
-                L=[1;1;1]/2; K=[6;3;3]/8;
-                xl={'G','X','K','G','L'};
-                ks=[G,X2,K,G];
-                ke=[X1,K,G,L];
-            elseif contains( lower(brav), 'fcc-long' )
-                G=[0;0;0];  X1=[0;1;1]/2; W=[1;3;2]/4;
-                U=[2;5;5]/8; L=[1;1;1]/2; K=[3;6;3]/8;
-                xl={'G','X','W','K','G','L','U','W','L','K'};
-                ks=[G,X1,W,K,G,L,U,W,L];
-                ke=[X1,W,K,G,L,U,W,L,K];
-            elseif contains( lower(brav), 'tetra' )
-                G=[0;0;0];   Z=[0;0;1]/2; A=[1;1;1]/2; 
-                M=[1;1;0]/2; X=[0;1;0]/2; R=[0;1;1]/2;
-                xl={'G','X','M','G','Z','R','A','Z'};
-                ks=[G,X,M,G,Z,R,A];
-                ke=[X,M,G,Z,R,A,Z];
-            elseif contains( lower(brav), 'sc' )
-                G=[0;0;0];   X=[0;1;0]/2;
-                M=[1;1;0]/2; R=[1;1;1]/2;
-                xl={'G','X','M','G','R','X'};
-                ks=[G,X,M,G,R];
-                ke=[X,M,G,R,X];
-            elseif contains( lower(brav), 'hex' )
-                % for a pc.bas ordered like so:
-                %     3.0531   -1.5266         0
-                %          0    2.6441         0
-                %          0         0    3.4526
-                G=[0;0;0];   K=[1/3;1/3;0];   M=[1/2;0;0];
-                A=[0;0;1/2]; H=[1/3;1/3;1/2]; L=[1/2;0;1/2];
-                xl={'G','K','M','G','A','H','L','A'};
-                ks=[G,K,M,G,A,H,L];
-                ke=[K,M,G,A,H,L,A];
-            else
-                error('invalid bravais lattice');
-            end
-
-            % get number of kpoints
-            nqs=size(ks,2); recbas = inv(pc.bas).';
-
-            % get path: convert to [cart-recp] to get x spacings right then convert back to [frac-recp]
-            [k,x,xt] = get_path(recbas*ks,recbas*ke,nqs,n); k=recbas\k;
-
-            % create path object
-            bzp_ = @(recbas,xl,xt,nks,x,k) struct('units','frac', ...
-                'recbas',recbas,'xl',{{xl{:}}},'xt',xt,'nks',nks,'x',x,'k',k);
-            bzp = bzp_(recbas,xl,xt,size(k,2),x,k);
-
-            function [k,x,xt] = get_path(qs,qe,nqs,N)
-              % define path (includes both boundaries)
-                path_ = @(k,q,N) cumsum([zeros(3,1),repmat((k-q)/(N-1),1,N-1)],2)+repmat(q,1,N);
-                x_    = @(k,q,N) [0, repmat(norm((k-q)/(N-1)),1,N-1) ];
-
-                % build path
-                nks = N*nqs; k = zeros(3,nks); x = zeros(1,nks);
-                for i = 1:nqs
-                    k(1:3,[1:N]+(i-1)*N) = path_(qe(:,i),qs(:,i),N);
-                    x(    [1:N]+(i-1)*N) =    x_(qe(:,i),qs(:,i),N);
-                end
-                x = cumsum(x);
-
-                % set labels coordinates
-                xt = x([1,N*[1:nqs]]);
-            end
-        end
-
-        function [bzs]            = get_bz_surf(pc,n,vy,vx)
-            % bzs=get_bz_surf(pc,[101,101],[1;0;0],[0;1;0]);
-            % bzs=get_bvk_dispersion(bvk,bzs);
-            % plot_bz_surf(bzs,1)
-
-            import am_lib.* am_dft.*
-
-            % get number of kpoints
-            nks=prod(n); recbas = inv(pc.bas).';
-
-            % get surface in [cart-recp] then convert back to [frac-recp]
-            Q_ = @(n) [0:(n-1)]./(n-1); [Y{1:2}]=meshgrid(Q_(n(2)),Q_(n(1)));
-            k = Y{1}(:).'.*vx + Y{2}(:).'.*vy; k = recbas\k;
-
-            % create path object
-            bzs_ = @(recbas,n,nks,k) struct('units','frac', ...
-                'recbas',recbas,'nks',nks,'n',n,'k',k);
-            bzs = bzs_(recbas,n,nks,k);
-        end
-
-        function [bzl]            = get_bz_line(pc,n,vs,ve)
-            % surf: vs and ve are the start and end vectors in cart
-
-            import am_lib.* am_dft.*
-
-            % get number of kpoints
-            nks=n; recbas = inv(pc.bas).';
-
-            % define path (includes both boundaries)
-            path_ = @(k,q,N) cumsum([zeros(3,1),repmat((k-q)/(N-1),1,N-1)],2)+repmat(q,1,N);
-            x_    = @(k,q,N) [0, repmat(norm((k-q)/(N-1)),1,N-1) ];
-
-            % build path in recp.-frac
-            k(1:3,:) = path_(ve-vs,[0;0;0],n); k = recbas\k;
-            x(    :) =    x_(ve-vs,[0;0;0],n); x = cumsum(x);
-
-            % create path object
-            bzl_ = @(recbas,n,nks,x,k) struct('units','frac',...
-                'recbas',recbas,'nks',nks,'n',n,'x',x,'k',k);
-            bzl = bzl_(recbas,n,nks,x,k);
-        end
-
-        function [bza]            = get_bz_angles(pc,hv,th2)
-
-            import am_lib.* am_dft.*
-
-            % get number of kpoints
-            nks=numel(th2); recbas = inv(pc.bas).';
-
-            % convert 2-theta into k points
-            [kx,kz]=angle2kxkz(th2/2,th2,hv); k = [kx(:).';zeros(1,nks);kz(:).']; 
-
-            % build path in recp.-frac
-            k = recbas\k;
-
-            % create path object
-            bza_ = @(recbas,nks,x,k) struct('units','frac',...
-                'recbas',recbas,'nks',nks,'n',[],'x',x,'k',k);
-            bza = bza_(recbas,nks,th2(:).',k);
-        end
-
-        function [fbs,ibs]        = get_bz_bragg(uc,k_max,hv,threshold)
-            % bragg brillouin zone
-            import am_lib.* am_dft.*
-
-            % k max is the largest wavevector magntiude considered
-            if nargin < 4 || isempty(threshold); threshold = am_lib.tiny; end
-            if nargin < 3 || isempty(hv); hv = get_atomic_emission_line_energy(get_atomic_number('Cu'),'kalpha1'); end
-            if nargin < 2 || isempty(k_max); th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
-            
-
-            fbs = get_fbs(uc,k_max);
-            
-            % get structure factors and scattering intensity
-                [fbs.F,L,P] = get_structure_factor(uc,fbs,hv);
-                fbs.I = abs(fbs.F).^2.*L.*P.*fbs.w; fbs.I = fbs.I ./ max(fbs.I(:))*100;
-                % exlcude stuff above threshold
-                ex_ = fbs.I > threshold;
-                [fbs.F,fbs.I,fbs.w,fbs.k,fbs.nks] = ...
-                    deal(fbs.F(ex_),fbs.I(ex_),fbs.w(ex_),fbs.k(:,ex_),sum(ex_));
-            
-            % get symmetrically equivalent bragg spots
-            % save "irreducible bragg spots" structure
-            [ibs,i2b,b2i] = get_ibz(fbs,uc,'nomod,addinv');
-            for plist = {'i2b','b2i'}; addprop(ibs,plist{:}); end
-            for plist = {'i2b','b2i'}; addprop(fbs,plist{:}); end
-            ibs.i2b = i2b; ibs.b2i = b2i;
-            fbs.i2b = i2b; fbs.b2i = b2i; 
-        end
-        
-        function [fbs]            = get_fbs(pc,k_max,N)
-            
-            import am_lib.* 
-            
-            if nargin < 2 || isempty(k_max); th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
-            if nargin < 3 || isempty(N); N = ceil((max(k_max./(1./am_lib.normc_(pc.bas))))); end 
-            
-            % get miller indicies [hkl] excluding gamma
-            k=permn_([N:-1:-N],3).'; k=k(:,~all(k==0,1)); 
-            % get reciprocal basis vectors [1/nm]
-            recbas = inv(pc.bas).';
-            % sort by distance
-            k = k(:,rankc_(normc_(recbas*k)));               
-            % identify values which cannot be reached by diffractometer
-            k = k(:,normc_(recbas*k)<k_max); 
-            % save "full bragg spots" structure 
-            fbs = am_bz.define(pc.bas,[],k,ones(1,size(k,2)));
-        end
-        
         
     end
+    
     
     methods % cell properties
         
@@ -749,7 +728,7 @@ classdef am_bz < dynamicprops
             hold off; daspect([1 1 1]); box on;
         end
 
-        function                    plot_bz_path(bzp)
+        function                    plot_path(bzp)
 
             import am_lib.* am_dft.*
 
@@ -769,10 +748,10 @@ classdef am_bz < dynamicprops
             hold off; daspect([1 1 1]); box on;
         end
 
-        function                    plot_bz_surf(bzs,band)
-            % bzs=get_bz_surf(pc,[101,101],[1;0;0],[0;1;0]);
+        function                    plot_surf(bzs,band)
+            % bzs=get_surf(pc,[101,101],[1;0;0],[0;1;0]);
             % bzs=get_bvk_dispersion(bvk,bzs);
-            % plot_bz_surf(bzs,1)
+            % plot_surf(bzs,1)
 
             import am_lib.* am_dft.*
 
@@ -820,19 +799,19 @@ classdef am_bz < dynamicprops
             % plot                                                                                 [4,4,1]  2
             h = am_lib.plot_isosurface_(reshape(fbz.recbas*fbz.k,[3,fbz.n]), fbz.recbas, E, Ef, C, [1,1,1], 3, 'cubic,center');
             % plot bz boundary
-            if contains(flag,'tetra'); am_dft.draw_bz_boundary(fbz,'tetra'); end
+            if contains(flag,'tetra'); am_dft.draw_boundary(fbz,'tetra'); end
             % set lighting settings
             daspect([1 1 1]); axis tight; axis off;
             campos([10.7135,23.0003,9.4299]); camlight('right','infinite'); camproj('perspective');
         end
         
-        function h                = draw_bz_boundary(fbz,flag)
+        function h                = draw_boundary(fbz,flag)
             switch flag
-                case 'tetra'; h = draw_tetragonal_bz_boundary(fbz);
+                case 'tetra'; h = draw_tetragonal_boundary(fbz);
                 otherwise; error('unknown geometry');
             end
             
-            function draw_tetragonal_bz_boundary(fbz)
+            function draw_tetragonal_boundary(fbz)
                 R3 = [ 0,-1, 0;-1, 0, 0; 0, 0,-1];
                 s = [1,1,1];
                 xy = fbz.recbas*[[0;0;0],[s(1);0;0],[s(1);s(2);0],[0;s(2);0]];
@@ -1015,6 +994,46 @@ classdef am_bz < dynamicprops
             daspect([1 1 1]); axis tight; box on;
         end
 
+    end
+    
+    methods (Static, Access = protected) % internal
+
+        function [fbz]            = get_fbz(pc,n) % n = either kpoint mesh [n1,n2,n3] or density [n]
+            switch numel(n)
+                case 1 % convert kpoint density to odd grid
+                    n_ = @(bas,s) 2*ceil(am_lib.normc_(inv(bas).')*s/2)+1; 
+                    fbz = am_bz.get_fbz(pc,n_(pc.bas,n)); 
+                    return;
+                case 3
+                    if any(mod(n,1)~=0); error('n must be integers'); end
+                    % generate primitive lattice vectors
+                    Q_ = @(i) [0:(n(i)-1)]./n(i); [Y{1:3}]=ndgrid(Q_(1),Q_(2),Q_(3)); k=reshape(cat(3+1,Y{:}),[],3).';
+                    % create structure
+                    fbz = am_bz.define(pc.bas,k,'n',n);
+                otherwise
+                    error('unknown n');
+            end
+        end
+
+        function [fbs]            = get_fbs(pc,k_max,N)
+            
+            import am_lib.* 
+            
+            if nargin < 2 || isempty(k_max); th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
+            if nargin < 3 || isempty(N); N = ceil((max(k_max./(1./am_lib.normc_(pc.bas))))); end 
+            
+            % get miller indicies [hkl] excluding gamma
+            k=permn_([N:-1:-N],3).'; k=k(:,~all(k==0,1)); 
+            % get reciprocal basis vectors [1/nm]
+            recbas = inv(pc.bas).';
+            % sort by distance
+            k = k(:,rankc_(normc_(recbas*k)));               
+            % identify values which cannot be reached by diffractometer
+            k = k(:,normc_(recbas*k)<k_max); 
+            % save "full bragg spots" structure 
+            fbs = am_bz.define(pc.bas,[],k,ones(1,size(k,2)));
+        end
+        
     end
 
     methods (Static) % aux brillouin zones
