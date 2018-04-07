@@ -628,26 +628,26 @@ classdef am_bz < dynamicprops
             axs_(gca,bzp.xt,bzp.xl); axis tight; xlabel('Wavevector k');
         end
 
-        function                    plot_dispersion_projected(dft,bzp,pc,flag)
+        function                    plot_dispersion_projected(bzp,pc,flag)
             % FPOSCAR = 'POSCAR'; Ef = 5.0740;
             % [~,pc] = load_cells(FPOSCAR);
             % [dft]   = load_procar('evk/PROCAR',Ef);
             % [bzp]   = get_bz_path(pc,40,'sc');
 
             % get eigenvalues and band character weights
-            c = zeros(dft.nbands,dft.nks); w = [];
+            c = zeros(bzp.nbands,bzp.nks); w = [];
             
             if     contains(flag,'orbital') % projected on orbitals
-                character_labels = {'s','p','d','f'}; c = projections2color_(dft,pc,'orbital');
+                character_labels = {'s','p','d','f'}; c = projections2color_(bzp,pc,'orbital');
                 if contains(flag,'atom')
                     if numel(pc.i2p)~=2; error('cannot broaden width in more than 2 dimensions'); end
-                    w = projections2color_(dft,pc,'atom')/2;
+                    w = projections2color_(bzp,pc,'atom')/2;
                 end
             elseif contains(flag,'atom') % projected on atoms
-                character_labels = pc.symb; c = projections2color_(dft,pc,'atom');
+                character_labels = pc.symb; c = projections2color_(bzp,pc,'atom');
             else % just plot bands straight up
                 flag = [flag,'none'];
-                character_labels=''; c = ones(dft.nbands,dft.nks); 
+                character_labels=''; c = ones(bzp.nbands,bzp.nks); 
             end
 
             % define figure properties
@@ -658,15 +658,15 @@ classdef am_bz < dynamicprops
             % plot band structure
             fig_(gcf); 
             if contains(flag,'none')
-                plot(bzp.x,dft.E,'-','color','b');
+                plot(bzp.x,bzp.E,'-','color','b');
             else
                 hold on;
-                for m = 1:dft.nbands
+                for m = 1:bzp.nbands
                     if isempty(w)
-                        am_lib.plotc_(bzp.x,dft.E(m,:),c(m,:));
+                        am_lib.plotc_(bzp.x,bzp.E(m,:),c(m,:));
                     else
-                        am_lib.plotc_(bzp.x,dft.E(m,:),c(m,:),w(m,:));
-                        plot(bzp.x,dft.E,'-w','linewidth',0.1);
+                        am_lib.plotc_(bzp.x,bzp.E(m,:),c(m,:),w(m,:));
+                        plot(bzp.x,bzp.E,'-w','linewidth',0.1);
                     end
                 end
                 hold off;
