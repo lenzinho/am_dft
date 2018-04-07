@@ -657,13 +657,22 @@ classdef am_cell < dynamicprops % required for xrr simulation
     
     methods % plotting
 
-        function [h]             = plot(pc)
+        function [h]             = plot(pc,flag)
 
             import am_lib.* am_dft.*
 
+            if nargin < 2; flag = ''; end
+            
             % initialize figure
             set(gcf,'color','w'); hold on;
 
+            % draw atoms at the boudnary on both sides
+            if ~contains(flag,'!pbc')
+                ex_ = pc.tau(1,:)==0; pc.species = [pc.species,pc.species(ex_)]; pc.tau = [pc.tau,pc.tau(:,ex_)+[1;0;0]];
+                ex_ = pc.tau(2,:)==0; pc.species = [pc.species,pc.species(ex_)]; pc.tau = [pc.tau,pc.tau(:,ex_)+[0;1;0]];
+                ex_ = pc.tau(3,:)==0; pc.species = [pc.species,pc.species(ex_)]; pc.tau = [pc.tau,pc.tau(:,ex_)+[0;0;1]];
+            end
+            
             % plot atoms
             clist=am_lib.colormap_('spectral',max(pc.species));
             for i = 1:pc.ntypes
@@ -735,7 +744,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
             % plot isocontours
             for i = 1:nvs
                 h=patch(isosurface(sq_(r(1,:)),sq_(r(2,:)),sq_(r(3,:)),uc.chg,v(i)));
-                h.FaceColor=clist(cmap_(i),:); h.FaceAlpha=0.2; h.EdgeColor='none';
+                h.FaceColor=clist(cmap_(i),:); h.FaceAlpha=0.5; h.EdgeColor='none';
             end
             box on; axis tight; daspect([1 1 1]);
             
