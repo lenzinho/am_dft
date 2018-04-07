@@ -405,7 +405,7 @@ classdef am_bz < dynamicprops
     
     methods % cell properties
         
-        function [nesting]        = get_nesting(fbz,ibz,dft,degauss,Ep,flag)
+        function [nesting]        = get_nesting(fbz,ibz,degauss,Ep,flag)
             % get nesting function on ibz at probing energies Ep using smearing degauss
             % degauss, degauss = 0.04 61x61x61 kpoint mesh
             % note that these probing energies are not JDOS energies! They are simply EF energies!
@@ -419,7 +419,7 @@ classdef am_bz < dynamicprops
             qqq = get_qqq(fbz,ibz);
 
             % copy irreducible energies onto fbz mesh
-            E = ibz2fbz(fbz,ibz,dft.E);
+            E = ibz2fbz(fbz,ibz,ibz.E);
 
             % compute spectral function A on the full mesh
             dE = (reshape(E,[1,size(E)]) - Ep(:))/degauss;
@@ -518,7 +518,7 @@ classdef am_bz < dynamicprops
             % Ep=linspace(-6,6,1000); degauss= 0.08;
             % hold on;
             % for method = {'tet,'fermi','mp','mv','gauss','lorentz'}
-            %     [D] = am_dft.get_dos_quick(dft,ibz,Ep,degauss,method{:});
+            %     [D] = am_dft.get_dos(ibz,Ep,degauss,method{:});
             %     plot(Ep,D);
             % end
             % hold off;
@@ -611,10 +611,6 @@ classdef am_bz < dynamicprops
         end
 
         function                    plot_dispersion_projected(bzp,pc,flag)
-            % FPOSCAR = 'POSCAR'; Ef = 5.0740;
-            % [~,pc] = load_cells(FPOSCAR);
-            % [dft]   = load_procar('evk/PROCAR',Ef);
-            % [bzp]   = get_bz_path(pc,40,'sc');
 
             % get eigenvalues and band character weights
             c = zeros(bzp.nbands,bzp.nks); w = [];
@@ -664,29 +660,27 @@ classdef am_bz < dynamicprops
             % plot fermi level
             line([0,bzp.x(end)],[0,0],'linewidth',2,'color',[1,1,1]*0.5,'linestyle',':');
             
-            
-            
-            function c = projections2color_(dft,pc,flag)
+            function c = projections2color_(bz,pc,flag)
                 % normalize columns of matrix
                 normc_ = @(m) ones(size(m,1),1)*sqrt(1./sum(m.*m)).*m;
                 % colorize
                 if     contains(flag,'orbital')
-                for i = 1:dft.nks
+                for i = 1:bz.nks
                     %    s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3
                     % l-PROJECTION (sum over spin, atoms, m-quantum numbers)
                     % lmproj(nspins,norbitals,nions,nbands,nkpts)
-                    Vp(1,:) = squeeze(sum(sum(sum(dft.lmproj(:,   [1],:,:,i),1),2),3)); % s
-                    Vp(2,:) = squeeze(sum(sum(sum(dft.lmproj(:, [2:4],:,:,i),1),2),3)); % p
-                    Vp(3,:) = squeeze(sum(sum(sum(dft.lmproj(:, [5:9],:,:,i),1),2),3)); % d
-                    Vp(4,:) = squeeze(sum(sum(sum(dft.lmproj(:,[9:16],:,:,i),1),2),3)); % f
+                    Vp(1,:) = squeeze(sum(sum(sum(bz.lmproj(:,   [1],:,:,i),1),2),3)); % s
+                    Vp(2,:) = squeeze(sum(sum(sum(bz.lmproj(:, [2:4],:,:,i),1),2),3)); % p
+                    Vp(3,:) = squeeze(sum(sum(sum(bz.lmproj(:, [5:9],:,:,i),1),2),3)); % d
+                    Vp(4,:) = squeeze(sum(sum(sum(bz.lmproj(:,[9:16],:,:,i),1),2),3)); % f
                     c(:,i) = am_lib.assign_cmap_(normc_(Vp));
                 end
                 elseif contains(flag,'atom')
-                    for i = 1:dft.nks
+                    for i = 1:bz.nks
                         % l-PROJECTION (sum over spin, atoms, m-quantum numbers)
                         % lmproj(nspins,norbitals,nions,nbands,nkpts)
                         for j = 1:numel(unique(pc.p2i))
-                            Vp(j,:) = squeeze(sum(sum(sum(dft.lmproj(:,:,pc.p2i==j,:,i),1),2),3));
+                            Vp(j,:) = squeeze(sum(sum(sum(bz.lmproj(:,:,pc.p2i==j,:,i),1),2),3));
                         end
                         c(:,i) = am_lib.assign_cmap_(normc_(Vp));
                     end
@@ -800,7 +794,7 @@ classdef am_bz < dynamicprops
             hold off; daspect([1 1 1]); box on;
         end
 
-        function h                = plot_fermi_surface(ibz,fbz,dft,Ef,flag,C)
+        function h                = plot_fermi_surface(ibz,fbz,Ef,flag,C)
             if nargin < 5; flag=''; end
             if nargin < 6; C=[]; end % C is the colorcode
             
@@ -811,20 +805,17 @@ classdef am_bz < dynamicprops
             if contains(flag,'jdos')
                 % checked against vasp. confirmed.
                 % only consider transitions from the valence band (E<0) to the conduction band (E>0)
-                Ev = permute(dft.E,[1,3,2]); Ec = permute(dft.E,[3,1,2]); E = Ec - Ev;
+                Ev = permute(ibz.E,[1,3,2]); Ec = permute(ibz.E,[3,1,2]); E = Ec - Ev;
                 % E(valence,conduction,kpoints) 
                 % make all valence    - valence    states E => 1E8 (something large enough to take it out of range)
                 % make all conduction - conduction states E => 1E8 (something large enough to take it out of range)
-                % proper way would be to compute fermi functions and use that as the projection weight
-                % but just doing it quick and dirty here (equivalent to assuming kt -> 0, fermi fucntion -> step function)
                 ex_ = (Ec<0) & (Ev<0); E(ex_) = 1E8;
                 ex_ = (Ec>0) & (Ev>0); E(ex_) = 1E8;
-                E = reshape(E,dft.nbands^2,dft.nks); E = sort(E);
-                E = reshape( am_dft.ibz2fbz(fbz,ibz,E) ,[dft.nbands.^2,fbz.n]); 
+                E = reshape(E,ibz.nbands^2,ibz.nks); E = sort(E);
+                E = reshape( am_dft.ibz2fbz(fbz,ibz,E), [ibz.nbands.^2,fbz.n]); 
             else % just regular dos
-                E = reshape( am_dft.ibz2fbz(fbz,ibz,dft.E) ,[dft.nbands,fbz.n]); 
+                E = reshape( am_dft.ibz2fbz(fbz,ibz,ibz.E), [ibz.nbands,fbz.n]); 
             end
-
 
             % plot                                                                                 [4,4,1]  2
             h = am_lib.plot_isosurface_(reshape(fbz.recbas*fbz.k,[3,fbz.n]), fbz.recbas, E, Ef, C, [1,1,1], 3, 'cubic,center');
@@ -832,9 +823,7 @@ classdef am_bz < dynamicprops
             if contains(flag,'tetra'); am_dft.draw_bz_boundary(fbz,'tetra'); end
             % set lighting settings
             daspect([1 1 1]); axis tight; axis off;
-            campos([10.7135,23.0003,9.4299]); 
-            camlight('right','infinite');
-            camproj('perspective');
+            campos([10.7135,23.0003,9.4299]); camlight('right','infinite'); camproj('perspective');
         end
         
         function h                = draw_bz_boundary(fbz,flag)
