@@ -665,6 +665,57 @@ classdef am_dft
 
         % io
         
+        function           vasp_setup(flag)
+            switch flag
+                case 'charge' % charge density (PARCHG)
+                    odir=pwd;
+                    % generate incar
+                    incar = am_dft.load_incar('INCAR');
+                    incar = am_dft.generate_incar(incar,...
+                        {'istart','1','icharg','2','lwave','.FALSE.','lpard','.TRUE.','lsepb','.FALSE.','lsepk','.FALSE.','nbmod','-3'});
+                    % these should be set manually according to each system
+                    % incar.iband='28';
+                    % incar.kpuse='1';
+                    incar.eint='-10000'; 
+                    % make directory
+                    wdir=['./charge']; mkdir(wdir); cd(wdir);
+                        system('ln -s ../KPOINTS KPOINTS');
+                        system('ln -s ../WAVECAR WAVECAR');
+                        system('ln -s ../POTCAR POTCAR');
+                        system('ln -s ../POSCAR POSCAR');
+                        am_dft.write_incar(incar);
+                    cd(odir);
+                case 'charge_noninteracting' % noninteracting charge density (CHG) : updates wavefunction but not charge density; this is probably what is desired for charge density differences
+                    odir=pwd;
+                    % generate incar
+                    incar = am_dft.load_incar('INCAR');
+                    incar = am_dft.generate_incar(incar,...
+                        {'istart','0','icharg','2','lwave','.FALSE.','nelm','30','nelmdl','30','lcharg','.TRUE.'});
+                    % make directory
+                    wdir=['./charge_noninteracting']; mkdir(wdir); cd(wdir);
+                        system('ln -s ../KPOINTS KPOINTS');
+                        system('ln -s ../POTCAR POTCAR');
+                        system('ln -s ../POSCAR POSCAR');
+                        am_dft.write_incar(incar);
+                    cd(odir);
+                case 'charge_superposition' % atomic charge density (CHG) : does not update anything (wavefunction and charge density included); this is probably not what is desired for charge density differences
+                    odir=pwd;
+                    % generate incar
+                    incar = am_dft.load_incar('INCAR');
+                    incar = am_dft.generate_incar(incar,...
+                        {'istart','0','icharg','12','lwave','.FALSE.','nelm','0','lcharg','.TRUE.'});
+                    % make directory
+                    wdir=['./charge_superposition']; mkdir(wdir); cd(wdir);
+                        system('ln -s ../KPOINTS KPOINTS');
+                        system('ln -s ../POTCAR POTCAR');
+                        system('ln -s ../POSCAR POSCAR');
+                        am_dft.write_incar(incar);
+                    cd(odir);
+                otherwise
+                    error('unknown flag');
+            end
+        end
+        
         function [dft]   = load_eigenval(Ef)
             % load dispersion [frac-recp] and shift Fermi energy to zero
 
@@ -903,7 +954,7 @@ classdef am_dft
                         incar = generate_incar('defaults',opts_);
                     case 'scf'
                         opts_ = { ...
-                            'ibrion' , '-1'       , 'nwrite' , '3'       ,  'ismear' , '-5', ...
+                            'ibrion' , '-1'       , 'nwrite' , '3'       , 'ismear' , '-5', ...
                             'nsw'    , '0'        , 'lorbit' , '11'      , 'nedos'  ,  '10001' ...
                             'addgrid', '.FALSE.'  , ... % takes too long with addgrid
                             'lwave'  , '.TRUE.'   , 'lcharg' , '.TRUE.'  , 'lvtot'  , '.TRUE.'  , ...
@@ -927,7 +978,15 @@ classdef am_dft
                         opts_ = {'icharg','2','ibrion','6','nsw','1','isif','3','potim','0.01','isym','0','#ncore','8'}; 
                         incar = generate_incar('nscf',opts_);
                     case 'charge'
-                        opts_ = {'lpard','.TRUE.','nbmod','-3','lsepb','.TRUE.','lsepk','.TRUE.','iband','28','kpuse','1','eint','-10'};
+                        opts_ = {'istart','1','icharg','2','lwave','.FALSE.', ...
+                            'lpard','.TRUE.','nbmod','-3','lsepb','.TRUE.','lsepk','.TRUE.', ...
+                            'iband','1','kpuse','1','eint','-10000'}; % these options are material specific!
+                        incar = generate_incar('nscf',opts_);
+                    case 'charge_noninteracting' % noninteracting charges as reference for differential charge density
+                        opts_ = {'istart','0','icharg','2','lwave','.FALSE.','nelm','30','nelmdl','30','lcharg','.TRUE.'};
+                        incar = generate_incar('nscf',opts_);
+                    case 'charge_superposition' % superposition of atomic charges as reference for differential charge density
+                        opts_ = {'istart','0','icharg','12','lwave','.FALSE.','nelm','0','lcharg','.TRUE.'};
                         incar = generate_incar('nscf',opts_);
                     case 'aimd' 
                         % similar to rlx but with ibrion=0, a lower energy convergence, no convergence on ionic motion, nose thermostat, and more steps 
@@ -1120,10 +1179,11 @@ classdef am_dft
                 % electronic
                 case 'gga';    		c='(AM05) exchannge correlation function; not usable with ivdw';
                 case 'ivdw';   		c='(0) no vdW correction (2) Tkatchenko-Scheffler; not usable with density functional perturbation theory';
+                case 'nelm'; 		c='number of electronic iterations';
                 case 'nelmdl'; 		c='non-selfconsistent iterations: (<0) only once, (>0) at every ionic step';
                 case 'ispin';  		c='(1) non-spin-polarized (2) spin-polarized';
                 case 'prec';   		c='Accurate, Normal';
-                case 'algo';   		c='(VeryFast) RMM-DIIS (Fast) Davidson/RMM-DIIS (Normal) Davidson';
+                case 'algo';   		c='(Veryfast) RMM-DIIS (Fast) Davidson/RMM-DIIS (Normal) Davidson';
                 case 'ialgo';  		c='(38) Davidson (48) RMM-DIIS algorithm';
                 case 'nbands'; 		c='number of bands';
                 case 'encut';  		c='cutoff';

@@ -666,7 +666,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
 
             % plot atoms
             clist=am_lib.colormap_('spectral',max(pc.species));
-            for i = 1:max(pc.species)
+            for i = 1:pc.ntypes
                 ex_ = pc.species==i; radius = ones(1,sum(ex_)) * pc.type(i).r_ionic * 5000;
                 h(i) = scatter3_(pc.bas*pc.tau(:,ex_), radius,'MarkerEdgeColor','k','MarkerFaceColor',clist(i,:));
             end
@@ -681,7 +681,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
 
         end
 
-        function [F]             = plot_md(md, varargin)
+        function [F]             = plot_md(md, varargin) % plots md movies
             % n=[4;4;4]; kpt=[0;0;1/4]; amp=10; mode=6; nsteps=51;
             % [~,md] = get_displaced(pc,bvk,n,kpt,amp,mode,nsteps);
             % clf; [F]=plot_md_cell(md,'view',[0;1;0]); movie(F,3); % write_poscar(md,'POSCAR_test')
@@ -714,7 +714,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
             end
         end
 
-        function [h]             = plot_charge(uc,v)
+        function [h]             = plot_charge(uc,v) % plots charge density isocontours 
 
             % set isolevels
             if nargin<2
@@ -726,15 +726,19 @@ classdef am_cell < dynamicprops % required for xrr simulation
             % generate coordinates [cart]
             mp_ = @(x) [0:(x-1)]./x; [r{1:3}] = ndgrid(mp_(uc.nchg(1)),mp_(uc.nchg(2)),mp_(uc.nchg(3)));
             r = reshape(uc.bas*reshape(permute(cat(4,r{:}),[4,1,2,3]),3,prod(uc.nchg)),[3,uc.nchg]);
-
-            % plot isolevels
+            
+            % initialize
             figure(1); clf; set(gcf,'color','w'); hold on;
-            sq_ = @(x) reshape(x,uc.nchg); nvs = numel(v); clist=am_lib.colormap_('virdis',nvs);
+            sq_ = @(x) reshape(x,uc.nchg); nvs = numel(v); 
+            % define colormap
+            ncolors=1001; clist=flipud(am_lib.colormap_('red2blue',ncolors)); crange=max(abs(uc.chg(:))); cmap_ = @(i) floor(v(i)./crange.*(ncolors-1)./2)+floor(ncolors/2)+1;
+            % plot isocontours
             for i = 1:nvs
                 h=patch(isosurface(sq_(r(1,:)),sq_(r(2,:)),sq_(r(3,:)),uc.chg,v(i)));
-                h.FaceColor=clist(i,:); h.FaceAlpha=0.2; h.EdgeColor='none';
+                h.FaceColor=clist(cmap_(i),:); h.FaceAlpha=0.2; h.EdgeColor='none';
             end
             box on; axis tight; daspect([1 1 1]);
+            
             
             % sq_ = @(x) reshape(x,uc.nchg);
             % hold on;
@@ -797,6 +801,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
 
             am_lib.colormap_('virdis',100);  
         end
+
     end
     
     methods (Static) % [make this access protected] % structure-related symmetries
