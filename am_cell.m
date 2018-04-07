@@ -740,11 +740,11 @@ classdef am_cell < dynamicprops % required for xrr simulation
             figure(1); clf; set(gcf,'color','w'); hold on;
             sq_ = @(x) reshape(x,uc.nchg); nvs = numel(v); 
             % define colormap
-            ncolors=1001; clist=flipud(am_lib.colormap_('red2blue',ncolors)); crange=max(abs(uc.chg(:))); cmap_ = @(i) floor(v(i)./crange.*(ncolors-1)./2)+floor(ncolors/2)+1;
+            ncolors=1001; clist=flipud(am_lib.colormap_('red2blue',ncolors)); crange=max(abs(v)); cmap_ = @(i) floor(v(i)./crange.*(ncolors-1)./2)+floor(ncolors/2)+1;
             % plot isocontours
             for i = 1:nvs
                 h=patch(isosurface(sq_(r(1,:)),sq_(r(2,:)),sq_(r(3,:)),uc.chg,v(i)));
-                h.FaceColor=clist(cmap_(i),:); h.FaceAlpha=0.5; h.EdgeColor='none';
+                h.FaceColor=clist(cmap_(i),:); h.EdgeColor='none'; h.FaceAlpha=0.5;
             end
             box on; axis tight; daspect([1 1 1]);
             

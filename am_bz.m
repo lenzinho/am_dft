@@ -1,27 +1,40 @@
-classdef am_bz
+classdef am_bz < dynamicprops
     
     properties
         % basic properties
         units    = []; % frac/cart
         recbas   = []; % reciprocal basis
-        n        = []; % dimensions for monkhorst-pack mesh
+        n        = []; % monkhorst-pack dimensions or zone path divisions
         nks      = []; % number of kpoints
         k        = []; % kpoint coordinates
         w        = []; % kpoint weights
+        x        = []; % linear coordinate for plotting path
+        xt       = []; % linear coordinate ticks
+        xl       = []; % linear coordinate labels
+        tol      = []; % numerical tolerance
+        % dispersions
+        Ef       = []; % Fermi level
         E        = []; % electron dispersion
         hw       = []; % phonon dispersion
-        tol      = []; % numerical tolerance
+        % projection information
+        nbands   = []; % number of bands
+        norbitals= []; % number of orbitals
+        nions    = []; % number of orbitals
+        lmproj   = []; % electronic projections [nspins,norbitals,nions,nbands,nkpts]
+        eigenv   = []; % phonon eigenvectors :: need to change this to: [1,1,3,nions,nbranches,nkpts]
         % tetrahedron information
         ntets    = []; % number of tetrahedra
         tet      = []; % tetrahedra coordination
         tetw     = []; % tetrahedra weight
         tetv     = []; % tetrahedra volume
-        % x-ray related info
+        % x-ray information
+        F        = []; % structure factor
+        I        = []; % x-ray diffracted intensity (includes lorentz polarization and weights)
     end
     
     methods (Static)
 
-        function [uc]            = define(pc,n,k,w) % define(pc,n,k,w)
+        function [uc]             = define(bas,n,k,w) % define(pc,n,k,w)
             % create brillouin zone
             if nargin<4; w=ones(1,size(k,2)); end
             % recbas   = []; % reciprocal basis
@@ -29,8 +42,8 @@ classdef am_bz
             % k        = []; % kpoint coordinates
             % w        = []; % kpoint weights
             uc          = am_bz;
-            uc.units    = 'frac';
-            uc.recbas   = inv(pc.bas).';
+            uc.units    = 'frac-recp';
+            uc.recbas   = inv(bas).';
             uc.n        = n;
             uc.k        = k;
             uc.w        = w;
@@ -38,7 +51,7 @@ classdef am_bz
        
     end
     
-    methods  % convert between cells
+    methods  % convert between brillouin zones
 
         function [fbz,ibz]        = get_zones(pc,n)
 
@@ -64,7 +77,7 @@ classdef am_bz
                     % generate primitive lattice vectors
                     Q_ = @(i) [0:(n(i)-1)]./n(i); [Y{1:3}]=ndgrid(Q_(1),Q_(2),Q_(3)); k=reshape(cat(3+1,Y{:}),[],3).';
                     % create structure
-                    fbz = define(pc,n,k);
+                    fbz = define(pc.bas,n,k);
                 otherwise
                     error('unknown n');
             end
@@ -100,10 +113,10 @@ classdef am_bz
             if abs(sum(w)-fbz.nks)>am_lib.eps; error('mismatch: kpoint mesh and point group symmetry'); end
 
             % create structure
-            fbz = define(pc,fbz.n,fbz.k(:,i2f),w);
+            ibz = define(pc.bas,fbz.n,fbz.k(:,i2f),w);
             
             % pass along additional parameters if they exist
-            for f = {'n','hv','F','F2'}
+            for f = {'n','F','F2'}
                 if isfield(fbz,f) && ~isempty(fbz.(f{:}))
                     ibz.(f{:}) = fbz.(f{:}); 
                 end
@@ -214,27 +227,27 @@ classdef am_bz
             if     contains( lower(brav), 'fcc-short' )
                 G=[0;0;0];  X1=[0;1;1]/2; X2=[2;1;1]/2;
                 L=[1;1;1]/2; K=[6;3;3]/8;
-                ql={'G','X','K','G','L'};
-                qs=[G,X2,K,G];
-                qe=[X1,K,G,L];
+                xl={'G','X','K','G','L'};
+                ks=[G,X2,K,G];
+                ke=[X1,K,G,L];
             elseif contains( lower(brav), 'fcc-long' )
                 G=[0;0;0];  X1=[0;1;1]/2; W=[1;3;2]/4;
                 U=[2;5;5]/8; L=[1;1;1]/2; K=[3;6;3]/8;
-                ql={'G','X','W','K','G','L','U','W','L','K'};
-                qs=[G,X1,W,K,G,L,U,W,L];
-                qe=[X1,W,K,G,L,U,W,L,K];
+                xl={'G','X','W','K','G','L','U','W','L','K'};
+                ks=[G,X1,W,K,G,L,U,W,L];
+                ke=[X1,W,K,G,L,U,W,L,K];
             elseif contains( lower(brav), 'tetra' )
                 G=[0;0;0];   Z=[0;0;1]/2; A=[1;1;1]/2; 
                 M=[1;1;0]/2; X=[0;1;0]/2; R=[0;1;1]/2;
-                ql={'G','X','M','G','Z','R','A','Z'};
-                qs=[G,X,M,G,Z,R,A];
-                qe=[X,M,G,Z,R,A,Z];
+                xl={'G','X','M','G','Z','R','A','Z'};
+                ks=[G,X,M,G,Z,R,A];
+                ke=[X,M,G,Z,R,A,Z];
             elseif contains( lower(brav), 'sc' )
                 G=[0;0;0];   X=[0;1;0]/2;
                 M=[1;1;0]/2; R=[1;1;1]/2;
-                ql={'G','X','M','G','R','X'};
-                qs=[G,X,M,G,R];
-                qe=[X,M,G,R,X];
+                xl={'G','X','M','G','R','X'};
+                ks=[G,X,M,G,R];
+                ke=[X,M,G,R,X];
             elseif contains( lower(brav), 'hex' )
                 % for a pc.bas ordered like so:
                 %     3.0531   -1.5266         0
@@ -242,25 +255,25 @@ classdef am_bz
                 %          0         0    3.4526
                 G=[0;0;0];   K=[1/3;1/3;0];   M=[1/2;0;0];
                 A=[0;0;1/2]; H=[1/3;1/3;1/2]; L=[1/2;0;1/2];
-                ql={'G','K','M','G','A','H','L','A'};
-                qs=[G,K,M,G,A,H,L];
-                qe=[K,M,G,A,H,L,A];
+                xl={'G','K','M','G','A','H','L','A'};
+                ks=[G,K,M,G,A,H,L];
+                ke=[K,M,G,A,H,L,A];
             else
                 error('invalid bravais lattice');
             end
 
             % get number of kpoints
-            nqs=size(qs,2); recbas = inv(pc.bas).';
+            nqs=size(ks,2); recbas = inv(pc.bas).';
 
             % get path: convert to [cart-recp] to get x spacings right then convert back to [frac-recp]
-            [k,x,qt] = get_path(recbas*qs,recbas*qe,nqs,n); k=recbas\k;
+            [k,x,xt] = get_path(recbas*ks,recbas*ke,nqs,n); k=recbas\k;
 
             % create path object
-            bzp_ = @(recbas,ql,qt,nks,x,k) struct('units','frac', ...
-                'recbas',recbas,'ql',{{ql{:}}},'qt',qt,'nks',nks,'x',x,'k',k);
-            bzp = bzp_(recbas,ql,qt,size(k,2),x,k);
+            bzp_ = @(recbas,xl,xt,nks,x,k) struct('units','frac', ...
+                'recbas',recbas,'xl',{{xl{:}}},'xt',xt,'nks',nks,'x',x,'k',k);
+            bzp = bzp_(recbas,xl,xt,size(k,2),x,k);
 
-            function [k,x,qt] = get_path(qs,qe,nqs,N)
+            function [k,x,xt] = get_path(qs,qe,nqs,N)
               % define path (includes both boundaries)
                 path_ = @(k,q,N) cumsum([zeros(3,1),repmat((k-q)/(N-1),1,N-1)],2)+repmat(q,1,N);
                 x_    = @(k,q,N) [0, repmat(norm((k-q)/(N-1)),1,N-1) ];
@@ -274,7 +287,7 @@ classdef am_bz
                 x = cumsum(x);
 
                 % set labels coordinates
-                qt = x([1,N*[1:nqs]]);
+                xt = x([1,N*[1:nqs]]);
             end
         end
 
@@ -344,47 +357,47 @@ classdef am_bz
             import am_lib.* am_dft.*
 
             % k max is the largest wavevector magntiude considered
-            if nargin < 2 || isempty(k_max); th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
-            if nargin < 3 || isempty(hv); hv = get_atomic_emission_line_energy(get_atomic_number('Cu'),'kalpha1'); end
             if nargin < 4 || isempty(threshold); threshold = am_lib.tiny; end
+            if nargin < 3 || isempty(hv); hv = get_atomic_emission_line_energy(get_atomic_number('Cu'),'kalpha1'); end
+            if nargin < 2 || isempty(k_max); th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
+            
 
             fbs = get_fbs(uc,k_max);
             
             % get structure factors and scattering intensity
-                [fbs.F,fbs.L,fbs.P] = get_structure_factor(uc,fbs,hv);
-                fbs.I = abs(fbs.F).^2.*fbs.L.*fbs.P.*fbs.w; fbs.I = fbs.I ./ max(fbs.I(:))*100;
+                [fbs.F,L,P] = get_structure_factor(uc,fbs,hv);
+                fbs.I = abs(fbs.F).^2.*L.*P.*fbs.w; fbs.I = fbs.I ./ max(fbs.I(:))*100;
                 % exlcude stuff above threshold
                 ex_ = fbs.I > threshold;
-                [fbs.F,fbs.L,fbs.P,fbs.I,fbs.w,fbs.k,fbs.nks] = ...
-                    deal(fbs.F(ex_),fbs.L(ex_),fbs.P(ex_),fbs.I(ex_),fbs.w(ex_),fbs.k(:,ex_),sum(ex_));
+                [fbs.F,fbs.I,fbs.w,fbs.k,fbs.nks] = ...
+                    deal(fbs.F(ex_),fbs.I(ex_),fbs.w(ex_),fbs.k(:,ex_),sum(ex_));
             
             % get symmetrically equivalent bragg spots
             % save "irreducible bragg spots" structure
             [ibs,i2b,b2i] = get_ibz(fbs,uc,'nomod,addinv');
+            for plist = {'i2b','b2i'}; addprop(ibs,plist{:}); end
+            for plist = {'i2b','b2i'}; addprop(fbs,plist{:}); end
             ibs.i2b = i2b; ibs.b2i = b2i;
             fbs.i2b = i2b; fbs.b2i = b2i; 
         end
         
-        function [fbs]            = get_fbs(uc,k_max,N)
+        function [fbs]            = get_fbs(pc,k_max,N)
             
             import am_lib.* 
             
             if nargin < 2 || isempty(k_max); th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
-            if nargin < 3 || isempty(N); N = ceil((max(k_max./(1./am_lib.normc_(uc.bas))))); end 
+            if nargin < 3 || isempty(N); N = ceil((max(k_max./(1./am_lib.normc_(pc.bas))))); end 
             
             % get miller indicies [hkl] excluding gamma
             k=permn_([N:-1:-N],3).'; k=k(:,~all(k==0,1)); 
             % get reciprocal basis vectors [1/nm]
-            recbas = inv(uc.bas).';
+            recbas = inv(pc.bas).';
             % sort by distance
             k = k(:,rankc_(normc_(recbas*k)));               
             % identify values which cannot be reached by diffractometer
             k = k(:,normc_(recbas*k)<k_max); 
             % save "full bragg spots" structure 
-            bb_ = @(recbas,k) struct('units','frac-recp',...
-                'recbas',recbas,'nks',size(k,2),'k',k,'w',ones(1,size(k,2)));
-            fbs = bb_(recbas,k);
-            
+            fbs = am_bz.define(pc.bas,[],k,ones(1,size(k,2)));
         end
         
         
@@ -392,21 +405,209 @@ classdef am_bz
     
     methods % cell properties
         
-        function formula         = get_formula(uc)
-            formula = ''; x = uc.nspecies./am_lib.gcd_(uc.nspecies);
-            for j = 1:numel(x)
-                % get formula
-                formula = [formula,strtrim(uc.type(j).symb)];
-                % remove 1's if present
-                if x(j)~=1; formula=[formula,strtrim(num2str(x(j)))]; end
+        function [nesting]        = get_nesting(fbz,ibz,dft,degauss,Ep,flag)
+            % get nesting function on ibz at probing energies Ep using smearing degauss
+            % degauss, degauss = 0.04 61x61x61 kpoint mesh
+            % note that these probing energies are not JDOS energies! They are simply EF energies!
+            
+            import am_lib.* am_dft.*
+
+            % number of probing energies
+            nEps = numel(Ep);
+
+            % get momentum conserving q-point triplets
+            qqq = get_qqq(fbz,ibz);
+
+            % copy irreducible energies onto fbz mesh
+            E = ibz2fbz(fbz,ibz,dft.E);
+
+            % compute spectral function A on the full mesh
+            dE = (reshape(E,[1,size(E)]) - Ep(:))/degauss;
+            if     contains(flag,'fermi')
+                A = am_lib.fermi_dirac_dydx_(dE);
+            elseif contains(flag,'mp')
+                A = am_lib.methfessel_paxton_dydx_(dE,1);
+            elseif contains(flag,'mv')
+                A = am_lib.marzari_vanderbilt_dydx_(dE);
+            elseif contains(flag,'gauss')
+                A = am_lib.gauss_(dE);
+            elseif contains(flag,'lorentz')
+                A = am_lib.lorentz_(dE);
+            else
+                error('ERROR [get_dos_quick]: flag not recognized')
+            end
+            A = reshape( sum(A./degauss,2), [nEps,fbz.n] );
+
+            % compute nesting on ibz and transfer to ibz
+            nesting = zeros(nEps,ibz.nks); access_ = @(x,i) reshape(x(i),[],1); m = 2;
+            for j = 1:nEps
+                nesting(j,:) = accumarray( fbz.f2i( qqq(1,:,m)).' , ...
+                           access_(A(j,:,:,:),qqq(2,:,m))     ...
+                        .* access_(A(j,:,:,:),qqq(3,:,m))   , [], @sum  )./prod(ibz.n);
             end
         end
-
         
+        function [nesting]        = get_nesting_jdos(fbz,ibz,dft,degauss,Ep,flag)
+            % get jdos nesting function on ibz at probing energies Ep (This Ep is the one that conserved energy!)
+            % degauss, degauss = 0.04 61x61x61 kpoint mesh
+            %
+            
+            import am_lib.* am_dft.*
+            
+            if nargin>5; flag=[]; error('only gaussian is implemented'); end
+            
+            % number of probing energies
+            nEps = numel(Ep);
+
+            % get momentum conserving q-point triplets
+            % q1 + q2 = q3 (absorption)  q1 = q2 + q3 (emission)      : m = 1
+            % q  + k  = k' (e scatters)  q  = k  + k' (e+h recombine) : m = 2
+            qqq = am_dft.get_qqq(fbz,ibz);
+
+            % copy irreducible energies onto fbz mesh
+            E = reshape(am_dft.ibz2fbz(fbz,ibz,dft.E),[dft.nbands,fbz.n]);
+
+            % LOL! I am trying to integrate over a ((40x40),((15x15x11)x(15x15x11))) matrix! lol... that's 9E9 numbers... LOL!!!
+            % How to approach this? Loop over pairs of bands which has fewer elements than pairs of wavevectors
+            % Also, some pairs of bands can be quickly ignored 
+            nesting = zeros(nEps,ibz.nks); access_ = @(x,i) reshape(x(i),[],1); m = 2; nEps = numel(Ep); t=0; flatten_ = @(x) x(:);
+            % estimate time
+            for c = 1:dft.nbands
+            for v = 1:dft.nbands
+                if max(E(c,:))<0 && max(E(v,:))<0; continue; end
+                if min(E(c,:))>0 && min(E(v,:))>0; continue; end
+                if min(E(v,:))>max(E(c,:)); continue; end
+                t=t+1;
+            end
+            end
+            h = waitbar(0,'Integrating...'); tot=t; t=0;
+            for c = 1:dft.nbands
+            for v = 1:dft.nbands
+                % skip if both Ec and Ev are in the valence band
+                if max(E(c,:))<0 && max(E(v,:))<0; continue; end
+                % skip if both Ec and Ev are in the conduction band
+                if min(E(c,:))>0 && min(E(v,:))>0; continue; end
+                % skip if Ev is strictly above Ec
+                if min(E(v,:))>max(E(c,:)); continue; end
+                % timer
+                t=t+1; waitbar(t./tot,h,'Integrating...'); 
+                % if some Ec and some Ev are conduction/valence bands, consider the situation
+                Ec = access_(E(c,:,:,:),qqq(2,:,m));
+                Ev = access_(E(v,:,:,:),qqq(3,:,m));
+                % keep only points where Ec and Ev are not together (conduction vs valence)
+                ex_ = xor(Ec<0, Ev<0); ex_(ex_) = Ec(ex_)>Ev(ex_);
+                % evaluate nesting
+                % loop over energies so that accumarray can be applied
+                for n = 1:nEps
+                    nesting(n,:) = nesting(n,:) + ...
+                        accumarray( fbz.f2i( qqq(1,ex_,m)).' , ...
+                                am_lib.gauss_((  (Ec(ex_)-Ev(ex_)).'-Ep(n)   )./degauss)./degauss , [] , @sum ).';
+                end
+                % another approach (didn't work out too well. i don't know what is wrong... )
+            %     nesting = nesting + ...
+            %         accumarray( flatten_( repmat(fbz.f2i(qqq(1,ex_,m)), nEps, 1 )) , ...
+            %                 flatten_(am_lib.gauss_((  (Ec(ex_)-Ev(ex_)).'-Ep(:) )./degauss)./degauss) , [] , @sum ).';
+            end
+            end
+            close(h);
+            nesting = nesting./prod(fbz.n);
+            
+        end
+
+        function [dos]            = get_dos(dft,ibz,Ep,flag)
+            if nargin<4; flag = 'dos'; end
+            if     contains(flag,'ojdos')
+                % occupation-weighted jdos: jdos properly weighed by fermi function instead of theta function
+                % and divided by 1/E.^2
+                kT = 0.025852; % 300K
+                % E(valence,conduction,kpoints) 
+                Ev = permute(dft.E,[1,3,2]); Ec = permute(dft.E,[3,1,2]); E = Ec - Ev;
+                % get occupational weights 
+                occw = am_lib.fermi_dirac_(Ec./kT) .* ( 1 - am_lib.fermi_dirac_(Ev./kT)); 
+                E = reshape(E,dft.nbands^2,dft.nks); occw = reshape(occw,dft.nbands^2,dft.nks); 
+                % sort E and occw together
+                [E,I] = sort(E); [m,n]=size(occw); occw = occw(sub2ind([m n],I,repmat(1:n,m,1))); 
+                % prepare occw for pdos
+                occw = permute(occw,[3,1,2]);
+                % compute dos
+                dos.E = Ep(:).'; dos.D = am_dft.get_pdos_tet(Ep,E,ibz.tet,ibz.tetw,ibz.tetv,occw,'mex');
+            elseif contains(flag,'jdos')
+                % checked against vasp. confirmed.
+                % only consider transitions from the valence band (E<0) to the conduction band (E>0)
+                Ev = permute(dft.E,[1,3,2]); Ec = permute(dft.E,[3,1,2]); E = Ec - Ev;
+                % E(valence,conduction,kpoints) 
+                % make all valence    - valence    states E => 1E8 (something large enough to take it out of range)
+                % make all conduction - conduction states E => 1E8 (something large enough to take it out of range)
+                % proper way would be to compute fermi functions and use that as the projection weight
+                % but just doing it quick and dirty here (equivalent to assuming kt -> 0, fermi fucntion -> step function)
+                ex_ = (Ec<0) & (Ev<0); E(ex_) = 1E8;
+                ex_ = (Ec>0) & (Ev>0); E(ex_) = 1E8;
+                E = reshape(E,dft.nbands^2,dft.nks); E = sort(E);
+                % compute jdos
+                dos.E = Ep(:).'; dos.D = am_dft.get_dos_tet(Ep,E,ibz.tet,ibz.tetw,ibz.tetv,'mex');
+            elseif contains(flag,'dos')
+                dos.E = Ep(:).'; dos.D = am_dft.get_dos_tet(Ep,dft.E,ibz.tet,ibz.tetw,ibz.tetv,'mex');
+            end
+        end
+        
+        function [dos]            = get_dos_quick(dft,ibz,Ep,degauss,flag)
+            % Ep=linspace(-6,6,1000); degauss= 0.08;
+            % hold on;
+            % for method = {'fermi','mp','mv','gauss','lorentz'}
+            %     [D] = am_dft.get_dos_quick(dft,ibz,Ep,degauss,method{:});
+            %     plot(Ep,D);
+            % end
+            % hold off;
+            Ep = permute(Ep(:),[3,2,1]);
+            
+            % get contribution
+            if     contains(flag,'ojdos')
+                % occupation-weighted jdos: jdos properly weighed by fermi function instead of theta function
+                % and divided by 1/E.^2
+                kT = 0.025852; % 300K
+                % E(valence,conduction,kpoints) 
+                Ev = permute(dft.E,[1,3,2]); Ec = permute(dft.E,[3,1,2]); E = Ec - Ev;
+                % get occupational weights 
+                occw = am_lib.fermi_dirac_(Ec./kT) .* ( 1 - am_lib.fermi_dirac_(Ev./kT)); 
+                E = reshape(E,dft.nbands^2,dft.nks); occw = reshape(occw,dft.nbands^2,dft.nks);
+            elseif contains(flag,'jdos')
+                % checked against vasp. confirmed.
+                % only consider transitions from the valence band (E<0) to the conduction band (E>0)
+                Ev = permute(dft.E,[1,3,2]); Ec = permute(dft.E,[3,1,2]); E = Ec - Ev;
+                % E(valence,conduction,kpoints) 
+                % make all valence    - valence    states E => 1E8 (something large enough to take it out of range)
+                % make all conduction - conduction states E => 1E8 (something large enough to take it out of range)
+                % proper way would be to compute fermi functions and use that as the projection weight
+                % but just doing it quick and dirty here (equivalent to assuming kt -> 0, fermi fucntion -> step function)
+                ex_ = (Ec<0) & (Ev<0); E(ex_) = 1E8;
+                ex_ = (Ec>0) & (Ev>0); E(ex_) = 1E8;
+                E = reshape(E,dft.nbands^2,dft.nks); E = sort(E);
+                occw = 1;
+            else
+                E = dft.E;
+            end
+            dE = ((E-Ep)./degauss);
+            
+            if     contains(flag,'fermi')
+                D = am_lib.sum_(ibz.w .* am_lib.fermi_dirac_dydx_(dE) .* occw,[1,2]);
+            elseif contains(flag,'mp')
+                D = am_lib.sum_(ibz.w .* am_lib.methfessel_paxton_dydx_(dE,1) .* occw,[1,2]);
+            elseif contains(flag,'mv')
+                D = am_lib.sum_(ibz.w .* am_lib.marzari_vanderbilt_dydx_(dE) .* occw,[1,2]);
+            elseif contains(flag,'gauss')
+                D = am_lib.sum_(ibz.w .* am_lib.gauss_(dE) .* occw,[1,2]);
+            elseif contains(flag,'lorentz')
+                D = am_lib.sum_(ibz.w .* am_lib.lorentz_(dE) .* occw,[1,2]);
+            else
+                error('ERROR [get_dos_quick]: flag not recognized')
+            end
+            dos.E=Ep(:);
+            dos.D=D(:)./degauss./sum(ibz.w(:));
+        end
+             
     end
     
     methods % plotting
-
 
         function                    plot_interpolated(fbz,bzp,x, varargin)
             % interpolate x, defined on the monkhorst-pack fbz, on [frac] path
@@ -419,12 +620,12 @@ classdef am_bz
 
             % define figure properties
             fig_ = @(h)       set(h,'color','white');
-            axs_ = @(h,qt,ql) set(h,'Box','on','XTick',qt,'Xticklabel',ql);
+            axs_ = @(h,xt,xl) set(h,'Box','on','XTick',xt,'Xticklabel',xl);
             fig_(gcf);
 
             % plot results
             plot(bzp.x,fftinterp_(x,bzp.k,fbz.n), varargin{:});
-            axs_(gca,bzp.qt,bzp.ql); axis tight; xlabel('Wavevector k');
+            axs_(gca,bzp.xt,bzp.xl); axis tight; xlabel('Wavevector k');
         end
 
         function                    plot_dispersion_projected(dft,bzp,pc,flag)
@@ -451,7 +652,7 @@ classdef am_bz
 
             % define figure properties
             fig_ = @(h)       set(h,'color','white');
-            axs_ = @(h,qt,ql) set(h,'Box','on','XTick',qt,'Xticklabel',ql);
+            axs_ = @(h,xt,xl) set(h,'Box','on','XTick',xt,'Xticklabel',xl);
             fig_(gcf);
 
             % plot band structure
@@ -476,7 +677,7 @@ classdef am_bz
             end
             
             % label axes
-            axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [eV]'); xlabel('Wavevector k');
+            axs_(gca,bzp.xt,bzp.xl); axis tight; ylabel('Energy [eV]'); xlabel('Wavevector k');
 
             % plot fermi level
             line([0,bzp.x(end)],[0,0],'linewidth',2,'color',[1,1,1]*0.5,'linestyle',':');
@@ -512,7 +713,7 @@ classdef am_bz
             end
         end
 
-        function                    plot_nesting(ibz,fbz,bzp,degauss,Ep, varargin)
+        function                    plot_nesting(ibz,fbz,bzp,degauss,Ep,varargin)
 
             import am_lib.* am_dft.*
 
@@ -532,12 +733,12 @@ classdef am_bz
             % surf(XX,EE*scale_energies_,(abs(Abzp)./Ep.^2).^(0.1).*ex_,'edgecolor','none'); view([0 0 1]); axis tight;
             surf(XX,EE,abs(Abzp),'edgecolor','none'); view([0 0 1]); axis tight;
 
-            axs_ = @(h,qt,ql) set(h,'Box','on','XTick',qt,'Xticklabel',ql);
-            axs_(gca,bzp.qt,bzp.ql); axis tight; ylabel('Energy [eV]'); xlabel('Wavevector k');
+            axs_ = @(h,xt,xl) set(h,'Box','on','XTick',xt,'Xticklabel',xl);
+            axs_(gca,bzp.xt,bzp.xl); axis tight; ylabel('Energy [eV]'); xlabel('Wavevector k');
 
         end
 
-        function                   plot_bz(fbz)
+        function                    plot_bz(fbz)
 
             import am_lib.* am_dft.*
 
@@ -574,7 +775,7 @@ classdef am_bz
             hold off; daspect([1 1 1]); box on;
         end
 
-        function                   plot_bz_path(bzp)
+        function                    plot_bz_path(bzp)
 
             import am_lib.* am_dft.*
 
@@ -594,7 +795,7 @@ classdef am_bz
             hold off; daspect([1 1 1]); box on;
         end
 
-        function                   plot_bz_surf(bzs,band)
+        function                    plot_bz_surf(bzs,band)
             % bzs=get_bz_surf(pc,[101,101],[1;0;0],[0;1;0]);
             % bzs=get_bvk_dispersion(bvk,bzs);
             % plot_bz_surf(bzs,1)
@@ -619,7 +820,7 @@ classdef am_bz
             hold off; daspect([1 1 1]); box on;
         end
 
-        function h               = plot_fermi_surface(ibz,fbz,dft,Ef,flag,C)
+        function h                = plot_fermi_surface(ibz,fbz,dft,Ef,flag,C)
             if nargin < 5; flag=''; end
             if nargin < 6; C=[]; end % C is the colorcode
             
@@ -656,7 +857,7 @@ classdef am_bz
             camproj('perspective');
         end
         
-        function h               = draw_bz_boundary(fbz,flag)
+        function h                = draw_bz_boundary(fbz,flag)
             switch flag
                 case 'tetra'; h = draw_tetragonal_bz_boundary(fbz);
                 otherwise; error('unknown geometry');
@@ -677,11 +878,239 @@ classdef am_bz
             end
         end
         
-    end
-    
-    % aux library
+        % plot x-ray stuff
 
-    methods (Static)
+        function [F,L,P]          = get_structure_factor(uc,bz,hv,N) % get_structure_factor(uc,bz,hv,N) also accepts (uc,k,hv,N) 
+            
+            import am_lib.* am_dft.*
+            
+            % create a "slab" with N unit cells if desired
+            if nargin<4; N = 1; end 
+            
+            % accept a kpoint [frac] instead of a brillouin zone
+            if isnumeric(bz)
+                bz = struct('k',bz,'recbas',inv(uc.bas).');
+            end
+
+            % convert to cartesian units
+            k_cart = bz.recbas*bz.k; k_cart_magnitude = normc_(k_cart);
+
+            % get atoms
+            [Z,~,inds] = unique(get_atomic_number({uc.symb{uc.species}}));
+
+            % get atomic form factors
+            [f0,f1,f2] = get_atomic_xray_form_factor(Z,hv,k_cart_magnitude); f = permute(f0+f1+f2*1i,[1,3,2]);
+
+            % compute structure factor
+            F = sum(f(inds,:).*exp(2i*pi*uc.tau.'*bz.k),1);
+            
+            % multiply slab component
+            F = F.*expsum_(2*pi*normc_(bz.k),N);
+
+            if nargout < 2; return; end           
+                % get theta value
+                th_ = @(hv,k) asind(get_photon_wavelength(hv)*k/2); th = th_(hv,k_cart_magnitude);
+                
+                % get lorentz-polarization factors [Warren p 3 eq 1.3, p 44 eq 4.6]
+                L_  = {@(th) 1./(sind(th).*sind(2*th)), ... % Lorentz factor [warren p 49, eq 4.11]
+                       @(th) 1./(sind(th).^2.*cosd(th))};
+                L = L_{1}(th); 
+            
+            if nargout < 3; return; end
+                % get polarization factor
+                P_  = {@(th) cosd(2*th).^2, ...             % polarized in the scattering plane
+                       @(th) 1, ...                         % polarized perpendicular to the scattering plane
+                       @(th) (1 + cosd(2*th).^2) ./ 2};     % unpolarized 
+                P = P_{3}(th);
+        end
+        
+        function                    print_bragg_table(fbs,hv)
+            th_ = @(hv,q) asind(get_photon_wavelength(hv)*q/2);
+            % print results
+            fprintf('     %5s %5s %5s %10s %5s %10s %10s %10s %15s\n','h','k','l','2th [deg]','w','L','P','Fhkl^2 [%]','w*L*P*Fhkl^2 [%]');
+            fprintf('     %5s %5s %5s %10s %5s %10s %10s %10s %15s\n','-----','-----','-----','----------','-----','----------','----------','----------','---------------');
+            for j = 1:fbs.nks
+                % exclude everything with peak height smaller than threshold
+                th2 = 2 * th_( hv, norm(fbs.recbas*fbs.k(:,j)) );
+                fprintf('     %5i %5i %5i %10.3f %5i %10.3f %10.3f %10.3f %15.3f\n',fbs.k(:,j),th2,fbs.w(j),fbs.L(j),fbs.P(j),fbs.Fk2(j),fbs.intensity(j));
+            end
+        end
+        
+        function [h]              = plot_ibs_1D(ibs,labels,hv,label_threshold,varargin)
+            import am_lib.* am_dft.*
+            % set default maximum range in plot
+            max_th2_range = 110;
+            %
+            % yscaler_ = @(x) x.^0.1;
+            yscaler_ = @(x) x;
+            % set threshold
+            if nargin<4 || isempty(label_threshold); label_threshold = 0; end
+            if nargin<2 || isempty(labels); labels = cell(1,numel(ibs)); end
+            % number of bragg structures (one for each cell)
+            nibss=numel(ibs);
+            % plot results
+            if nibss>1
+                clist = am_lib.cmap_('spectral',nibss).';
+                for j = 1:nibss
+                    ax(j) = axes('position',[0.025 (0.1+0.87*(j-1)/nibss) 0.95 0.85/nibss]);
+                    h=plot_ibs_1D(ibs(j),[],label_threshold,'color',clist(:,j)); 
+                    if j~=1; set(gca,'XTickLabel',[]); xlabel(''); end
+                    % set y axis label properties
+                    ax(j).YLabel.String=labels{j};
+                    ax(j).YLabel.Color=clist(:,j);
+                end
+                linkaxes(ax);
+            else
+                % plot Bragg peaks
+                set(gcf,'color','w'); 
+                h=hggroup;
+                for i = 1:ibs.nks
+                    th2 = 2*get_th(norm(ibs.recbas*ibs.k(:,i)),hv);
+                    if th2 < max_th2_range
+                        line([th2,th2],[0,yscaler_(abs(ibs.F(i)).^2)],'linewidth',2,varargin{:},'Parent',h);
+                        if abs(ibs.F(i)).^2 > label_threshold
+                            % text(th2,ibs.Fk2(i),sprintf('  [%i%i%i]  %.2f^\\circ  %i', ibs.k(:,i),th2,ibs.w(i)),'Parent',h);
+                            text(th2,abs(ibs.F(i)).^2+2,sprintf('[%i%i%i]  %.2f^\\circ', ibs.k(:,i),th2),'EdgeColor','k','BackgroundColor','w','Parent',h);
+                            % text(th2,yscaler_(ibs.Fk2(i)),sprintf('  [%i%i%i]', ibs.k(:,i)),varargin{:},'Parent',h);
+                        end
+                    end
+                end
+                box on; xlabel('2\theta [deg]'); xlim([5 max_th2_range]); ylim([0 yscaler_(130)]); %xlabel('intensity [a.u.]');
+                set(gca,'XTick',[0:10:max_th2_range]); set(gca,'YTick',[]); grid on; set(gca,'YMinorGrid','on');
+            end
+            H=findobj(gca,'Type','text');
+            set(H,'Rotation',90);
+        end
+        
+        function [h]              = plot_ibs_2D(ibs)
+            % uc=am_dft.load_cell('material','TiN');
+            % [fbs,ibs] = get_bragg(uc);
+            % hv = get_atomic_emission_line_energy(get_atomic_number('Cu'),'kalpha1');
+            % [ibs] = get_structure_factor(uc,ibs,hv); print_bragg_table(ibs,hv);
+            % [fbs] = get_structure_factor(uc,fbs,hv);
+            % % h = plot_ibs_1D(ibs,[],0.1)
+            % % [h]       = plot_ibs_2D(ibs)
+            % v1=[0 0 1]; v2=[1 0 0];  
+            % plot_fbs_2D(fbs,v1,v2)
+            % include edge points 
+            N = 201; euler = exp(2i*pi*[0:N]/N);
+            x = real(euler);y = imag(euler); ibs.Fk2 = abs(ibs.F).^2;
+            figure(1); set(gcf,'color','w'); h=hggroup;
+            for i = 1:ibs.nks
+                r = norm(ibs.recbas*ibs.k(:,i));
+                line(r*x,r*y,'color','r','linewidth',log10(ibs.Fk2(i)+1)/1.5+0.5,'Parent',h)
+                text(0,r,sprintf('%i %i %i',ibs.k(:,i)),'HorizontalAlignment','center','BackgroundColor','w','EdgeColor','r','Parent',h);
+            end
+            daspect([1 1 1]); axis tight; box on;
+        end
+        
+        function [h]              = plot_fbs_2D(fbs,v1,v2,flag)
+            import am_lib.*
+            % check for orthogonality
+            if ~am_lib.isorthogonal_(v1,v2); error('v1 and v2 must be orthogonal'); end
+            % normalize v1 and v2
+            v1 = v1(:)./norm(v1); v2 = v2(:)./norm(v2);
+            % see which points lie on the plane
+            for i = 1:fbs.nks
+                if eq_(det([v1,v2,fbs.k(:,i)]),0)
+                    ex_(i) = true;
+                else
+                    ex_(i) = false;
+                end
+            end
+            % exclude points not on the plane
+            fbs.k = fbs.k(:,ex_); fbs.Fk2 = abs(fbs.F(ex_)).^2; 
+            fbs.b2i = fbs.b2i(ex_); fbs.w = fbs.w(ex_); fbs.nks = sum(ex_); 
+            % convert to cartesian coordinates
+            v1_cart = fbs.recbas*v1(:); v1_cart = v1_cart./normc_(v1_cart); 
+            v2_cart = fbs.recbas*v2(:); v2_cart = v2_cart./normc_(v2_cart); 
+            k_cart = fbs.recbas*fbs.k; 
+            % project points onto the diffraction plane
+            fbs.x = v1_cart.'*k_cart; fbs.y = v2_cart.'*k_cart;
+            % plot only accessible points?
+            if contains(flag,'half')
+                ex_ = fbs.y>0;
+                fbs.x = fbs.x(ex_); fbs.y = fbs.y(ex_);
+                fbs.k = fbs.k(:,ex_); fbs.Fk2 = abs(fbs.F(ex_)).^2; 
+                fbs.b2i = fbs.b2i(ex_); fbs.w = fbs.w(ex_); fbs.nks = sum(ex_); 
+            end
+            % plot plane with points
+            figure(1); set(gcf,'color','w'); h=hggroup; 
+            hold on; 
+                scatter(fbs.x,fbs.y,rescale(log10(fbs.Fk2),20,100),'filled','linewidth',1.5,'Parent',h); 
+                scatter(0,0,log10(100)*100,'k','filled','linewidth',2,'Parent',h); 
+            hold off;
+            for i = 1:fbs.nks
+                text(fbs.x(i),fbs.y(i)+1.0,sprintf('%i %i %i',fbs.k(:,i)),'HorizontalAlignment','center','BackgroundColor','w','EdgeColor','b');
+            end
+            daspect([1 1 1]); axis tight; box on;
+        end
+
+    end
+
+    methods (Static) % aux brillouin zones
+
+        function [y]              = ibz2fbz(fbz,ibz,x) % copy ibz values on fbz grid 
+            % copy ibz values on fbz grid
+            %
+            %       x [ n , ibz.nks ] ==> y [ n , fbz.nks ]
+            %
+            % n can be any number of rows
+            %
+            y = zeros(size(x,1),fbz.nks);
+            for i = [1:ibz.nks]; y(:,fbz.f2i==i) = repmat( x(:,i) , [1,sum(fbz.f2i==i)] ); end
+        end
+        
+        function [qqq]            = get_qqq(fbz,ibz) % get_qqq(fbz,ibz) get momentum-conserving vectors for three-scattering processes 
+            % get all possible wavevector triplets which conserve momentum
+            %        q1 + q2 = q3 (absorbtion) and q1 = q2 + q3 (emission)
+            %        q1 are ibz points
+            %
+            %        qqq( 1:3 , ibz.nks , [1(abs):2(ems)])
+            %
+            % Check with:
+            %     % NOTE: umklapp triplets are given by values which a reciprocal lattice
+            %     % vector not equal to [0;0;0], i.e. [0;0;1].
+            %     % fbz.k(:,qqq(1,:))+fbz.k(:,qqq(2,:))-fbz.k(:,qqq(3,:))
+            %     check_ = @(x) all(mod_(x(:))<am_lib.eps);
+            %     check_( fbz.k(:,qqq(1,:,1))+fbz.k(:,qqq(2,:,1))-fbz.k(:,qqq(3,:,1)) )
+            %     check_( fbz.k(:,qqq(1,:,2))-fbz.k(:,qqq(2,:,2))-fbz.k(:,qqq(3,:,2)) )
+
+            import am_lib.mod_
+
+            sub2inds_ = @(n,q) reshape( ...
+                               sub2ind(n,round(q(1,:).*n(1)+1), ...
+                                         round(q(2,:).*n(2)+1), ...
+                                         round(q(3,:).*n(3)+1)), 1, size(q,2)*size(q,3)*size(q,4) );
+
+            % get wavevector triplets
+            ex_ = repelem([1:ibz.nks],fbz.nks);
+            qqq = zeros(3,ibz.nks.*fbz.nks,2);
+            for i = [1:ibz.nks]
+                % Procedure: get q1, q2, and q3 vector satisfying:
+                %     q1 + q2 = q3
+                %     q1 + reshape(fbz.k,[3,fbz.n]) - circshift(reshape(fbz.k,[3,fbz.n]),-[0,[q{:}]-1])
+                %     q1 = q2 + (-q3)
+                %     q1 - reshape(fbz.k,[3,fbz.n]) + circshift(reshape(fbz.k,[3,fbz.n]),+[0,[q{:}]-1])
+                %
+                % get shift corresponding to ibz point
+                [q{1:3}]=ind2sub(fbz.n,fbz.i2f(i));
+                % get q1
+                q1 = ([q{:}].'-1)./fbz.n(:);
+                % set q2
+                q2 = reshape(fbz.k,[3,fbz.n]);
+                % get q3: q1 + q2 = q3 (absorption)  q1 = q2 + q3 (emission)
+                %         q  + k  = k' (e scatters)  q  = k  + k' (e+h recombine)
+                q3_abs =       circshift(reshape(fbz.k,[3,fbz.n]),-[0,[q{:}]-1]);
+                q3_ems = mod_(-circshift(reshape(fbz.k,[3,fbz.n]),+[0,[q{:}]-1]));
+                % save indicies
+                qqq(1,ex_==i,1:2) = repmat(sub2inds_(fbz.n,q1),[1,fbz.nks,2]);
+                qqq(2,ex_==i,1:2) = repmat(sub2inds_(fbz.n,q2),[1,1,2]      );
+                qqq(3,ex_==i,1  ) =        sub2inds_(fbz.n,q3_abs)           ;
+                qqq(3,ex_==i,2  ) =        sub2inds_(fbz.n,q3_ems)           ;
+            end
+        end
+
     end
     
 end
