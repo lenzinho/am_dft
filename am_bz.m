@@ -447,7 +447,7 @@ classdef am_bz < dynamicprops
             end
         end
         
-        function [nesting]        = get_nesting_jdos(fbz,ibz,dft,degauss,Ep,flag)
+        function [nesting]        = get_nesting_jdos(fbz,ibz,degauss,Ep,flag)
             % get jdos nesting function on ibz at probing energies Ep (This Ep is the one that conserved energy!)
             % degauss, degauss = 0.04 61x61x61 kpoint mesh
             %
@@ -465,15 +465,15 @@ classdef am_bz < dynamicprops
             qqq = am_dft.get_qqq(fbz,ibz);
 
             % copy irreducible energies onto fbz mesh
-            E = reshape(am_dft.ibz2fbz(fbz,ibz,dft.E),[dft.nbands,fbz.n]);
+            E = reshape(am_bz.ibz2fbz(fbz,ibz,ibz.E),[ibz.nbands,fbz.n]);
 
             % LOL! I am trying to integrate over a ((40x40),((15x15x11)x(15x15x11))) matrix! lol... that's 9E9 numbers... LOL!!!
             % How to approach this? Loop over pairs of bands which has fewer elements than pairs of wavevectors
             % Also, some pairs of bands can be quickly ignored 
-            nesting = zeros(nEps,ibz.nks); access_ = @(x,i) reshape(x(i),[],1); m = 2; nEps = numel(Ep); t=0; flatten_ = @(x) x(:);
+            nesting = zeros(nEps,ibz.nks); access_ = @(x,i) reshape(x(i),[],1); m = 2; nEps = numel(Ep); t=0;
             % estimate time
-            for c = 1:dft.nbands
-            for v = 1:dft.nbands
+            for c = 1:ibz.nbands
+            for v = 1:ibz.nbands
                 if max(E(c,:))<0 && max(E(v,:))<0; continue; end
                 if min(E(c,:))>0 && min(E(v,:))>0; continue; end
                 if min(E(v,:))>max(E(c,:)); continue; end
@@ -481,8 +481,8 @@ classdef am_bz < dynamicprops
             end
             end
             h = waitbar(0,'Integrating...'); tot=t; t=0;
-            for c = 1:dft.nbands
-            for v = 1:dft.nbands
+            for c = 1:ibz.nbands
+            for v = 1:ibz.nbands
                 % skip if both Ec and Ev are in the valence band
                 if max(E(c,:))<0 && max(E(v,:))<0; continue; end
                 % skip if both Ec and Ev are in the conduction band
@@ -514,66 +514,31 @@ classdef am_bz < dynamicprops
             
         end
 
-        function [dos]            = get_dos(dft,ibz,Ep,flag)
-            if nargin<4; flag = 'dos'; end
-            if     contains(flag,'ojdos')
-                % occupation-weighted jdos: jdos properly weighed by fermi function instead of theta function
-                % and divided by 1/E.^2
-                kT = 0.025852; % 300K
-                % E(valence,conduction,kpoints) 
-                Ev = permute(dft.E,[1,3,2]); Ec = permute(dft.E,[3,1,2]); E = Ec - Ev;
-                % get occupational weights 
-                occw = am_lib.fermi_dirac_(Ec./kT) .* ( 1 - am_lib.fermi_dirac_(Ev./kT)); 
-                E = reshape(E,dft.nbands^2,dft.nks); occw = reshape(occw,dft.nbands^2,dft.nks); 
-                % sort E and occw together
-                [E,I] = sort(E); [m,n]=size(occw); occw = occw(sub2ind([m n],I,repmat(1:n,m,1))); 
-                % prepare occw for pdos
-                occw = permute(occw,[3,1,2]);
-                % compute dos
-                dos.E = Ep(:).'; dos.D = am_dft.get_pdos_tet(Ep,E,ibz.tet,ibz.tetw,ibz.tetv,occw,'mex');
-            elseif contains(flag,'jdos')
-                % checked against vasp. confirmed.
-                % only consider transitions from the valence band (E<0) to the conduction band (E>0)
-                Ev = permute(dft.E,[1,3,2]); Ec = permute(dft.E,[3,1,2]); E = Ec - Ev;
-                % E(valence,conduction,kpoints) 
-                % make all valence    - valence    states E => 1E8 (something large enough to take it out of range)
-                % make all conduction - conduction states E => 1E8 (something large enough to take it out of range)
-                % proper way would be to compute fermi functions and use that as the projection weight
-                % but just doing it quick and dirty here (equivalent to assuming kt -> 0, fermi fucntion -> step function)
-                ex_ = (Ec<0) & (Ev<0); E(ex_) = 1E8;
-                ex_ = (Ec>0) & (Ev>0); E(ex_) = 1E8;
-                E = reshape(E,dft.nbands^2,dft.nks); E = sort(E);
-                % compute jdos
-                dos.E = Ep(:).'; dos.D = am_dft.get_dos_tet(Ep,E,ibz.tet,ibz.tetw,ibz.tetv,'mex');
-            elseif contains(flag,'dos')
-                dos.E = Ep(:).'; dos.D = am_dft.get_dos_tet(Ep,dft.E,ibz.tet,ibz.tetw,ibz.tetv,'mex');
-            end
-        end
-        
-        function [dos]            = get_dos_quick(dft,ibz,Ep,degauss,flag)
+        function [dos]            = get_dos(ibz,Ep,flag,degauss)
             % Ep=linspace(-6,6,1000); degauss= 0.08;
             % hold on;
-            % for method = {'fermi','mp','mv','gauss','lorentz'}
+            % for method = {'tet,'fermi','mp','mv','gauss','lorentz'}
             %     [D] = am_dft.get_dos_quick(dft,ibz,Ep,degauss,method{:});
             %     plot(Ep,D);
             % end
             % hold off;
-            Ep = permute(Ep(:),[3,2,1]);
+            if nargin<4 || isempty(flag); flag = 'tet,dos'; end
+            if nargin<5 || isempty(degauss); degauss = 0.05; end
             
-            % get contribution
+            % get energies E and occupation weights occw
             if     contains(flag,'ojdos')
                 % occupation-weighted jdos: jdos properly weighed by fermi function instead of theta function
                 % and divided by 1/E.^2
                 kT = 0.025852; % 300K
                 % E(valence,conduction,kpoints) 
-                Ev = permute(dft.E,[1,3,2]); Ec = permute(dft.E,[3,1,2]); E = Ec - Ev;
+                Ev = permute(ibz.E,[1,3,2]); Ec = permute(ibz.E,[3,1,2]); E = Ec - Ev;
                 % get occupational weights 
                 occw = am_lib.fermi_dirac_(Ec./kT) .* ( 1 - am_lib.fermi_dirac_(Ev./kT)); 
-                E = reshape(E,dft.nbands^2,dft.nks); occw = reshape(occw,dft.nbands^2,dft.nks);
+                E = reshape(E,ibz.nbands^2,ibz.nks); occw = reshape(occw,ibz.nbands^2,ibz.nks);
             elseif contains(flag,'jdos')
                 % checked against vasp. confirmed.
                 % only consider transitions from the valence band (E<0) to the conduction band (E>0)
-                Ev = permute(dft.E,[1,3,2]); Ec = permute(dft.E,[3,1,2]); E = Ec - Ev;
+                Ev = permute(ibz.E,[1,3,2]); Ec = permute(ibz.E,[3,1,2]); E = Ec - Ev;
                 % E(valence,conduction,kpoints) 
                 % make all valence    - valence    states E => 1E8 (something large enough to take it out of range)
                 % make all conduction - conduction states E => 1E8 (something large enough to take it out of range)
@@ -581,30 +546,47 @@ classdef am_bz < dynamicprops
                 % but just doing it quick and dirty here (equivalent to assuming kt -> 0, fermi fucntion -> step function)
                 ex_ = (Ec<0) & (Ev<0); E(ex_) = 1E8;
                 ex_ = (Ec>0) & (Ev>0); E(ex_) = 1E8;
-                E = reshape(E,dft.nbands^2,dft.nks); E = sort(E);
-                occw = 1;
-            else
-                E = dft.E;
+                E = reshape(E,ibz.nbands^2,ibz.nks); E = sort(E);
+            elseif contains(flag,'dos')
+                E = ibz.E;
             end
-            dE = ((E-Ep)./degauss);
             
-            if     contains(flag,'fermi')
-                D = am_lib.sum_(ibz.w .* am_lib.fermi_dirac_dydx_(dE) .* occw,[1,2]);
-            elseif contains(flag,'mp')
-                D = am_lib.sum_(ibz.w .* am_lib.methfessel_paxton_dydx_(dE,1) .* occw,[1,2]);
-            elseif contains(flag,'mv')
-                D = am_lib.sum_(ibz.w .* am_lib.marzari_vanderbilt_dydx_(dE) .* occw,[1,2]);
-            elseif contains(flag,'gauss')
-                D = am_lib.sum_(ibz.w .* am_lib.gauss_(dE) .* occw,[1,2]);
-            elseif contains(flag,'lorentz')
-                D = am_lib.sum_(ibz.w .* am_lib.lorentz_(dE) .* occw,[1,2]);
+            % perform integration
+            if contains(flag,'tet')
+                % tetrahedron method
+                if     contains(flag,'ojdos')
+                    % sort E and occw together
+                    [E,I] = sort(E); [m,n]=size(occw); occw = occw(sub2ind([m n],I,repmat(1:n,m,1))); 
+                    % prepare occw for pdos
+                    occw = permute(occw,[3,1,2]);
+                    % compute optical jdos
+                    D = am_dft.get_pdos_tet(Ep,E,ibz.tet,ibz.tetw,ibz.tetv,occw,'mex');
+                elseif contains(flag,'jdos') || contains(flag,'dos')
+                    D = am_dft.get_dos_tet(Ep,E,ibz.tet,ibz.tetw,ibz.tetv,'mex');
+                end
             else
-                error('ERROR [get_dos_quick]: flag not recognized')
+                % discrete integration
+                Ep = permute(Ep(:),[3,2,1]); dE = ((E-Ep)./degauss);
+                if     contains(flag,'fermi')
+                    D = am_lib.sum_(ibz.w .* am_lib.fermi_dirac_dydx_(dE) .* occw,[1,2]);
+                elseif contains(flag,'mp')
+                    D = am_lib.sum_(ibz.w .* am_lib.methfessel_paxton_dydx_(dE,1) .* occw,[1,2]);
+                elseif contains(flag,'mv')
+                    D = am_lib.sum_(ibz.w .* am_lib.marzari_vanderbilt_dydx_(dE) .* occw,[1,2]);
+                elseif contains(flag,'gauss')
+                    D = am_lib.sum_(ibz.w .* am_lib.gauss_(dE) .* occw,[1,2]);
+                elseif contains(flag,'lorentz')
+                    D = am_lib.sum_(ibz.w .* am_lib.lorentz_(dE) .* occw,[1,2]);
+                else
+                    error('ERROR [get_dos]: flag not recognized')
+                end
+                D=D./degauss./sum(ibz.w(:));
             end
-            dos.E=Ep(:);
-            dos.D=D(:)./degauss./sum(ibz.w(:));
+            % create structure
+            dos.E=Ep(:).';
+            dos.D=D(:);
         end
-             
+ 
     end
     
     methods % plotting
@@ -714,16 +696,14 @@ classdef am_bz < dynamicprops
         end
 
         function                    plot_nesting(ibz,fbz,bzp,degauss,Ep,varargin)
-
-            import am_lib.* am_dft.*
-
+            import am_lib.*
             % plot results
-            plot_interpolated(fbz,bzp, ibz2fbz(fbz,ibz,get_nesting(fbz,ibz,degauss,Ep)) , varargin{:})
+            plot_interpolated(fbz,bzp, am_bz.ibz2fbz(fbz,ibz,am_bz.get_nesting(fbz,ibz,degauss,Ep)) , varargin{:})
         end
         
-        function [Aibz]          =  plot_nesting_jdos(fbz,ibz,bzp,dft,degauss,Ep)
+        function [Aibz]          =  plot_nesting_jdos(fbz,ibz,bzp,degauss,Ep)
             
-            Aibz = am_dft.get_nesting_jdos(fbz,ibz,dft,degauss,Ep);
+            Aibz = am_dft.get_nesting_jdos(fbz,ibz,degauss,Ep);
             Afbz = am_dft.ibz2fbz(fbz,ibz,Aibz);
             Abzp = am_lib.fftinterp_(Afbz,bzp.k,fbz.n);
             
