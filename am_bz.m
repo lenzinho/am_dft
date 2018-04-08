@@ -13,15 +13,18 @@ classdef am_bz < dynamicprops
         xl       = []; % linear coordinate labels
         tol      = []; % numerical tolerance
         % dispersions
-        Ef       = []; % Fermi level 
-        E        = []; % electron dispersion [nbands,nks]
+        E        = []; % electron dispersion [nbands,nks,nmds] % molecular dynamics times steps if available
         hw       = []; % phonon dispersion [nbands,nks]
         % projection information
         nbands   = []; % number of bands
         norbitals= []; % number of orbitals
-        nions    = []; % number of orbitals
-        lmproj   = []; % electronic projections [nspins,norbitals,nions,nbands,nks]
-        eigenv   = []; % phonon eigenvectors :: need to change this to: [1,1,3,nions,nbranches,nks]
+        natoms   = []; % number of atoms
+        nspins   = []; % number of spins
+        lmproj   = []; % electronic projections [nspins,norbitals,natoms,nbands,nks]
+        eigenv   = []; % phonon eigenvectors :: need to change this to: [1,3,natoms,nbands,nks]
+        optmat   = []; % squared optical matrix elements [nspins,3,nbands,nbands,nks]
+        % oribtal labels
+        orbital  = []; % orbital labels
         % tetrahedron information
         ntets    = []; % number of tetrahedra 
         tet      = []; % tetrahedra coordination [4,ntets]
@@ -62,8 +65,8 @@ classdef am_bz < dynamicprops
             [ibz,i2f,f2i] = fbz.get_ibz(pc,'tetra');
 
             % save mapping to zones
-            for plist = {'f2i','i2f'}; addprop(ibs,plist{:}); end
-            for plist = {'f2i','i2f'}; addprop(fbs,plist{:}); end
+            for plist = {'f2i','i2f'}; addprop(fbz,plist{:}); end
+            for plist = {'f2i','i2f'}; addprop(ibz,plist{:}); end
             fbz.f2i = f2i; fbz.i2f = i2f;
             ibz.i2f = i2f; ibz.f2i = f2i;
         end
@@ -286,7 +289,7 @@ classdef am_bz < dynamicprops
             end
             
             % finally, pass along additional parameters if they exist
-            for f = {'n','nbands','norbitals','nions'}
+            for f = {'n','nbands','norbitals','natoms'}
                 if isfield(fbz,f) && ~isempty(fbz.(f{:})); ibz.(f{:}) = fbz.(f{:}); end
             end
             for f = {'n','F','I','E','hw'}
@@ -640,14 +643,14 @@ classdef am_bz < dynamicprops
             line([0,bzp.x(end)],[0,0],'linewidth',2,'color',[1,1,1]*0.5,'linestyle',':');
             
             function c = projections2color_(bz,pc,flag)
-                % normalize columns of matrix
+                % normalize columns of matrixs
                 normc_ = @(m) ones(size(m,1),1)*sqrt(1./sum(m.*m)).*m;
                 % colorize
                 if     contains(flag,'orbital')
                 for i = 1:bz.nks
                     %    s     py     pz     px    dxy    dyz    dz2    dxz    dx2    f-3    f-2    f-1     f0     f1     f2     f3
                     % l-PROJECTION (sum over spin, atoms, m-quantum numbers)
-                    % lmproj(nspins,norbitals,nions,nbands,nkpts)
+                    % lmproj(nspins,norbitals,natoms,nbands,nkpts)
                     Vp(1,:) = squeeze(sum(sum(sum(bz.lmproj(:,   [1],:,:,i),1),2),3)); % s
                     Vp(2,:) = squeeze(sum(sum(sum(bz.lmproj(:, [2:4],:,:,i),1),2),3)); % p
                     Vp(3,:) = squeeze(sum(sum(sum(bz.lmproj(:, [5:9],:,:,i),1),2),3)); % d
@@ -657,7 +660,7 @@ classdef am_bz < dynamicprops
                 elseif contains(flag,'atom')
                     for i = 1:bz.nks
                         % l-PROJECTION (sum over spin, atoms, m-quantum numbers)
-                        % lmproj(nspins,norbitals,nions,nbands,nkpts)
+                        % lmproj(nspins,norbitals,natoms,nbands,nkpts)
                         for j = 1:numel(unique(pc.p2i))
                             Vp(j,:) = squeeze(sum(sum(sum(bz.lmproj(:,:,pc.p2i==j,:,i),1),2),3));
                         end
@@ -773,13 +776,20 @@ classdef am_bz < dynamicprops
             hold off; daspect([1 1 1]); box on;
         end
 
-        function h                = plot_fermi_surface(ibz,fbz,Ef,flag,C)
-            if nargin < 5; flag=''; end
-            if nargin < 6; C=[]; end % C is the colorcode
+        function h                = plot_fermi_surface(fbz,ibz,Ef,flag,C)
+            if nargin < 4 || isempty(flag); flag=''; end
+            if nargin < 5 || isempty(C); C=[]; end % C is the colorcode
             
             % % color based on curvature? (each band is a scalar field: hessian is diagonal)
             % r = ndgrid(1:fbz.n(1),1:fbz.n(2),1:fbz.n(3)); r = permute(r,[4,1,2,3]);
             % for i = 1:dft.nbands; C(i,:,:,:) = ifftn( fftn(E(i,:,:,:)).*(1i*r).^2 ); end; C = abs(real(C));
+            
+            % if C is a string, color based on field
+            if contains(flag,'optmat')
+                if isempty(ibz.optmat); error('field is empty'); end
+                C = am_lib.sum_(ibz.optmat,[1,2])/3; % sum over spins and average over directions
+                C = reshape( am_bz.ibz2fbz(fbz,ibz,reshape(C,[ibz.nbands.^2,ibz.nks])),[ibz.nbands.^2,fbz.n]);
+            end
             
             if contains(flag,'jdos')
                 % checked against vasp. confirmed.
@@ -790,39 +800,38 @@ classdef am_bz < dynamicprops
                 % make all conduction - conduction states E => 1E8 (something large enough to take it out of range)
                 ex_ = (Ec<0) & (Ev<0); E(ex_) = 1E8;
                 ex_ = (Ec>0) & (Ev>0); E(ex_) = 1E8;
-                E = reshape(E,ibz.nbands^2,ibz.nks); E = sort(E);
-                E = reshape( am_dft.ibz2fbz(fbz,ibz,E), [ibz.nbands.^2,fbz.n]); 
+                E = reshape( E , [ibz.nbands^2, ibz.nks] ); E = sort(E);
+                E = reshape( am_bz.ibz2fbz(fbz,ibz,E), [ibz.nbands.^2, fbz.n]); 
             else % just regular dos
-                E = reshape( am_dft.ibz2fbz(fbz,ibz,ibz.E), [ibz.nbands,fbz.n]); 
+                E = reshape( am_bz.ibz2fbz(fbz,ibz,ibz.E), [ibz.nbands, fbz.n]); 
             end
 
             % plot                                                                                 [4,4,1]  2
-            h = am_lib.plot_isosurface_(reshape(fbz.recbas*fbz.k,[3,fbz.n]), fbz.recbas, E, Ef, C, [1,1,1], 3, 'cubic,center');
+            h = am_lib.plot_isosurface_(reshape(fbz.recbas*fbz.k,[3,fbz.n]), fbz.recbas, E, Ef, C, [1,1,1], 3, 'cspline,center');
             % plot bz boundary
-            if contains(flag,'tetra'); am_dft.draw_boundary(fbz,'tetra'); end
+            if contains(flag,'tetragonal'); fbz.draw_boundary('tetragonal'); end
             % set lighting settings
-            daspect([1 1 1]); axis tight; axis off;
-            campos([10.7135,23.0003,9.4299]); camlight('right','infinite'); camproj('perspective');
+            daspect([1 1 1]); axis tight; axis off; campos([10.7135,23.0003,9.4299]); camlight('right','infinite'); camproj('perspective');
         end
         
         function h                = draw_boundary(fbz,flag)
             switch flag
-                case 'tetra'; h = draw_tetragonal_boundary(fbz);
+                case 'tetragonal'; h = draw_tetragonal_boundary(fbz);
                 otherwise; error('unknown geometry');
             end
             
-            function draw_tetragonal_boundary(fbz)
+            function h = draw_tetragonal_boundary(fbz)
                 R3 = [ 0,-1, 0;-1, 0, 0; 0, 0,-1];
                 s = [1,1,1];
                 xy = fbz.recbas*[[0;0;0],[s(1);0;0],[s(1);s(2);0],[0;s(2);0]];
                 xz = fbz.recbas*[[0;0;0],[0;0;s(3)],[s(1);0;s(3)],[s(1);0;0]];
-                alpha = 0.015;
-                patch('Faces',[1:4],'Vertices',(xy)','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
-                patch('Faces',[1:4],'Vertices',(xz)','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
-                patch('Faces',[1:4],'Vertices',(xy+fbz.recbas*[0;0;s(3)])','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
-                patch('Faces',[1:4],'Vertices',(xz+fbz.recbas*[0;s(2);0])','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
-                patch('Faces',[1:4],'Vertices',(R3*xz+fbz.recbas*[0;s(2);s(3)])','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
-                patch('Faces',[1:4],'Vertices',(R3*xz+fbz.recbas*[s(1);s(2);s(3)])','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
+                alpha = 0.015; i=0;
+                i=i+1; h(i) = patch('Faces',[1:4],'Vertices',(xy)','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
+                i=i+1; h(i) = patch('Faces',[1:4],'Vertices',(xz)','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
+                i=i+1; h(i) = patch('Faces',[1:4],'Vertices',(xy+fbz.recbas*[0;0;s(3)])','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
+                i=i+1; h(i) = patch('Faces',[1:4],'Vertices',(xz+fbz.recbas*[0;s(2);0])','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
+                i=i+1; h(i) = patch('Faces',[1:4],'Vertices',(R3*xz+fbz.recbas*[0;s(2);s(3)])','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
+                i=i+1; h(i) = patch('Faces',[1:4],'Vertices',(R3*xz+fbz.recbas*[s(1);s(2);s(3)])','EdgeColor','k','FaceColor','k','facealpha',alpha,'LineWidth',1);
             end
         end
         

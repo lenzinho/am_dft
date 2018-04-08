@@ -688,6 +688,8 @@ classdef am_cell < dynamicprops % required for xrr simulation
             % legend
             lh_ = legend(h,{pc.type(:).symb}); lh_.Box='off'; axis off;
 
+            % set camera angle
+            daspect([1 1 1]); axis tight; axis off; campos([10.7135,23.0003,9.4299]); camlight('right','infinite'); camproj('perspective');
         end
 
         function [F]             = plot_md(md, varargin) % plots md movies

@@ -665,6 +665,163 @@ classdef am_dft
 
         % io
         
+        function [bz]    = load_vasp_bz(pc,flag,varargin)
+            
+            feigenval='EIGENVAL';
+            fprocar  ='PROCAR';
+            fibzkpt  ='IBZKPT';
+            fopticalmatrix = 'OPTICALMATRIX';
+            
+            
+            if    exist(fprocar,'file')==2
+                fprintf(' ... loading PROCAR'); tic;
+                    [nks,nbands,natoms,norbitals,nspins,k,w,E,~,orbital,lmproj] = load_procar();
+                    bz = am_bz.define(pc.bas,k,...
+                        'nks',nks,'nbands',nbands,'natoms',natoms,'norbitals',norbitals,'nspins',nspins, ...
+                        'w',w,'E',E,'orbital',orbital,'lmproj',lmproj);
+                fprintf('(%.f secs)\n',toc);
+            elseif exist(feigenval,'file')==2
+                fprintf(' ... PROCAR not found. Falling back to EIGENVAL.');
+                fprintf(' ... loading EIGENVAL '); tic;
+                    [~,nks,nbands,k,w,E,~] = load_eigenval(feigenval);
+                    bz = am_bz.define(pc.bas,k,'nks',nks,'nbands',nbands,'w',w,'E',E);
+                fprintf('(%.f secs)\n',toc);
+            else
+                error('eigenvalues not loaded');
+            end
+            
+            % load tetrahedra
+            if    exist(fibzkpt,'file')==2
+                fprintf(' ... loading IBZKPT'); tic;
+                    [k,w,nks,ntets,tet,tetw] = load_ibzkpt(inv(pc.bas).'); 
+                    if ~all(am_lib.eq_(nks ,bz.nks )); error('IBZKPT nks mismatch'); end
+                    if ~all(am_lib.eq_(k(:),bz.k(:))); error('IBZKPT k mismatch'); end
+                    if ~all(am_lib.eq_(w(:),bz.w(:))); error('IBZKPT w mismatch'); end
+                    bz = bz.set('ntets',ntets,'tet',tet,'tetw',tetw);
+                fprintf('(%.f secs)\n',toc);
+            end
+            
+            % load optical matrix elements
+            if exist(fopticalmatrix,'file')==2
+                fprintf(' ... loading OPTICALMATRIX'); tic;
+                    [nbands,~,nks,nspins,optmat] = load_optical_matrix(fopticalmatrix);
+                    bz = bz.set('nbands',nbands,'nks',nks,'nspins',nspins,'optmat',optmat);
+                fprintf('(%.f secs)\n',toc);
+            end
+            
+            % shift fermi level to zero
+            if exist(fopticalmatrix,'file')==2
+                fprintf(' ... searhcing OUTCAR for Efermi'); tic;
+                    Ef = am_dft.get_vasp('outcar:fermi');
+                    bz.E = bz.E - Ef; Ef = Ef - Ef;
+                fprintf('(%.f secs)\n',toc);
+            else
+                fprintf(' ... WARNING: OUTCAR NOT FOUND. Fermi level not shifted to zero!'); tic;
+            end
+                        
+            cbm = min(bz.E(bz.E(:)>Ef)); [cb,ck]=am_lib.max2_(bz.E==cbm);
+            vbm = max(bz.E(bz.E(:)<Ef)); [vb,vk]=am_lib.max2_(bz.E==vbm);
+            Eg  = cbm-vbm;
+            fprintf(' ... summary: \n');
+            fprintf('     %-15s = %i\n','nks',bz.nks);
+            fprintf('     %-15s = %i\n','nbands',bz.nbands);
+            fprintf('     %-15s = %i\n','nspins',bz.nspins);
+            fprintf('     %-15s = %i\n','natoms',bz.natoms);
+            fprintf('     %-15s = %i\n','norbitals',bz.norbitals);
+            fprintf('     %-15s = %+8.3f [eV] \n','fermi energy',Ef);
+            fprintf('     %-15s = %+8.3f [eV] (k(:,%i) = %-5.3f,%-5.3f,%-5.3f, iband = %i)\n','CBM [eV]',cbm,ck,k(:,ck),cb);
+            fprintf('     %-15s = %+8.3f [eV] (k(:,%i) = %-5.3f,%-5.3f,%-5.3f, iband = %i)\n','VBM [eV]',vbm,vk,k(:,vk),vb);
+            fprintf('     %-15s = %+8.3f [eV]\n','Eg  [eV]',Eg);
+
+            function [k,w,nks,ntets,tet,tetw] = load_ibzkpt(recbas)
+                [str,~] = am_lib.load_file_('IBZKPT');
+                % number of kpoints, units
+                t=sscanf(str{2},'%i'); nks = t(1);
+                if     contains(str{3},'R'); units = 'frac'; 
+                elseif contains(str{3},'C'); units = 'cart'; 
+                else;  error('units unknown'); end
+                % parse points and weights
+                t=sscanf(strjoin({str{[1:nks]+3}},' '),'%f'); t = reshape(t,4,[]); k = t(1:3,:); w = t(4,:); w = w./sum(w);
+                % convert to fractional
+                if strcmp(units,'cart'); k = recbas\k; units = 'frac'; end
+                % save tetrahedra information?
+                if contains(str{nks+4},'Tetra')
+                   t=sscanf(str{nks+5},'%i'); ntets = t(1);
+                   t=sscanf(strjoin({str{nks+5+[1:ntets]}},' '),'%i'); t = reshape(t,5,[]); tet = t(2:5,:); tetw = t(1,:);
+                else
+                    ntets=[];tet=[];tetw=[];
+                end
+            end
+                
+            function [nelecs,nks,nbands,k,w,E,f] = load_eigenval(feigenval)
+                % load file
+                str = am_lib.load_file_(feigenval);
+                % parse
+                buffer = sscanf(strtrim(str{6}),'%i'); % [nelecs,nks,nbands]
+                [nelecs,nks,nbands]=deal(buffer(1),buffer(2),buffer(3));
+                % initialize
+                i=7; k=zeros(3,nks); w=zeros(1,nks); E=zeros(nbands,nks); f=zeros(nbands,nks);
+                for ik = 1:nks
+                    i=i+1; % skip line
+                    i=i+1; buffer = sscanf(strtrim(str{i}),'%f'); % read k and weight
+                    [k(1,ik),k(2,ik),k(3,ik),w(ik)]=deal(buffer(1),buffer(2),buffer(3),buffer(4));
+                    % read band energies
+                    for iband = 1:nbands
+                        i=i+1; buffer = sscanf(strtrim(str{i}),'%f');
+                        [E(iband,ik),f(iband,ik)] = deal(buffer(2),buffer(3));
+                    end
+                    E(:,ik) = sort(E(:,ik));
+                end
+            end
+
+            function [nks,nbands,natoms,norbitals,nspins,k,w,E,f,orbital,lmproj] = load_procar()
+                import am_dft.get_vasp
+                nks    = am_dft.get_vasp('procar:nkpts');
+                nbands = am_dft.get_vasp('procar:nbands');
+                natoms = am_dft.get_vasp('procar:natoms');
+                nspins = am_dft.get_vasp('procar:ispin');
+                orbital= am_dft.get_vasp('procar:orbital');
+                lmproj = am_dft.get_vasp('procar:lmproj');
+                k = am_dft.get_vasp('procar:kpoint').';
+                w = am_dft.get_vasp('procar:weight').';
+                E = am_dft.get_vasp('procar:energy');
+                f = am_dft.get_vasp('procar:occupation');
+                norbitals = am_dft.get_vasp('procar:norbitals');
+                % normalize projections by summing over atoms and characters?
+                lmproj = lmproj ./ am_lib.sum_(lmproj,[2,3]);
+            end
+
+            function [nbands,nbands_cder,nks,nspins,optmat] = load_optical_matrix(fopticalmatrix) 
+                % ! write to matrix elements to file
+                % open(unit=123456, file="OPTICALMATRIX",action='WRITE')
+                % WRITE(123456,*) WDES%NB_TOT ! , 'NBANDS'
+                % WRITE(123456,*) NBANDS_CDER ! , 'NBANDS_CDER'
+                % WRITE(123456,*) WDES%NKPTS  ! , 'NKS'
+                % WRITE(123456,*) WDES%ISPIN  ! , 'NSPINS'
+                % ! WRITE(123456,*) 'ABS(CDER_BETWEEN_STATES( NBANDS, NBANDS_CDER, NKS, ISPIN, DIR))'
+                % WRITE(123456,*) ABS(CDER_BETWEEN_STATES) ! CDER_BETWEEN_STATES(WDES%NB_TOT, NBANDS_CDER, WDES%NKPTS, WDES%ISPIN, 3)
+                % ! WRITE(123456,*) 'ENERGY_DER( NBANDS, NBANDS_CDER, NKS, ISPIN, DIR )'
+                % WRITE(123456,*) ENERGY_DER               ! ENERGY_DER(WDES%NB_TOT, WDES%NKPTS, WDES%ISPIN, 3)
+                % close(unit=123456)
+                % load file
+                [str,~] = am_lib.load_file_(fopticalmatrix);
+                % dimensions
+                buffer = str2double({str{1:4}});
+                [nbands,nbands_cder,nks,nspins]=deal(buffer(1),buffer(2),buffer(3),buffer(4));
+                if nbands~=nbands_cder; error('number of conduction and valence bands are not equal. I don''t know what this means.'); end
+                % parse the data
+                m = prod([nbands,nbands_cder,nks,nspins,3]);
+                n = prod([nbands,nks,nspins,3]);
+                T = sscanf(strjoin({str{5:end}},' '),'%f');
+                if (m+n)~=size(T,1); error('something is wrong; either not all numbers were written or extra numbers were written that were not supposed to be'); end
+                % save absolute value of optical matrix elements
+                optmat = reshape( T(1:m), [nbands,nbands_cder,nks,nspins,3] );
+                optmat = permute( optmat, [4,5,1,2,3] );
+                
+            end
+
+        end
+
         function           vasp_setup(flag)
             switch flag
                 case 'charge' % charge density (PARCHG)
@@ -716,77 +873,6 @@ classdef am_dft
             end
         end
         
-        function [dft]   = load_eigenval(Ef)
-            % load dispersion [frac-recp] and shift Fermi energy to zero
-
-            import am_dft.*
-            
-            if nargin < 1; Ef = get_vasp('outcar:fermi'); end
-            
-            fprintf(' ... loading EIGENVAL '); tic;
-
-            fid=fopen('EIGENVAL'); if fid==-1; error('Unable to load EIGENVAL'); end
-                % skip first five lines
-                for i = 1:5; fgetl(fid); end
-                buffer = strsplit(strtrim(fgetl(fid)));
-                dft.nelecs = sscanf(buffer{1},'%i');
-                dft.nks    = sscanf(buffer{2},'%i');
-                dft.nbands = sscanf(buffer{3},'%i');
-                for i = 1:dft.nks
-                    % skip line
-                    fgetl(fid);
-                    % get kpnts
-                    buffer = strsplit(strtrim(fgetl(fid)));
-                    dft.k(1,i) = sscanf(buffer{1},'%f');
-                    dft.k(2,i) = sscanf(buffer{2},'%f');
-                    dft.k(3,i) = sscanf(buffer{3},'%f');
-                    % loop over bands
-                    for j = 1:dft.nbands
-                        buffer = strsplit(strtrim(fgetl(fid)));
-                        dft.E(j,i)  = sscanf(buffer{2},'%f');
-                    end
-                    dft.E(:,i) = sort(dft.E(:,i));
-                end
-                % zero fermi and sort bands in increasing order
-                dft.E = sort(dft.E - Ef);
-                % close file
-            fclose(fid);
-
-            fprintf('(%.f secs)\n',toc);
-        end
-
-        function [dft]   = load_procar(Ef)
-
-            import am_dft.* am_lib.*
-
-            if nargin < 1; Ef = get_vasp('outcar:fermi'); end
-
-            fprintf(' ... loading PROCAR'); tic;
-                dft.nks    = get_vasp('procar:nkpts');
-                dft.nbands = get_vasp('procar:nbands');
-                dft.natoms = get_vasp('procar:natoms');
-                dft.norbitals = get_vasp('procar:norbitals');
-                dft.nspins = get_vasp('procar:ispin');
-                dft.k = get_vasp('procar:kpoint').';
-                dft.w = get_vasp('procar:weight').';
-                dft.E = get_vasp('procar:energy'); dft.E = dft.E-Ef;
-                dft.f = get_vasp('procar:occupation');
-                dft.orbital = get_vasp('procar:orbital');
-                dft.lmproj = get_vasp('procar:lmproj');
-            fprintf('(%.f secs)\n',toc);
-
-            fprintf('     %-15s = %-8.3f [eV] \n','fermi energy',Ef);
-            fprintf('     %-15s = %i\n','nkpoints',dft.nks);
-            fprintf('     %-15s = %i\n','nbands',dft.nbands);
-            fprintf('     %-15s = %i\n','natoms',dft.natoms);
-            fprintf('     %-15s = %i\n','norbitals',dft.norbitals);
-            fprintf('     %-15s = %i\n','nspins',dft.nspins);
-
-            % normalize projections by summing over atoms and characters?
-            % dft.lmproj = dft.lmproj ./ sum(sum(dft.lmproj,2),3);
-
-        end
-
         function [dos]   = load_doscar(Ef)
             
             import am_lib.*
@@ -878,34 +964,6 @@ classdef am_dft
             end
         end
 
-        function [bz]    = load_ibzkpt(uc)
-            [str,~] = am_lib.load_file_('IBZKPT');
-            % set reciprocal lattice                    
-            recbas=inv(uc.bas).';
-
-            % number of kpoints, units
-            t=sscanf(str{2},'%i'); nks = t(1);
-            if     contains(str{3},'R'); units = 'frac'; 
-            elseif contains(str{3},'C'); units = 'cart'; 
-            else;  error('units unknown'); end
-            % parse points and weights
-            t=sscanf(strjoin({str{[1:nks]+3}},' '),'%f'); t = reshape(t,4,[]); k = t(1:3,:); w = t(4,:);
-            % convert to fractional
-            if strcmp(units,'cart'); k = recbas\k; units = 'frac'; end
-            % create structure
-            bz_ = @(k,w,units) struct('units',units,'recbas',recbas,...
-                'n',[],'nks',size(k,2),'k',k,'w',w);
-            bz = bz_(k,w,units);
-            % save tetrahedra information?
-            if contains(str{nks+4},'Tetra')
-               t=sscanf(str{nks+5},'%i'); ntets = t(1);
-               t=sscanf(strjoin({str{nks+5+[1:ntets]}},' '),'%i'); t = reshape(t,5,[]); tet = t(2:5,:); tetw = t(1,:);
-               bz.ntets= ntets;
-               bz.tet  = tet;
-               bz.tetw = tetw;
-            end
-        end
-        
         function incar   = generate_incar(flag,nondefault_incar_opts_)
             
             import am_dft.*
@@ -1018,35 +1076,6 @@ classdef am_dft
             
         end
 
-        function [Pcv2]  = load_optical_matrix_elements()
-            % ! write to matrix elements to file
-            % open(unit=123456, file="OPTICALMATRIX",action='WRITE')
-            % WRITE(123456,*) WDES%NB_TOT ! , 'NBANDS'
-            % WRITE(123456,*) NBANDS_CDER ! , 'NBANDS_CDER'
-            % WRITE(123456,*) WDES%NKPTS  ! , 'NKS'
-            % WRITE(123456,*) WDES%ISPIN  ! , 'NSPINS'
-            % ! WRITE(123456,*) 'ABS(CDER_BETWEEN_STATES( NBANDS, NBANDS_CDER, NKS, ISPIN, DIR))'
-            % WRITE(123456,*) ABS(CDER_BETWEEN_STATES) ! CDER_BETWEEN_STATES(WDES%NB_TOT, NBANDS_CDER, WDES%NKPTS, WDES%ISPIN, 3)
-            % ! WRITE(123456,*) 'ENERGY_DER( NBANDS, NBANDS_CDER, NKS, ISPIN, DIR )'
-            % WRITE(123456,*) ENERGY_DER               ! ENERGY_DER(WDES%NB_TOT, WDES%NKPTS, WDES%ISPIN, 3)
-            % close(unit=123456)
-            % load file
-            [str,~] = am_lib.load_file_('OPTICALMATRIX');
-            % bands
-            nbands = str2double(str{1});
-            nbands_cder = str2double(str{2});
-            nks    = str2double(str{3});
-            nspins = str2double(str{4});
-            % parse the data
-            m = prod([nbands,nbands_cder,nks,nspins,3]);
-            n = prod([nbands,nks,nspins,3]);
-            T = sscanf(strjoin({str{5:end}},' '),'%f');
-            if (m+n)~=size(T,1); error('something is wrong; either not all numbers were written or extra numbers were written that were not supposed to be'); end
-            % save absolute value of optical matrix elements
-            Pcv2 = reshape( T(1:m), [nbands,nbands_cder,nks,nspins,3] );
-            % E    = reshape(T((m+1):end),[nbands,nks,nspins,3]);
-        end
-        
         function matrix_elements = load_wavder()
             % terrible.. most likely this will not work in every case
             % use hex fiend to look at the binary file. compared the garbage to the file i wrote explicitly.
@@ -1335,11 +1364,7 @@ classdef am_dft
             for i = 1:numel(flist)
                 if     contains(flag,lower(flist{i}(1:6)))
                     if exist(flist{i},'file')~=2
-                        fprintf('\n');
-                        fprintf('\n');
                         fprintf('ERROR: Trying to read from %s when it does not exist',flist{i});
-                        fprintf('\n');
-                        fprintf('\n');
                         x = [];
                         return;
                     end
