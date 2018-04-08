@@ -504,8 +504,8 @@ classdef am_bz < dynamicprops
             %     plot(Ep,D);
             % end
             % hold off;
-            if nargin<4 || isempty(flag); flag = 'tet,dos'; end
-            if nargin<5 || isempty(degauss); degauss = 0.05; end
+            if nargin<3 || isempty(flag); flag = 'tet,dos'; end
+            if nargin<4 || isempty(degauss); degauss = 0.05; end
             
             % get energies E and occupation weights occw
             if     contains(flag,'ojdos')
@@ -528,7 +528,7 @@ classdef am_bz < dynamicprops
                 % but just doing it quick and dirty here (equivalent to assuming kt -> 0, fermi fucntion -> step function)
                 ex_ = (Ec<0) & (Ev<0); E(ex_) = 1E8;
                 ex_ = (Ec>0) & (Ev>0); E(ex_) = 1E8;
-                E = reshape(E,ibz.nbands^2,ibz.nks); E = sort(E);
+                E = reshape(E,ibz.nbands^2,ibz.nks); E = sort(E); occw = 1;
             elseif contains(flag,'dos')
                 E = ibz.E;
             end
