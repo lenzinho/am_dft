@@ -200,8 +200,8 @@ classdef am_cell < dynamicprops % required for xrr simulation
             % simple lattice transformations
             if ischar(B)
                switch B
-                   case 'bcc'; B = (ones(3) -   eye(3))/2;
-                   case 'fcc'; B =  ones(3) - 2*eye(3);
+                   case 'fcc'; B = (ones(3) -   eye(3));
+                   case 'bcc'; B =  ones(3) - 2*eye(3);
                    otherwise; error('Invalid lattice transformation.');
                end
             end
@@ -642,7 +642,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
             
             % atomic number density per species [atoms/nm^3/species]
             atomic_density_per_species = uc.numb_density .* (uc.nspecies ./ uc.natoms );
-            
+
             % get the effective form factor averaged over species [nhvs,nks]
             nhvs = numel(hv); nks = numel(k); f = zeros(nhvs,nks);
             for i = 1:numel(uc.type)
@@ -651,6 +651,47 @@ classdef am_cell < dynamicprops % required for xrr simulation
             
             % refractive index Wormington eq 4.1
             eta = 1 - am_lib.r_0 ./ (2*pi) .* get_photon_wavelength(hv).^2 .* f;
+        end
+        
+        function [F,L,P]         = get_structure_factor(uc,bz,hv,N) % get_structure_factor(uc,bz,hv,N) also accepts (uc,k,hv,N) 
+            % CONFIRMED: STRUCTURE FACTOR and LORENTZ-POLARIZATION
+            
+            import am_lib.* am_dft.*
+            
+            % create a "slab" with N unit cells if desired
+            if nargin<4; N = 1; end 
+            
+            % accept a kpoint [frac] instead of a brillouin zone
+            if isnumeric(bz); bz = am_bz.define(uc.bas,bz); end
+
+            % convert to cartesian units
+            k_cart = bz.recbas*bz.k; k_cart_magnitude = normc_(k_cart);
+
+            % get form factor averaged over species [nhvs,nks]
+            nhvs = numel(hv); f = zeros(nhvs,bz.nks);
+            for i = 1:numel(uc.type); [~,f(i,:)] = uc.type(i).get_xray_form_factor(hv, k_cart_magnitude); end
+
+            % compute structure factor
+            F = sum(f(uc.species,:).*exp(2i*pi*uc.tau.'*bz.k),1);
+            
+            % multiply slab component
+            F = F.*expsum_(2*pi*normc_(bz.k),N);
+
+            if nargout < 2; return; end           
+                % get theta value
+                th_ = @(hv,k) asind(get_photon_wavelength(hv)*k/2); th = th_(hv,k_cart_magnitude);
+                
+                % get lorentz-polarization factors [Warren p 3 eq 1.3, p 44 eq 4.6]
+                L_  = {@(th) 1./(sind(th).*sind(2*th)), ... % Lorentz factor [warren p 49, eq 4.11] (used by CrystalMaker)
+                       @(th) 1./(sind(th).^2.*cosd(th))};   % 
+                L = L_{1}(th); 
+            
+            if nargout < 3; return; end
+                % get polarization factor
+                P_  = {@(th) cosd(2*th).^2, ...             % polarized in the scattering plane
+                       @(th) 1, ...                         % polarized perpendicular to the scattering plane
+                       @(th) (1 + cosd(2*th).^2) ./ 2};     % unpolarized (used by CrystalMaker)
+                P = P_{3}(th);
         end
         
     end
@@ -2220,7 +2261,6 @@ classdef am_cell < dynamicprops % required for xrr simulation
                 a2=sscanf(fgetl(fid),'%f %f %f');  % second basis vector
                 a3=sscanf(fgetl(fid),'%f %f %f');  % third basis vector
                 bas=latpar*[a1,a2,a3];             % construct the basis and convert to nm (column vectors)
-                bas=bas/10;                        % convert basis from angstroms to nm
                 buffer=fgetl(fid);                 % check vasp format
                 if ~isempty(sscanf(buffer,'%f'))
                     % vasp 4 format (symbols are missing, jumps straight to species)
@@ -2246,6 +2286,8 @@ classdef am_cell < dynamicprops % required for xrr simulation
                     end
                 end
                 if ~strcmp(coordtype(1),'d'); tau=bas\tau*latpar; end
+                % convert basis from angstroms to nm
+                bas=bas/10; 
                 % make cell structure
                 uc = am_cell.define(bas,type,species,tau);
                 % load charge density

@@ -32,12 +32,14 @@ classdef am_bz < dynamicprops
         tetv     = []; % tetrahedron volume
         % x-ray information
         F        = []; % structure factor [1,nks]
-        I        = []; % x-ray diffracted intensity (includes lorentz polarization and weights) [1,nks]
+        L        = []; % lorentz factor [1,nks]
+        P        = []; % polarization factor [1,nks]
+        I        = []; % x-ray diffracted intensity (includes lorentz polarization and weights, i.e. multiplicities) [1,nks]
     end
     
     methods (Static)
 
-        function [bz]             = define(bas,k,varargin) % define(pc,n,k,w)
+        function [bz]             = define(bas,k,varargin)
             % recbas   = []; % reciprocal basis
             % n        = []; % dimensions for monkhorst-pack mesh
             % k        = []; % kpoint coordinates
@@ -77,19 +79,18 @@ classdef am_bz < dynamicprops
 
             % k max is the largest wavevector magntiude considered
             if nargin < 4 || isempty(threshold); threshold = am_lib.tiny; end
-            if nargin < 3 || isempty(hv); hv = get_atomic_emission_line_energy(get_atomic_number('Cu'),'kalpha1'); end
+            if nargin < 3 || isempty(hv); Cu = am_atom.define('Cu'); hv = Cu.get_emission_line('kalpha1'); end
             if nargin < 2 || isempty(k_max); th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
-            
 
-            fbs = get_fbs(uc,k_max);
+            fbs = am_bz.get_fbs(uc,k_max);
             
             % get structure factors and scattering intensity
-                [fbs.F,L,P] = get_structure_factor(uc,fbs,hv);
-                fbs.I = abs(fbs.F).^2.*L.*P.*fbs.w; fbs.I = fbs.I ./ max(fbs.I(:))*100;
+                [fbs.F,fbs.L,fbs.P] = uc.get_structure_factor(fbs,hv);
+                fbs.I = abs(fbs.F).^2.*fbs.L.*fbs.P.*fbs.w; fbs.I = fbs.I ./ max(fbs.I(:))*100;
                 % exlcude stuff above threshold
                 ex_ = fbs.I > threshold;
-                [fbs.F,fbs.I,fbs.w,fbs.k,fbs.nks] = ...
-                    deal(fbs.F(ex_),fbs.I(ex_),fbs.w(ex_),fbs.k(:,ex_),sum(ex_));
+                [fbs.F,fbs.I,fbs.L,fbs.P,fbs.w,fbs.k,fbs.nks] = ...
+                    deal(fbs.F(ex_),fbs.I(ex_),fbs.L(ex_),fbs.P(ex_),fbs.w(ex_),fbs.k(:,ex_),sum(ex_));
             
             % get symmetrically equivalent bragg spots
             % save "irreducible bragg spots" structure
@@ -103,6 +104,8 @@ classdef am_bz < dynamicprops
         function [bzp]            = get_path(pc,n,brav)
 
             import am_lib.* am_dft.*
+            
+            if isnumeric(pc); bas = pc; pc=[]; pc.bas=bas; end
 
             % define kpoint path
             if     contains( lower(brav), 'fcc-short' )
@@ -222,15 +225,13 @@ classdef am_bz < dynamicprops
             nks=numel(th2); recbas = inv(pc.bas).';
 
             % convert 2-theta into k points
-            [kx,kz]=angle2kxkz(th2/2,th2,hv); k = [kx(:).';zeros(1,nks);kz(:).']; 
+            [kx,kz]=angle2kxkz(th2/2,th2,hv,'w2th'); k = [kx(:).';zeros(1,nks);kz(:).']; 
 
             % build path in recp.-frac
             k = recbas\k;
 
-            % create path object
-            bza_ = @(recbas,nks,x,k) struct('units','frac',...
-                'recbas',recbas,'nks',nks,'n',[],'x',x,'k',k);
-            bza = bza_(recbas,nks,th2(:).',k);
+            bza = am_bz.define(pc.bas,k);
+            bza.x = th2(:).';
         end
 
     end
@@ -238,6 +239,7 @@ classdef am_bz < dynamicprops
     methods 
         
         function [bz]             = set(bz,varargin) % set bz properties 
+            if isempty(varargin); return; end
             % parse remaining input
             nvs = numel(varargin);
             if ~am_lib.iseven_(nvs); error('{key, value} inputs required'); end; i=1; 
@@ -289,14 +291,15 @@ classdef am_bz < dynamicprops
             end
             
             % finally, pass along additional parameters if they exist
+            field = fieldnames(fbz); isfield_ = @(x) any(strcmp(field,x));
             for f = {'n','nbands','norbitals','natoms'}
-                if isfield(fbz,f) && ~isempty(fbz.(f{:})); ibz.(f{:}) = fbz.(f{:}); end
+                if isfield_(f) && ~isempty(fbz.(f{:})); ibz.(f{:}) = fbz.(f{:}); end
             end
-            for f = {'n','F','I','E','hw'}
-                if isfield(fbz,f) && ~isempty(fbz.(f{:})); ibz.(f{:}) = fbz.(f{:})(:,i2f); end
+            for f = {'n','F','L','P','I','E','hw'}
+                if isfield_(f) && ~isempty(fbz.(f{:})); ibz.(f{:}) = fbz.(f{:})(:,i2f); end
             end
             for f = {'lmproj','eigenv'}
-                if isfield(fbz,f) && ~isempty(fbz.(f{:})); ibz.(f{:}) = fbz.(f{:})(:,:,:,:,i2f); end
+                if isfield_(f) && ~isempty(fbz.(f{:})); ibz.(f{:}) = fbz.(f{:})(:,:,:,:,i2f); end
             end
 
             % subfunctions
@@ -837,52 +840,8 @@ classdef am_bz < dynamicprops
         
         % plot x-ray stuff
 
-        function [F,L,P]          = get_structure_factor(uc,bz,hv,N) % get_structure_factor(uc,bz,hv,N) also accepts (uc,k,hv,N) 
-            
-            import am_lib.* am_dft.*
-            
-            % create a "slab" with N unit cells if desired
-            if nargin<4; N = 1; end 
-            
-            % accept a kpoint [frac] instead of a brillouin zone
-            if isnumeric(bz)
-                bz = struct('k',bz,'recbas',inv(uc.bas).');
-            end
-
-            % convert to cartesian units
-            k_cart = bz.recbas*bz.k; k_cart_magnitude = normc_(k_cart);
-
-            % get atoms
-            [Z,~,inds] = unique(get_atomic_number({uc.symb{uc.species}}));
-
-            % get atomic form factors
-            [f0,f1,f2] = get_atomic_xray_form_factor(Z,hv,k_cart_magnitude); f = permute(f0+f1+f2*1i,[1,3,2]);
-
-            % compute structure factor
-            F = sum(f(inds,:).*exp(2i*pi*uc.tau.'*bz.k),1);
-            
-            % multiply slab component
-            F = F.*expsum_(2*pi*normc_(bz.k),N);
-
-            if nargout < 2; return; end           
-                % get theta value
-                th_ = @(hv,k) asind(get_photon_wavelength(hv)*k/2); th = th_(hv,k_cart_magnitude);
-                
-                % get lorentz-polarization factors [Warren p 3 eq 1.3, p 44 eq 4.6]
-                L_  = {@(th) 1./(sind(th).*sind(2*th)), ... % Lorentz factor [warren p 49, eq 4.11]
-                       @(th) 1./(sind(th).^2.*cosd(th))};
-                L = L_{1}(th); 
-            
-            if nargout < 3; return; end
-                % get polarization factor
-                P_  = {@(th) cosd(2*th).^2, ...             % polarized in the scattering plane
-                       @(th) 1, ...                         % polarized perpendicular to the scattering plane
-                       @(th) (1 + cosd(2*th).^2) ./ 2};     % unpolarized 
-                P = P_{3}(th);
-        end
-        
         function                    print_bragg_table(fbs,hv)
-            th_ = @(hv,q) asind(get_photon_wavelength(hv)*q/2);
+            th_ = @(hv,q) asind(am_lib.get_photon_wavelength(hv)*q/2);
             % print results
             fprintf('     %5s %5s %5s %10s %5s %10s %10s %10s %15s\n','h','k','l','2th [deg]','w','L','P','Fhkl^2 [%]','w*L*P*Fhkl^2 [%]');
             fprintf('     %5s %5s %5s %10s %5s %10s %10s %10s %15s\n','-----','-----','-----','----------','-----','----------','----------','----------','---------------');
@@ -1040,7 +999,7 @@ classdef am_bz < dynamicprops
             % identify values which cannot be reached by diffractometer
             k = k(:,normc_(recbas*k)<k_max); 
             % save "full bragg spots" structure 
-            fbs = am_bz.define(pc.bas,[],k,ones(1,size(k,2)));
+            fbs = am_bz.define(pc.bas,k);
         end
         
     end
