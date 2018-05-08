@@ -658,6 +658,66 @@ classdef am_dft
          
     end
     
+    % akaiKKR
+    
+    methods (Static)
+        
+        function [uc,kkrin] = load_input()
+            % c------------------------------------------------------------
+            %      spc   data/vn
+            % c------------------------------------------------------------
+            % c   brvtyp     a        c/a   b/a   alpha   beta   gamma
+            %      fcc      7.79622  ,      ,      ,      ,       ,      ,
+            % c------------------------------------------------------------
+            % c   edelt    ewidth    reltyp   sdftyp   magtyp   record
+            %     0.001     3.5       nrl      gga91     nmag      2nd
+            % c------------------------------------------------------------
+            % c   outtyp    bzqlty   maxitr   pmix
+            %     update      8        50    0.023
+            % c------------------------------------------------------------
+            % c    ntyp
+            %       2
+            % c------------------------------------------------------------
+            % c   type    ncmp    rmt    field   mxl  anclr   conc
+            %      N        2       0      0.0     1
+            %                                           7      100
+            %                                           0      0
+            %      V        1       0      0.0     2    23     100
+            % c------------------------------------------------------------
+            % c   natm
+            %      2
+            % c------------------------------------------------------------
+            % c   atmicx                        atmtyp
+            %      0.0a       0.0b       0.0c     V
+            %      0.5a       0.5b       0.5c     N
+            % c------------------------------------------------------------
+            str = load_file_(fincar);
+            % 
+            while true
+                str{2}
+                
+            end
+            
+        end
+        
+        
+        function [varargout]  =    get_akaikkr(flag)
+            
+            switch flag
+                
+                % DATA
+                case 'data:spc_up' % spectral function E(nEs,nks), k(nEs,nks), A(nEs,nks)
+                    [~,x] = system('tail -n +2 ./data/out_up.spc'); x = sscanf(x,'%f'); 
+                    nEs = sum(x(:)==x(1)); x = reshape(x,3,nEs,[]); x = permute(x,[3,2,1]);
+                    [varargout{1:3}] = deal(x(:,:,1).',x(:,:,2).',x(:,:,3).'); % { A, k, E }
+                    
+                otherwise
+                    error('unknown flag');
+            end
+            if isempty(x); x = NaN; end
+        end
+        
+    end
     
     % vasp
     
@@ -1130,7 +1190,7 @@ classdef am_dft
                 % open file
                 fid=fopen(fname,'w');
                     % header
-                    fprintf(fid,'%s',get_cell_formula(uc));
+                    fprintf(fid,'%s',uc.get_formula());
                     if n ~= 1; fprintf(fid,' %i of %i',i,n); end
                     fprintf(fid,'\n');
                     % print body
@@ -1138,7 +1198,7 @@ classdef am_dft
                     fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.bas(:,1));
                     fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.bas(:,2));
                     fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.bas(:,3));
-                    fprintf(fid,' %s ',uc.symb{:}); fprintf(fid,'\n');
+                    fprintf(fid,' %s ',uc.type(:).symb); fprintf(fid,'\n');
                     fprintf(fid,' %i ',uc.nspecies); fprintf(fid,'\n');
                     fprintf(fid,'Direct \n');
                     fprintf(fid,'%12.8f %12.8f %12.8f \n',uc.tau(:,:,i));
@@ -1167,7 +1227,7 @@ classdef am_dft
                 '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  ac    th    pa    u     np    pu    am    cm
                 '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' , ... %  bk    cf    es    fm    md    no    lr    rf
                 '  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' ,'  ' };    %  db    sg    bh    hs    mt    ds    rg    uub
-            Z = get_atomic_number(uc.symb); nZs = numel(Z);
+            Z = [uc.type(:).Z]; nZs = numel(Z);
             for i = 1:nZs
                 if isempty(potcar_database{Z(i)}); error('potcar not defined'); end
                 if i == 1
@@ -1220,6 +1280,9 @@ classdef am_dft
                 case 'sigma';  		c='maximize with entropy below 0.1 meV / atom';
                 case 'ediff';  		c='toten convergence';
                 case 'isym';        c='(0) symmetry off (1) symmetry on (2) efficient symmetry for PAW';
+                % magnetic
+                case 'nupdown';     c='(-1) full spin relaxation (0) paramagnetic (other) value to constrain net occupancy (up - down)';
+                case 'magmom';      c='magnetic moment on each atom';
                 % dft+U
                 case 'ldau'; 		c='Activates DFT+U calculation';
                 case 'ldautype'; 	c='(1) Liechtenstein (2) Dudarev Ueff = U - J (3) adds Ueff on the atomic sites';
@@ -1410,8 +1473,12 @@ classdef am_dft
                     [~,x] = system('awk ''/GAMMA/ {print $4}'' OUTCAR'); x = sscanf(x,'%f');
                 case 'outcar:niterations'
                     [~,x] = system('awk ''/Iteration/'' OUTCAR'); x = numel(strfind(x,'Iteration'));
-                case 'outcar:magnetization'
+                case 'outcar:magnetization:iteration'
                     [~,x] = system('awk ''/magnetization/'' OUTCAR | awk ''/electron/ { print $6 }'''); x = sscanf(x,'%f');
+                case 'outcar:magnetization:ion'
+                    natoms = get_vasp('vasprun:natoms');
+                    [~,x] = system(sprintf('grep -A %i ''magnetization (x)'' OUTCAR | tail -n %i',natoms+3,natoms)); x = sscanf(x,'%f'); x = reshape(x,[],natoms).'; 
+                    x = x(:,2:(end-1)); % remove index and total
                 case 'outcar:phonon_energies' % obtained when ibrion=8 is specified
                     natoms = get_vasp('vasprun:natoms');
                     [~,x] = system(sprintf('grep 2PiTHz OUTCAR | head -n %i | sed ''s/=/ = /g'' | awk ''{print $10}'' ',3*natoms)); x = sscanf(x,'%f');
@@ -4747,7 +4814,7 @@ done
 main_
 %}
           
-        fname='vasp_raman.py'; fid=fopen([fname],'w'); fprintf(fid,'%s',verbatim_()); fclose(fid); fprintf(' ... %s (succeeded)\n',fname);
+            fname='vasp_raman.py'; fid=fopen([fname],'w'); fprintf(fid,'%s',verbatim_()); fclose(fid); fprintf(' ... %s (succeeded)\n',fname);
 %{
 #!/usr/bin/env python
 #
