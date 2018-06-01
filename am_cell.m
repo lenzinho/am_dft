@@ -40,6 +40,8 @@ classdef am_cell < dynamicprops % required for xrr simulation
                 case {4}
                     % create dft cell
                     [bas,type,species,tau]= deal(varargin{1:4});
+                    % create atom type
+                    if iscell(type) && ischar([type{:}]); type = am_atom.define(type); end
                     % bas      = []; % basis
                     % atom     = []; % atoms
                     % species  = []; % species identifier
@@ -58,8 +60,9 @@ classdef am_cell < dynamicprops % required for xrr simulation
                     % create xrr cell
                     [type,nspecies,mass_density]= deal(varargin{1:3});
                     amu2gram  = 1/6.02214E23;
-                    %
+                    % create atom type
                     if ischar([type{:}]); type = am_atom.define(type); end
+                    % parse
                     uc          = am_cell;
                     uc.units = 'frac';
                     uc.bas      = eye(3) * ( sum( [type(:).mass] .* nspecies ) / mass_density * amu2gram ).^(1/3) * 1E7;
@@ -80,11 +83,98 @@ classdef am_cell < dynamicprops % required for xrr simulation
             uc.form_density = uc.get_formula_density();
         end
         
+        function [cc]            = create_conventional(bas,tau,symb,sg_code) 
+            % create_conventional(bas,tau,symb,sg_code) creates cell based on wyckoff positions and standard crystallographic setting
+            %
+            % Example input for BiFeO3 P63cm (hypothetical polymorph):
+            %     % define basis, atomic positions, species, and elements
+            %     a = 6.200; c = 12.076;
+            %     bas = abc2bas([a,a,c,90,90,120]);
+            %     tau=[0.00000 0.00000 0.48021; 0.33333 0.66667 0.01946; ...
+            %       0.29931 0.00000 0.15855; 0.63457 0.00000 0.34439; ...
+            %       0.33440 0.00000 0.00109; 0.00000 0.00000 0.27855; ...
+            %       0.33333 0.66667 0.23206].';
+            %     symb = {'O','O','O','O','Fe','Bi','Bi'}; sg_code=185;
+            %     % create cell
+            %     [uc] = create_conventional(bas,tau,symb,sg_code); [bragg] = get_bragg(uc);
+            %     plot_bragg(bragg); tabulate_bragg(bragg,10);
+            %     % save poscar
+            %     write_poscar(uc,'BiFeO3_P63cm_dft.poscar');
+            %
+
+            import am_lib.*
+
+            % identify atomic types and assign a number label
+            [symb,~,species]=unique(symb,'stable'); species=species(:).';
+
+            % get space symmetries in conventional setting
+            S = am_cell.generate_sg(sg_code);
+
+            % define function to sort atoms and species into a unique order (reference)
+            X_ = @(tau,species,c_i2u) sortc_([mod_(tau);species;c_i2u]); 
+            
+            % apply symmetry operations to all atoms            
+            natoms = size(tau,2); X = X_(tau,species,[1:natoms]); X = am_cell.apply_symmetry(S,X); X(1:3,:)=mod_(X(1:3,:));
+
+            % get unique species
+            [~,ind] = am_lib.uniquec_(X(1:4,:)); tau = X(1:3,ind); species = X(4,ind); c_i2u = X(5,ind);
+
+            % sort by species
+            [~,fwd] = sort(c_i2u); tau = tau(:,fwd); species = species(fwd); c_i2u = c_i2u(fwd);
+
+            % define irreducible cell creation function and make structure
+            cc = am_cell.define(bas,symb,species,tau);
+        end
+
+        function [uc]            = load_poscar(fposcar) % can also be used to load the charge density 
+            if nargin < 2; flag=''; end
+            fid=fopen(fposcar,'r'); if fid==-1; error('Unable to open %s',fposcar); end
+                header=fgetl(fid);                 % read header (often times contains atomic symbols)
+                latpar=sscanf(fgetl(fid),'%f');    % read lattice parameter
+                a1=sscanf(fgetl(fid),'%f %f %f');  % first basis vector
+                a2=sscanf(fgetl(fid),'%f %f %f');  % second basis vector
+                a3=sscanf(fgetl(fid),'%f %f %f');  % third basis vector
+                bas=latpar*[a1,a2,a3];             % construct the basis and convert to nm (column vectors)
+                buffer=fgetl(fid);                 % check vasp format
+                if ~isempty(sscanf(buffer,'%f'))
+                    % vasp 4 format (symbols are missing, jumps straight to species)
+                    symb=regexp(header, '([^ \s][^\s]*)', 'match');
+                    nspecies=sscanf(buffer,repmat('%f' ,1,length(symb)))';
+                else
+                    % vasp 5 format (symbols are present)
+                    symb=regexp(buffer, '([^ \s][^\s]*)', 'match');
+                    nspecies=sscanf(fgetl(fid),repmat('%f' ,1,length(symb)))';
+                end
+                % continue parsing
+                coordtype=lower(strtrim(fgetl(fid)));
+                l=0;
+                for i=1:length(nspecies)
+                    for j=1:nspecies(i); l=l+1;
+                        tau(:,l)=sscanf(fgetl(fid),'%f %f %f');
+                        species(l)=i;
+                    end
+                end
+                if ~strcmp(coordtype(1),'d'); tau=bas\tau*latpar; end
+                % convert basis from angstroms to nm
+                bas=bas/10; 
+                % make cell structure
+                uc = am_cell.define(bas,symb,species,tau);
+                % load charge density
+                if contains(fposcar,'CHGCAR') || contains(fposcar,'CHG')
+                    fgetl(fid);
+                    n = sscanf(fgetl(fid),'%i');
+                    t = textscan(fid,'%f');
+                    uc.nchg = n(:).';
+                    uc.chg  = reshape(t{:},uc.nchg);
+                end
+            fclose(fid);
+        end
+
     end
     
     methods  % convert between cells
 
-        function [pc,p2u,u2p]    = get_primitive(uc)
+        function [pc,p2u,u2p]    = get_primitive(uc) % get primitive cell 
             % [pc,p2u,u2p] = get_primitive(uc)
 
             import am_lib.*
@@ -143,7 +233,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
             pc = am_cell.define(uc.bas*B, uc.type, uc.species(p2u), mod_(B\uc.tau(:,p2u)) );  pc.tol = uc.tol;
         end
 
-        function [ic,i2p,p2i]    = get_irreducible(pc)
+        function [ic,i2p,p2i]    = get_irreducible(pc) % gets irreducible cell 
             % idenitifes irreducible atoms
 
             import am_lib.*
@@ -153,7 +243,13 @@ classdef am_cell < dynamicprops % required for xrr simulation
             % define function to apply symmetries to position vectors
             seitz_apply_ = @(S,tau) mod_(reshape(matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:), pc.tol);
             % get permutation matrix and construct a sparse binary representation
-            PM = member_(seitz_apply_(S,pc.tau),pc.tau, pc.tol*1.01); [~,i2p,p2i] = get_connectivity(PM);
+            PM = 0; tol = pc.tol; i=0;
+            while any(PM(:)==0); tol = tol*2; i=i+1;
+                PM = member_(seitz_apply_(S,pc.tau),pc.tau, tol);
+                if i == 10; error('iteration limit exceeded; check PM for zeros.'); end
+            end
+            if tol~=pc.tol; warning('tolerance increased from %f to %f',pc.tol,tol); end
+            [~,i2p,p2i] = get_connectivity(PM);
             % create structure
             ic = am_cell.define(pc.bas, pc.type, pc.species(i2p), pc.tau(1:3,i2p) ); ic.tol = pc.tol;
             % unassign these parameters which are meaningless
@@ -163,7 +259,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
             ic.mole_weight  = [];
         end
 
-        function [xc,x2i,i2x]    = get_orbitcellcell(ic, S)
+        function [xc,x2i,i2x]    = get_expanded_cell(ic, S) % expands irreducible cell 
             
             import am_lib.*
             
@@ -185,6 +281,85 @@ classdef am_cell < dynamicprops % required for xrr simulation
             [~,i2x,~]=unique(x2i,'stable');
             % create structure
             xc = am_cell.define(ic.bas, ic.type, ic.species(x2i), tau ); xc.tol = ic.tol;
+        end
+
+        function [cc,c2p,p2c]    = get_conventional_cell(pc, tol, algo) % NOT WORKING 
+            % [vc,v2p,p2v] = get_conventional_cell(pc,tol)
+            
+            import am_dft.* am_lib.*
+
+            if nargin < 2; tol = am_dft.tiny; end
+            if nargin < 3; algo = 2; end 
+            % 2 seems more robust, at least for VN, Fe2O3, and Al2O3
+            
+            % get point symmetries
+            [~,~,~,R] = get_symmetries(pc);
+
+            % this boils down on how to get the centering matrix
+            switch algo
+                case 0
+%                     % test
+%                     fposcar='~/Developments/_materials/poscar/VN_Fm-3m.poscar';
+%                     % fposcar='./Al2O3_167_R-3c_corundum.poscar';
+%                     % fposcar='Fe3O4_Fd-3m_magnetite_spinel.poscar';
+%                     [uc,pc,ic,cc]=load_cells(fposcar);
+%                     [~,~,~,g] = get_symmetries(pc);
+                    
+                case 1
+                    % find the transformation matrix mapping the pc point group to the one in standard setting
+                    % find a transformation matrix which takes g to the standard setting h
+                    [~,M] = find_pointgroup_transformation(R,generate_pg(identify_pointgroup(R)),1);
+                    % get integer inverse matrices
+                    C = inv(M); C = C/det(C);
+                    
+                case 2
+                    % Sets the non-collinear triplet of highest rotation axes as edges of the
+                    % cell. The algorithm is based on:
+                    %
+                    % Refs: V. L. Himes and A. D. Mighell, Acta Crystallographica Section a
+                    %         Foundations of Crystallography 43, 375 (1987). 
+                    % 
+                    
+                    % exclude identity and pure inversion
+                    nRs = size(R,3); inds = [1:nRs]; 
+                    [~,tr,dt] = identify_point_symmetries(R);
+                    filter_ = @(tr,dt,inds,ex_) deal(tr(ex_),dt(ex_),inds(ex_));
+                    [tr,dt,inds] = filter_(tr,dt,inds, tr ~=-3 );
+                    [tr,dt,inds] = filter_(tr,dt,inds, tr ~= 3 );
+
+                    % get the rotation axis of each proper rotation
+                    nTs = numel(inds); T = zeros(3,nTs);
+                    for i = 1:numel(inds)
+                        % get null space (axis of rotation)
+                        T(:,i) = R_axis_(R(:,:,inds(i)));
+                        % convert vector to all integers
+                        % T(:,i) = round_(T(:,i));
+                    end
+
+                    % sort rotation axes:
+                    %   1) proper rotation axes first
+                    %   1) higher order rotation axes first
+                    %   2) vectors in positive octant first
+                    cc_bas = pc.bas*T; 
+                    fwd = rankc_([-sign(dt);-tr;-max(sign(cc_bas));sign(cc_bas)]);
+                    filter_ = @(tr,dt,T,vc_bas,inds,ex_) deal(tr(ex_),dt(ex_),T(:,ex_),vc_bas(:,ex_),inds(ex_));
+                    [~,~,T,~,~] = filter_(tr,dt,T,cc_bas,inds, fwd );
+
+                    % append identity
+                    T = [T,eye(3)]; cc_bas = pc.bas*T; nTs=nTs+3;
+                    
+                    % find the three highest symmetry non-collinear vectors and centering
+                    % transformation matrix from primitive to conventional cell basis  
+                    % i.e. C = pc.bas -> vc_bas; absolute highest symmetry is z, then y, then x, hence [k,j,i] and not [i,j,k]
+                    for i = (  1):nTs; X = cc_bas(:,i);                    if any(~eq_(X, 0, tol)); break; end; end
+                    for j = (i+1):nTs; X = cross(cc_bas(:,i),cc_bas(:,j)); if any(~eq_(X, 0, tol)); break; end; end
+                    for k = (j+1):nTs; X = det(cc_bas(:,[i,j,k]));         if any(~eq_(X, 0, tol)); break; end; end
+                    if any([k,j,i]==0); error('Conventional basis not found!'); else; C = T(:,[k,j,i]); end
+                    
+            end
+            
+            % construct conventional cell
+            [cc,c2p,p2c] = am_cell.get_supercell(pc,C);
         end
 
         function [uc,u2p,p2u]    = get_supercell(pc, B)
@@ -401,6 +576,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
             end
         end
 
+        
     end
     
     methods % cell properties
@@ -698,7 +874,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
     
     methods % plotting
 
-        function [h]             = plot(pc,flag)
+        function [h]             = plot(pc,flag) % plot cell
 
             import am_lib.* am_dft.*
 
@@ -724,13 +900,16 @@ classdef am_cell < dynamicprops % required for xrr simulation
             % plot pc boundaries
             plothull_(pc.bas*[0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1]);
             
-            hold off; daspect([1 1 1]); box on;
+            hold off; daspect([1 1 1]); box on; axis tight;
 
             % legend
             lh_ = legend(h,{pc.type(:).symb}); lh_.Box='off'; axis off;
 
             % set camera angle
-            daspect([1 1 1]); axis tight; axis off; campos([10.7135,23.0003,9.4299]); camlight('right','infinite'); camproj('perspective');
+            if contains(flag,'camera')
+                campos([10.7135,23.0003,9.4299]); 
+                camlight('right','infinite'); camproj('perspective');
+            end
         end
 
         function [F]             = plot_md(md, varargin) % plots md movies
@@ -783,15 +962,15 @@ classdef am_cell < dynamicprops % required for xrr simulation
             figure(1); clf; set(gcf,'color','w'); hold on;
             sq_ = @(x) reshape(x,uc.nchg); nvs = numel(v); 
             % define colormap
-            ncolors=1001; clist=flipud(am_lib.colormap_('red2blue',ncolors)); crange=max(abs(v)); cmap_ = @(i) floor(v(i)./crange.*(ncolors-1)./2)+floor(ncolors/2)+1;
+            ncolors=1001; clist = flipud(am_lib.colormap_('red2blue',ncolors)); 
+            crange=max(abs(v)); cmap_ = @(i) floor(v(i)./crange.*(ncolors-1)./2)+floor(ncolors/2)+1;
             % plot isocontours
-            for i = 1:nvs
-                h=patch(isosurface(sq_(r(1,:)),sq_(r(2,:)),sq_(r(3,:)),uc.chg,v(i)));
-                h.FaceColor=clist(cmap_(i),:); h.EdgeColor='none'; h.FaceAlpha=0.5;
-            end
+            h = am_lib.plot_isosurface_(reshape(r,[3,uc.nchg]),uc.bas,permute(uc.chg,[4,1,2,3]),v,[],[],2,'cspline');
+            % fix colors
+            for i = 1:numel(h); set(h(i),'FaceColor',clist(cmap_(i),:),'EdgeColor','none','FaceAlpha',0.5); end
             box on; axis tight; daspect([1 1 1]);
             
-            
+            % draw slices
             % sq_ = @(x) reshape(x,uc.nchg);
             % hold on;
             %     h=slice(permute(sq_(r(1,:)),[2,1,3]),permute(sq_(r(2,:)),[2,1,3]),sq_(r(3,:)),uc.chg,uc.bas(1,1)/2,uc.bas(2,2)/2,uc.bas(3,3)/2); 
@@ -854,6 +1033,16 @@ classdef am_cell < dynamicprops % required for xrr simulation
             am_lib.colormap_('virdis',100);  
         end
 
+        function [h]             = plot_w2th(uc,hv) % plot omega-2theta 
+            if nargin < 2
+                Cu = am_atom.define('Cu'); hv = Cu.get_emission_line('kalpha1'); 
+            end
+            bz = am_bz.get_angles(uc,hv,[5:0.1:110]);
+            [F,L,P] = uc.get_structure_factor(bz,hv,Inf);
+            h = semilogy(bz.x,abs(F).^2.*L.*P);
+            axis tight; xlabel('2theta');
+        end
+        
     end
     
     methods (Static) % [make this access protected] % structure-related symmetries
@@ -1537,7 +1726,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
                 end
                 end
 
-                S = complete_group(S);
+                S = am_cell.complete_group(S);
             end
 
             function recipe  = get_recipe(sg_id)
@@ -1783,7 +1972,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
                 end
                 
                 % add elements until no new elements are generated
-                R = complete_group(R);
+                R = am_cell.complete_group(R);
                 
                 % [IMPORTANT] use rhombohedral rather than hexagonal setting for hexagonal point groups
                 if any(pg_code==[9:13,21:27])
@@ -1797,7 +1986,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
                     j=1/2; [W] = get_wigner(j,R,'spherical');                     
                     % Add plus and minus in accordance with 
                     % V. Heine, Group Theory in Quantum Mechanics (Elsevier, 2014), p 62, eq 8.24.
-                    W = cat(3,W,-W); % W = complete_group(reshape(uniquec_(reshape(wdv_(W),4,[])),2,2,[]));
+                    W = cat(3,W,-W); % W = am_cell.complete_group(reshape(uniquec_(reshape(wdv_(W),4,[])),2,2,[]));
                     % remove numerical noise
                     W = wdv_(W);
                 end
@@ -1956,6 +2145,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
         % aux unit cells
 
         function uc           = load_material(material)
+            import am_cell.abc2bas
             switch material
             % toys (NOTE: CONTINUOUS SYMETRIES ARE NOT CHECKED FOR.)
             case '1D-chain';    bas = abc2bas([10,1],'tetra');                    tau = [[0;0;0]];                                                                                                                    symb = {'H'};                            sg_code = 1;
@@ -1998,7 +2188,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
             % otherwise
             otherwise; error('ERROR 1508123: unknown material');
             end
-            uc = am_dft.create_cell(bas,tau,symb,sg_code);
+            uc = am_cell.create_conventional(bas,tau,symb,sg_code);
         end
         
         function [uc,pc,ic,cc]= load_cell(flag, arg, tol)
@@ -2025,9 +2215,9 @@ classdef am_cell < dynamicprops % required for xrr simulation
             % convert bas from [Ang] to [nm] when loading from cif/poscar
             switch flag
                 case 'poscar';   [uc]     = am_cell.load_poscar(arg); 
-                case 'cif';      [uc,str] = load_cif(arg);      uc.bas = uc.bas*0.1;
-                case 'material'; [uc]     = load_material(arg);
-                case 'create';   [uc]     = am_dft.create_cell(arg{:});
+                case 'cif';      [uc,str] = load_cif(arg);
+                case 'material'; [uc]     = am_cell.load_material(arg);
+                case 'create';   [uc]     = am_dft.create_conventional(arg{:});
             end
             
             % set tolerance
@@ -2135,7 +2325,9 @@ classdef am_cell < dynamicprops % required for xrr simulation
                        am_lib.extract_token_(str,'_cell_angle_gamma',true)];
                 if length(abc)<3;    abc    = [1 1 1]; end
                 if length(angles)<3; angles = [90 90 90]; end
-                bas = am_dft.abc2bas([abc,angles]);
+                % convert to [nm]
+                abc = abc/10;
+                bas = am_cell.abc2bas([abc,angles]);
 
                 % get atomic positions and species
                 symb_dataset={...
@@ -2213,7 +2405,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
                             sg_id = [];
                         case '_symmetry_Int_Tables_number'
                             % true == generate from memory
-                            sg_id = am_lib.extract_token_(str,'_symmetry_Int_Tables_number',true); S_generated = am_dft.generate_sg(sg_id);
+                            sg_id = am_lib.extract_token_(str,'_symmetry_Int_Tables_number',true); S_generated = am_cell.generate_sg(sg_id);
                             if any(any( ~am_lib.eq_(am_lib.sortc_(reshape(S,16,[])),am_lib.sortc_(reshape(S_generated,16,[]))) ))
                                 fprintf('\n'); warning('Generate space symmetries do not match those in cif file!');
                             end
@@ -2221,29 +2413,23 @@ classdef am_cell < dynamicprops % required for xrr simulation
                 end; end
                 nSs = size(S,3);
                 
-                % save this cell?
-                str_bas = sprintf('am_dft.abc2bas([%g,%g,%g,%g,%g,%g])',[abc/10,angles]);
+                % generate recipe
+                str_bas = sprintf('am_cell.abc2bas([%g,%g,%g,%g,%g,%g])',[abc,angles]);
                 str_tau = sprintf('[%g;%g;%g],',tau); str_tau = ['[',str_tau(1:(end-1)),']'];
                 str_spc = sprintf('''%s'',',symb{species}); str_spc = ['{',str_spc(1:(end-1)),'}'];
-                str = sprintf('create_cell(%s,%s,%s,%i)', str_bas, str_tau, str_spc, sg_id);
+                str = sprintf('am_cell.create_conventional(%s,%s,%s,%i)', str_bas, str_tau, str_spc, sg_id);
 
                 % generate all positions based on symmetry operations
                 seitz_apply_ = @(S,tau) am_lib.mod_(reshape(am_lib.matmul_(S(1:3,1:3,:),tau),3,[],size(S,3)) + S(1:3,4,:));
                 tau = reshape(am_lib.mod_(seitz_apply_(S,tau)),3,[]); species=repmat(species,1,nSs);
-                [tau, j] = am_lib.uniquec_(tau); species=species(j);
-                [species,i]=sort(species); tau=tau(:,i);
-
-                % define primitive cell creation function and make structure
-                uc_ = @(bas,symb,species,tau) struct('units','frac','bas',bas, ...
-                    'symb',{symb},'mass',am_dft.get_atomic_mass(symb),'nspecies',sum(1:max(species(:))==species(:),1), ...
-                    'natoms',numel(species),'tau',tau,'species',species);
-                uc = uc_(bas,symb,species,tau);
+                [tau,j] = am_lib.uniquec_(tau); species=species(j); [species,i]=sort(species); tau=tau(:,i);
                 
-                if numel(uc.mass) ~= numel(uc.symb); error('mass and symb mismatch'); end 
-                if numel(uc.mass) ~= numel(uc.nspecies); error('mass and nspecies mismatch'); end 
+                % make cell structure
+                uc = am_cell.define(bas,symb,species,tau);
                 
+                % check that recipe works
                 uc_gen = [];
-                eval(['uc_gen = am_dft.',str]);
+                eval(['uc_gen = ',str]);
                 if uc_gen.natoms ~= uc.natoms || ...
                    am_lib.any_(~am_lib.eq_(am_lib.sortc_(uc_gen.tau),am_lib.sortc_(uc.tau)))
                     str = 'Mismatch';
@@ -2252,181 +2438,6 @@ classdef am_cell < dynamicprops % required for xrr simulation
 
         end
         
-        function [uc]         = load_poscar(fposcar) % can also be used to load the charge density 
-            if nargin < 2; flag=''; end
-            fid=fopen(fposcar,'r'); if fid==-1; error('Unable to open %s',fposcar); end
-                header=fgetl(fid);                 % read header (often times contains atomic symbols)
-                latpar=sscanf(fgetl(fid),'%f');    % read lattice parameter
-                a1=sscanf(fgetl(fid),'%f %f %f');  % first basis vector
-                a2=sscanf(fgetl(fid),'%f %f %f');  % second basis vector
-                a3=sscanf(fgetl(fid),'%f %f %f');  % third basis vector
-                bas=latpar*[a1,a2,a3];             % construct the basis and convert to nm (column vectors)
-                buffer=fgetl(fid);                 % check vasp format
-                if ~isempty(sscanf(buffer,'%f'))
-                    % vasp 4 format (symbols are missing, jumps straight to species)
-                    symb=regexp(header, '([^ \s][^\s]*)', 'match');
-                    nspecies=sscanf(buffer,repmat('%f' ,1,length(symb)))';
-                else
-                    % vasp 5 format (symbols are present)
-                    symb=regexp(buffer, '([^ \s][^\s]*)', 'match');
-                    nspecies=sscanf(fgetl(fid),repmat('%f' ,1,length(symb)))';
-                end
-                % create atom type
-                type = am_atom(); 
-                for i = 1:numel(symb)
-                    type(i) = am_atom.define(symb{i},1); 
-                end
-                % continue parsing
-                coordtype=lower(strtrim(fgetl(fid)));
-                l=0;
-                for i=1:length(nspecies)
-                    for j=1:nspecies(i); l=l+1;
-                        tau(:,l)=sscanf(fgetl(fid),'%f %f %f');
-                        species(l)=i;
-                    end
-                end
-                if ~strcmp(coordtype(1),'d'); tau=bas\tau*latpar; end
-                % convert basis from angstroms to nm
-                bas=bas/10; 
-                % make cell structure
-                uc = am_cell.define(bas,type,species,tau);
-                % load charge density
-                if contains(fposcar,'CHGCAR') || contains(fposcar,'CHG')
-                    fgetl(fid);
-                    n = sscanf(fgetl(fid),'%i');
-                    t = textscan(fid,'%f');
-                    uc.nchg = n(:).';
-                    uc.chg  = reshape(t{:},uc.nchg);
-                end
-            fclose(fid);
-        end
-
-        function [cc,c2p,p2c] = get_conventional_cell(pc, tol, algo) 
-            % [vc,v2p,p2v] = get_conventional_cell(pc,tol)
-            
-            import am_dft.* am_lib.*
-
-            if nargin < 2; tol = am_dft.tiny; end
-            if nargin < 3; algo = 2; end 
-            % 2 seems more robust, at least for VN, Fe2O3, and Al2O3
-            
-            % get point symmetries
-            [~,~,~,R] = get_symmetries(pc);
-
-            % this boils down on how to get the centering matrix
-            switch algo
-                case 0
-%                     % test
-%                     fposcar='~/Developments/_materials/poscar/VN_Fm-3m.poscar';
-%                     % fposcar='./Al2O3_167_R-3c_corundum.poscar';
-%                     % fposcar='Fe3O4_Fd-3m_magnetite_spinel.poscar';
-%                     [uc,pc,ic,cc]=load_cells(fposcar);
-%                     [~,~,~,g] = get_symmetries(pc);
-                    
-                case 1
-                    % find the transformation matrix mapping the pc point group to the one in standard setting
-                    % find a transformation matrix which takes g to the standard setting h
-                    [~,M] = find_pointgroup_transformation(R,generate_pg(identify_pointgroup(R)),1);
-                    % get integer inverse matrices
-                    C = inv(M); C = C/det(C);
-                    
-                case 2
-                    % Sets the non-collinear triplet of highest rotation axes as edges of the
-                    % cell. The algorithm is based on:
-                    %
-                    % Refs: V. L. Himes and A. D. Mighell, Acta Crystallographica Section a
-                    %         Foundations of Crystallography 43, 375 (1987). 
-                    % 
-                    
-                    % exclude identity and pure inversion
-                    nRs = size(R,3); inds = [1:nRs]; 
-                    [~,tr,dt] = identify_point_symmetries(R);
-                    filter_ = @(tr,dt,inds,ex_) deal(tr(ex_),dt(ex_),inds(ex_));
-                    [tr,dt,inds] = filter_(tr,dt,inds, tr ~=-3 );
-                    [tr,dt,inds] = filter_(tr,dt,inds, tr ~= 3 );
-
-                    % get the rotation axis of each proper rotation
-                    nTs = numel(inds); T = zeros(3,nTs);
-                    for i = 1:numel(inds)
-                        % get null space (axis of rotation)
-                        T(:,i) = R_axis_(R(:,:,inds(i)));
-                        % convert vector to all integers
-                        % T(:,i) = round_(T(:,i));
-                    end
-
-                    % sort rotation axes:
-                    %   1) proper rotation axes first
-                    %   1) higher order rotation axes first
-                    %   2) vectors in positive octant first
-                    cc_bas = pc.bas*T; 
-                    fwd = rankc_([-sign(dt);-tr;-max(sign(cc_bas));sign(cc_bas)]);
-                    filter_ = @(tr,dt,T,vc_bas,inds,ex_) deal(tr(ex_),dt(ex_),T(:,ex_),vc_bas(:,ex_),inds(ex_));
-                    [~,~,T,~,~] = filter_(tr,dt,T,cc_bas,inds, fwd );
-
-                    % append identity
-                    T = [T,eye(3)]; cc_bas = pc.bas*T; nTs=nTs+3;
-                    
-                    % find the three highest symmetry non-collinear vectors and centering
-                    % transformation matrix from primitive to conventional cell basis  
-                    % i.e. C = pc.bas -> vc_bas; absolute highest symmetry is z, then y, then x, hence [k,j,i] and not [i,j,k]
-                    for i = (  1):nTs; X = cc_bas(:,i);                    if any(~eq_(X, 0, tol)); break; end; end
-                    for j = (i+1):nTs; X = cross(cc_bas(:,i),cc_bas(:,j)); if any(~eq_(X, 0, tol)); break; end; end
-                    for k = (j+1):nTs; X = det(cc_bas(:,[i,j,k]));         if any(~eq_(X, 0, tol)); break; end; end
-                    if any([k,j,i]==0); error('Conventional basis not found!'); else; C = T(:,[k,j,i]); end
-                    
-            end
-            
-            % construct conventional cell
-            [cc,c2p,p2c] = get_supercell(pc,C);
-        end
-
-        function [uc]         = create_cell(bas,tau,symb,sg_code) 
-            % create_cell(bas,tau,symb,sg_code) creates cell based on wyckoff positions and standard crystallographic setting
-            %
-            % Example input for BiFeO3 P63cm (hypothetical polymorph):
-            %     % define basis, atomic positions, species, and elements
-            %     a = 6.200; c = 12.076;
-            %     bas = abc2bas([a,a,c,90,90,120]);
-            %     tau=[0.00000 0.00000 0.48021; 0.33333 0.66667 0.01946; ...
-            %       0.29931 0.00000 0.15855; 0.63457 0.00000 0.34439; ...
-            %       0.33440 0.00000 0.00109; 0.00000 0.00000 0.27855; ...
-            %       0.33333 0.66667 0.23206].';
-            %     symb = {'O','O','O','O','Fe','Bi','Bi'}; sg_code=185;
-            %     % create cell
-            %     [uc] = create_cell(bas,tau,symb,sg_code); [bragg] = get_bragg(uc);
-            %     plot_bragg(bragg); tabulate_bragg(bragg,10);
-            %     % save poscar
-            %     write_poscar(uc,'BiFeO3_P63cm_dft.poscar');
-            %
-
-            import am_dft.* am_lib.*
-
-            % identify atomic types and assign a number label
-            [symb,~,species]=unique(symb,'stable'); species=species(:).';
-
-            % get space symmetries in conventional setting
-            S = am_dft.generate_sg(sg_code);
-
-            % define function to sort atoms and species into a unique order (reference)
-            X_ = @(tau,species,c_i2u) sortc_([mod_(tau);species;c_i2u]); 
-            
-            % apply symmetry operations to all atoms            
-            natoms = size(tau,2); X = X_(tau,species,[1:natoms]); X = apply_symmetry(S,X); X(1:3,:)=mod_(X(1:3,:));
-
-            % get unique species
-            [~,ind] = am_lib.uniquec_(X(1:4,:)); tau = X(1:3,ind); species = X(4,ind); c_i2u = X(5,ind);
-
-            % sort by species
-            [~,fwd] = sort(c_i2u); tau = tau(:,fwd); species = species(fwd); c_i2u = c_i2u(fwd);
-
-            % define irreducible cell creation function and make structure
-            uc_ = @(bas,tau,symb,species) struct('units','frac','bas',bas,...
-                'symb',{symb},'mass',am_dft.get_atomic_mass(am_dft.get_atomic_number(symb)),...
-                'nspecies',sum(unique(species).'==species,2).', ...
-                'natoms',size(tau,2),'tau',tau,'species',species);
-            uc = uc_(bas,tau,symb,species);
-        end
-
         function [uc]         = stack_cell(uc)
             % put one cell on top of the other along the z direction
             if numel(uc)==1; return; end

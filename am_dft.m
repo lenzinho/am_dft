@@ -940,8 +940,10 @@ classdef am_dft
             [str,~] = load_file_('DOSCAR');
                 % get energies, density of states, and integration DOS
                 t=sscanf(str{1},'%i'); natoms = t(1);
-                if exist('INCAR','file')==2; nEs=am_dft.get_vasp('incar:nedos'); else
-                t=sscanf(str{6},'%f'); nEs = round(t(3)); end
+                if exist('INCAR','file')==2
+                    nEs=am_dft.get_vasp('incar:nedos'); 
+                    if isnan(nEs); t=sscanf(str{6},'%f'); nEs = round(t(3)); end
+                else;              t=sscanf(str{6},'%f'); nEs = round(t(3)); end
                 if nargin<1; Ef = t(4); end
                 nspins = round((numel(strsplit(strtrim(str{7}),' '))-1)/2);
                 t=sscanf(sprintf('%s\n',str{6+[1:nEs]}),'%f'); t=reshape(t,1+2*nspins,nEs).';
@@ -4063,7 +4065,7 @@ classdef am_dft
             % i = 0; t = [30, 1E8];
             % i=i+1;layer(i) = load_cell('material','GaAs'); 
             % i=i+1;layer(i) = load_cell('material','Si');
-            % bz = get_bz_angles(layer(1),hv,100000,30,180);
+            % bz = get_angles(layer(1),hv,100000,30,180);
             % I  = simulate_xrd(layer,bz,hv,t);
             
             import am_dft.* am_lib.* 

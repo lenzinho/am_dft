@@ -21,7 +21,7 @@ classdef am_atom
             nsymbs=1; 
             if iscell(symb); nsymbs = numel(symb);end
             if nargin == 1; occ = ones(1,nsymbs); end
-            if nsymbs>1
+            if nsymbs>1 || iscell(symb)
                 for i = 1:nsymbs
                     atom(i) = am_atom.define(symb{i},occ(i));
                 end
