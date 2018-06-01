@@ -4075,11 +4075,6 @@ classdef am_dft
             % get lambda an number of layers
             lambda = get_photon_wavelength(hv); nlayers = numel(layer); 
             
-            % apply strains out of plane
-            for i = 1:nlayers
-                layer(i).bas(:,3) = layer(i).bas(:,3)*(1+strain(i));
-            end
-            
             % define equations according to:
             % M. Wormington, C. Panaccione, K. M. Matney, and D. K. Bowen, Philosophical Transactions of 
             % the Royal Society A: Mathematical, Physical and Engineering Sciences 357, 2827 (1999).
@@ -4114,7 +4109,7 @@ classdef am_dft
             for i = nlayers:-1:1
                 % get bragg points
                 k = linspacen_([0;0;1],[0;0;10],10);
-                k_cart_magnitude = normc_(inv(layer(i).bas).'*k);
+                k_cart_magnitude = normc_(inv(layer(i).bas .* [1 0 0; 0 1 0; 0 0 1+strain(i)] ).'*k);
                 [~,th2_bragg]=kxkz2angle(0,k_cart_magnitude,hv,'w2th');
                 th2_bragg = reshape(th2_bragg(th2_bragg<180),1,1,[]); 
 
@@ -4136,7 +4131,7 @@ classdef am_dft
                 end
 
                 % evaluate everything
-                vol   = det(layer(i).bas);
+                vol   = det(layer(i).bas .* [1 0 0; 0 1 0; 0 0 1+strain(i)]);
                 C     = get_polarization_(0);
                 F_0   = get_structure_factor(layer(i),[0;0;0], hv);
                 chi_0 = get_susceptibility_(lambda, vol, F_0);
