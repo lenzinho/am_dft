@@ -1,4 +1,4 @@
-classdef am_cell < dynamicprops % required for xrr simulation
+classdef am_cell % < dynamicprops % required for xrr simulation, but messes everything else up because it becomes a handle.
     
     properties
         % basic properties
@@ -10,6 +10,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
         natoms   = []; % number of atoms
         nspecies = []; % number of atoms of each type
         species  = []; % species identifier
+        nsteps   = []; % number of molecular dynamics time steps
         tau      = []; % atomic coordinates
         tol      = []; % numerical tolernce
         % structural info
@@ -31,6 +32,11 @@ classdef am_cell < dynamicprops % required for xrr simulation
         % [dynamic] thickness 
         % [dynamic] filling
         % [dynamic] roughness
+        % mappings
+        bas2pc = []; tau2pc = [];
+        u2p = []; p2u = []; 
+        p2i = []; i2p = [];
+        i2u = []; u2i = [];
     end
     
     methods (Static)
@@ -76,6 +82,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
                     error('unknown input');
             end
             uc.tol          = 1E-6;
+            uc.nsteps       = size(uc.tau,3);
             uc.formula      = uc.get_formula();
             uc.mass_density = uc.get_mass_density();
             uc.mole_weight  = uc.get_molecular_weight();
@@ -397,14 +404,19 @@ classdef am_cell < dynamicprops % required for xrr simulation
             % Here, uniquec_ should not use 'stable', since atoms in the primitive cell should go first
             % uniquec_ without stable has an inherent sort; alternatively, use uniquec_ (with 
             % 'stable' built-in and then sort after); this is important later when getting pairs and triplets
-            X = uniquec_( [reshape(repmat([1:pc.natoms],nLs,1),1,[]); mod_(inv(B)*osum_(L,pc.tau,2))] );
-            X = X(:,rankc_(X));
+            if ~isempty(pc.nsteps); for i = 1:pc.nsteps
+                X(:,:,i) = uniquec_( [reshape(repmat([1:pc.natoms],nLs,1),1,[]); mod_(inv(B)*osum_(L,pc.tau(:,:,i),2))] );
+                X(:,:,i) = X(:,rankc_(X(:,:,i)),i);
+            end; end
 
             % create mapping
-            u2p = X(1,:); [~,p2u]=unique(u2p); p2u=p2u(:).';
+            u2p = X(1,:,1); [~,p2u]=unique(u2p); p2u=p2u(:).';
 
             % create structure
-            uc = am_cell.define(pc.bas*B, pc.type, pc.species(u2p), X(2:4,:)); uc.tol = pc.tol;
+            uc = am_cell.define(pc.bas*B, pc.type, pc.species(u2p), X(2:4,:,:)); uc.tol = pc.tol;
+            
+            % define mapping
+            uc.bas2pc = pc.bas/uc.bas; uc.tau2pc = pc.bas\uc.bas;
         end
                 
         function [dc,idc]        = get_displaced(pc,bvk,n,kpt,amp,mode,nsteps)
@@ -576,6 +588,7 @@ classdef am_cell < dynamicprops % required for xrr simulation
             end
         end
 
+        
         
     end
     
@@ -874,74 +887,86 @@ classdef am_cell < dynamicprops % required for xrr simulation
     
     methods % plotting
 
-        function [h]             = plot(pc,flag) % plot cell
+        function [h,F]           = plot(uc,flag) % plot cell (md movie as well)
 
             import am_lib.* am_dft.*
 
             if nargin < 2; flag = ''; end
             
-            % initialize figure
-            set(gcf,'color','w'); hold on;
+            if isempty(uc.nsteps) || uc.nsteps == 1
+                
+                % initialize figure
+                set(gcf,'color','w'); hold on;
 
-            % draw atoms at the boudnary on both sides
-            if ~contains(flag,'!pbc')
-                ex_ = pc.tau(1,:)==0; pc.species = [pc.species,pc.species(ex_)]; pc.tau = [pc.tau,pc.tau(:,ex_)+[1;0;0]];
-                ex_ = pc.tau(2,:)==0; pc.species = [pc.species,pc.species(ex_)]; pc.tau = [pc.tau,pc.tau(:,ex_)+[0;1;0]];
-                ex_ = pc.tau(3,:)==0; pc.species = [pc.species,pc.species(ex_)]; pc.tau = [pc.tau,pc.tau(:,ex_)+[0;0;1]];
-            end
+                % draw atoms at the boudnary on both sides
+                if ~contains(flag,'!pbc')
+                    ex_ = uc.tau(1,:,1)<uc.tol;   uc.species = [uc.species,uc.species(ex_)]; uc.tau = [uc.tau(:,:,1),uc.tau(:,ex_,1)+[1;0;0]];
+                    ex_ = uc.tau(2,:,1)<uc.tol;   uc.species = [uc.species,uc.species(ex_)]; uc.tau = [uc.tau(:,:,1),uc.tau(:,ex_,1)+[0;1;0]];
+                    ex_ = uc.tau(3,:,1)<uc.tol;   uc.species = [uc.species,uc.species(ex_)]; uc.tau = [uc.tau(:,:,1),uc.tau(:,ex_,1)+[0;0;1]];
+                    ex_ = uc.tau(1,:,1)>1-uc.tol; uc.species = [uc.species,uc.species(ex_)]; uc.tau = [uc.tau(:,:,1),uc.tau(:,ex_,1)-[1;0;0]];
+                    ex_ = uc.tau(2,:,1)>1-uc.tol; uc.species = [uc.species,uc.species(ex_)]; uc.tau = [uc.tau(:,:,1),uc.tau(:,ex_,1)-[0;1;0]];
+                    ex_ = uc.tau(3,:,1)>1-uc.tol; uc.species = [uc.species,uc.species(ex_)]; uc.tau = [uc.tau(:,:,1),uc.tau(:,ex_,1)-[0;0;1]];
+                end
+
+                % plot atoms
+                clist=am_lib.colormap_('spectral',max(uc.species));
+                for j = 1:uc.ntypes
+                    ex_ = uc.species==j; radius = ones(1,sum(ex_)) * uc.type(j).r_ionic * 5000;
+                    h(j) = scatter3_(uc.bas*uc.tau(:,ex_,1), radius,'MarkerEdgeColor','k','MarkerFaceColor',clist(j,:));
+                end
+
+                % plot pc boundaries
+                plothull_(uc.bas*[0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1]);
+
+                hold off; daspect([1 1 1]); box on; axis tight;
+
+                % legend
+                lh_ = legend(h,{uc.type(:).symb}); lh_.Box='off'; axis off;
+
+                % set camera angle
+                if contains(flag,'camera')
+                    campos([10.7135,23.0003,9.4299]); camlight('right','infinite'); camproj('perspective');
+                end
             
-            % plot atoms
-            clist=am_lib.colormap_('spectral',max(pc.species));
-            for i = 1:pc.ntypes
-                ex_ = pc.species==i; radius = ones(1,sum(ex_)) * pc.type(i).r_ionic * 5000;
-                h(i) = scatter3_(pc.bas*pc.tau(:,ex_), radius,'MarkerEdgeColor','k','MarkerFaceColor',clist(i,:));
-            end
+            else % if this is an md... run the md movie
             
-            % plot pc boundaries
-            plothull_(pc.bas*[0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1]);
-            
-            hold off; daspect([1 1 1]); box on; axis tight;
-
-            % legend
-            lh_ = legend(h,{pc.type(:).symb}); lh_.Box='off'; axis off;
-
-            % set camera angle
-            if contains(flag,'camera')
-                campos([10.7135,23.0003,9.4299]); 
-                camlight('right','infinite'); camproj('perspective');
-            end
-        end
-
-        function [F]             = plot_md(md, varargin) % plots md movies
-            % n=[4;4;4]; kpt=[0;0;1/4]; amp=10; mode=6; nsteps=51;
-            % [~,md] = get_displaced(pc,bvk,n,kpt,amp,mode,nsteps);
-            % clf; [F]=plot_md_cell(md,'view',[0;1;0]); movie(F,3); % write_poscar(md,'POSCAR_test')
-
-            import am_lib.*
-
-            if varargin{1}=='view'; v_xyz = varargin{2}; else; v_xyz = 3; end
-
-            % initialize figure
-            set(gcf,'color','w'); hold on;
-
-            % plot cell boundaries
-            plothull_(md.bas*[0,1,0,1,0,1,0,1;0,0,1,1,0,0,1,1;0,0,0,0,1,1,1,1]);
-            daspect([1 1 1]); box on; axis tight; view(v_xyz); fixaxis=axis;
-
-            % get coordinates in [cart]
-            tau = matmul_(md.bas,md.tau);
-
-            % plot paths for each atom
-            hold on; plot3_(reshape(tau(:,:,:),3,[]),'.','markersize',5);
-
-            % plot first point
-            hold on; h = scatter3_(tau(:,:,1),50*sqrt(md.mass(md.species)),md.species(:),'filled','MarkerEdgeColor','k'); hold off;
-            axis(fixaxis); drawnow; F(md.nsteps) = struct('cdata',[],'colormap',[]); F(1) = getframe;
-
-            if md.nsteps>1
-            for i = 2:md.nsteps
-                [h.XData,h.YData,h.ZData] = deal(tau(1,:,i),tau(2,:,i),tau(3,:,i)); F(i) = getframe;
-            end
+                % shift coordinates to within primitive cell (converts to cart, then back to frac)
+                tau = uc.tau; Delta = 0;%sum(uc.bas,2)/2; 
+                tau = matmul_(uc.bas,tau) - Delta - uc.tol; 
+%                     tau = reshape(am_dft.uc2ws(tau,uc.bas),size(tau));
+                tau = matmul_(inv(uc.bas),tau) + Delta + uc.tol; 
+                % initialize
+                snapshot = uc; 
+                
+                switch 'fast' %fast/safe
+                    case 'fast'
+                        % convert tau to [cart]
+                        tau = matmul_(uc.bas,tau); 
+                        % plot path
+                        hold on; plot3_(reshape(tau(:,:,:),3,[]),'.','markersize',5);
+                        % initialize
+                        i = 1; snapshot.tau = tau(:,:,i); snapshot.nsteps = 1; h = snapshot.plot('!pbc');
+                        % update
+                        for i = 1:uc.nsteps
+                            for j = 1:uc.ntypes
+                                ex_ = snapshot.species==j; 
+                                [h(j).XData,h(j).YData,h(j).ZData] = deal(tau(1,ex_,i),tau(2,ex_,i),tau(3,ex_,i)); 
+                            end
+                            F(i) = getframe;
+                        end
+                    case 'safe'
+                        % keep tau in [frac]
+                        % replot everytime
+                        for i = 1:uc.nsteps
+                            if i>1; delete(h); end
+                            snapshot.tau = tau(:,:,i);
+                            snapshot.nsteps = 1;
+                            h = snapshot.plot(flag);
+                            drawnow;
+                            F(i) = getframe;
+                        end
+                end
+                
             end
         end
 
@@ -2241,11 +2266,6 @@ classdef am_cell < dynamicprops % required for xrr simulation
             c2i = p2i(c2p); i2c = p2c(i2p); 
             end
             
-            % augment properties
-            for plist = {'u2p','p2u','u2i','i2u','bas2pc','tau2pc'}; addprop(uc,plist{:}); end
-            for plist = {'p2u','u2p','p2i','i2p'}; addprop(pc,plist{:}); end
-            for plist = {'i2p','p2i','i2u','u2i'}; addprop(ic,plist{:}); end
-
             % sace mapping to cells
             pc.p2i = p2i; pc.p2u = p2u; if do_cc; pc.p2c = p2c; end
             pc.i2p = i2p; pc.u2p = u2p; if do_cc; pc.c2p = c2p; end
@@ -2256,14 +2276,8 @@ classdef am_cell < dynamicprops % required for xrr simulation
             uc.u2p = u2p; uc.u2i = u2i; if do_cc; uc.u2c = u2c; end
             uc.p2u = p2u; uc.i2u = i2u; if do_cc; uc.c2u = c2u; end
            
-%             if do_cc; cc.c2i = c2i; cc.c2u = c2u; cc.c2p = c2p; end
-%             if do_cc; cc.i2c = i2c; cc.u2c = u2c; cc.p2c = p2c; end
-%             
-%             % save bas2pc and tau2pc to convert [uc/cc-frac] to [pc-frac]
-%             uc.bas2pc = pc.bas/uc.bas; uc.tau2pc = pc.bas\uc.bas;
-%             if do_cc
-%             cc.bas2pc = pc.bas/cc.bas; cc.tau2pc = pc.bas\cc.bas;
-%             end
+            if do_cc; cc.c2i = c2i; cc.c2u = c2u; cc.c2p = c2p; end
+            if do_cc; cc.i2c = i2c; cc.u2c = u2c; cc.p2c = p2c; end
 
             % print basic symmetry info
             [~,H,~,R] = get_symmetries(pc);
