@@ -1,4 +1,4 @@
-classdef am_bz < dynamicprops
+classdef am_bz %  < (dynamicprops is a terrible idea)
     
     properties
         % basic properties
@@ -8,7 +8,7 @@ classdef am_bz < dynamicprops
         nks      = []; % number of kpoints
         k        = []; % kpoint coordinates [3,nks]
         w        = []; % kpoint weights [1,nks]
-        x        = []; % linear coordinate for plotting path 
+        x        = []; % linear coordinate for plotting path
         xt       = []; % linear coordinate ticks
         xl       = []; % linear coordinate labels
         tol      = []; % numerical tolerance
@@ -30,7 +30,13 @@ classdef am_bz < dynamicprops
         tet      = []; % tetrahedra coordination [4,ntets]
         tetw     = []; % tetrahedra weight [1,ntets]
         tetv     = []; % tetrahedron volume
+        % mapping
+        f2i      = []; % full to irreducible
+        i2f      = []; % irreducible to full
+        i2b      = []; % bragg: irreducible to full
+        b2i      = []; % bragg: full to irreducible
         % x-ray information
+        hv       = []; % photon energy
         F        = []; % structure factor [1,nks]
         L        = []; % lorentz factor [1,nks]
         P        = []; % polarization factor [1,nks]
@@ -67,22 +73,22 @@ classdef am_bz < dynamicprops
             [ibz,i2f,f2i] = fbz.get_ibz(pc,'tetra');
 
             % save mapping to zones
-            for plist = {'f2i','i2f'}; addprop(fbz,plist{:}); end
-            for plist = {'f2i','i2f'}; addprop(ibz,plist{:}); end
+            % for plist = {'f2i','i2f'}; addprop(fbz,plist{:}); end
+            % for plist = {'f2i','i2f'}; addprop(ibz,plist{:}); end
             fbz.f2i = f2i; fbz.i2f = i2f;
             ibz.i2f = i2f; ibz.f2i = f2i;
         end
         
-        function [fbs,ibs]        = get_bragg(uc,k_max,hv,threshold)
+        function [fbs,ibs]        = get_bragg(uc,hv,k_max,threshold)
             % bragg brillouin zone
             import am_lib.* am_dft.*
 
             % k max is the largest wavevector magntiude considered
+            if nargin < 2 || isempty(hv); Cu = am_atom.define('Cu'); hv = Cu.get_emission_line('kalpha1'); end
+            if nargin < 3 || isempty(k_max); th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
             if nargin < 4 || isempty(threshold); threshold = am_lib.tiny; end
-            if nargin < 3 || isempty(hv); Cu = am_atom.define('Cu'); hv = Cu.get_emission_line('kalpha1'); end
-            if nargin < 2 || isempty(k_max); th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
 
-            fbs = am_bz.get_fbs(uc,k_max);
+            fbs = am_bz.get_fbs(uc,hv,k_max);
             
             % get structure factors and scattering intensity
                 [fbs.F,fbs.L,fbs.P] = uc.get_structure_factor(fbs,hv);
@@ -95,8 +101,8 @@ classdef am_bz < dynamicprops
             % get symmetrically equivalent bragg spots
             % save "irreducible bragg spots" structure
             [ibs,i2b,b2i] = get_ibz(fbs,uc,'nomod,addinv');
-            for plist = {'i2b','b2i'}; addprop(ibs,plist{:}); end
-            for plist = {'i2b','b2i'}; addprop(fbs,plist{:}); end
+            % for plist = {'i2b','b2i'}; addprop(ibs,plist{:}); end
+            % for plist = {'i2b','b2i'}; addprop(fbs,plist{:}); end
             ibs.i2b = i2b; ibs.b2i = b2i;
             fbs.i2b = i2b; fbs.b2i = b2i; 
         end
@@ -258,7 +264,7 @@ classdef am_bz < dynamicprops
             % add inversion for time-reversal?
             if contains(flag,'addinv') 
             if ~any(all(all(R==-eye(3),1),2))
-                R = complete_group( cat(3,R,-eye(3)) );
+                R = am_cell.complete_group( cat(3,R,-eye(3)) );
             end
             end
             
@@ -292,10 +298,10 @@ classdef am_bz < dynamicprops
             
             % finally, pass along additional parameters if they exist
             field = fieldnames(fbz); isfield_ = @(x) any(strcmp(field,x));
-            for f = {'n','nbands','norbitals','natoms'}
+            for f = {'n','nbands','norbitals','natoms','hv'}
                 if isfield_(f) && ~isempty(fbz.(f{:})); ibz.(f{:}) = fbz.(f{:}); end
             end
-            for f = {'n','F','L','P','I','E','hw'}
+            for f = {'F','L','P','I','E','hw'}
                 if isfield_(f) && ~isempty(fbz.(f{:})); ibz.(f{:}) = fbz.(f{:})(:,i2f); end
             end
             for f = {'lmproj','eigenv'}
@@ -533,7 +539,9 @@ classdef am_bz < dynamicprops
                 ex_ = (Ec>0) & (Ev>0); E(ex_) = 1E8;
                 E = reshape(E,ibz.nbands^2,ibz.nks); E = sort(E); occw = 1;
             elseif contains(flag,'dos')
-                E = ibz.E;
+                E = ibz.E; occw = 1;
+            else
+                error('ERROR [get_dos]: flag must include one of [ojdos, jdos, dos]')
             end
             
             % perform integration
@@ -569,7 +577,7 @@ classdef am_bz < dynamicprops
             end
             % create structure
             dos.E=Ep(:).';
-            dos.D=D(:);
+            dos.D=D(:).';
         end
  
     end
@@ -922,46 +930,100 @@ classdef am_bz < dynamicprops
         
         function [h]              = plot_fbs_2D(fbs,v1,v2,flag)
             import am_lib.*
+            %
+            if nargin<4; flag=''; end
             % check for orthogonality
             if ~am_lib.isorthogonal_(v1,v2); error('v1 and v2 must be orthogonal'); end
             % normalize v1 and v2
             v1 = v1(:)./norm(v1); v2 = v2(:)./norm(v2);
             % see which points lie on the plane
             for i = 1:fbs.nks
-                if eq_(det([v1,v2,fbs.k(:,i)]),0)
+                if eq_(det([v1(:),v2(:),fbs.k(:,i)]),0)
                     ex_(i) = true;
                 else
                     ex_(i) = false;
                 end
             end
             % exclude points not on the plane
-            fbs.k = fbs.k(:,ex_); fbs.Fk2 = abs(fbs.F(ex_)).^2; 
-            fbs.b2i = fbs.b2i(ex_); fbs.w = fbs.w(ex_); fbs.nks = sum(ex_); 
+            fbs.nks = sum(ex_); [fbs.k,fbs.w,fbs.F,fbs.L,fbs.P,fbs.I,fbs.b2i] = ...
+                deal(fbs.k(:,ex_),fbs.w(ex_),fbs.F(ex_),fbs.L(ex_),fbs.P(ex_),fbs.I(ex_),fbs.b2i(ex_)); 
             % convert to cartesian coordinates
             v1_cart = fbs.recbas*v1(:); v1_cart = v1_cart./normc_(v1_cart); 
             v2_cart = fbs.recbas*v2(:); v2_cart = v2_cart./normc_(v2_cart); 
-            k_cart = fbs.recbas*fbs.k; 
+            k_cart  = fbs.recbas*fbs.k; 
             % project points onto the diffraction plane
-            fbs.x = v1_cart.'*k_cart; fbs.y = v2_cart.'*k_cart;
-            % plot only accessible points?
-            if contains(flag,'half')
-                ex_ = fbs.y>0;
-                fbs.x = fbs.x(ex_); fbs.y = fbs.y(ex_);
-                fbs.k = fbs.k(:,ex_); fbs.Fk2 = abs(fbs.F(ex_)).^2; 
-                fbs.b2i = fbs.b2i(ex_); fbs.w = fbs.w(ex_); fbs.nks = sum(ex_); 
+            fbs.x = [v1_cart.'*k_cart; v2_cart.'*k_cart];
+            % align points v2 to point up?
+            if contains(flag,'align')
+                % get tilt
+                % v1_cart * v2 is correct!
+                tilt = atan2d(v1_cart.'*fbs.recbas*v2,v2_cart.'*fbs.recbas*v2);
+                % get rep
+                R = am_lib.rotzd_( tilt ); R = R(1:2,1:2);
+                % transform
+                fbs.x = R * fbs.x;
+            end
+            % plot only upper half?
+            if contains(flag,'xrd')
+                ex_ = isaccessible_(fbs.x(1,:),fbs.x(2,:),fbs.hv); 
+                % ex_ = fbs.x(2,:)>-fbs.tol; % plot only upper half
+                fbs.nks = sum(ex_); [fbs.k,fbs.w,fbs.x,fbs.F,fbs.L,fbs.P,fbs.I,fbs.b2i] = ...
+                    deal(fbs.k(:,ex_),fbs.w(ex_),fbs.x(:,ex_),fbs.F(ex_),fbs.L(ex_),fbs.P(ex_),fbs.I(ex_),fbs.b2i(ex_));
             end
             % plot plane with points
-            figure(1); set(gcf,'color','w'); h=hggroup; 
+            figure(1); set(gcf,'color','w'); % h=hggroup; 
             hold on; 
-                scatter(fbs.x,fbs.y,rescale(log10(fbs.Fk2),20,100),'filled','linewidth',1.5,'Parent',h); 
-                scatter(0,0,log10(100)*100,'k','filled','linewidth',2,'Parent',h); 
+                h = scatter(fbs.x(1,:),fbs.x(2,:),rescale(log10(abs(fbs.F).^2),20,100)/2,'filled','linewidth',1.5);%,'Parent',h); 
+                scatter(0,0,log10(100)*100,'k','filled','linewidth',2);%,'Parent',h); 
             hold off;
-            for i = 1:fbs.nks
-                text(fbs.x(i),fbs.y(i)+1.0,sprintf('%i %i %i',fbs.k(:,i)),'HorizontalAlignment','center','BackgroundColor','w','EdgeColor','b');
+            if contains(flag,'legend')
+                for i = 1:fbs.nks
+                    text(fbs.x(1,i),fbs.x(2,i)+0.1,sprintf('%i %i %i',fbs.k(:,i)), ...
+                        'HorizontalAlignment','center','BackgroundColor','w','EdgeColor',h.CData);
+                end
             end
             daspect([1 1 1]); axis tight; box on;
+            
+            function [ex_]            = isaccessible_(kx,kz,hv)
+                    [alpha_i,alpha_f] = am_lib.kxkz2angle(kx,kz,hv,'in/exit');
+                    ex_ = true(size(alpha_i));
+                    ex_(ex_) = alpha_i(ex_) < 180;
+                    ex_(ex_) = alpha_i(ex_) >   0;
+                    ex_(ex_) = alpha_f(ex_) < 180 - alpha_i(ex_);
+                    ex_(ex_) = alpha_f(ex_) >   0;
+            end
         end
-
+        
+        function [h]              = plot_xrd_accessible(fbs,flag)
+            if nargin < 2; flag='xrd'; end 
+            hv = fbs.hv; 
+            hold all;
+                switch flag
+                    case 'xrr'; N = 50; m = 5;
+                        alpha = 0:0.1:5; 
+                        for i = 1:numel(alpha)
+                            [kx,kz] = am_lib.angle2kxkz(ones(1,N)*alpha(i),linspace(0,m,N),hv,'in/exit'); line(kx,kz,'linestyle',':');
+                            [kx,kz] = am_lib.angle2kxkz(linspace(0,m,N),ones(1,N)*alpha(i),hv,'in/exit'); line(kx,kz);
+                        end
+                        grid off; view([0 0 1]); box on;
+                    case 'xrd'; N = 50; m = 180;
+                        % generate accessible-region
+                        alpha_i=zeros(N); alpha_f=zeros(N);
+                        alpha_i = repmat(linspace(0,m,N),N,1); 
+                        for i = 1:N; alpha_f(:,i) = linspace(0,m-alpha_i(1,i),N); end
+                        w = alpha_i; th2 = alpha_i+alpha_f;
+                        % convert to reciprocal coordinates
+                        [kx,kz] = am_lib.angle2kxkz(w,th2,hv,'w2th');
+                        % plot 
+                        % h = mesh(kx,kz,log(w*1E-8),'EdgeColor',[1 1 1],'linewidth',0.2);
+                        h = mesh(kx,kz,log(w*1E-8),'facecolor','w'); %,'EdgeColor',[1 1 1]*0.85);
+                        grid off; view([0 0 1]); box on; colormap('gray'); 
+                    otherwise
+                        error('unknown option');
+                end
+            hold off;
+        end
+        
     end
     
     methods (Static, Access = protected) % internal
@@ -983,12 +1045,13 @@ classdef am_bz < dynamicprops
             end
         end
 
-        function [fbs]            = get_fbs(pc,k_max,N)
+        function [fbs]            = get_fbs(pc,hv,k_max,N)
             
             import am_lib.* 
             
-            if nargin < 2 || isempty(k_max); th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
-            if nargin < 3 || isempty(N); N = ceil((max(k_max./(1./am_lib.normc_(pc.bas))))); end 
+            if nargin < 2 || isempty(hv); Cu = am_atom.define('Cu'); hv = Cu.get_emission_line('kalpha1'); end
+            if nargin < 3 || isempty(k_max); th2_max=180; lambda=0.15406; k_max = 2*sind(th2_max/2)/lambda; end
+            if nargin < 4 || isempty(N); N = ceil((max(k_max./(1./am_lib.normc_(pc.bas))))); end 
             
             % get miller indicies [hkl] excluding gamma
             k=permn_([N:-1:-N],3).'; k=k(:,~all(k==0,1)); 
@@ -999,12 +1062,12 @@ classdef am_bz < dynamicprops
             % identify values which cannot be reached by diffractometer
             k = k(:,normc_(recbas*k)<k_max); 
             % save "full bragg spots" structure 
-            fbs = am_bz.define(pc.bas,k);
+            fbs = am_bz.define(pc.bas,k); fbs.hv = hv;
         end
         
     end
 
-    methods (Static) % aux brillouin zones
+    methods (Static, Access = protected) % aux brillouin zones
 
         function [y]              = ibz2fbz(fbz,ibz,x) % copy ibz values on fbz grid 
             % copy ibz values on fbz grid

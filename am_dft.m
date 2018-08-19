@@ -664,41 +664,58 @@ classdef am_dft
 
         % io
         
-        function [bz]    = load_vasp_bz(pc,flag,varargin)
+        function [pc,bz,dos] = load_vasp()
             
             feigenval='EIGENVAL';
-            fprocar  ='PROCAR';
-            fibzkpt  ='IBZKPT';
-            foutcar = 'OUTCAR';
+            fposcar  = 'POSCAR';
+            fdoscar  = 'DOSCAR';
+            fprocar  = 'PROCAR';
+            fibzkpt  = 'IBZKPT';
+            foutcar  = 'OUTCAR';
             fopticalmatrix = 'OPTICALMATRIX';
             
+            % load poscar
+            if    exist(fposcar,'file')==2
+                fprintf(' ... loading POSCAR'); tic;
+                    pc = am_cell.load_poscar(fposcar);
+                fprintf(' (%.f secs)\n',toc);
+            else
+                fprintf(' ... ERROR: POSCAR not found.'); tic;
+            end
             
+            % load dispersion
             if    exist(fprocar,'file')==2
                 fprintf(' ... loading PROCAR'); tic;
                     [nks,nbands,natoms,norbitals,nspins,k,w,E,~,orbital,lmproj] = load_procar();
                     bz = am_bz.define(pc.bas,k,...
                         'nks',nks,'nbands',nbands,'natoms',natoms,'norbitals',norbitals,'nspins',nspins, ...
                         'w',w,'E',E,'orbital',orbital,'lmproj',lmproj);
-                fprintf('(%.f secs)\n',toc);
+                fprintf(' (%.f secs)\n',toc);
             elseif exist(feigenval,'file')==2
                 fprintf(' ... PROCAR not found. Falling back to EIGENVAL.');
                 fprintf(' ... loading EIGENVAL '); tic;
                     [~,nks,nbands,k,w,E,~] = load_eigenval(feigenval);
                     bz = am_bz.define(pc.bas,k,'nks',nks,'nbands',nbands,'w',w,'E',E);
-                fprintf('(%.f secs)\n',toc);
+                fprintf(' (%.f secs)\n',toc);
             else
                 error('eigenvalues not loaded');
             end
             
+            % % consistency check with bz and ibz
+            % [~,ibz]  = am_bz.get_zone(pc,bz.n);
+            % if sum(abs(ibz.k-bz.k))>1E-8
+            %     error(' ... ERROR [load_vasp]: mismatch between ibz and ibzkpt from vasp'); 
+            % end
+            
             % load tetrahedra
             if    exist(fibzkpt,'file')==2
                 fprintf(' ... loading IBZKPT'); tic;
-                    [k,w,nks,ntets,tet,tetw] = load_ibzkpt(inv(pc.bas).'); 
+                    [k,w,nks,ntets,tet,tetw,tetv] = load_ibzkpt(inv(pc.bas).'); 
                     if ~all(am_lib.eq_(nks ,bz.nks )); error('IBZKPT nks mismatch'); end
                     if ~all(am_lib.eq_(k(:),bz.k(:))); error('IBZKPT k mismatch'); end
                     if ~all(am_lib.eq_(w(:),bz.w(:))); error('IBZKPT w mismatch'); end
-                    bz = bz.set('ntets',ntets,'tet',tet,'tetw',tetw);
-                fprintf('(%.f secs)\n',toc);
+                    bz = bz.set('ntets',ntets,'tet',tet,'tetw',tetw,'tetv',tetv);
+                fprintf(' (%.f secs)\n',toc);
             end
             
             % load optical matrix elements
@@ -706,17 +723,27 @@ classdef am_dft
                 fprintf(' ... loading OPTICALMATRIX'); tic;
                     [nbands,~,nks,nspins,optmat] = load_optical_matrix(fopticalmatrix);
                     bz = bz.set('nbands',nbands,'nks',nks,'nspins',nspins,'optmat',optmat);
-                fprintf('(%.f secs)\n',toc);
+                fprintf(' (%.f secs)\n',toc);
+            end
+            
+            % load doscar
+            if exist(fdoscar,'file')==2
+                fprintf(' ... loading DOSCAR'); tic;
+                    [dos] = load_doscar(fdoscar);
+                fprintf(' (%.f secs)\n',toc);
             end
             
             % shift fermi level to zero
             if exist(foutcar,'file')==2
-                fprintf(' ... searhcing OUTCAR for Efermi'); tic;
+                fprintf(' ... searching OUTCAR for Efermi'); tic;
                     Ef = am_dft.get_vasp('outcar:fermi'); Ef = Ef(end);
-                    bz.E = bz.E - Ef; Ef = Ef - Ef;
-                fprintf('(%.f secs)\n',toc);
+                    if exist('bz','var');   bz.E = bz.E - Ef;  end
+                    if exist('dos','var'); dos.E = dos.E - Ef; end
+                    Ef = Ef - Ef;
+                fprintf('. Correcting Fermi energy'); tic;
+                fprintf(' (%.f secs)\n',toc);
             else
-                fprintf(' ... WARNING: OUTCAR NOT FOUND. Fermi level not shifted to zero!'); tic;
+                fprintf(' ... WARNING [load_vasp]: OUTCAR NOT FOUND. Fermi level not shifted to zero!'); tic;
             end
                         
             cbm = min(bz.E(bz.E(:)>Ef)); [cb,ck]=am_lib.max2_(bz.E==cbm);
@@ -733,7 +760,36 @@ classdef am_dft
             fprintf('     %-15s = %+8.3f [eV] (k(:,%i) = %-5.3f,%-5.3f,%-5.3f, iband = %i)\n','VBM [eV]',vbm,vk,k(:,vk),vb);
             fprintf('     %-15s = %+8.3f [eV]\n','Eg  [eV]',Eg);
 
-            function [k,w,nks,ntets,tet,tetw] = load_ibzkpt(recbas)
+            function [dos] = load_doscar(fdoscar)
+
+                if nargin==1 || isempty(fdoscar), fdoscar = 'DOSCAR'; end
+                [str,~] = am_lib.load_file_(fdoscar);
+                    % get energies, density of states, and integration DOS
+                    t=sscanf(str{1},'%i'); d_natoms = t(1);
+                    if exist('INCAR','file')==2
+                        nEs=am_dft.get_vasp('incar:nedos'); 
+                        if isnan(nEs); t=sscanf(str{6},'%f'); nEs = round(t(3)); end
+                    else;              t=sscanf(str{6},'%f'); nEs = round(t(3)); end
+                    % if nargin<1; Ef = t(4); end
+                    d_nspins = round((numel(strsplit(strtrim(str{7}),' '))-1)/2);
+                    t=sscanf(sprintf('%s\n',str{6+[1:nEs]}),'%f'); t=reshape(t,1+2*d_nspins,nEs).';
+                    dos.E = t(:,1); dos.D = sum(t(:,1+[1:d_nspins]),2); dos.iD = sum(t(:,1+d_nspins+[1:d_nspins]),2);
+                % proj(nEs,nspins,norbitals,natoms) ==> proj(nspins,norbitals,natoms,nbands,nkpts,nEs)
+                d_norbitals = (1+3+5+7);
+                proj = zeros(nEs,d_nspins,d_norbitals,d_natoms);
+                for i = [1:d_natoms]
+                    t = sscanf(sprintf('%s\n',str{6+i*(1+nEs)+[1:nEs]}),'%f');
+                    t = reshape(t,1+d_nspins*d_norbitals,nEs).'; % nEs x spin x orbitals
+                    t = reshape(t(:,2:end),nEs,d_nspins,d_norbitals);
+                    proj(:,:,:,i) = t;
+                end
+                % proj(nspins,norbitals,natoms,nbands,nkpts,nEs)
+                dos.proj = permute(proj,[2,3,4,5,6,1]);
+                % normalize projections
+                n = am_lib.sum_(dos.proj,[1,2,3,4,5]); n(am_lib.eq_(n,0))=1; dos.proj=dos.proj./n; 
+            end
+            
+            function [k,w,nks,ntets,tet,tetw,tetv] = load_ibzkpt(recbas)
                 [str,~] = am_lib.load_file_('IBZKPT');
                 % number of kpoints, units
                 t=sscanf(str{2},'%i'); nks = t(1);
@@ -746,10 +802,12 @@ classdef am_dft
                 if strcmp(units,'cart'); k = recbas\k; units = 'frac'; end
                 % save tetrahedra information?
                 if numel(str)>nks+4 && contains(str{nks+4},'Tetra')
-                   t=sscanf(str{nks+5},'%i'); ntets = t(1);
+                   t=sscanf(str{nks+5},'%f'); ntets = t(1); tetv=t(2);
+                   if ntets~=round(ntets);                error('ERROR [load_ibzkpt]: number of tetrahedra must be an integer!'); end
                    t=sscanf(strjoin({str{nks+5+[1:ntets]}},' '),'%i'); t = reshape(t,5,[]); tet = t(2:5,:); tetw = t(1,:);
+                   if abs(sum(tetw*tetv)-1)>am_dft.eps;   error('ERROR [load_ibzkpt]: tetrahedron volumes do not sum to unity!'); end
                 else
-                    ntets=[];tet=[];tetw=[];
+                    ntets=[];tet=[];tetw=[];tetv=[];
                 end
             end
                 
@@ -873,37 +931,7 @@ classdef am_dft
                     error('unknown flag');
             end
         end
-        
-        function [dos]   = load_doscar(Ef,fdoscar)
-            
-            import am_lib.*
-              
-            [str,~] = load_file_(fdoscar);
-                % get energies, density of states, and integration DOS
-                t=sscanf(str{1},'%i'); natoms = t(1);
-                if exist('INCAR','file')==2
-                    nEs=am_dft.get_vasp('incar:nedos'); 
-                    if isnan(nEs); t=sscanf(str{6},'%f'); nEs = round(t(3)); end
-                else;              t=sscanf(str{6},'%f'); nEs = round(t(3)); end
-                if nargin<1; Ef = t(4); end
-                nspins = round((numel(strsplit(strtrim(str{7}),' '))-1)/2);
-                t=sscanf(sprintf('%s\n',str{6+[1:nEs]}),'%f'); t=reshape(t,1+2*nspins,nEs).';
-                dos.E = t(:,1)-Ef; dos.D = sum(t(:,1+[1:nspins]),2); dos.iD = sum(t(:,1+nspins+[1:nspins]),2);
-            % proj(nEs,nspins,norbitals,natoms) ==> proj(nspins,norbitals,natoms,nbands,nkpts,nEs)
-            norbitals = (1+3+5+7);
-            proj = zeros(nEs,nspins,norbitals,natoms);
-            for i = [1:natoms]
-                t = sscanf(sprintf('%s\n',str{6+i*(1+nEs)+[1:nEs]}),'%f');
-                t = reshape(t,1+nspins*norbitals,nEs).'; % nEs x spin x orbitals
-                t = reshape(t(:,2:end),nEs,nspins,norbitals);
-                proj(:,:,:,i) = t;
-            end
-            % proj(nspins,norbitals,natoms,nbands,nkpts,nEs)
-            dos.proj = permute(proj,[2,3,4,5,6,1]);
-            % normalize projections
-            n = sum_(dos.proj,[1,2,3,4,5]); n(eq_(n,0))=1; dos.proj=dos.proj./n; 
-        end
-        
+       
         function [md]    = load_md(uc,fforces,dt)
             %
             % Loads outcar preprocessed with outcar2fp.sh (generate_script).
@@ -5908,6 +5936,7 @@ end subroutine mexFunction
         end
 
         function [D]   = get_dos_tet(Ep,E,tet,tetw,tetv,flag)
+            if isempty(tetv); tetv=1; warning('WARNING [get_dos_tet]: tetv is empty. Setting it equal to 1! DOS is arbitrarily scaled!'); end
             % this is working!
             if nargin<6; flag='mex'; end
             if  contains(flag,'mex') && am_dft.usemex && exist('get_dos_tet_mex','file')==3

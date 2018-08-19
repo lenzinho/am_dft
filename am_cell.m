@@ -41,6 +41,59 @@ classdef am_cell % < dynamicprops % required for xrr simulation, but messes ever
     
     methods (Static)
 
+        
+% ADD THIS: DMFT2MD
+% clear;clc;
+% [uc,pc] = am_cell.load_cell('poscar','POSCAR');
+% incar  = am_dft.load_incar('INCAR');
+% d      = am_dft.get_vasp('outcar:phonon_eigendisplacements'); % obtained with iwrite = 3
+% hw     = am_dft.get_vasp('outcar:phonon_energies');
+% %% make eigenvector 'nice"
+% [~,ia,ic]=am_lib.uniquetol_(hw(:).',1E-3);
+% for i = 1:numel(ia)
+%     modelist = i==ic;
+%     d_echlon = d(:,:,modelist); [ndims,natoms,nmodes]=size(d_echlon);
+%     d_echlon = reshape(am_lib.frref_(reshape(d_echlon,ndims*natoms,nmodes).').',ndims,natoms,nmodes);
+% %     d_echlon = d_echlon(:,:,1);% + d_echlon(:,:,end); % manually combine these for this case
+%     d_echlon = d_echlon .* norm(d(:,:,find(modelist,1)))./permute(sqrt(sum((reshape(d_echlon,ndims*natoms,nmodes).^2),1)),[3,1,2]); % hw=hw(1);
+%     d(:,:,modelist) = d_echlon;
+% end
+% %%
+% d = d(:,:,ia); hw = hw(ia);
+% %% make movies of all phonon modes
+% dmax = 0.05; ndisps = 20;
+% for imode = 1:numel(hw)
+%     % reset
+%     cla;
+%     % get scale factors setting maximum displacement
+%     scale_ = @(d,imode) max(am_lib.normc_(d(:,:,imode)));
+%     % set the maximum displacement to between [-0.01,0.01]; % [nm]
+%     step = linspace(-dmax,dmax,ndisps).'/scale_(d,imode);
+%     % add phonon
+%     md=uc; md.nsteps=numel(step); md.tau=repmat(md.tau,[1,1,md.nsteps]);
+%     for idisp = 1:md.nsteps
+%         md.tau(:,:,idisp) = md.tau(:,:,idisp) + md.bas\(step(idisp)*d(:,:,imode));
+%     end
+%     % make movie
+%     sc = md.get_supercell(diag([2,2,2])); [~,F] = sc.plot;
+%     am_lib.frame2gif_(F,sprintf('mode_%03i.gif',imode))
+% end
+% %% write a phonon poscar
+% imode=24-3; dmax = 0.05; ndisps = 20;
+% 
+% % get scale factors setting maximum displacement
+% scale_ = @(d,imode) max(am_lib.normc_(d(:,:,imode)));
+% % set the maximum displacement to between [-0.01,0.01]; % [nm]
+% step = linspace(-dmax,dmax,ndisps).'/scale_(d,imode);
+% % add phonon
+% md=uc; md.nsteps=numel(step); md.tau=repmat(md.tau,[1,1,md.nsteps]);
+% for idisp = 1:md.nsteps
+%     md.tau(:,:,idisp) = md.tau(:,:,idisp) + md.bas\(step(idisp)*d(:,:,imode));
+% end
+% md.tau = md.tau(:,:,1);
+% md.nsteps = 1;
+% am_dft.write_poscar(md,sprintf('POSCAR.imode%03i.dmax%3.3f',imode,dmax));
+        
         function [uc]            = define(varargin) % (bas,type,species,tau) or (type,nspecies,mass_density)
             switch nargin
                 case {4}
@@ -134,7 +187,6 @@ classdef am_cell % < dynamicprops % required for xrr simulation, but messes ever
         end
 
         function [uc]            = load_poscar(fposcar) % can also be used to load the charge density 
-            if nargin < 2; flag=''; end
             fid=fopen(fposcar,'r'); if fid==-1; error('Unable to open %s',fposcar); end
                 header=fgetl(fid);                 % read header (often times contains atomic symbols)
                 latpar=sscanf(fgetl(fid),'%f');    % read lattice parameter
@@ -206,7 +258,7 @@ classdef am_cell % < dynamicprops % required for xrr simulation, but messes ever
             % refined the primitive cell vectors to get (if possible)
             % 1) angles between vectors to equal each other or 30, 60, 90, or 120 deg
             % 2) lengths of primitive vectors to be the same
-            if true
+            if false
                 % augment lattice vectors
                 grid_ =  [1, 0,1,1, 1,0,0, -1, 1, 1, 0, -1, 1,-1, 1, 0, 0, -1,-1, 1, -1, 0, 0, -1,-1, 0, -1; ...
                           1, 1,0,1, 0,1,0,  1,-1, 1, 0,  0, 0, 1,-1, 1,-1, -1, 1,-1,  0,-1, 0, -1, 0,-1, -1; ...
@@ -394,18 +446,23 @@ classdef am_cell % < dynamicprops % required for xrr simulation, but messes ever
             % check size
             if size(B,1) ~= 3 || size(B,2) ~= 3; error('B must be a 3x3 matrix.'); end
 
-            % check that B has integers
+            % check that B has integers (if det(B) > 1: supercell; if det(B) = 1: rotation)
             if abs(mod_(det(B)))>am_lib.eps; error('determinant of B must be an integer'); end
 
             % generate primitive lattice vectors
-            n=ceil(normc_(B.')); [Y{1:3}]=ndgrid(0:n(1),0:n(2),0:n(3)); nLs=prod(n+1); L=reshape(cat(3+1,Y{:})-1,[],3).';
+            if    eq_(abs(det(B)),1)
+                % Entering basis rotation mode!
+                nLs = 1; L = [0;0;0];
+            else  
+                n=ceil(normc_(B.')); [Y{1:3}]=ndgrid(0:n(1),0:n(2),0:n(3)); nLs=prod(n+1); L=reshape(cat(3+1,Y{:})-1,[],3).';
+            end
 
             % expand atoms, coordinates supercell fractional, and reduce to primitive supercell
             % Here, uniquec_ should not use 'stable', since atoms in the primitive cell should go first
             % uniquec_ without stable has an inherent sort; alternatively, use uniquec_ (with 
             % 'stable' built-in and then sort after); this is important later when getting pairs and triplets
             if ~isempty(pc.nsteps); for i = 1:pc.nsteps
-                X(:,:,i) = uniquec_( [reshape(repmat([1:pc.natoms],nLs,1),1,[]); mod_(inv(B)*osum_(L,pc.tau(:,:,i),2))] );
+                X(:,:,i) = uniquec_( [ reshape(repmat([1:pc.natoms],nLs,1),1,[]); mod_(inv(B)*osum_(L,pc.tau(:,:,i),2)) ] );
                 X(:,:,i) = X(:,rankc_(X(:,:,i)),i);
             end; end
 
@@ -414,9 +471,10 @@ classdef am_cell % < dynamicprops % required for xrr simulation, but messes ever
 
             % create structure
             uc = am_cell.define(pc.bas*B, pc.type, pc.species(u2p), X(2:4,:,:)); uc.tol = pc.tol;
-            
+
             % define mapping
             uc.bas2pc = pc.bas/uc.bas; uc.tau2pc = pc.bas\uc.bas;
+
         end
                 
         function [dc,idc]        = get_displaced(pc,bvk,n,kpt,amp,mode,nsteps)
@@ -588,8 +646,28 @@ classdef am_cell % < dynamicprops % required for xrr simulation, but messes ever
             end
         end
 
-        
-        
+        function [uc]            = permute_basis(uc,B)
+            
+            import am_lib.*
+            
+            % check if permutatio n rep is supplied instead of basis, [1;2;3] = A*B(:)
+            if numel(B) == 3; A=zeros(3,3); A(sub2ind([3,3],[1:3],B))=1; B=A; end
+            
+            % check size
+            if size(B,1) ~= 3 || size(B,2) ~= 3; error('B must be a 3x3 matrix.'); end
+
+            % check that B has integers (if det(B) > 1: supercell; if det(B) = 1: rotation)
+            if abs(mod_(det(B)))>am_lib.eps; error('determinant of B must be an integer'); end
+
+            % check further
+            if ~eq_(abs(det(B)),1); error('permutation requires integer determinant'); end
+            if any(any(~or(am_lib.eq_(B,0),am_lib.eq_(abs(B),1))))
+                error('permutation requires only zero and one elements'); 
+            end
+
+            p = abs(B*[1;2;3]); ip = abs(B\[1;2;3]);
+            uc.bas = B*uc.bas(:,p); uc.tau = uc.tau(ip,:);
+        end
     end
     
     methods % cell properties
@@ -2442,12 +2520,12 @@ classdef am_cell % < dynamicprops % required for xrr simulation, but messes ever
                 uc = am_cell.define(bas,symb,species,tau);
                 
                 % check that recipe works
-                uc_gen = [];
-                eval(['uc_gen = ',str]);
-                if uc_gen.natoms ~= uc.natoms || ...
-                   am_lib.any_(~am_lib.eq_(am_lib.sortc_(uc_gen.tau),am_lib.sortc_(uc.tau)))
-                    str = 'Mismatch';
-                end
+%                 uc_gen = [];
+%                 eval(['uc_gen = ',str]);
+%                 if uc_gen.natoms ~= uc.natoms || ...
+%                    am_lib.any_(~am_lib.eq_(am_lib.sortc_(uc_gen.tau),am_lib.sortc_(uc.tau)))
+%                     str = 'Mismatch';
+%                 end
             end
 
         end
